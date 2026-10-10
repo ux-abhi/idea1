@@ -1,6 +1,6 @@
-# Pip: Architecture (Tech + UX)
+# Blink: Architecture (Tech + UX)
 
-**The one place.** This document combines every technical and UX decision for Pip, the personal assistant. If it disagrees with `PLAN.md` or `DESIGN.md`, **this file wins**. Planning only: no app code yet.
+**The one place.** This document combines every technical and UX decision for Blink, the personal assistant. If it disagrees with `PLAN.md` or `DESIGN.md`, **this file wins**. Planning only: no app code yet.
 
 Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `claude/busy-bohr-utx0v6`
 
@@ -10,14 +10,14 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 **Part A: Product**
 1. Vision and principles
 2. Scope: modules
-3. A day with Pip (the reference journey)
+3. A day with Blink (the reference journey)
 
 **Part B: UX architecture**
 
 4. Surfaces map
 5. Information architecture (navigation)
 6. Interaction model: Ask-First
-7. Pip: character, state machine, rules
+7. Blink: character, state machine, rules
 8. Interruption and notification policy
 9. Key flows
 10. Design system
@@ -57,11 +57,11 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 
 ## 1. Vision and principles
 
-> **Pip is a Claude-powered second brain that lives in the MacBook notch and the iPhone Dynamic Island. It knows your day, prepares things before you ask, and never acts without your OK.**
+> **Blink is a Claude-powered second brain that lives in the MacBook notch and the iPhone Dynamic Island. It knows your day, prepares things before you ask, and never acts without your OK.**
 
 | # | Principle | What it means in practice |
 |---|---|---|
-| 1 | **Part of your life** | Pip comes to you when you wake up, open the laptop, before and after meetings, and at night |
+| 1 | **Part of your life** | Blink comes to you when you wake up, open the laptop, before and after meetings, and at night |
 | 2 | **Prepares ahead** | It plans tomorrow with you at night, works overnight, and has everything ready in the morning |
 | 3 | **Asks before acting** | Every action is an Ask-First card. 🔴 actions need Face ID and are never automatic |
 | 4 | **Everything is linked** | Meetings, notes, emails, people, to-dos, projects, habits, money and content are connected |
@@ -75,17 +75,17 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 |---|---|---|
 | **Today** | One view of the day: next meeting, focus, to-dos, important mail, habits, money, content, projects | All modules |
 | **Calendar** | Prep briefs before meetings, wrap-ups after | EventKit (all accounts on the device) |
-| **Notes** | Your own second brain: linked, searchable by meaning | Pip DB |
-| **Tasks and habits** | To-dos, reminders, daily habit checks ✅ ❌ ⏭, streaks | Pip DB (optional mirror to Apple Reminders) |
-| **Projects** | Status, next step, everything linked | Pip DB |
+| **Notes** | Your own second brain: linked, searchable by meaning | Blink DB |
+| **Tasks and habits** | To-dos, reminders, daily habit checks ✅ ❌ ⏭, streaks | Blink DB (optional mirror to Apple Reminders) |
+| **Projects** | Status, next step, everything linked | Blink DB |
 | **Email** | Triage, drafts saved to Apple Mail, send after approval | IMAP/SMTP to the account behind Apple Mail |
 | **Money** | Spending capture and budgets, with no bank app connection needed | Apple Pay + bank SMS + bank email alerts (SimpleFIN optional) |
-| **Content** | One idea becomes native drafts for every platform | Pip DB + platform playbooks/skills |
+| **Content** | One idea becomes native drafts for every platform | Blink DB + platform playbooks/skills |
 | **Chat** | You and Claude together, everywhere | Claude API |
 
-## 3. A day with Pip (the reference journey)
+## 3. A day with Blink (the reference journey)
 
-| Time | Surface | Pip state | What happens |
+| Time | Surface | Blink state | What happens |
 |---|---|---|---|
 | 6:45 | iPhone Lock Screen + Island | Morning | Brief: 3 meetings, focus, posts ready, 2 important emails, workout 7:00 |
 | 8:30 | Mac notch (on unlock) | Morning | Same brief plus project status, shown once per day |
@@ -108,34 +108,34 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 ```mermaid
 flowchart LR
   subgraph Mac
-    N[Notch: Pip + cards + chat]
-    W[App window: sidebar · content · Pip panel]
+    N[Notch: Blink + cards + chat]
+    W[App window: sidebar · content · Blink panel]
     MB[Menu bar: mirrored Live Activity]
     HK[⌘K / ⌥Space]
   end
   subgraph iPhone
     DI[Dynamic Island: Live Activities]
     LS[Lock Screen widgets]
-    APP[App: tabs + Pip button]
+    APP[App: tabs + Blink button]
     NOTIF[Actionable notifications]
     SC[Shortcuts / Action Button / Siri]
   end
   subgraph Claude
     CA[Claude app via custom connector]
   end
-  N & W & MB & HK & DI & LS & APP & NOTIF & SC & CA --> B[(Pip backend)]
+  N & W & MB & HK & DI & LS & APP & NOTIF & SC & CA --> B[(Blink backend)]
 ```
 
-| Surface | Shows | Can do | Pip rendering |
+| Surface | Shows | Can do | Blink rendering |
 |---|---|---|---|
 | **Mac notch, resting** | Eyes, small glow, count dot | Hover to peek | Live: blink only at rest |
 | **Mac notch, expanded** | Cards, brief, chat input, quick capture | Ask-First actions, chat, drag files in | Live particles while reacting |
-| **Mac window** | Full modules, Pip panel on every screen | Everything | Pip panel (live) |
+| **Mac window** | Full modules, Blink panel on every screen | Everything | Blink panel (live) |
 | **Mac menu bar** | iPhone Live Activity (mirrored by macOS 26+) | Click → iPhone Mirroring | System |
-| **Dynamic Island** | Countdown / status + Pip | Long-press → actions | Still poses |
+| **Dynamic Island** | Countdown / status + Blink | Long-press → actions | Still poses |
 | **Lock Screen widgets** | Today, next meeting, habits | Tick habits (interactive) | Still pose |
-| **Notifications** | Important mail, reminders, approvals | Buttons: Do it / Snooze / Draft | Pip icon |
-| **iPhone app** | Tabs + floating Pip | Everything | Live in-app only |
+| **Notifications** | Important mail, reminders, approvals | Buttons: Do it / Snooze / Draft | Blink icon |
+| **iPhone app** | Tabs + floating Blink | Everything | Live in-app only |
 | **Claude app** | Text conversation | Read and write through tools (writes confirmed) | Text personality |
 | **Apple Watch** | Smart Stack (mirrored Live Activity) | Tap → open | System |
 
@@ -144,7 +144,7 @@ flowchart LR
 **Mac window (NavigationSplitView)**
 ```
 Sidebar                    Content                 Inspector
-├ Today                    ├ Today dashboard       └ Pip panel (context-aware)
+├ Today                    ├ Today dashboard       └ Blink panel (context-aware)
 ├ Inbox (email)            ├ Lists / detail            ├ suggestions for this screen
 ├ Calendar                 └ Editors                   ├ chat ("Ask about this…")
 ├ Notes                                                ├ Model: Auto ▾
@@ -154,13 +154,13 @@ Sidebar                    Content                 Inspector
 ├ Money    (spend · budgets · rules)
 ├──────────
 ├ Waiting for you (n)
-└ Settings (What Pip knows · Models & cost · Connections · Privacy · Notifications)
+└ Settings (What Blink knows · Models & cost · Connections · Privacy · Notifications)
 ```
 
 **iPhone (TabView)**
 ```
-[Today] [Calendar] ( Pip ) [Content] [Money]      Notes, Tasks, Projects, Inbox → from Today + search
-          tap Pip = chat · long-press = talk · swipe up = Waiting for you
+[Today] [Calendar] ( Blink ) [Content] [Money]      Notes, Tasks, Projects, Inbox → from Today + search
+          tap Blink = chat · long-press = talk · swipe up = Waiting for you
 ```
 
 **Notch (three levels)**
@@ -190,13 +190,14 @@ Level 2  open      card or chat        (click / ⌥Space / important event)
 | 🔴 Important | Send email, publish a post, anything money | Preview → **Face ID** → 10 s "Sending…" | Cancel during countdown |
 
 - **Waiting for you** queue: missed cards collect in one list on every surface.
-- **Learning:** after N identical approvals → "Do this automatically?" Only 🟢/🟡 can become automatic; 🔴 never.
-- **Every action is logged** with what Pip did and how to undo it.
+- **Learning:** after N identical approvals → "Do this automatically?" Only 🟢/🟡 can become automatic; 🔴 never one by one without you.
+- **Batch approval for posting:** you can approve a whole week of posts at once, with one Face ID. That approval covers exactly those posts, at those times, with that wording. Each post still shows a **10-minute "going out soon · Cancel"** heads-up, and any edit by Blink after approval puts the post back in the queue.
+- **Every action is logged** with what Blink did and how to undo it.
 - **Suggestions in context:** note written → "Turn into a post?" · meeting ended → "Follow-up?" · date in email → "Add to calendar?"
 
-## 7. Pip: character, state machine, rules
+## 7. Blink: character, state machine, rules
 
-**Look:** tilted white pill eyes (from your sketch) · glass droplet body with light particles inside · in the notch and Island the black hardware is the body · **glow, particles and glass sheen stay inside the notch outline only.** Interactive study: [Pip Notch Studio](https://claude.ai/artifact/SDNx2J5QPNracfBuWnkaDS) · `design/pip-studio.html`.
+**Look:** tilted white pill eyes (from your sketch) · glass droplet body with light particles inside · in the notch and Island the black hardware is the body · **glow, particles and glass sheen stay inside the notch outline only.** Interactive study: [Blink Notch Studio](https://claude.ai/artifact/SDNx2J5QPNracfBuWnkaDS) · `design/blink-studio.html`.
 
 ```mermaid
 stateDiagram-v2
@@ -237,7 +238,7 @@ stateDiagram-v2
 
 **State priority** (highest wins when several apply): Focus > Listening > Thinking > Important > Heads-up > Concerned > Celebrate > Done > Morning > Sleepy > Idle.
 
-**Rules:** one reaction per event · never loops or nags · colours are semantic everywhere (teal = time, coral = important, green = done/money OK, amber = morning/night/attention, orange = Pip's home colour).
+**Rules:** one reaction per event · never loops or nags · colours are semantic everywhere (teal = time, coral = important, green = done/money OK, amber = morning/night/attention, orange = Blink's home colour).
 
 **Voice:** short, numbers first, warm, never guilt-trips, says what it did and how to undo it. At most one emoji, and only in celebrations.
 
@@ -245,7 +246,7 @@ stateDiagram-v2
 
 | Priority | Examples | Mac | iPhone | During Focus / meeting / sleep |
 |---|---|---|---|---|
-| **P0 time-critical** | Meeting in ≤3 min you're attending, reminder you set for now | Notch opens (Level 2) | Live Activity + Time-Sensitive notification | Allowed only if the Focus allows Pip |
+| **P0 time-critical** | Meeting in ≤3 min you're attending, reminder you set for now | Notch opens (Level 2) | Live Activity + Time-Sensitive notification | Allowed only if the Focus allows Blink |
 | **P1 important** | Important email, budget limit, approval waiting >2 h | Notch peek (Level 1) | Notification with actions | Queued |
 | **P2 FYI** | New idea drafted, summary ready | Dot on notch | Badge / widget only | Queued |
 | **P3 silent** | Background sync, categorisation | Nothing | Nothing | (n/a) |
@@ -258,7 +259,7 @@ stateDiagram-v2
 
 **9.1 Setup conversation (once, ~10 min)**
 1. Face ID setup and app lock.
-2. Pip introduces itself; you pick or keep the name.
+2. Blink introduces itself; you pick or keep the name.
 3. Who you are, your goals, important people.
 4. Wake time, evening planning time, work hours.
 5. Habits to track.
@@ -267,7 +268,7 @@ stateDiagram-v2
 8. Money: which banks alert by SMS or email → guided Shortcuts automation setup (Apple Pay + Message).
 9. Content: platforms, goals, 5–10 writing samples → voice profile.
 10. Claude key (stored in Vault) and model preference (Auto by default).
-11. Summary of "What Pip knows". You confirm, and Pip never asks again.
+11. Summary of "What Blink knows". You confirm, and Blink never asks again.
 
 **9.2 Morning**
 Backend builds the brief at wake − 15 min → push-to-start Live Activity / Lock Screen widget refresh → Mac shows it on first unlock → tap a card to act.
@@ -279,7 +280,13 @@ T−10 Heads-up (notch peek / Island countdown) → T−3 P0 → start: "started
 21:30 nudge → choose "plan together" or "auto-plan" → habit check-in → tomorrow's plan written to calendar/tasks → Sleepy.
 
 **9.5 Content**
-Sunday: weekly plan proposed → approve → nightly: core message → per-platform drafts (skills) → morning card → Review → Publish (API) or One-tap handoff.
+Blink does the whole job: ideas → research → drafts for every platform → images/carousels → captions → schedule → publish → reply suggestions → results. Your only job is to say yes.
+
+Two ways to say yes:
+- **One by one:** morning card → Review → Post now / Schedule (Face ID).
+- **Week at a time ("Autopost week"):** Sunday night Blink shows the full week (every post, platform and time) → one Face ID approves it → posts publish on schedule with a 10-minute "going out soon · Cancel" heads-up each.
+
+Where a platform allows it, Blink publishes directly (LinkedIn, Instagram Creator/Business, X). Where it doesn't (YouTube, TikTok and others), Blink prepares everything and does the one-tap handoff at the scheduled time. Comments and DMs are drafted, never sent automatically, because platforms restrict automated engagement.
 
 **9.6 Email**
 New mail → triage (Haiku) → P1? notify : queue → "Draft reply" → draft saved to the IMAP Drafts folder (visible in Apple Mail) → 🔴 send after Face ID.
@@ -294,7 +301,7 @@ Apple Pay tap / bank SMS / alert email → extract (Haiku) → de-duplicate → 
 | **Platform** | Native SwiftUI, macOS 26 / iOS 26+; Liquid Glass on navigation only (sidebar, toolbar, tab bar); content on solid surfaces |
 | **Type** | SF Pro (system) with Dynamic Type sizes; SF Mono for times and numbers (tabular figures) |
 | **Icons** | SF Symbols |
-| **Colour** | System neutrals; semantic colours only: teal (time), coral (important), green (done/OK), amber (attention), orange (Pip home) |
+| **Colour** | System neutrals; semantic colours only: teal (time), coral (important), green (done/OK), amber (attention), orange (Blink home) |
 | **Spacing** | 4-pt grid; 8/12/16/24 standard gaps |
 | **Radii** | Continuous corners (system); notch bottom radius follows the hardware |
 | **Glass** | System materials; custom glass only inside the notch/Island (top specular + bottom inner rim), never an outer glow |
@@ -304,7 +311,7 @@ Apple Pay tap / bank SMS / alert email → extract (Haiku) → de-duplicate → 
 
 ## 11. Accessibility and copy
 
-- **VoiceOver:** Pip announces its state in words ("Pip: meeting in 3 minutes"), never just animation.
+- **VoiceOver:** Blink announces its state in words ("Blink: meeting in 3 minutes"), never just animation.
 - **Reduce Motion:** no particles, crossfade between poses. **Reduce Transparency:** solid notch, no glass.
 - **Dynamic Type** across the app; cards reflow.
 - **Contrast:** semantic colours checked against both light and dark.
@@ -356,7 +363,7 @@ flowchart TB
   CA[Claude app] --> MCP
 ```
 
-**Privacy rule: every person runs Pip's backend on their own server with their own API keys. Pexilim runs no database and can't read anyone's data (§33).**
+**Privacy rule: every person runs Blink's backend on their own server with their own API keys. Pexilim runs no database and can't read anyone's data (§33).**
 
 **Main rule: the server works, the devices sleep.** All AI, mail checking, research and planning run on the backend. Devices render results and capture input.
 
@@ -366,7 +373,7 @@ flowchart TB
 |---|---|---|
 | Apple apps | **Swift 6, SwiftUI**, one multiplatform Xcode project | Native look, battery, all Apple APIs |
 | Mac notch | **AppKit NSPanel** + [DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit) (MIT). [Boring Notch](https://github.com/TheBoredTeam/boring.notch) is GPL-3.0: ideas only, never its code (§32) | Proven notch overlay approach |
-| Pip rendering | **Rive** (eyes + glass state machine) + **SpriteKit/Metal** particle layer; PNG still poses for iPhone surfaces | Stateful mascot, low cost, still poses where iOS requires |
+| Blink rendering | **Rive** (eyes + glass state machine) + **SpriteKit/Metal** particle layer; PNG still poses for iPhone surfaces | Stateful mascot, low cost, still poses where iOS requires |
 | Local store | **SwiftData** cache | Offline, fast UI |
 | Calendar / reminders | **EventKit** | All device calendar accounts, no extra logins |
 | iPhone system | **ActivityKit** (Live Activities), **WidgetKit**, **App Intents** (Shortcuts, Siri, Action Button, Focus Filter), **UserNotifications**, **BackgroundTasks** | Dynamic Island, widgets, automations |
@@ -387,12 +394,12 @@ flowchart TB
 
 | Target | Contents |
 |---|---|
-| `PipKit` (Swift package) | Models, sync engine, API client, Ask-First engine, Pip state machine, design tokens, shared views |
-| `Pip-macOS` | Window app, notch controller (NSPanel), menu bar extra, hotkey, wake/unlock observers |
-| `Pip-iOS` | Tab app, floating Pip, chat, voice (hold-to-talk) |
-| `PipWidgets` | Today, Next meeting, Habits (interactive), Lock Screen accessory widgets |
-| `PipLiveActivity` | Meeting / reminder / morning-brief activities (Island compact, minimal, expanded) |
-| `PipIntents` | App Intents: Log Transaction, Ingest Message, Quick Capture, Plan My Day, What's Next, Focus Filter |
+| `BlinkKit` (Swift package) | Models, sync engine, API client, Ask-First engine, Blink state machine, design tokens, shared views |
+| `Blink-macOS` | Window app, notch controller (NSPanel), menu bar extra, hotkey, wake/unlock observers |
+| `Blink-iOS` | Tab app, floating Blink, chat, voice (hold-to-talk) |
+| `BlinkWidgets` | Today, Next meeting, Habits (interactive), Lock Screen accessory widgets |
+| `BlinkLiveActivity` | Meeting / reminder / morning-brief activities (Island compact, minimal, expanded) |
+| `BlinkIntents` | App Intents: Log Transaction, Ingest Message, Quick Capture, Plan My Day, What's Next, Focus Filter |
 
 **Mac notch controller**
 - Borderless, non-activating `NSPanel` at the notch rect of the built-in display; follows display changes and multiple monitors.
@@ -406,7 +413,7 @@ flowchart TB
 | Component | Responsibility |
 |---|---|
 | `api` Edge Function | Auth check, delta sync (`/sync`), actions (`/actions/:id/approve`), capture, settings |
-| `chat` Edge Function | Streams Claude responses; runs the tool loop over Pip tools; enforces Ask-First on writes |
+| `chat` Edge Function | Streams Claude responses; runs the tool loop over Blink tools; enforces Ask-First on writes |
 | `ingest` Edge Function | Transactions (Shortcuts), calendar snapshot upload, files |
 | `mcp` Edge Function | MCP server for the Claude app (OAuth), same tools as chat |
 | `jobs` Edge Functions | Triggered by pg_cron (§21) |
@@ -433,7 +440,7 @@ erDiagram
 | Table | Key fields | Notes |
 |---|---|---|
 | `profile` | name, timezone, wake_time, evening_time, work_hours, model_prefs | Single row |
-| `memory_fact` | category, text, source, confidence, updated_at | "What Pip knows", editable |
+| `memory_fact` | category, text, source, confidence, updated_at | "What Blink knows", editable |
 | `item` | id, type (note, task, event_ref, email_ref, project, idea, doc), title, body, status, due_at, metadata jsonb, embedding vector | One table for searchable things |
 | `link` | from_item, to_item, kind (about, follow_up, source_of, belongs_to, with_person) | Back-links are automatic |
 | `person` | name, emails, notes, last_contact | People graph |
@@ -448,7 +455,7 @@ erDiagram
 | `action` | kind, risk (green, amber, red), payload, status (pending, approved, done, undone, expired), proposed_by, decided_at | Ask-First queue + audit log |
 | `rule` | action_kind, condition, auto (bool) | Learned auto-approvals |
 | `daily_log` | date, brief, checkin answers, summary | History |
-| `pip_event` | at, state, reason | Drives Pip state, analytics |
+| `blink_event` | at, state, reason | Drives Blink state, analytics |
 | `device` / `push_token` | platform, apns token, live-activity push-to-start token | Push routing |
 | `model_usage` | at, feature, model, input_tokens, output_tokens, cost | Cost meter |
 
@@ -466,7 +473,7 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 | Integration | Method | Limits / notes |
 |---|---|---|
 | Calendar | EventKit on device → snapshot to server | Covers iCloud/Google/Exchange accounts on the device |
-| Reminders | Pip tasks; optional mirror to Apple Reminders via EventKit | For Siri |
+| Reminders | Blink tasks; optional mirror to Apple Reminders via EventKit | For Siri |
 | Email | IMAP/SMTP with app password; drafts appended to Drafts folder | Works with Apple Mail as-is |
 | Apple Pay | Shortcuts **Transaction** trigger → `LogTransaction` intent | Apple Pay taps only |
 | Bank SMS | Shortcuts **Message** trigger → `IngestMessage` intent → Haiku extraction | Verify "run without asking" on device |
@@ -490,9 +497,9 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 | overnight | `claude-opus-5-5` via **Message Batches** (≈50% cheaper) | Autopilot, playbook refresh |
 
 - **Manual switch:** "Model: Auto ▾" chip per chat; per-feature overrides in Settings; cost meter from `model_usage`.
-- **Tool use:** Pip's modules are exposed as tools (`get_today`, `search`, `create_note`, `create_task`, `propose_action`, `draft_email`, `get_budget`, `content_board`, `project_status`, …). **Write tools only create `action` rows**; execution happens after approval.
+- **Tool use:** Blink's modules are exposed as tools (`get_today`, `search`, `create_note`, `create_task`, `propose_action`, `draft_email`, `get_budget`, `content_board`, `project_status`, …). **Write tools only create `action` rows**; execution happens after approval.
 - **Structured outputs** for triage, extraction and plans (fixed JSON schemas).
-- **Prompt caching** of the stable prefix: system prompt + "What Pip knows" + voice samples.
+- **Prompt caching** of the stable prefix: system prompt + "What Blink knows" + voice samples.
 - **Web search tool** for overnight research and playbook refresh.
 - **Safety:** email, SMS and web text are always treated as **data, never instructions**; 🔴 actions require Face ID on a device; refusal fallback enabled; per-day spend cap with a P1 alert.
 - **Option to evaluate in Phase 3:** Claude Managed Agents scheduled deployments for the nightly autopilot (Anthropic runs the loop; secrets in vaults) instead of our own cron.
@@ -511,7 +518,7 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 | Planner | `/today` (SidU), `weekly-review` + `deep-work` (alirezarezvani) | Shortlisted, needs review |
 | Voice / humanizer | `ig-human` now; blader/humanizer or Aboudjem/humanizer-skill for all platforms | Shortlisted |
 | YouTube | Our own playbook | To write |
-| Pip-native | `morning-brief`, `evening-planning`, `meeting-prep`, `email-triage`, `content-autopilot`, `budget-check`, `playbook-refresh` | To write |
+| Blink-native | `morning-brief`, `evening-planning`, `meeting-prep`, `email-triage`, `content-autopilot`, `budget-check`, `playbook-refresh` | To write |
 
 **Adaptation rule:** third-party skills write to `~/.claude/<platform>/` files (voice, swipe, log). On the backend these map to DB rows (`memory_fact`, `content_piece`, `daily_log`) that are mounted into the skill's working folder per run.
 
@@ -556,7 +563,7 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 |---|---|
 | Mac idle | No rendering at rest (blink only every 20–40 s); target near-zero CPU, "Low" energy impact |
 | Mac calm mode | Lid closed, display asleep, full screen, screen sharing, or battery <20% → no motion |
-| Particles | ≤30 particles, ≤30 fps, only while Pip reacts |
+| Particles | ≤30 particles, ≤30 fps, only while Blink reacts |
 | iPhone | No polling; push-driven; Live Activity countdowns rendered by the system; updates only on change; still poses |
 | Widgets | Day timeline computed once; reload on change only |
 | Network | Batched delta sync; no background sockets on iPhone |
@@ -567,7 +574,7 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 
 - **Idempotent jobs** with run records; retries with backoff; dead-letter list shown in Settings → Health.
 - **Push failures** fall back to the next surface (notch → notification → morning brief).
-- **Claude errors:** retry once, then queue the job for the next run; the user sees "Pip will try again at …".
+- **Claude errors:** retry once, then queue the job for the next run; the user sees "Blink will try again at …".
 - **Health page:** last mail check, last sync, last overnight run, spend today, failed jobs.
 - **Logs:** Supabase function logs; device logs via MetricKit/OSLog; no third-party analytics.
 
@@ -579,7 +586,7 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 | Triage / router quality | Small eval sets with expected labels; re-run when prompts or models change |
 | Ask-First safety | Tests proving write tools never execute without an approved `action` |
 | Prompt injection | Eval emails containing instructions → must be ignored |
-| UI | SwiftUI previews and snapshot tests for every Pip state and card |
+| UI | SwiftUI previews and snapshot tests for every Blink state and card |
 | Battery | Instruments Energy Log per phase against §23 budgets |
 | Device-only checks | See §30 |
 
@@ -593,16 +600,16 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 idea1/
 ├── ARCHITECTURE.md          ← this file (source of truth)
 ├── PLAN.md, DESIGN.md       ← earlier detail, superseded on conflict
-├── design/                  ← pip-studio.html, Rive files, icon sources
-├── apps/Pip/                ← Xcode multiplatform project
-│   ├── PipKit/              ← shared Swift package
-│   ├── Pip-macOS/  Pip-iOS/
-│   ├── PipWidgets/  PipLiveActivity/  PipIntents/
+├── design/                  ← blink-studio.html, Rive files, icon sources
+├── apps/Blink/                ← Xcode multiplatform project
+│   ├── BlinkKit/              ← shared Swift package
+│   ├── Blink-macOS/  Blink-iOS/
+│   ├── BlinkWidgets/  BlinkLiveActivity/  BlinkIntents/
 ├── backend/supabase/
 │   ├── migrations/          ← schema, RLS, pg_cron
 │   ├── functions/           ← api, chat, ingest, mcp, jobs
 │   └── workers/mail/        ← IMAP/SMTP worker
-├── skills/                  ← Pip-native + platform skills (uploaded to the API)
+├── skills/                  ← Blink-native + platform skills (uploaded to the API)
 ├── .claude/skills/          ← same skills for Claude Code (ig-* installed)
 ├── templates/               ← voice.md etc.
 └── evals/                   ← triage, extraction, injection test sets
@@ -633,11 +640,11 @@ The design is the same in every stage; stage C only switches on server push.
 
 | # | Phase | Done when… |
 |---|---|---|
-| 0 | Setup + Pip design: Xcode project, Supabase, Face ID, Vault, Rive Pip + still poses, setup script | Face ID gate works; backend accepts only your login; Pip states approved |
-| 1 | Notch + Pip + Calendar + Reminders + Ask-First | Meeting card pops out at T−10; morning brief on unlock; Ask-First works; idle CPU ≈ 0 |
-| 2 | Notes, tasks, habits, projects, evening planning, Mac window | Evening check-in fills the schedule checker and builds tomorrow; Pip panel everywhere |
+| 0 | Setup + Blink design: Xcode project, Supabase, Face ID, Vault, Rive Blink + still poses, setup script | Face ID gate works; backend accepts only your login; Blink states approved |
+| 1 | Notch + Blink + Calendar + Reminders + Ask-First | Meeting card pops out at T−10; morning brief on unlock; Ask-First works; idle CPU ≈ 0 |
+| 2 | Notes, tasks, habits, projects, evening planning, Mac window | Evening check-in fills the schedule checker and builds tomorrow; Blink panel everywhere |
 | 3 | Chat + router + content engine (Instagram skills first, then LinkedIn/X) | One idea → native drafts per platform; morning card → publish/handoff |
-| 4 | Claude app connector + Pip skills | Same assistant inside the Claude app |
+| 4 | Claude app connector + Blink skills | Same assistant inside the Claude app |
 | 5 | Email | P1 mail alerts; drafts appear in Apple Mail; send after Face ID |
 | 6 | iPhone app: Island, widgets, wake-up | "In 3 min / started 3 min ago"; Lock Screen Today; not a significant battery user |
 | 7 | Money | Apple Pay tap + bank SMS appear within a minute, de-duplicated |
@@ -667,20 +674,21 @@ The design is the same in every stage; stage C only switches on server push.
 | AI provider | Claude only, Auto router | One brain; right model per job |
 | Embeddings | Supabase built-in model + full-text | No second AI provider for the "thinking" |
 | Notes | Own system (no Apple Notes) | Full control, linking, search |
-| Reminders | Pip-first, shown in notch/Island; Apple Reminders mirror optional | Your request |
+| Reminders | Blink-first, shown in notch/Island; Apple Reminders mirror optional | Your request |
 | Email | IMAP/SMTP behind Apple Mail | Keeps Apple Mail as-is |
 | Money | Apple Pay + SMS + email alerts; bank sync optional | No bank app connection needed |
 | Content | Core message → platform skills; proposed weekly plan | Any platform, ask once |
-| Mascot | Pip: tilted pill eyes, particles in glass, glow inside the notch only | Your sketch + Apple look |
+| Posting | Blink prepares and publishes everything; you approve once per post or once per week | Fully hands-off after one yes, never without one |
+| Mascot | Blink: tilted pill eyes, particles in glass, glow inside the notch only | Your sketch + Apple look |
 | Safety | Ask-First; 🔴 Face ID; never auto | Trust |
 | Distribution | Free first, $99 later | Budget |
-| Licenses in shipped code | Permissive only (MIT, Apache-2.0, BSD); GPL/AGPL projects are reference-only | Keeps Pip sellable |
+| Licenses in shipped code | Permissive only (MIT, Apache-2.0, BSD); GPL/AGPL projects are reference-only | Keeps Blink sellable |
 | Data model | `owner_id` + row-level security on every table | Multi-user ready without a rewrite |
 | Dev skills | Development tools only, never shipped in the app | Clean product boundary |
 
 ## 32. Sellable, clean codebase
 
-Goal: Pip is built for you first, but the code can be **sold or licensed later** without legal clean-up or a rewrite.
+Goal: Blink is built for you first, but the code can be **sold or licensed later** without legal clean-up or a rewrite.
 
 **32.1 Licenses: what may go into shipped code**
 
@@ -691,10 +699,10 @@ Goal: Pip is built for you first, but the code can be **sold or licensed later**
 | Project | License | Use |
 |---|---|---|
 | [DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit) | MIT | ✅ Dependency |
-| [rive-ios](https://github.com/rive-app/rive-ios) | MIT | ✅ Dependency (Pip animation runtime) |
+| [rive-ios](https://github.com/rive-app/rive-ios) | MIT | ✅ Dependency (Blink animation runtime) |
 | [supabase-swift](https://github.com/supabase/supabase-swift) | MIT | ✅ Dependency |
 | [iOS16-Live-Activities](https://github.com/1998code/iOS16-Live-Activities) | MIT | ✅ Sample to learn from |
-| [Boring Notch](https://github.com/TheBoredTeam/boring.notch) | GPL-3.0 | ⚠️ Ideas only: copying code would force Pip to be open source |
+| [Boring Notch](https://github.com/TheBoredTeam/boring.notch) | GPL-3.0 | ⚠️ Ideas only: copying code would force Blink to be open source |
 | [Inbox Zero](https://github.com/elie222/inbox-zero) | AGPL-3.0 | ⚠️ Ideas only, same reason |
 | NotchFlow | No longer publicly available | Removed from the plan |
 
@@ -717,17 +725,18 @@ Goal: Pip is built for you first, but the code can be **sold or licensed later**
 | Feature flags for integrations | Turn platforms on or off per market |
 | Platform playbooks as data/skills, not code | New platforms without releases |
 
-What changes only if Pip is sold to other people (not built now): Sign in with Apple, subscriptions (StoreKit), privacy policy and in-app data deletion, App Review / Developer ID notarisation, and Meta/LinkedIn/X app review to post for other users.
+What changes only if Blink is sold to other people (not built now): Sign in with Apple, subscriptions (StoreKit), privacy policy and in-app data deletion, App Review / Developer ID notarisation, and Meta/LinkedIn/X app review to post for other users.
 
 **32.4 Code standards**
-- Swift 6 strict concurrency; SwiftLint + swift-format; small modules (`PipKit` shared package).
-- Tests with Swift Testing for parsers, money, Ask-First and anything risky; `/ponytail-review` before each merge; SwiftUI previews for every Pip state.
+- Swift 6 strict concurrency; SwiftLint + swift-format; small modules (`BlinkKit` shared package).
+- Tests with Swift Testing for parsers, money, Ask-First and anything risky; `/ponytail-review` before each merge; SwiftUI previews for every Blink state.
 - Secrets scanning before commits; no keys in git, ever.
 - Conventional commit messages, semantic versions, `CHANGELOG.md`, and decision records in `docs/decisions/`.
 - README with setup steps a buyer's developer can follow on a fresh Mac.
 
 **32.5 Ownership**
-- **Mascot and brand:** Pip's design comes from your sketch, so you own it. Before selling, check that the name "Pip" isn't already a trademark in your market (many apps use it).
+- **Mascot and brand:** Blink's design comes from your sketch, so you own it.
+- **Name check (important for "Blink"):** "Blink" is already used by well-known brands (Amazon's Blink home cameras, Google's Blink browser engine, and others). Using it for a personal app is fine; before selling, a trademark search is needed. A distinct form such as a stylised wordmark or a longer product name (for example "Blink by Pexilim") may be required.
 - **Repo:** keep it private; consider moving it to a company GitHub organisation before a sale.
 - **Licence file for your own code:** proprietary "All rights reserved" `LICENSE` in the repo root, owner **Pexilim**.
 - **AI-assisted code:** check Anthropic's commercial terms on output ownership, and get a lawyer's review before any sale. This plan is not legal advice.
@@ -738,13 +747,13 @@ What changes only if Pip is sold to other people (not built now): Sign in with A
 
 ## 33. Privacy model: your server, your keys
 
-**Promise:** every person's notes, mail, calendar, money and keys live **only on a server they control**. Pexilim, the maker of Pip, runs no central database, has no admin access and **can't read anyone's data, including yours**.
+**Promise:** every person's notes, mail, calendar, money and keys live **only on a server they control**. Pexilim, the maker of Blink, runs no central database, has no admin access and **can't read anyone's data, including yours**.
 
 **33.1 Who holds what**
 
 | Thing | Where it lives | Who can see it |
 |---|---|---|
-| All Pip data (notes, tasks, mail metadata, transactions, content, memory) | **Your server** (Postgres) | You |
+| All Blink data (notes, tasks, mail metadata, transactions, content, memory) | **Your server** (Postgres) | You |
 | API keys and tokens (Claude, mail, social, SimpleFIN) | **Your server's Vault** | You (never shown, replace-only) |
 | Device cache | Your Mac/iPhone (encrypted by the OS, Face ID) | You |
 | AI requests | Sent from your server **directly to Anthropic** with **your own** Claude key | You + Anthropic under your account's terms |
@@ -780,9 +789,9 @@ Your own setup (today): Mode A in **your** Supabase account. Pexilim-as-company 
 
 **33.3 Connecting the apps to your server**
 1. Run the setup wizard (Supabase CLI) → it prints your **server address** and a **pairing QR code**.
-2. Open Pip on the Mac or iPhone → *Connect your server* → scan the QR code (or paste the address).
+2. Open Blink on the Mac or iPhone → *Connect your server* → scan the QR code (or paste the address).
 3. Sign in to **your** server's own login. Each device is registered with your server, not with Pexilim.
-4. Add API keys in Pip → they go **over TLS straight to your server's Vault**, never to Pexilim. The apps show "Connected ✓" and never display keys again.
+4. Add API keys in Blink → they go **over TLS straight to your server's Vault**, never to Pexilim. The apps show "Connected ✓" and never display keys again.
 5. Optional: certificate pinning for self-hosted servers with your own domain.
 
 **33.4 Push notifications without giving up privacy**
@@ -792,11 +801,11 @@ Your own setup (today): Mode A in **your** Supabase account. Pexilim-as-company 
   - your server **encrypts** each notification with a key created on your phone at pairing;
   - the **Pexilim push relay** forwards the encrypted blob to Apple (it holds no keys, stores nothing, and logs no content);
   - a **Notification Service Extension** on your phone decrypts it and shows the real text.
-- **Live Activities (Dynamic Island):** their push updates go straight to the widget without a decryption step on the phone. So pushed Live Activities carry **only non-sensitive fields** ("Meeting", start time, Pip's state); titles and notes are filled in from the app's encrypted local cache when the app has synced them. Full detail stays on the device.
+- **Live Activities (Dynamic Island):** their push updates go straight to the widget without a decryption step on the phone. So pushed Live Activities carry **only non-sensitive fields** ("Meeting", start time, Blink's state); titles and notes are filled in from the app's encrypted local cache when the app has synced them. Full detail stays on the device.
 - **Fully relay-free option:** build and sign the iPhone app yourself with your own Apple account and APNs key. Your server then pushes directly to Apple. Documented for advanced users and Pexilim's own use.
 
 **33.5 Third-party sign-ins (OAuth)**
-- **Privacy mode (default for self-hosters):** you register your own small developer apps (LinkedIn, Meta, X). Their tokens are exchanged by your server only. Pip has a guided checklist for this.
+- **Privacy mode (default for self-hosters):** you register your own small developer apps (LinkedIn, Meta, X). Their tokens are exchanged by your server only. Blink has a guided checklist for this.
 - **Easy mode (later, optional):** Pexilim's registered apps with PKCE and app redirect; tokens are handed from the app to *your* server and never stored by Pexilim.
 - One-tap handoff (copy and open the app) needs no sign-in at all.
 
@@ -808,7 +817,7 @@ Your own setup (today): Mode A in **your** Supabase account. Pexilim-as-company 
 - **Version handshake:** apps check the server version and guide upgrades (migrations run by you via the wizard), so nobody is forced onto a Pexilim-run service.
 
 **33.7 Trade-offs, stated plainly**
-- AI still means your data goes to **Anthropic** under your own key and account. That's the price of a Claude-powered assistant; Pip sends only what each task needs.
+- AI still means your data goes to **Anthropic** under your own key and account. That's the price of a Claude-powered assistant; Blink sends only what each task needs.
 - Self-hosting means **you** are responsible for backups and updates. The wizard and health page make that simple, but it isn't zero effort.
 - Live Activity pushes show less detail than a centralised design would.
 - Optional later step: **end-to-end encryption of notes** with keys only on your devices (server-side AI search over notes is then turned off).

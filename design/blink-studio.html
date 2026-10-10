@@ -1,11 +1,11 @@
-<title>Pip Notch Studio</title>
+<title>Blink Notch Studio</title>
 <style>
 /* Layout: a single stage (MacBook bezel + notch) leads; body, Dynamic Island, icons and notes follow in one calm column. */
 :root{
   --bg:#F2F2F4; --surface:#FFFFFF; --fg:#1C1C1E; --muted:#6C6C72; --line:#DEDEE3;
   --chip:#E7E7EC; --chip-on:#1C1C1E; --chip-on-fg:#FFFFFF;
   --hw:#000000; --hw-fg:#F5F5F7; --hw-muted:#8E8E93; --bezel:#111113; --screen:#1D1D22;
-  --pip:#FF7A2F;
+  --blink:#FF7A2F;
   --sans:-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -29,7 +29,7 @@ p{margin:0;max-width:62ch}
 section{display:grid;gap:18px;padding-block:48px;border-top:1px solid var(--line)}
 header{display:grid;gap:14px;padding-block:44px 28px}
 button{font:inherit;cursor:pointer}
-button:focus-visible{outline:2px solid var(--pip);outline-offset:2px}
+button:focus-visible{outline:2px solid var(--blink);outline-offset:2px}
 
 /* ---------- Stage: MacBook top ---------- */
 .stage{background:var(--bezel);border-radius:22px 22px 10px 10px;padding:10px 10px 0;overflow:hidden}
@@ -59,7 +59,7 @@ button:focus-visible{outline:2px solid var(--pip);outline-offset:2px}
 .n-content{position:absolute;inset:0;z-index:3;display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;padding:30px 22px 18px;opacity:0;transition:opacity .25s;color:var(--hw-fg);pointer-events:none}
 .notch.open .n-content{opacity:1;transition-delay:.25s;pointer-events:auto}
 .notch.open > .eyes{opacity:0}
-.n-pip{position:relative;width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.1)}
+.n-blink{position:relative;width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.1)}
 .n-text{display:grid;gap:4px;min-width:0}
 .n-text b{font-size:1rem;font-weight:600}
 .n-text span{font-size:.8rem;color:var(--hw-muted)}
@@ -132,7 +132,7 @@ footer{padding-top:24px;border-top:1px solid var(--line);font-size:.86rem;color:
 <div class="wrap">
 <header>
   <span class="eyebrow">Mascot study · v1</span>
-  <h1>Pip, made of light in glass</h1>
+  <h1>Blink, made of light in glass</h1>
   <p class="muted">Your droplet-and-pill-eyes idea, rebuilt as particles inside liquid glass. In the notch, everything stays inside the notch outline: the glow, the particles and the glass sheen. Nothing spills onto the screen.</p>
 </header>
 
@@ -144,7 +144,7 @@ footer{padding-top:24px;border-top:1px solid var(--line);font-size:.86rem;color:
         <canvas id="cNotch"></canvas>
         <div class="eyes" id="eNotch"><i class="eye"></i><i class="eye"></i></div>
         <div class="n-content">
-          <div class="n-pip"><canvas id="cNotchPip" style="border-radius:20px"></canvas><div class="eyes" id="eNotchPip" style="--ew:8px;--eh:19px;--gap:10px"><i class="eye"></i><i class="eye"></i></div></div>
+          <div class="n-blink"><canvas id="cNotchBlink" style="border-radius:20px"></canvas><div class="eyes" id="eNotchBlink" style="--ew:8px;--eh:19px;--gap:10px"><i class="eye"></i><i class="eye"></i></div></div>
           <div class="n-text"><b>Design sync in 3 min</b><span>Priya · 2 linked notes · Zoom</span>
             <div class="n-btns"><button class="p" type="button">Join</button><button type="button">Open notes</button><button type="button">Later</button></div></div>
         </div>
@@ -154,7 +154,7 @@ footer{padding-top:24px;border-top:1px solid var(--line);font-size:.86rem;color:
   </div>
 </div>
 <div class="controls">
-  <div class="chips" id="chips" role="group" aria-label="Pip state"></div>
+  <div class="chips" id="chips" role="group" aria-label="Blink state"></div>
   <div class="row">
     <button class="toggle" id="openBtn" type="button" aria-pressed="false">Expand notch</button>
     <span class="state-note" id="note"></span>
@@ -167,9 +167,9 @@ footer{padding-top:24px;border-top:1px solid var(--line);font-size:.86rem;color:
   <div class="body-grid">
     <div class="drop"><canvas id="cDrop"></canvas><div class="eyes" id="eDrop"><i class="eye"></i><i class="eye"></i></div></div>
     <div style="display:grid;gap:14px">
-      <p>Where Pip has room, it shows its whole body: a droplet of tinted glass with light drifting inside. The particles change colour and movement with Pip’s mood, and the eyes do the talking.</p>
+      <p>Where Blink has room, it shows its whole body: a droplet of tinted glass with light drifting inside. The particles change colour and movement with Blink’s mood, and the eyes do the talking.</p>
       <ul class="list muted">
-        <li>App icon, setup conversation, the Pip panel in the Mac app, the floating Pip button on iPhone</li>
+        <li>App icon, setup conversation, the Blink panel in the Mac app, the floating Blink button on iPhone</li>
         <li>In the notch and the Dynamic Island the black hardware is the body, so only the eyes and the inner light appear</li>
         <li>Same state machine everywhere. The chips above drive this droplet too</li>
       </ul>
@@ -180,11 +180,11 @@ footer{padding-top:24px;border-top:1px solid var(--line);font-size:.86rem;color:
 <section aria-labelledby="di">
   <span class="eyebrow">iPhone 15 and later</span>
   <h2 id="di">Dynamic Island</h2>
-  <p class="muted">iOS shows Live Activities as still frames, so Pip appears here as a frozen pose of the same particles. It changes only when something happens, which is also the battery-friendly way.</p>
+  <p class="muted">iOS shows Live Activities as still frames, so Blink appears here as a frozen pose of the same particles. It changes only when something happens, which is also the battery-friendly way.</p>
   <div class="phones">
     <div class="phone">
       <div class="island compact"><div class="mini"><canvas id="cIsl1"></canvas><div class="eyes" id="eIsl1"><i class="eye"></i><i class="eye"></i></div><div class="glass"></div></div><span class="cd">3 min</span></div>
-      <small>Compact: Pip on the left, the countdown on the right</small>
+      <small>Compact: Blink on the left, the countdown on the right</small>
     </div>
     <div class="phone">
       <div class="island expanded"><div class="big"><canvas id="cIsl2"></canvas><div class="eyes" id="eIsl2"><i class="eye"></i><i class="eye"></i></div></div>
@@ -231,13 +231,13 @@ footer{padding-top:24px;border-top:1px solid var(--line);font-size:.86rem;color:
       <ul class="list">
         <li><b>The tilted pill eyes.</b> They are the most ownable part. They read as alive at 7 pixels wide, so they work in the notch.</li>
         <li><b>The droplet.</b> A simple silhouette that stays recognisable as an app icon at any size.</li>
-        <li><b>Warm orange</b> as Pip’s home colour. Pip glows orange when idle and switches colour by mood.</li>
+        <li><b>Warm orange</b> as Blink’s home colour. Blink glows orange when idle and switches colour by mood.</li>
       </ul></div>
     <div><span class="tag">Changed</span>
       <ul class="list">
         <li><b>Two straight pills look like a pause button ⏸.</b> The Dynamic Island already uses that symbol for music, so the eyes keep a stronger tilt, sit at slightly different heights, and change shape with each mood.</li>
         <li><b>Flat fill becomes glass with light inside</b>, to match Apple’s Liquid Glass look on macOS 26 and iOS 26.</li>
-        <li><b>The orange is close to Claude’s brand colour.</b> That fits, since Claude powers Pip, but particles in other colours keep Pip its own character.</li>
+        <li><b>The orange is close to Claude’s brand colour.</b> That fits, since Claude powers Blink, but particles in other colours keep Blink its own character.</li>
       </ul></div>
   </div>
 </section>
@@ -255,7 +255,7 @@ footer{padding-top:24px;border-top:1px solid var(--line);font-size:.86rem;color:
       </ul></div>
     <div><h3>Particles and battery</h3>
       <ul class="list muted">
-        <li>At most 30 particles, drawn at 30 frames per second, and only while Pip has something to say</li>
+        <li>At most 30 particles, drawn at 30 frames per second, and only while Blink has something to say</li>
         <li>At rest the frame freezes and only a blink plays. This page keeps it moving so you can see it</li>
         <li>Calm mode stops all motion when the lid is closed, in full screen, or on battery under 20%</li>
         <li>iPhone surfaces use pre-rendered still poses, never live particles</li>
@@ -263,7 +263,7 @@ footer{padding-top:24px;border-top:1px solid var(--line);font-size:.86rem;color:
   </div>
 </section>
 
-<footer>Pip design study for the personal assistant plan · interactive mock-up, not the app.</footer>
+<footer>Blink design study for the personal assistant plan · interactive mock-up, not the app.</footer>
 </div>
 
 <script>
@@ -273,7 +273,7 @@ const STATES={
   morning:{label:"Morning",c:[255,181,71],n:22,mode:"rise",sp:.45,a:.85,eyes:"",note:"First unlock of the day. Warm light rises."},
   headsup:{label:"Heads-up",c:[63,208,201],n:24,mode:"drift",sp:.75,a:.9,eyes:"e-wide",note:"Meeting in 3 minutes. Eyes open wide."},
   important:{label:"Important",c:[255,77,61],n:26,mode:"pulse",sp:.6,a:.95,eyes:"e-wide",note:"Key email or budget limit. One pulse, then calm."},
-  thinking:{label:"Thinking",c:[170,200,255],n:18,mode:"orbit",sp:1,a:.85,eyes:"e-up",note:"Claude is working. Light circles while Pip looks up."},
+  thinking:{label:"Thinking",c:[170,200,255],n:18,mode:"orbit",sp:1,a:.85,eyes:"e-up",note:"Claude is working. Light circles while Blink looks up."},
   listening:{label:"Listening",c:[255,150,90],n:20,mode:"pulse",sp:1.1,a:.9,eyes:"e-wide",note:"You’re talking or typing. Light breathes with your voice."},
   done:{label:"Done",c:[74,222,128],n:20,mode:"rise",sp:.7,a:.9,eyes:"e-happy",note:"Approved, finished, streak kept."},
   focus:{label:"Focus",c:[255,122,47],n:4,mode:"still",sp:.06,a:.22,eyes:"e-closed",note:"Quiet. Everything waits in the queue."},
@@ -339,7 +339,7 @@ class Field{
 const notch=document.getElementById("notch");
 const fields=[
   {f:new Field(document.getElementById("cNotch"),{scale:.9}),e:"eNotch",live:true},
-  {f:new Field(document.getElementById("cNotchPip"),{scale:.9}),e:"eNotchPip",live:true},
+  {f:new Field(document.getElementById("cNotchBlink"),{scale:.9}),e:"eNotchBlink",live:true},
   {f:new Field(document.getElementById("cDrop"),{drop:true,scale:2.2}),e:"eDrop",live:true},
   {f:new Field(document.getElementById("cIsl1"),{scale:.7}),e:"eIsl1",live:false},
   {f:new Field(document.getElementById("cIsl2"),{scale:1}),e:"eIsl2",live:false}

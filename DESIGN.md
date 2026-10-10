@@ -11,37 +11,37 @@ Companion to [PLAN.md](PLAN.md). This file decides **how the assistant looks, fe
 | Typical AI app | This assistant |
 |---|---|
 | A chat box you have to open | **Ambient:** it lives in the notch and the Dynamic Island and comes to you |
-| A faceless text bot or a humanlike avatar | **A small character made from the notch itself** (see Pip below) |
+| A faceless text bot or a humanlike avatar | **A small character made from the notch itself** (see Blink below) |
 | Asks the same questions every time | **Ask once, learn forever:** one setup conversation, then it infers and adapts |
 | Answers when asked | **Prepares ahead:** overnight work, morning brief, evening planning |
 | Does things, or can't do anything | **Ask-First:** prepares everything, acts after your OK |
 | One model for everything | **Picks the right Claude model per job**, and you can switch any time |
 
 ### Ask once, learn forever
-- **One setup conversation** (about 10 minutes, with Pip) covers who you are, goals, which platforms you use, 5–10 samples of your writing, wake and sleep times, habits, budget categories, and important people.
+- **One setup conversation** (about 10 minutes, with Blink) covers who you are, goals, which platforms you use, 5–10 samples of your writing, wake and sleep times, habits, budget categories, and important people.
 - After that it **never asks the same thing twice**. It learns from what you approve, edit or skip, and proposes changes ("You skip Friday posts. Stop planning them?").
-- Everything it has learned is visible and editable in **Settings → What Pip knows**.
+- Everything it has learned is visible and editable in **Settings → What Blink knows**.
 
 ---
 
-## 2. Pip: the mascot
+## 2. Blink: the mascot
 
-**Working name: Pip** (you can rename it).
+**Name: Blink.** It suits the character: the eyes and the blink are Blink's whole personality.
 
 ### Concept
-Pip **is the notch.** The black notch on your MacBook and the black Dynamic Island on your iPhone become Pip's body, and **Pip only needs a pair of eyes** to come alive. That makes it:
+Blink **is the notch.** The black notch on your MacBook and the black Dynamic Island on your iPhone become Blink's body, and **Blink only needs a pair of eyes** to come alive. That makes it:
 - **Unique:** no other assistant turns the hardware into the character.
 - **Native:** it looks like part of the Mac and iPhone, not a sticker on top.
 - **Battery-light:** a few white pixels, not a 3D avatar.
-- **Honest:** a friendly creature, not a fake human. Press coverage of humanlike AI avatars (Google's Live Avatar) reports researchers' concern that humanlikeness builds false trust; Pip avoids that by design.
+- **Honest:** a friendly creature, not a fake human. Press coverage of humanlike AI avatars (Google's Live Avatar) reports researchers' concern that humanlikeness builds false trust; Blink avoids that by design.
 
 Inspiration taken: the **liveliness** of Grok's animated companions and Google's Gemini avatars, which react, emote and feel present. What we leave out: humanlike faces and lip-sync, for the reasons above.
 
 ### Look: particles in glass (v1, from your droplet sketch)
-Interactive study: [Pip Notch Studio](https://claude.ai/artifact/SDNx2J5QPNracfBuWnkaDS) · source in `design/pip-studio.html`.
+Interactive study: [Blink Notch Studio](https://claude.ai/artifact/SDNx2J5QPNracfBuWnkaDS) · source in `design/blink-studio.html`.
 
 - **Eyes:** two **tilted white pills** (about 16°), taken from your sketch. The left one sits slightly lower. They're tilted enough that they never read as a pause button ⏸, which the Dynamic Island uses for music.
-- **Full body:** a **droplet of tinted glass** with **light particles drifting inside**. Used for the app icon, the setup conversation, the Mac Pip panel and the iPhone Pip button.
+- **Full body:** a **droplet of tinted glass** with **light particles drifting inside**. Used for the app icon, the setup conversation, the Mac Blink panel and the iPhone Blink button.
 - **In the notch / Dynamic Island:** the black hardware is the body. Only the eyes, the particles and the glass sheen appear, **all clipped inside the notch outline. No glow or shadow outside it.**
 - **Glass (Apple Liquid Glass style):** a soft specular band at the top inside edge, a thin rim of light along the bottom inner edge, and a faint colour glow rising from the bottom, all inside.
 - **Home colour:** warm orange when idle; particles change colour and motion per mood.
@@ -69,21 +69,21 @@ Interactive study: [Pip Notch Studio](https://claude.ai/artifact/SDNx2J5QPNracfB
 | **Sleepy** | Half-closed | Dim, sinking | After evening planning, until morning |
 | **Celebrate** | ∩ ∩ arcs | Gold burst | Streaks, a post published, a goal hit |
 
-**Particle budget:** at most 30 particles at 30 fps, only while Pip is reacting. At rest the frame freezes and only the blink plays. Calm mode stops all motion. iPhone surfaces use pre-rendered still poses.
+**Particle budget:** at most 30 particles at 30 fps, only while Blink is reacting. At rest the frame freezes and only the blink plays. Calm mode stops all motion. iPhone surfaces use pre-rendered still poses.
 
 Rules:
-- **One reaction per event.** Pip nudges once, then waits in the "Waiting for you" queue, and never loops or nags.
+- **One reaction per event.** Blink nudges once, then waits in the "Waiting for you" queue, and never loops or nags.
 - Glow colours are **semantic** and the same everywhere: teal = time/calendar, coral = important, green = money OK/done, amber = morning/night/attention.
 
-### Where Pip appears
-| Place | What Pip can do |
+### Where Blink appears
+| Place | What Blink can do |
 |---|---|
 | **Mac notch** | Fully animated (Rive state machine), expands into cards, chat and quick capture |
 | **iPhone Dynamic Island** | **Still poses** swapped per state. iOS doesn't allow continuous custom animation in Live Activities; the system animates the change between poses |
 | **Mac menu bar** | Mirrors the iPhone Live Activity automatically (macOS 26+) |
 | **Apple Watch Smart Stack** | Mirrors the Live Activity automatically |
-| **App (Mac + iOS)** | Pip sits in the assistant panel and reacts to what you do |
-| **Widgets** | Pip's face as today's mood: rested, busy day, overdue things |
+| **App (Mac + iOS)** | Blink sits in the assistant panel and reacts to what you do |
+| **Widgets** | Blink's face as today's mood: rested, busy day, overdue things |
 | **Claude app** | Text only: the same personality through the connector |
 
 ### Personality (voice rules)
@@ -105,12 +105,12 @@ Rules:
 ### Look
 - **Native SwiftUI** on macOS 26 / iOS 26+ with **Liquid Glass** on the navigation layer only (sidebar, toolbar, tab bar). Content stays on solid, readable surfaces, as Apple's guidance recommends.
 - **SF Pro** system font and SF Symbols, so it feels like Apple made it.
-- Calm neutral surfaces; colour is reserved for Pip's semantic glows and status.
+- Calm neutral surfaces; colour is reserved for Blink's semantic glows and status.
 
 ### Mac window
 ```
 ┌───────────────┬──────────────────────────────────┬──────────────────┐
-│ ◉ Today       │  TODAY · Thu 15 Oct              │  🟡 Pip          │
+│ ◉ Today       │  TODAY · Thu 15 Oct              │  🟡 Blink          │
 │   Inbox    3  │                                  │  "Design sync in │
 │   Calendar    │  Next: Design sync 15:00         │   40 min. Your   │
 │   Notes       │  Focus: notch animations         │   notes are      │
@@ -122,21 +122,21 @@ Rules:
 │ ─────────     │                                  │  Waiting (2)     │
 │ Waiting   2   │                                  │                  │
 └───────────────┴──────────────────────────────────┴──────────────────┘
-   sidebar (glass)        content (solid)              Pip panel (inspector)
+   sidebar (glass)        content (solid)              Blink panel (inspector)
 ```
-- **NavigationSplitView:** sidebar, content, and a **Pip panel** on the right.
-- **The Pip panel is on every screen** and is aware of the screen's context. On a note: "Turn into a post?". On an email: "Draft reply?". On Money: "Why is Food high?".
-- **⌘K / ⌥Space anywhere on the Mac** opens Pip from the notch. Typing goes to chat; `/` gives commands.
-- **Notch** = the always-there version, **window** = the deep-work version. Same data, same Pip.
+- **NavigationSplitView:** sidebar, content, and a **Blink panel** on the right.
+- **The Blink panel is on every screen** and is aware of the screen's context. On a note: "Turn into a post?". On an email: "Draft reply?". On Money: "Why is Food high?".
+- **⌘K / ⌥Space anywhere on the Mac** opens Blink from the notch. Typing goes to chat; `/` gives commands.
+- **Notch** = the always-there version, **window** = the deep-work version. Same data, same Blink.
 
 ### iPhone app
-- **Tab bar:** Today · Calendar · Notes · Content · Money, plus **Pip as a floating button** above the tab bar.
+- **Tab bar:** Today · Calendar · Notes · Content · Money, plus **Blink as a floating button** above the tab bar.
   - **Tap** to chat; **long-press** to talk (voice).
-- **Same context awareness** as on Mac: Pip's suggestions change per screen.
-- **Lock Screen widget**, **Action Button**, **Dynamic Island** with Pip's poses, and **interactive habit widget**.
+- **Same context awareness** as on Mac: Blink's suggestions change per screen.
+- **Lock Screen widget**, **Action Button**, **Dynamic Island** with Blink's poses, and **interactive habit widget**.
 
 ### Ask-First cards (unchanged)
-One card design everywhere, with the risk levels 🟢 / 🟡 / 🔴. Cards slide out of Pip in the notch or Dynamic Island.
+One card design everywhere, with the risk levels 🟢 / 🟡 / 🔴. Cards slide out of Blink in the notch or Dynamic Island.
 
 ---
 
@@ -186,10 +186,10 @@ Each platform has a **playbook**: a Claude skill file that describes how that pl
 - **What performs now:** refreshed monthly by an overnight research job, because platforms change
 - **How to publish** (see the table below)
 
-**Adding a platform = adding one playbook.** Pip drafts the playbook from research and you approve it once. No code change.
+**Adding a platform = adding one playbook.** Blink drafts the playbook from research and you approve it once. No code change.
 
 ### Cadence: proposed, not asked
-- Pip proposes a **weekly content plan** on Sunday night, based on your goals (from setup), how busy your calendar is, and what performed.
+- Blink proposes a **weekly content plan** on Sunday night, based on your goals (from setup), how busy your calendar is, and what performed.
 - You approve or adjust once; then it runs. It learns from skips and results, and **doesn't ask how often to post**.
 
 ### Publishing: direct where possible, one-tap everywhere else
@@ -219,8 +219,8 @@ Each platform has a **playbook**: a Claude skill file that describes how that pl
 |---|---|
 | Background work | **No polling.** Updates arrive by push (paid account) or when you open the app. With a free account it uses system-scheduled background refresh, which iOS keeps rare |
 | Live Activities | Countdowns use the **system-rendered timer text**, so no updates are sent each minute. Pushes only on real changes (start, moved, ended). End the activity as soon as the moment passes. Use low-priority pushes when timing isn't critical (iOS throttles bursts anyway) |
-| Pip in the Dynamic Island | **Still images**, swapped only on state changes |
-| Pip in the app | Animates only while on screen. Off in **Low Power Mode** and **Reduce Motion** |
+| Blink in the Dynamic Island | **Still images**, swapped only on state changes |
+| Blink in the app | Animates only while on screen. Off in **Low Power Mode** and **Reduce Motion** |
 | Widgets | A **day's timeline computed once**; reload only when data changes |
 | Network | **Small, batched sync** (only what changed), no open connections in the background |
 | Budget capture | Event-driven Shortcuts automations (Apple Pay / SMS), with **zero background cost** in between |
@@ -247,25 +247,25 @@ Each platform has a **playbook**: a Claude skill file that describes how that pl
 
 ```
 Apps (Mac + iOS)
-  Pip renderer (Rive on Mac/app · still poses in Island/widgets)
-  Context-aware Pip panel · Ask-First cards · ⌘K / ⌥Space
+  Blink renderer (Rive on Mac/app · still poses in Island/widgets)
+  Context-aware Blink panel · Ask-First cards · ⌘K / ⌥Space
         │
 Backend
-  Event bus ──► Pip state service   (decides Pip's state from events + your focus/sleep)
+  Event bus ──► Blink state service   (decides Blink's state from events + your focus/sleep)
             ──► Ask-First queue
   Model router  (fast / balanced / best → Haiku / Sonnet / Opus; overrides; cost meter)
   Content engine  (core message → Platform Playbooks → drafts → publish or handoff)
   Playbook refresher (monthly research per platform)
-  Memory: "What Pip knows" (preferences, voice, goals — editable)
+  Memory: "What Blink knows" (preferences, voice, goals — editable)
 ```
 
 ---
 
 ## 8. Decisions made (so you don't have to answer them)
-- Mascot: **Pip**, eyes-in-the-notch concept, Rive for animation, still poses for iPhone surfaces.
-- App: **native SwiftUI**, Liquid Glass on navigation only, Pip panel on every screen.
+- Mascot: **Blink**, eyes-in-the-notch concept, Rive for animation, still poses for iPhone surfaces.
+- App: **native SwiftUI**, Liquid Glass on navigation only, Blink panel on every screen.
 - Models: **Auto router** with manual Opus / Sonnet / Haiku switch.
-- Content: **platform playbooks**; cadence proposed weekly by Pip; direct publish where allowed, one-tap handoff everywhere else.
+- Content: **platform playbooks**; cadence proposed weekly by Blink; direct publish where allowed, one-tap handoff everywhere else.
 - Setup: **one conversation**, then it learns.
 - Battery: server does the work; no polling; still poses in the Island; calm mode on Mac.
 

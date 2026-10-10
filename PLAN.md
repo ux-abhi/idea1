@@ -5,7 +5,7 @@
 > **One line:** A Claude-powered second brain that lives in your MacBook notch and your iPhone Dynamic Island. It knows your day, prepares things before you ask, and never acts without your OK.
 
 Status: **Planning.** Nothing is built yet. This file is the single source of truth: update it as decisions are made.
-Look, mascot (**Pip**), model switching, content engine and battery decisions live in **[DESIGN.md](DESIGN.md)**.
+Look, mascot (**Blink**), model switching, content engine and battery decisions live in **[DESIGN.md](DESIGN.md)**.
 
 ---
 
@@ -16,7 +16,7 @@ Look, mascot (**Pip**), model switching, content engine and battery decisions li
 3. **Asks before acting.** "Do you want me to do it?" is on every screen. Small things take one tap with Undo; email, posts and money need Face ID.
 4. **Everything is connected.** Meetings ↔ notes ↔ emails ↔ people ↔ tasks ↔ projects ↔ habits ↔ money ↔ content. So "Summarise everything about X" works.
 5. **Claude is the brain.** One AI provider: Claude. An Auto router picks Opus, Sonnet or Haiku per job, and you can switch any time.
-6. **Ask once, learn forever.** One setup conversation with Pip; after that it learns from what you approve, edit and skip, and never asks the same thing twice.
+6. **Ask once, learn forever.** One setup conversation with Blink; after that it learns from what you approve, edit and skip, and never asks the same thing twice.
 7. **Only you can see it, and it's easy on the battery.** Private backend, Face ID, keys never displayed. The server does the work and the devices sleep.
 
 ---
@@ -97,7 +97,7 @@ Reading the bank app's **notifications** directly isn't possible: iOS never lets
 Full design: [DESIGN.md §5](DESIGN.md#5-content-engine-any-platform-no-setup-per-platform).
 - **One idea becomes a "core message"** (story, points, proof, CTA, assets), which is **adapted natively** for each platform you use: LinkedIn post/carousel, Instagram carousel + caption + Reel script, X post/thread, YouTube script + titles + thumbnail idea + chapters, Shorts, and more.
 - **Platform Playbooks:** one Claude skill per platform describes how it works (formats, limits, hooks, tone, timing, what performs now). They are refreshed monthly by research. **Adding a platform = adding a playbook**, with no code change.
-- **Cadence is proposed, not asked:** every Sunday night Pip proposes the week's content plan from your goals, calendar load and results. You approve once.
+- **Cadence is proposed, not asked:** every Sunday night Blink proposes the week's content plan from your goals, calendar load and results. You approve once.
 - **Autopilot (nightly):** your day + research → today's pieces drafted in your voice → morning card [Review] [Post] [Schedule] [Skip].
 - **Publishing:** direct API where allowed (LinkedIn, Instagram Creator/Business, X pay-per-use). **One-tap handoff** everywhere else (YouTube, TikTok, …): caption copied, media saved, app opened. **Nothing posts without your tap.**
 
@@ -199,7 +199,7 @@ It never needs to go on the App Store. It's a personal app, so there's no App St
             │                     │                     │
   Claude API (router)  Apple Pay + SMS (Shortcuts)  Social APIs + handoff
 ```
-Additional services (event bus, Pip state, model router, content engine, playbook refresher): see [DESIGN.md §7](DESIGN.md#7-architecture-additions).
+Additional services (event bus, Blink state, model router, content engine, playbook refresher): see [DESIGN.md §7](DESIGN.md#7-architecture-additions).
 
 ### 6.1 Data model (simple version)
 - `items`: one table for everything (note, todo, habit_log, event_ref, email_ref, transaction, idea, post, project), with `type`, `title`, `body`, `status`, `due_at`, `metadata`, `embedding`.
@@ -254,13 +254,13 @@ Trade-off: the backend must be able to read mail and transactions to alert you w
 
 | # | Phase | Done when… |
 |---|---|---|
-| 0 | **Setup + design:** Xcode multiplatform project (free account), Supabase project, Face ID lock, Keychain, secrets in Vault; **Pip designed in Rive** (all states + still poses); setup conversation script | App opens with Face ID on Mac + iPhone; backend reachable with your login only; Pip's states approved |
-| 1 | **Notch + Pip + Calendar + Reminders + Ask-First Helper** | Pip lives in the notch; meeting "in 10 min" pops out with notes; Ask-First card works; morning brief on laptop open; **idle CPU near zero** |
-| 2 | **Notes + To-dos + Habits + Evening planning + Projects + Mac app window** | Nightly "plan tomorrow?" conversation fills the schedule checker; project status in the brief; Pip panel on every screen |
+| 0 | **Setup + design:** Xcode multiplatform project (free account), Supabase project, Face ID lock, Keychain, secrets in Vault; **Blink designed in Rive** (all states + still poses); setup conversation script | App opens with Face ID on Mac + iPhone; backend reachable with your login only; Blink's states approved |
+| 1 | **Notch + Blink + Calendar + Reminders + Ask-First Helper** | Blink lives in the notch; meeting "in 10 min" pops out with notes; Ask-First card works; morning brief on laptop open; **idle CPU near zero** |
+| 2 | **Notes + To-dos + Habits + Evening planning + Projects + Mac app window** | Nightly "plan tomorrow?" conversation fills the schedule checker; project status in the brief; Blink panel on every screen |
 | 3 | **Chat + model router + Content engine** (playbooks for your platforms) | One idea becomes native drafts per platform; overnight drafts wait in the morning; publish or one-tap handoff |
 | 4 | **Claude app connector + skills** | Same assistant usable inside the Claude app with your login |
 | 5 | **Email** | Important mail alerts; drafts appear in Apple Mail; send after Face ID |
-| 6 | **iPhone app: Pip button, Dynamic Island + widgets + wake-up** | "Meeting in 3 min / started 3 min ago" with Pip's poses; Lock Screen Today widget; the app isn't a significant user in Settings → Battery |
+| 6 | **iPhone app: Blink button, Dynamic Island + widgets + wake-up** | "Meeting in 3 min / started 3 min ago" with Blink's poses; Lock Screen Today widget; the app isn't a significant user in Settings → Battery |
 | 7 | **Budget** (Apple Pay + SMS + email alerts) | An Apple Pay tap and a bank SMS both show up in the budget within a minute, without duplicates; categories + alerts work |
 | 8 | **Polish:** weekly review, "while you were away", learning rules | Sunday review summarises habits, money, content, projects |
 
@@ -288,8 +288,8 @@ Trade-off: the backend must be able to read mail and transactions to alert you w
 
 ## 10. Decided, and what's collected in setup
 
-**Decided:** Supabase backend · native SwiftUI · Pip mascot · Auto model router · platform playbooks with proposed cadence · free Apple account first · budget from Apple Pay/SMS/email alerts. Details in [DESIGN.md §8](DESIGN.md#8-decisions-made-so-you-dont-have-to-answer-them).
+**Decided:** Supabase backend · native SwiftUI · Blink mascot · Auto model router · platform playbooks with proposed cadence · free Apple account first · budget from Apple Pay/SMS/email alerts. Details in [DESIGN.md §8](DESIGN.md#8-decisions-made-so-you-dont-have-to-answer-them).
 
-**Collected once in Pip's setup conversation (not separate questions):** which banks send alerts, the mail account behind Apple Mail, wake and evening times, platforms and goals, writing samples, habits, budget categories.
+**Collected once in Blink's setup conversation (not separate questions):** which banks send alerts, the mail account behind Apple Mail, wake and evening times, platforms and goals, writing samples, habits, budget categories.
 
 **Needed before Phase 0:** a Mac with Xcode installed (free).

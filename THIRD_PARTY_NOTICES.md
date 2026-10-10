@@ -1,6 +1,6 @@
 # Third-party notices
 
-Pip is proprietary software of **Pexilim** (see LICENSE). It contains **no third-party code yet** (no app code has been written).
+Blink is proprietary software of **Pexilim** (see LICENSE). It contains **no third-party code yet** (no app code has been written).
 
 ## Planned runtime dependencies (shipped in the app/backend)
 
