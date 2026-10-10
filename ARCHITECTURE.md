@@ -1132,7 +1132,7 @@ The full spec is `design/tokens.json` → `motion`, with a summary in DESIGN.md 
   - Publish adapters against recorded fixtures; approval-hash integrity; token-expiry fallback.
   - Shared JSON fixtures (Live Activity content-state and push-to-start, widget snapshot, push envelope, sync payloads), decoded by both the Deno and Swift tests.
   - Keychain and Secure Enclave tests run serialized on a device. Flows use XCUITest.
-- **Licences.**
+- **Licences** (superseded by §36.9 for now).
   - Move the PolyForm Perimeter skills out of the repo now, before history makes them stick, into `scripts/install-dev-skills.sh`, which installs a pinned list into `~/.claude/skills`.
   - The ig-* skills that run on the server are **shipped code** (MIT; keep the notice) or are replaced with Blink-native skills.
   - Complete the runtime list in THIRD_PARTY_NOTICES: ig-mcp (check upstream), google_workspace_mcp, Supabase components, Playwright, Python dependencies.
@@ -1159,3 +1159,23 @@ Every phase also needs:
 | iCloud Mail | Create an app-specific password at account.apple.com › Sign-In and Security. IMAP `imap.mail.me.com:993`, SMTP `smtp.mail.me.com:587` (STARTTLS); the username is your iCloud address. Drafts go to `Drafts`. *Verify* that sent mail lands in `Sent Messages`; if not, Blink appends a copy |
 | **Banks** | No bank names needed. Capture works from Apple Pay taps, bank texts and alert emails from any bank; the nightly "any spends?" prompt catches the rest |
 | **Mac** | Your own MacBook is the build and test machine. Phase 0 checks: notch model (MacBook Pro 2021+ or Air M2+), macOS 26, Xcode installed, Claude Code running on it with this repo |
+
+### 36.9 Build for ourselves, licence-ready later (decided)
+
+Blink is built for Pexilim's own use first. It is built so that selling it later needs **only a licence file**, with no rewrite, cleanup or data migration. Decided:
+
+- **Dev skills stay in the repo for now**, including the PolyForm Perimeter ones. They are tools Claude Code uses while building; they are never copied into shipped code. Revisit only if a sale happens.
+- **Customer licence / EULA: not now.** It is the one thing added at sale time.
+
+To keep that promise, these rules apply from the first commit (they cost nothing extra now):
+
+| Rule | What it means in practice |
+|---|---|
+| **Nothing personal in code** | Your name, email addresses, banks, wake time, platforms and voice live in setup and the database, never in source. A fresh install with a different person works without code changes |
+| **Config, not constants** | Bundle ID, Team ID, app name, relay URL, server URL and model names come from one config file / build settings. Rebranding or re-signing is a config change |
+| **Multi-user ready, single-user run** | Every table has `owner_id` with row-level security (§16) even though there is one user. Nothing assumes "the only user" |
+| **Your keys, your server** | Secrets only in Vault and the Keychain. No Pexilim-held key is needed to run anything except the optional push relay |
+| **Clean dependencies** | Shipped code uses only MIT / Apache / BSD dependencies, recorded in THIRD_PARTY_NOTICES as they are added. The CI licence check (§36.6) enforces it |
+| **Shipped skills** | Server-side skills are MIT (ig-*, notice kept) or written by us. Skill text is never pasted into app code |
+| **Ownership** | Copyright header "© Pexilim" in source files; LICENSE stays "all rights reserved" until a customer licence is added |
+| **Setup does onboarding** | Everything a new owner needs (server, keys, accounts, Mac/iPhone pairing) is in the setup flow and the setup guide, not in tribal knowledge |
