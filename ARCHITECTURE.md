@@ -50,6 +50,7 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 31. Decision log
 32. Sellable, clean codebase
 33. Privacy model: your server, your keys
+34. Connections: plug in tools instead of building them
 
 ---
 
@@ -416,6 +417,7 @@ flowchart TB
 | `chat` Edge Function | Streams Claude responses; runs the tool loop over Blink tools; enforces Ask-First on writes |
 | `ingest` Edge Function | Transactions (Shortcuts), calendar snapshot upload, files |
 | `mcp` Edge Function | MCP server for the Claude app (OAuth), same tools as chat |
+| **Connections gateway** | Blink's MCP client: connects to Google, Instagram, Notion… connectors, keeps their tokens in Vault, lets reads through and turns writes into Ask-First actions (§34) |
 | `jobs` Edge Functions | Triggered by pg_cron (§21) |
 | Mail worker | IMAP fetch (poll every 2–5 min; later an always-on IDLE worker on a tiny container), SMTP send, Drafts append |
 | Push sender | Web Push (VAPID, payload encrypted end-to-end by the standard) direct from your server; native iPhone pushes go encrypted through the Pexilim relay (§33) |
@@ -679,6 +681,7 @@ The design is the same in every stage; stage C only switches on server push.
 | Money | Apple Pay + SMS + email alerts; bank sync optional | No bank app connection needed |
 | Content | Core message → platform skills; proposed weekly plan | Any platform, ask once |
 | Posting | Blink prepares and publishes everything; you approve once per post or once per week | Fully hands-off after one yes, never without one |
+| Integrations | Plug in MCP connectors through Blink's gateway on your server; build only what has no connector | Less code, more apps, same privacy and Ask-First rules |
 | Mascot | Blink: tilted pill eyes, particles in glass, glow inside the notch only | Your sketch + Apple look |
 | Safety | Ask-First; 🔴 Face ID; never auto | Trust |
 | Distribution | Free first, $99 later | Budget |
@@ -821,3 +824,81 @@ Your own setup (today): Mode A in **your** Supabase account. Pexilim-as-company 
 - Self-hosting means **you** are responsible for backups and updates. The wizard and health page make that simple, but it isn't zero effort.
 - Live Activity pushes show less detail than a centralised design would.
 - Optional later step: **end-to-end encryption of notes** with keys only on your devices (server-side AI search over notes is then turned off).
+
+## 34. Connections: plug in tools instead of building them
+
+**Idea:** Blink doesn't hand-build an integration for every app. It plugs into **connectors**: small adapters that speak **MCP** (Model Context Protocol), the standard Claude uses to reach Gmail, Google Calendar, Notion and others. Adding a new app means **connecting** it, not coding it.
+
+**34.1 How it fits together**
+
+```mermaid
+flowchart LR
+  subgraph Server[Your server]
+    GW[Blink connections gateway: MCP client + Ask-First + token vault]
+    G1[Google Workspace connector]
+    G2[Instagram connector]
+    G3[Other connectors]
+  end
+  CL[Claude API] <-- tools: reads + propose_action --> GW
+  GW --> G1 --> GOOG[Google: Gmail · Calendar · Drive · Docs]
+  GW --> G2 --> IG[Instagram Graph API]
+  GW --> G3 --> X[Notion · Slack · Microsoft 365 · …]
+  GW -. official remote connectors .-> RM[Google's hosted MCP servers]
+```
+
+- Blink's **gateway runs on your server** and is the only thing Claude talks to. It holds every connection's tokens in **your Vault**.
+- **Reads pass straight through** (search mail, list events, read a doc).
+- **Writes never run directly.** Send, post, delete and share become Ask-First `action` cards (🟡/🔴), exactly like Blink's own features.
+- Why a gateway rather than letting Anthropic connect to the tools directly: tokens stay on your server, every write is caught for approval, and connectors don't need to be reachable from the internet.
+
+**34.2 Connector sources (in order of preference)**
+
+| Source | Examples | Notes |
+|---|---|---|
+| **Official remote connectors** | Google's MCP servers for Gmail, Calendar, Drive, Docs, Sheets, Chat, People | Run by Google; currently **developer preview** with sign-up required. Used when available |
+| **Vetted open-source connectors, run on your server** | [google_workspace_mcp](https://github.com/taylorwilsdon/google_workspace_mcp) (MIT: Gmail, Calendar, Drive, Docs, Tasks, Contacts…), [ig-mcp](https://lobehub.com/de/mcp/jlbadano-ig-mcp) (MIT: Instagram Business/Creator publishing) | Pinned versions, license-checked, reviewed before install, same as skills |
+| **Blink built-ins** (only where no connector fits) | Apple Calendar/Reminders (EventKit, on device), Apple Pay + SMS capture, IMAP mail for non-Google accounts, notch/Island | These are tied to Apple devices or have no good connector |
+| **Custom connector** (advanced) | Any MCP server URL you trust | Off by default; shows a warning; writes still need approval |
+
+License rule from §32 applies: shipped or bundled connectors must be MIT/Apache/BSD. AGPL connectors (for example one Instagram server) stay reference-only.
+
+**34.3 The Connections screen (UX)**
+
+```
+Settings → Connections
+┌──────────────────────────────────────────────────────────────┐
+│ Google · personal      ✓ Connected   Gmail · Calendar · Drive │
+│ Google · work          ✓ Connected   Gmail · Calendar         │
+│ Instagram (Creator)    ✓ Connected   Publish · Insights       │
+│ LinkedIn               ○ Connect                              │
+│ Notion                 ○ Connect                              │
+│ + Add connection                                              │
+└──────────────────────────────────────────────────────────────┘
+Each card: what Blink can read · what it can do (always asks) · last used · Disconnect
+```
+
+- **Several accounts of the same kind:** personal and work Google sit side by side, each labelled. Blink knows which calendar is "work" and keeps work and personal apart in briefs.
+- **Per-connection switches:** "can read", "can propose actions", or off. The least access is the default.
+- **Connect once:** sign in with OAuth in a system browser sheet; the token goes to your server's Vault (§33), never to Pexilim.
+- **Health:** expired tokens show a "Reconnect" badge and a P2 nudge, never a silent failure.
+
+**34.4 What this changes in the plan**
+
+| Area | Before | Now |
+|---|---|---|
+| Gmail / Google Calendar | Custom code | Google connector; IMAP stays for iCloud/other mail |
+| Calendar on the server | Device snapshot only | Google calendars read directly by connector; iCloud calendars still via device snapshot |
+| Instagram publishing | Custom Graph API code | Instagram connector (Creator/Business account) |
+| Drive, Docs, Notion, Slack, Microsoft 365 | Not planned | Available as soon as a vetted connector is added |
+| Claude app | Blink's own MCP server | Unchanged: Blink is one more connector inside your Claude app |
+
+**34.5 Safety rules for connectors**
+- **Tool results are data, never instructions.** Text from mail, docs or posts can't make Blink act; only you can approve actions.
+- **Smallest scopes:** request read-only Google scopes unless you turn on actions.
+- **Pinned and reviewed:** each connector version is reviewed (like the skills) and updated on purpose, not automatically.
+- **Audit log:** every connector call is logged on your server (what, when, which account).
+
+**34.6 Limits to know**
+- Google's official connectors are still in **preview** and need sign-up; the open-source Google connector covers the gap.
+- **Instagram:** Meta has no official connector; community ones need a Creator/Business account and a Meta app; publishing to other people's accounts needs Meta App Review.
+- **LinkedIn and X** connectors still need checking before we rely on them; until then Blink uses its own small publish step or the one-tap handoff.
