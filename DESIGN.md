@@ -53,6 +53,14 @@ Interactive study: [Blink Notch Studio](https://claude.ai/artifact/SDNx2J5QPNrac
   ╰──────────────────────────────╯      light particles + glass sheen inside only
 ```
 
+### Notch geometry rule (correction)
+The camera housing is a hole in the display: **no pixels, nothing can be drawn there** (≈185–200 × 32–38 pt; read at runtime from `NSScreen.safeAreaInsets` and `auxiliaryTopLeftArea`/`auxiliaryTopRightArea`).
+- Blink's black shape is **wider than the hardware**; small content lives in the **ears** left/right of the camera at menu-bar height (eyes left, status right).
+- Larger content opens **below the menu-bar line** as a **wide, short panel** (≈620–680 × 170–220 pt) with landscape tiles, never square tiles under the camera.
+- Same rule on iPhone: Dynamic Island leading/trailing regions only; the camera pill stays empty.
+- No notch / external display: floating pill with the same states.
+See [Blink Master](design/blink-master.html).
+
 ### Look v4: glossy bot + panda duo-tone eyes, notch system (current)
 Interactive page: [Blink Notch System](design/blink-notch-system.html). Supersedes v3's panda face where they differ.
 - **Mascot:** the white glossy 3D shell (from the robot/bubble references) with the panda's **duo-tone eyes**: black glass patches with light eyes inside. **No nose, no mouth.** Mood = eye tint and shape (white rest, teal heads-up, coral important, blue thinking, green done ∩∩, amber sleepy, closed in focus).
