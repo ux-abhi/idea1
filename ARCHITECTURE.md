@@ -296,6 +296,10 @@ New mail → triage (Haiku) → P1? notify : queue → "Draft reply" → draft s
 **9.7 Money**
 Apple Pay tap / bank SMS / alert email → extract (Haiku) → de-duplicate → categorise → budget check → P1 if over the limit.
 
+**Add it yourself (any item):** notch `/spent 12 lunch cash`, the iPhone “+” quick sheet (keypad first, category guessed, note, receipt photo, split), widget, Control Center, Action Button or Siri. Every card has **✎ Details** to add notes, costs, people or links. At **20:45** Blink asks “Any spends I missed today?” (cash, split bills, transfers); if ignored, it asks once more in the evening check-in. When details are missing, Blink asks one short question at the next calm moment.
+
+**Action matrix and UX flows:** every action with its entry points, risk level, the 11 standard outcomes (do it, edit, later, dismiss, undo, fails, offline, duplicate, permission, expired, auto rule) and special cases, plus step-by-step flows, are in [Blink Master](design/blink-master.html).
+
 ## 10. Design system
 
 | Token group | Decision |
@@ -543,6 +547,7 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 | `weekly_content_plan` | Sun 20:00 | Propose the week's content plan |
 | `weekly_review` | Sun 19:00 | Habits, money, content, projects summary |
 | `playbook_refresh` | 1st of month | Research per platform → playbook diff for approval |
+| `night_spend_check` | 20:45 (only on days with spending) | Notification: “Any spends I missed today?” with what was already caught → Add one / Nothing to add / Later |
 | `habit_rollover` | 00:05 | Close the day, compute streaks |
 | `action_expiry` | hourly | Expire stale proposals, re-queue important ones |
 | `cost_guard` | hourly | Spend vs cap → alert |

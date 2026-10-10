@@ -70,7 +70,7 @@ kbd{font-family:var(--mono);font-size:.76rem;padding:2px 6px;border-radius:6px;b
 .show-hw .hw{outline-color:rgba(255,90,71,.75);background:repeating-linear-gradient(45deg,rgba(255,90,71,.12) 0 6px,transparent 6px 12px)}
 .hw i{position:absolute;left:50%;top:13px;width:9px;height:9px;border-radius:50%;translate:-50% 0;background:radial-gradient(circle at 35% 35%,#2B3A55,#05060A 70%);box-shadow:0 0 0 1.5px #0C0C0E}
 .ear{position:absolute;top:0;height:37px;display:flex;align-items:center;gap:8px;font-size:.76rem;color:#EDEDF0;z-index:3;transition:opacity .2s}
-.ear.l{left:9px}.ear.r{right:10px;font:600 .76rem var(--mono);color:var(--teal)}
+.ear.l{left:9px;max-width:calc(50% - 98px - 14px);overflow:hidden}.ear.l span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ear.r{right:10px;max-width:calc(50% - 98px - 14px);overflow:hidden;white-space:nowrap;font:600 .76rem var(--mono);color:var(--teal)}
 .eyes{display:flex;gap:7px;align-items:center}
 .eyes i{width:6px;height:13px;border-radius:9px;background:#fff;box-shadow:0 0 7px rgba(255,255,255,.65)}
 .eyes i:first-child{transform:rotate(14deg)}.eyes i:last-child{transform:rotate(-14deg)}
@@ -134,13 +134,68 @@ kbd{font-family:var(--mono);font-size:.76rem;padding:2px 6px;border-radius:6px;b
 .bx{background:var(--tile);border-radius:12px;padding:9px 12px;font-size:.84rem;box-shadow:inset 0 0 0 1px var(--line)}
 .bx.hi{box-shadow:inset 0 0 0 1px var(--teal)}
 @media (max-width:640px){.lane{grid-template-columns:minmax(0,1fr)}}
+
+/* panda duo-tone eyes for notch / Island: dark glass patch with rim light + glowing eye */
+.pe{--ec:#FFFFFF;--eg:rgba(255,255,255,.75);--pw:15px;display:inline-flex;gap:calc(var(--pw)*.3);align-items:center;flex:none}
+.pe i{width:var(--pw);height:calc(var(--pw)*1.25);border-radius:50% 50% 46% 54% / 58% 58% 42% 42%;display:grid;place-items:center;position:relative;overflow:hidden;
+  background:radial-gradient(90% 80% at 40% 24%,#4A4C55 0%,#1A1B20 55%,#08080A 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 0 0 .6px rgba(255,255,255,.14)}
+.pe i:first-child{transform:rotate(22deg)}.pe i:last-child{transform:rotate(-22deg)}
+.pe b{width:36%;height:48%;border-radius:50%;background:radial-gradient(60% 50% at 45% 32%,#fff,var(--ec) 72%);box-shadow:0 0 calc(var(--pw)*.4) var(--eg);transition:height .2s,background .25s}
+.pe i:first-child b{transform:rotate(-14deg)}.pe i:last-child b{transform:rotate(14deg)}
+.pe.teal{--ec:#A8F7F0;--eg:rgba(52,224,210,.95)}.pe.coral{--ec:#FFC6BE;--eg:rgba(255,90,71,.95)}.pe.green{--ec:#C2F8D2;--eg:rgba(75,227,122,.95)}.pe.amber{--ec:#FFE2A8;--eg:rgba(255,180,58,.95)}.pe.blue{--ec:#CFE0FF;--eg:rgba(77,141,255,.95)}
+.pe.wide b{height:60%}.pe.up b{translate:0 -20%}
+.pe.closed b{height:8%;border-radius:3px;opacity:.75}.pe.sleepy b{height:12%;border-radius:3px}
+.pe.happy b{background:transparent;box-shadow:none;border-top:2px solid var(--ec);height:30%;width:50%;filter:drop-shadow(0 0 3px var(--eg))}
+@media (prefers-reduced-motion:no-preference){.pe.bl b{animation:bk 4.8s infinite}}
+
+/* flows */
+.flowsel{display:flex;flex-wrap:wrap;gap:8px}
+.player{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:880px){.player{grid-template-columns:minmax(0,1fr)}}
+.frame{min-height:330px;border-radius:22px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;padding:16px;overflow:hidden}
+.fmac{position:relative;width:100%;height:290px;border-radius:14px 14px 6px 6px;background:radial-gradient(120% 100% at 15% 0%,#232842,#0B0C10 60%);overflow:hidden}
+.fmac .bar{position:absolute;inset:0 0 auto 0;height:30px;display:flex;justify-content:space-between;align-items:center;padding:0 12px;font-size:.68rem;color:#CFCFD5;background:rgba(0,0,0,.2)}
+.fmac .sh{position:absolute;left:50%;top:0;translate:-50% 0;background:#000;border-radius:0 0 var(--r,12px) var(--r,12px);overflow:hidden;box-shadow:inset 0 -1px 0 rgba(255,255,255,.12)}
+.fmac .sh .cam{position:absolute;left:50%;top:0;translate:-50% 0;width:150px;height:30px}
+.fmac .sh .cam::after{content:"";position:absolute;left:50%;top:11px;width:7px;height:7px;border-radius:50%;translate:-50% 0;background:radial-gradient(circle at 35% 35%,#2B3A55,#05060A 70%)}
+.fmac .el,.fmac .er{position:absolute;top:0;height:30px;display:flex;align-items:center;gap:6px;font-size:.66rem;color:#EDEDF0;white-space:nowrap}
+.fmac .el{left:8px;max-width:calc(50% - 75px - 12px);overflow:hidden}.fmac .el{text-overflow:ellipsis}.fmac .er{max-width:calc(50% - 75px - 12px);overflow:hidden}.fmac .er{right:9px;font-family:var(--mono);color:var(--teal);font-weight:600}
+.fmac .bl2{position:absolute;left:0;right:0;top:30px;bottom:0;padding:8px 12px 12px;font-size:.78rem;display:grid;gap:6px;align-content:start}
+.fmac .bl2 b{font-size:.86rem}
+.fmac .win{position:absolute;left:10%;right:10%;top:52px;bottom:14px;border-radius:12px;background:rgba(20,20,26,.92);box-shadow:0 0 0 1px #2A2A30;padding:12px;display:grid;gap:8px;align-content:start;font-size:.8rem}
+.fphone{width:220px;height:300px;border-radius:34px;border:6px solid #1C1C20;background:#0B0B0E;position:relative;overflow:hidden;padding:44px 12px 12px;display:grid;gap:8px;align-content:start;font-size:.78rem}
+.fphone .isl{position:absolute;left:50%;top:8px;translate:-50% 0;background:#000;border-radius:999px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;box-shadow:0 0 0 1px #222}
+.fphone .lk{display:grid;justify-items:center;gap:2px;margin-bottom:6px}
+.fphone .lk b{font-size:2rem;font-weight:300;letter-spacing:-.03em}
+.fc{background:rgba(255,255,255,.07);border-radius:16px;padding:10px;display:grid;gap:4px}
+.fc small{color:var(--muted)}
+.fb{display:flex;gap:5px;flex-wrap:wrap}
+.fb span{border-radius:999px;padding:5px 10px;font-size:.68rem;font-weight:600;background:rgba(255,255,255,.12)}
+.fb span.p{background:#F4F4F6;color:#000}
+.stepinfo{display:grid;gap:12px}
+.stepinfo .kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px;font-size:.9rem}
+.stepinfo .kv span:first-child{color:var(--muted);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;padding-top:3px}
+.dots{display:flex;gap:6px;flex-wrap:wrap}
+.dots button{width:28px;height:28px;border-radius:50%;border:0;background:var(--tile);color:var(--muted);font:600 .74rem var(--sans);cursor:pointer}
+.dots button[aria-current="step"]{background:var(--fg);color:#000}
+.navb{display:flex;gap:8px}
+.navb button{border:0;border-radius:999px;padding:8px 16px;font:600 .84rem var(--sans);background:var(--tile);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line);cursor:pointer}
+.navb button:disabled{opacity:.35;cursor:default}
+.fmap{display:grid;gap:10px}
+.fmap .fr{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px;align-items:center}
+.fmap .fr b{font-size:.86rem}
+.fmap .st{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.76rem}
+.fmap .st span{background:var(--tile);border-radius:8px;padding:4px 8px;box-shadow:inset 0 0 0 1px var(--line)}
+.fmap .st i{color:var(--dim);font-style:normal}
+@media (max-width:640px){.fmap .fr{grid-template-columns:minmax(0,1fr)}}
+
 footer{padding-top:22px;border-top:1px solid var(--line);font-size:.85rem;color:var(--muted)}
 </style>
 
 <div class="layout">
 <nav class="toc" aria-label="Contents">
   <span class="eyebrow" style="padding:4px 8px 10px">Blink master</span>
-  <a href="#links">All pages</a><a href="#what">What Blink is</a><a href="#mascot">Mascot</a><a href="#mac">Mac notch</a><a href="#ios">iPhone</a><a href="#features">Features</a><a href="#arch">Architecture</a><a href="#build">Build plan</a><a href="#blockers">Blockers</a><a href="#decisions">Decisions</a>
+  <a href="#links">All pages</a><a href="#what">What Blink is</a><a href="#mascot">Mascot</a><a href="#mac">Mac notch</a><a href="#ios">iPhone</a><a href="#flows">UX flows</a><a href="#actions">Action matrix</a><a href="#features">Features</a><a href="#arch">Architecture</a><a href="#build">Build plan</a><a href="#blockers">Blockers</a><a href="#decisions">Decisions</a>
 </nav>
 <main>
 <header>
@@ -199,7 +254,7 @@ footer{padding-top:22px;border-top:1px solid var(--line);font-size:.85rem;color:
     <div class="mbar"><span>Blink &nbsp; File &nbsp; Edit &nbsp; View</span><span class="r"><span>⌁</span><span class="num">Thu 14:48</span></span></div>
     <div class="ruler"><span>menu-bar line · ≈37 pt</span></div>
     <div class="shape" id="shape">
-      <div class="ear l" id="earL"><div class="eyes bl" id="eyesM"><i></i><i></i></div><span id="earLt"></span></div>
+      <div class="ear l" id="earL"><span class="pe bl" id="eyesM"><i><b></b></i><i><b></b></i></span><span id="earLt"></span></div>
       <div class="ear r" id="earR"></div>
       <div class="below" id="below"></div>
     </div>
@@ -222,13 +277,46 @@ footer{padding-top:22px;border-top:1px solid var(--line);font-size:.85rem;color:
   <h2 id="i1">Every iPhone surface</h2>
   <p class="muted">Same rule as the Mac: the camera pill in the Dynamic Island has no pixels, so Blink uses the leading and trailing sides. Live Activities are still frames that change only on events; countdowns are drawn by iOS.</p>
   <div class="ios">
-    <div class="ipanel"><h3>Dynamic Island · compact and minimal</h3><div class="di compact"><span class="eyes teal"><i></i><i></i></span><span class="cam"></span><b class="num" style="color:var(--teal);font-size:.82rem">12:00</b></div><div style="display:flex;gap:10px;align-items:center"><div class="di min"><span class="eyes"><i></i><i></i></span></div><span class="muted" style="font-size:.82rem">Minimal: when another app’s activity shares the Island</span></div><span class="muted" style="font-size:.82rem">Leading: eyes (mood). Trailing: countdown or status. Centre: camera, nothing drawn.</span></div>
-    <div class="ipanel"><h3>Dynamic Island · expanded (long-press)</h3><div class="di exp"><span class="eyes teal"><i></i><i></i></span><b style="font-size:.95rem">Design sync</b><b class="num" style="color:var(--teal)">12 min</b><span class="center">Priya · 2 linked notes · Zoom</span><div class="bottom"><span class="p">Join</span><span>Notes</span><span>Later</span></div></div><span class="muted" style="font-size:.82rem">Up to ≈160 pt tall. Leading, trailing, centre and bottom regions.</span></div>
+    <div class="ipanel"><h3>Dynamic Island · compact and minimal</h3><div class="di compact"><span class="pe teal wide" style="--pw:13px"><i><b></b></i><i><b></b></i></span><span class="cam"></span><b class="num" style="color:var(--teal);font-size:.82rem">12:00</b></div><div style="display:flex;gap:10px;align-items:center"><div class="di min"><span class="pe" style="--pw:10px"><i><b></b></i><i><b></b></i></span></div><span class="muted" style="font-size:.82rem">Minimal: when another app’s activity shares the Island</span></div><span class="muted" style="font-size:.82rem">Leading: eyes (mood). Trailing: countdown or status. Centre: camera, nothing drawn.</span></div>
+    <div class="ipanel"><h3>Dynamic Island · expanded (long-press)</h3><div class="di exp"><span class="pe teal wide" style="--pw:15px"><i><b></b></i><i><b></b></i></span><b style="font-size:.95rem">Design sync</b><b class="num" style="color:var(--teal)">12 min</b><span class="center">Priya · 2 linked notes · Zoom</span><div class="bottom"><span class="p">Join</span><span>Notes</span><span>Later</span></div></div><span class="muted" style="font-size:.82rem">Up to ≈160 pt tall. Leading, trailing, centre and bottom regions.</span></div>
     <div class="ipanel"><h3>Lock Screen Live Activity</h3><div class="lock"><div class="ring" style="--p:.72"><b>12m</b></div><div class="t"><b>Design sync</b><small>Priya · notes ready</small></div><span class="btns"><span class="p" style="padding:6px 10px">Join</span></span></div><div class="lock"><div class="ring" style="--p:.62;--c:var(--teal)"><b>31m</b></div><div class="t"><b>Focus · Homepage</b><small>Blink is quiet until 15:20</small></div><span></span></div><span class="muted" style="font-size:.82rem">Also mirrored to the Mac menu bar and Apple Watch Smart Stack.</span></div>
     <div class="ipanel"><h3>Home Screen widgets</h3><div class="wid"><div class="ws"><span class="eyebrow" style="font-size:.6rem">Next</span><div class="ring" style="--p:.72;width:64px;height:64px"><b style="width:52px;height:52px;font-size:.78rem">12m</b></div><span style="font-size:.8rem">Design sync</span></div><div class="wm"><div style="display:grid;align-content:space-between"><span class="eyebrow" style="font-size:.6rem">Today</span><b style="font-size:1.6rem">3</b><span class="muted" style="font-size:.76rem">meetings · 2 mails</span></div><div style="display:grid;gap:6px;align-content:center;font-size:.76rem"><span>☐ Send proposal</span><span>☑ Workout</span><span>◔ Pexilim 40%</span></div></div></div><span class="muted" style="font-size:.82rem">Small ≈158 pt, medium ≈338×158 pt (iPhone 15). Interactive checkboxes. Timeline computed once a day.</span></div>
     <div class="ipanel"><h3>Lock Screen accessory widgets</h3><div class="acc"><div class="circ"><b>12m</b></div><div class="rect"><b>Design sync</b><span class="muted">15:00 · notes ready</span></div></div><span class="muted" style="font-size:.82rem">Circular ring and rectangular line. Monochrome, readable at a glance.</span></div>
     <div class="ipanel"><h3>Control Center, Action Button, StandBy</h3><div class="ctrl"><span>✎</span><span>◉</span><span>$</span></div><span class="muted" style="font-size:.82rem">Controls: Capture, Ask Blink, Log expense. Action Button: Capture or talk to Blink. StandBy: the next-meeting widget large at night with Sleepy eyes.</span></div>
   </div>
+</section>
+
+
+<section id="flows" aria-labelledby="fl1">
+  <span class="eyebrow">UX flows</span>
+  <h2 id="fl1">Every journey, step by step</h2>
+  <p class="muted">Pick a flow, then step through it with the buttons or the arrow keys. Each step shows the trigger, what you see on the Mac notch or iPhone, what you can do, and what happens next.</p>
+  <div class="flowsel" id="flowsel" role="group" aria-label="Flow"></div>
+  <div class="player">
+    <div class="frame" id="frame"></div>
+    <div class="stepinfo">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3 id="stTitle"></h3><span class="muted num" id="stCount"></span></div>
+      <div class="kv"><span>Trigger</span><span id="stTrig"></span></div>
+      <div class="kv"><span>You see</span><span id="stSee"></span></div>
+      <div class="kv"><span>You can</span><span id="stDo"></span></div>
+      <div class="kv"><span>Blink state</span><span id="stState"></span></div>
+      <div class="dots" id="dots"></div>
+      <div class="navb"><button type="button" id="prev">← Back</button><button type="button" id="next">Next →</button></div>
+    </div>
+  </div>
+  <h3>Flow map</h3>
+  <div class="fmap" id="fmap"></div>
+</section>
+
+
+<section id="actions" aria-labelledby="ac1">
+  <span class="eyebrow">Action matrix</span>
+  <h2 id="ac1">Every action, every outcome</h2>
+  <p class="muted">Each action can start from several places and end in several ways. The outcome rules below apply everywhere; the table lists each action, where it starts, how risky it is, and the cases special to it.</p>
+  <div class="grid" id="outcomes"></div>
+  <div class="flowsel" id="modsel" role="group" aria-label="Module"></div>
+  <div class="tbl"><table><thead><tr><th>Action</th><th>Start from</th><th>Risk</th><th>Special cases</th></tr></thead><tbody id="actbody"></tbody></table></div>
+  <p class="muted" id="actcount"></p>
 </section>
 
 <section id="features" aria-labelledby="f1">
@@ -241,7 +329,7 @@ footer{padding-top:22px;border-top:1px solid var(--line);font-size:.85rem;color:
     <div class="card"><span class="k">Segments</span>“I have a project” → a space with milestones and reminders. Templates for clients, trips, courses, launches, family.</div>
     <div class="card"><span class="k">Evening planning</span>21:30 check-in: habits ✅❌⏭, tomorrow’s plan written for you.</div>
     <div class="card"><span class="k">Email</span>Triage, drafts saved to Apple Mail, send after Face ID.</div>
-    <div class="card"><span class="k">Money</span>Apple Pay taps, bank texts and alert emails, no bank connection needed.</div>
+    <div class="card"><span class="k">Money</span>Apple Pay taps, bank texts and alert emails, no bank connection needed. Add spends yourself anytime; at 20:45 Blink asks about anything it missed.</div>
     <div class="card"><span class="k">Content</span>One idea, native drafts per platform; approve per post or the whole week.</div>
     <div class="card"><span class="k">Connections</span>Google, Instagram, Notion and more as plug-in connectors; writes always ask first.</div>
   </div>
@@ -335,13 +423,143 @@ footer{padding-top:22px;border-top:1px solid var(--line);font-size:.85rem;color:
 <footer>Blink master for Pexilim · planning stage, no app code yet · all names and figures on this page are examples.</footer>
 </main>
 </div>
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const O=[
+ ["✓ Do it","🟢 done at once with 5 s Undo · 🟡 one tap · 🔴 Face/Touch ID, then a 10 s “Sending… Undo” countdown."],
+ ["✎ Edit","Change inline or by chat (“make it shorter”). The card returns updated; 🔴 needs approval again."],
+ ["⏰ Later","10 min · 1 h · tonight · tomorrow. Goes to Waiting for you and comes back at that time."],
+ ["✕ Dismiss","Closes now; stays in Waiting for 24 h, then archives. Blink lowers how often it suggests this."],
+ ["↺ Undo","Inside the window it reverses fully. After it, Blink offers the opposite action as a new card."],
+ ["⚠ Fails","Retry once in the background, then the card shows the reason in plain words and a Retry button. Never silent."],
+ ["⌁ Offline","🟢/🟡 queue on the device and sync later. 🔴 waits with “Needs connection”."],
+ ["⧉ Duplicate","Same thing twice (two captures of one payment, two reminders) → Blink merges and tells you."],
+ ["🔒 Permission","Missing access or expired sign-in → card links straight to Connections or System Settings."],
+ ["⌛ Expired","The moment passed (meeting started, sale ended) → card removes itself with a note in history."],
+ ["⚙ Auto rule","After you approve the same 🟢/🟡 action several times, Blink asks to do it automatically. Never for 🔴."]
+];
+$("outcomes").innerHTML=O.map(([k,v])=>`<div class="card"><span class="k">${k}</span><span style="font-size:.88rem">${v}</span></div>`).join("");
+const N="Notch",I="iPhone",C="Chat",W="Widget",S="Siri",A="Claude app",SC="Shortcuts";
+const R={g:'<span class="pill p-grn">🟢 small</span>',y:'<span class="pill p-amb">🟡 medium</span>',r:'<span class="pill p-red">🔴 important</span>'};
+const M={
+"Calendar":[["Create event",[C,N,I,S,A],"y","Conflict → offer next free slot; invitees → becomes 🔴 (sends invites)"],["Move event",[C,N,I],"y","Has attendees → 🔴 and drafts a note to them; recurring → this one or all"],["Decline / cancel",[N,I,C],"r","Asks whether to add a reason; organiser gets an email"],["Join meeting",[N,I,W],"g","No link found → shows location or phone number; late join shows minutes since start"],["Meeting brief",["auto T−10",N],"g","No notes → offers to create one linked to the event"],["Wrap-up",["auto at end",N],"y","Skipped twice for a recurring meeting → stops asking for that series"],["Find time",[C,A],"g","Nothing free → suggests moving a focus block, never a meeting"]],
+"Reminders & tasks":[["Create reminder",[C,N,I,S,W,A],"y","Vague time (“later”) → Blink proposes a time; location reminder on iPhone only"],["Complete",[N,I,W],"g","Recurring → next one scheduled; part of a segment → progress ring updates"],["Snooze",[N,I],"g","Snoozed 3 times → Blink asks: reschedule, delegate or drop?"],["Reschedule",[N,I,C],"y","Lands on a busy slot → warns and offers the nearest free one"],["Delete",[N,I,C],"y","Linked to a segment milestone → asks before removing the milestone"],["Assign to someone",[I,C],"r","Shared segments only (later); sends them a notification or email"]],
+"Habits":[["Mark done / missed / skip",[N,I,W,"evening check-in"],"g","Missed → offers a slot tomorrow; never guilt-trips"],["Add habit",[C,I],"y","Too many habits (>5) → suggests starting with fewer"],["Streak freeze",[I],"g","One per week; used automatically on sick days you mark"],["Change schedule",[I,C],"y","Weekdays only, 3× a week, or custom days"]],
+"Notes & capture":[["Quick capture",[N,"⌥N",I,SC,S],"g","Empty clipboard → says so; image → stored with OCR text"],["Drop a file on the notch",[N],"g","Large file → saved to your server storage with a progress ring in the ear"],["Clipboard to note",[N],"g","Copied a password-like string → refuses and says why"],["Link to a segment",[N,I,C],"g","Unsure which segment → asks with the two best guesses"],["Turn into a post",[N,I,C],"y","Too short → asks for one more detail"],["Search",[N,I,C,A],"g","No match → offers to search mail and calendar too"],["Delete note",[I,N],"y","Linked to meetings → keeps the links as “deleted note”"]],
+"Segments":[["Create from chat",[C,N,A],"y","Missing deadline → asks once; similar segment exists → offers to reuse it"],["Create from template",[I,N],"y","Template fields prefilled; edit before Create"],["Blink suggests one",["auto"],"g","Asked once per topic; “no” is remembered"],["Add milestone / reminder / budget",[I,N,C],"y","Milestone after the deadline → warns"],["Pause / resume",[I],"g","Paused → no nudges, rings grey"],["Mark done",[I,N],"y","Writes the retro; offers to save as template"],["Share (later)",[I],"r","Invite by email; they see only this segment"]],
+"Email":[["Triage",["auto"],"g","Unsure → marks “check” instead of Important; you teach it with one tap"],["Draft reply",[N,I,C,A],"g","Needs facts Blink doesn't have → leaves {{gaps}} and asks"],["Send",[N,I],"r","Attachment missing but mentioned → blocks and asks; external recipient → shown clearly"],["Send later",[N,I],"r","Time passes while offline → sends when online and tells you"],["Archive / mark read",[N,I],"g","Bulk archive → shows the count before doing it"],["Date in an email → calendar",[N,I],"y","Time zone mentioned → converts and shows both times"],["Unsubscribe suggestion",["weekly review"],"y","Only for senders you never open"]],
+"Money":[["Auto capture (Apple Pay, bank text, alert email)",[SC,"mail"],"g","Same purchase from two sources → merged; refund → shown as income"],["Add a spend yourself",[N,I,W,"Control Center",S,"night check"],"g","Amount only is enough; category guessed; cash and split supported"],["Night check: “any spends I missed?”",["20:45 notification"],"g","No spend today → no prompt; ignored → asks once more in the evening check-in"],["Edit category / note / receipt",[I,N],"g","Changing a merchant's category asks “always for this shop?”"],["Split with someone",[I],"y","Records who owes what; can draft a reminder message (🔴 to send)"],["Set / change budget",[I,C],"y","Mid-month change → prorates and shows the new daily allowance"],["Over-budget alert",["auto"],"g","At 80% and 100% only, once each; quiet hours respected"],["Delete transaction",[I],"y","Auto-captured → asks whether to stop capturing from that source"]],
+"Content":[["Weekly plan",["Sun 20:00",N,I],"g","Busy week in calendar → proposes fewer posts"],["Approve one post",[N,I],"r","Platform needs reconnection → card shows Reconnect first"],["Approve the week",[N,I],"r","One Face ID covers exactly the listed posts; any later change asks again"],["Edit draft",[N,I,C],"y","Over platform limit → trims with a preview"],["Cancel within 10 min",[N,I],"g","Cancelled → stays as a draft"],["One-tap handoff",[I],"y","Copies caption, saves media, opens the app; you post"],["Publish fails",["auto"],"y","Retry once; then switches to handoff and tells you"],["Reply drafts",[N,I],"y","Comments and DMs are drafts only; you send them"]],
+"Planning":[["Morning brief",["wake push",N,I,W],"g","Nothing scheduled → a light day card with one suggestion"],["Evening check-in",["21:30",N,I],"y","Skipped → Blink auto-plans and leaves it for your review in the morning"],["Auto-plan",[N,I,C],"y","Overbooked → asks what to drop, never deletes meetings"],["Weekly review",["Sun 19:00",I],"g","Read-only summary with three suggestions"]],
+"Chat & Blink":[["Ask anything",[N,I,A,S],"g","Question about private data from the Claude app → same answers, your login only"],["Slash commands",[N,C],"g","Unknown command → shows the list"],["Switch model",[C,"Settings"],"g","Cost cap near → warns before using Opus"],["Talk (push-to-talk)",[N,I,"Action Button"],"g","Noisy room → shows the transcript to confirm"],["Pause Blink 1 h / Calm mode",[N,"auto"],"g","Calm mode is automatic on low battery, full screen and screen sharing"]],
+"Connections & settings":[["Connect an app",[I,"Settings"],"y","Several accounts of one kind → each labelled (personal, work)"],["Reconnect expired",["auto card"],"y","Until fixed, related actions show “Needs reconnection”"],["Disconnect",["Settings"],"y","Shows what stops working before confirming"],["Replace an API key",["Settings"],"r","Face ID; the old key is never shown"],["Export everything",["Settings"],"y","JSON + Markdown to your server and Files"],["Delete everything",["Settings"],"r","Face ID, typed confirmation and a 24 h grace period"]]
+};
+const mods=["All",...Object.keys(M)];let cm="All";
+function render(){const rows=[];Object.entries(M).forEach(([m,acts])=>{if(cm!=="All"&&cm!==m)return;rows.push(`<tr><td colspan="4" style="background:var(--tile);font-weight:600">${m}</td></tr>`);acts.forEach(([a,e,r,sp])=>rows.push(`<tr><td><b>${a}</b></td><td>${e.join(" · ")}</td><td>${R[r]}</td><td>${sp}</td></tr>`));});
+ $("actbody").innerHTML=rows.join("");const n=Object.entries(M).filter(([m])=>cm==="All"||cm===m).reduce((t,[,a])=>t+a.length,0);
+ $("actcount").textContent=`${n} actions shown. Each one also follows the 11 outcome rules above, so every action × outcome is covered.`;
+ document.querySelectorAll("#modsel .chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.k===cm?"true":"false"));}
+mods.forEach(k=>{const b=document.createElement("button");b.type="button";b.className="chip";b.dataset.k=k;b.textContent=k;b.onclick=()=>{cm=k;render();};$("modsel").appendChild(b);});
+render();
+})();
+</script>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const PE=(m="",pw=13)=>`<span class="pe ${m}" style="--pw:${pw}px"><i><b></b></i><i><b></b></i></span>`;
+const mac=o=>{const w=o.w||190,h=o.h||30,r=o.r||12;return `<div class="fmac"><div class="bar"><span>Finder &nbsp; File &nbsp; Edit</span><span>Thu ${o.time||"14:48"}</span></div>${o.win?`<div class="win">${o.win}</div>`:""}<div class="sh" style="width:min(${w}px,96%);height:${h}px;--r:${r}px"><div class="cam"></div><div class="el">${PE(o.m||"",o.pw||12)}${o.lt||""}</div><div class="er">${o.rt||""}</div>${o.below?`<div class="bl2">${o.below}</div>`:""}</div></div>`;};
+const phone=o=>`<div class="fphone"><div class="isl" style="width:${o.iw||96}px;height:28px">${o.isl||""}</div>${o.body||""}</div>`;
+const isl=(m,t)=>`${PE(m,10)}<span style="font:600 .66rem var(--mono);color:#34E0D2">${t||""}</span>`;
+const btn=(a)=>`<div class="fb">${a.map((x,i)=>`<span class="${i===0?"p":""}">${x}</span>`).join("")}</div>`;
+const F={
+ onboard:{name:"First run",steps:[
+  {t:"Splash",trig:"You open Blink for the first time",see:"Blink fades in, opens its eyes, blinks once",do:"Wait under a second",st:"Morning",f:phone({body:`<div style="display:grid;place-items:center;height:200px;gap:10px"><div class="bot blink" style="--s:90px"><div class="shell"></div><div class="patch l"><i class="eye"></i></div><div class="patch r"><i class="eye"></i></div></div><b>Blink</b><small class="muted">by Pexilim</small></div>`})},
+  {t:"Connect your server",trig:"First launch",see:"Scan the pairing QR from the setup wizard, or paste the address",do:"Scan · Paste address · Learn more",st:"Rest",f:phone({body:`<b style="font-size:1rem">Connect your server</b><small class="muted">Your data stays on it. Pexilim can't see it.</small><div class="fc" style="height:110px;place-items:center"><small>QR scanner</small></div>${btn(["Scan QR","Paste address"])}`})},
+  {t:"Face ID",trig:"Server connected",see:"Turn on Face ID to lock Blink, Email and Money",do:"Turn on · Not now",st:"Rest",f:phone({body:`<div style="display:grid;justify-items:center;gap:10px;padding-top:30px"><div style="width:56px;height:56px;border-radius:14px;box-shadow:inset 0 0 0 2px #34E0D2;display:grid;place-items:center;color:#34E0D2">◉</div><b>Lock Blink with Face ID</b><small class="muted" style="text-align:center">Email, Money and keys ask again</small>${btn(["Turn on","Not now"])}</div>`})},
+  {t:"Setup chat",trig:"Face ID set",see:"Blink asks once: goals, wake time, habits, banks, mail, platforms, writing samples",do:"Answer by tap, typing or voice; skip any question",st:"Listening",f:phone({body:`<div class="fc"><small>Blink</small>What time do you usually wake up?</div><div class="fb"><span>6:30</span><span class="p">7:00</span><span>7:30</span><span>Other</span></div><div class="fc"><small>Blink</small>Which habits should I check each night?</div>`})},
+  {t:"What Blink knows",trig:"Setup done",see:"A summary card you can edit. Blink won't ask these again",do:"Looks right · Edit",st:"Done",f:phone({body:`<b>What Blink knows</b><div class="fc">Wake 7:00 · Plan 21:30<br>Habits: workout, reading<br>Platforms: LinkedIn, Instagram, X<br>Banks: alert texts on</div>${btn(["Looks right","Edit"])}`})},
+  {t:"First notch",trig:"Mac app opened",see:"The notch gains ears; Blink's panda eyes appear left of the camera",do:"Hover to peek · ⌥Space to talk",st:"Rest",f:mac({w:230,m:"bl",rt:'<span style="width:5px;height:5px;border-radius:50%;background:#34E0D2;display:inline-block"></span>'})}
+ ]},
+ morning:{name:"Morning",steps:[
+  {t:"Lock Screen at wake",trig:"Wake time − 15 min (server push)",see:"Morning Live Activity: 3 meetings · focus · 2 important mails",do:"Tap to open · ignore",st:"Morning",f:phone({iw:120,isl:isl("amber","3 mtg"),body:`<div class="lk"><small class="muted">Thursday</small><b>6:48</b></div><div class="fc"><b>Good morning</b><small>3 meetings · design due in 3 days · 2 mails</small></div>`})},
+  {t:"Today in the app",trig:"You open Blink",see:"Black hero card: “12 min until Design sync”; segments below",do:"Capture · + · Ask",st:"Morning",f:phone({body:`<div class="fc" style="background:#141418;justify-items:center;text-align:center"><small>Today ⌄</small><b style="font-size:1.6rem">3 meetings</b><small>first at 10:00</small>${btn(["Capture","+","Ask"])}</div><div class="fc"><b>Pexilim website</b><small>40% · design in 3 days</small></div>`})},
+  {t:"Mac unlock",trig:"First unlock of the day",see:"Notch opens once with the brief and project status",do:"Start focus · Open inbox · Esc",st:"Morning",f:mac({w:520,h:150,r:24,m:"amber",lt:"Good morning",rt:"3 meetings",below:`<b>Focus: homepage wireframe</b><small class="muted">90 min free at 11:00 · Pexilim 40%</small>${btn(["Start focus ⌘⏎","Open inbox","Later"])}`})},
+  {t:"Back to rest",trig:"You start work",see:"Notch tucks back; eyes return to white",do:"Nothing needed",st:"Rest",f:mac({w:230,m:"bl"})}
+ ]},
+ meeting:{name:"Meeting",steps:[
+  {t:"Heads-up",trig:"10 min before (calendar)",see:"Peek: title left of the camera, countdown right",do:"Hover · click for notes",st:"Heads-up",f:mac({w:380,m:"teal wide",lt:"Design sync",rt:"10:00"})},
+  {t:"On your iPhone",trig:"3 min before",see:"Island countdown; also on the Mac menu bar and Watch",do:"Long-press → Join · Notes · Later",st:"Heads-up",f:phone({iw:150,isl:isl("teal wide","3:00"),body:`<div class="fc"><b>Design sync</b><small>Priya · 2 linked notes</small>${btn(["Join","Notes"])}</div>`})},
+  {t:"Join",trig:"You click Join",see:"Notch shows “started 1 min ago”; Blink goes quiet",do:"Open notes",st:"Focus",f:mac({w:380,m:"closed",lt:"In: Design sync",rt:"+1:12"})},
+  {t:"Wrap-up",trig:"Meeting ends",see:"Card: capture notes, set a follow-up, draft a follow-up email",do:"Write notes · Follow-up · Draft email · Later",st:"Idle",f:mac({w:560,h:140,r:24,lt:"Design sync ended",rt:"1 of 1",below:`<b>Capture what was decided?</b>${btn(["Write notes","Follow-up","Draft email","Later"])}`})},
+  {t:"Done",trig:"You pick Follow-up",see:"Reminder created and linked to the meeting",do:"Undo for 5 s",st:"Done",f:mac({w:300,m:"green happy",lt:"Follow-up set",rt:"Undo"})}
+ ]},
+ email:{name:"Reply to email",steps:[
+  {t:"Important mail",trig:"Triage marks a mail important",see:"Coral eyes and a one-line peek",do:"Click to open",st:"Important",f:mac({w:400,m:"coral wide",lt:"Dana · October report?",rt:"9:12"})},
+  {t:"Draft ready",trig:"You open it",see:"Card with Blink's draft reply",do:"Do it ⌘⏎ · Edit ⌘E · Later ⌘L",st:"Important",f:mac({w:600,h:150,r:26,m:"coral",lt:"Reply to Dana?",rt:"1 of 2",below:`<b>“Report attached, happy to walk through it.”</b><small class="muted">From your notes · attachment: October.pdf</small>${btn(["Do it ⌘⏎","Edit ⌘E","Later ⌘L"])}`})},
+  {t:"Edit by chat",trig:"⌘E",see:"Type a change: “make it shorter”",do:"Send · Back",st:"Thinking",f:mac({w:600,h:150,r:26,m:"blue up",lt:"Editing",rt:"Auto",below:`<div class="fc">make it shorter and add Friday</div><small class="muted">Blink is rewriting…</small>`})},
+  {t:"Confirm",trig:"Do it on an outgoing email (🔴)",see:"Touch ID prompt, then “Sending in 10 s · Undo”",do:"Touch ID · Undo",st:"Thinking",f:mac({w:420,m:"blue",lt:"Sending in 10 s",rt:"Undo ⌘Z"})},
+  {t:"Sent",trig:"Countdown ends",see:"Smiling green eyes; the mail is in your Sent folder in Apple Mail",do:"Nothing",st:"Done",f:mac({w:260,m:"green happy",lt:"Sent",rt:"✓"})}
+ ]},
+ evening:{name:"Evening planning",steps:[
+  {t:"Nudge",trig:"21:30, not planned yet",see:"Amber eyes: “Plan tomorrow?”",do:"Plan with me · Auto-plan · Later",st:"Morning (amber)",f:mac({w:560,h:130,r:24,m:"amber",lt:"21:30",rt:"Tonight",below:`<b>You haven't planned tomorrow yet.</b>${btn(["Plan with me","Auto-plan, I'll review","Later"])}`})},
+  {t:"Check-in",trig:"Plan with me",see:"“Workout today?”, then “Any spends I missed?” if the night check wasn't answered",do:"Yes · No · Skip",st:"Listening",f:phone({body:`<div class="fc"><small>Blink</small>Did you work out today?</div><div class="fb"><span class="p">No</span><span>Yes</span><span>Skip</span></div>`})},
+  {t:"Reschedule",trig:"You said No",see:"Marked ❌ and a suggestion: 7:00 tomorrow",do:"Add · Different time",st:"Concerned",f:phone({body:`<div class="fc"><small>Workout</small>❌ marked for today</div><div class="fc"><small>Blink</small>You're free 7:00–7:45 tomorrow. Add it?</div>${btn(["Add","Other time"])}`})},
+  {t:"Tomorrow's plan",trig:"Check-in done",see:"Meetings, focus block, workout, top 3 tasks",do:"Approve · Edit",st:"Thinking",f:phone({body:`<b>Tomorrow</b><div class="fc">7:00 Workout<br>10:00 Standup<br>11:00 Focus: homepage<br>15:00 Design sync</div>${btn(["Approve","Edit"])}`})},
+  {t:"Goodnight",trig:"Approved",see:"Sleepy eyes until morning; Blink stays quiet",do:"Nothing",st:"Sleepy",f:mac({w:230,m:"amber sleepy"})}
+ ]},
+ segment:{name:"New segment",steps:[
+  {t:"Say it",trig:"⌥Space",see:"Chat below the menu-bar line",do:"Type or hold to talk",st:"Listening",f:mac({w:580,h:120,r:24,lt:"Ask Blink",rt:"Auto",below:`<div class="fc">I have a project: redesign pexilim.com, launch by 30 Nov</div>`})},
+  {t:"Drafting",trig:"You send",see:"Eyes look up while Claude works",do:"Wait",st:"Thinking",f:mac({w:300,m:"blue up",lt:"Drafting segment…"})},
+  {t:"Draft card",trig:"Draft ready",see:"Goal, milestones, reminders, linked notes and meeting",do:"Create · Edit · Later",st:"Idle",f:mac({w:620,h:170,r:26,lt:"New segment",rt:"Project",below:`<b>Pexilim website · launch Nov 30</b><small class="muted">Brief Oct 15 · design Nov 1 · build Nov 20 · launch Nov 30<br>Check-in Mon 10:00 · 2 days before each milestone</small>${btn(["Create","Edit","Later"])}`})},
+  {t:"Created",trig:"Create",see:"Segment in the sidebar with a ring; reminders scheduled",do:"Open · Undo",st:"Done",f:mac({w:300,m:"green happy",lt:"Pexilim website created",rt:"Undo",win:`<b>Segments</b><span>◔ Pexilim website · 0%</span><span>◔ Blink beta · 20%</span>`})},
+  {t:"Final week",trig:"Nov 23",see:"Island countdown to launch",do:"Long-press for tasks left",st:"Heads-up",f:phone({iw:150,isl:isl("teal","7 days"),body:`<div class="fc"><b>Pexilim website</b><small>Launch in 7 days · 3 tasks left</small></div>`})}
+ ]},
+ content:{name:"Content week",steps:[
+  {t:"Sunday plan",trig:"Sun 20:00",see:"“Your week of posts is ready”",do:"Review",st:"Idle",f:mac({w:420,lt:"Week of posts ready",rt:"6 posts"})},
+  {t:"Review the week",trig:"Review",see:"Every post with platform and time",do:"Open one · Remove · Approve week",st:"Idle",f:mac({w:640,h:180,r:28,lt:"This week",rt:"6 posts",below:`<small>Mon 9:00 · LinkedIn · build-in-public</small><small>Tue 18:00 · Instagram · carousel</small><small>Thu 12:00 · X · thread</small>${btn(["Approve week","Edit","Later"])}`})},
+  {t:"One Face ID",trig:"Approve week (🔴)",see:"Touch ID once for exactly these posts",do:"Touch ID",st:"Thinking",f:mac({w:360,m:"blue",lt:"Approve 6 posts?",rt:"Touch ID"})},
+  {t:"Going out soon",trig:"10 min before a post",see:"Peek with Cancel",do:"Cancel · Open",st:"Heads-up",f:mac({w:440,m:"teal",lt:"LinkedIn post in 10 min",rt:"Cancel"})},
+  {t:"Posted",trig:"Time reached",see:"Done eyes; result tracking starts",do:"View post",st:"Celebrate",f:mac({w:280,m:"green happy",lt:"Posted to LinkedIn",rt:"✓"})}
+ ]},
+ money:{name:"Money capture",steps:[
+  {t:"Apple Pay tap",trig:"You pay at Whole Foods",see:"Nothing to do: the Shortcuts automation sends it to your server",do:"Nothing",st:"Idle",f:phone({body:`<div class="fc" style="margin-top:40px;text-align:center"><b>Whole Foods</b><small>$42.10 · Apple Pay</small></div>`})},
+  {t:"Logged",trig:"Seconds later",see:"Notification: “$42.10 · Food · 85% of budget”",do:"Change category · Dismiss",st:"Concerned",f:phone({body:`<div class="fc"><small>Blink · now</small><b>$42.10 at Whole Foods</b><small>Food · 85% of this week's budget</small></div>`})},
+  {t:"On the Mac",trig:"Budget crosses 80%",see:"Amber peek: “Food at 85%”",do:"Open · Later",st:"Concerned",f:mac({w:380,m:"amber",lt:"Food budget 85%",rt:"$64 left"})},
+  {t:"Suggestion",trig:"You open it",see:"“Swap Friday's lunch out for cooking at home?”",do:"Do it · No thanks",st:"Idle",f:mac({w:560,h:130,r:24,m:"amber",lt:"Money",rt:"This week",below:`<b>Food is at 85% with 2 days left.</b>${btn(["Plan cheaper meals","No thanks"])}`})},
+  {t:"Night check",trig:"20:45 (before evening planning), if you spent today",see:"Notification: “Any spends I missed today? Cash, split bills, transfers.” Shows what Blink already caught",do:"Add one · Nothing to add · Remind me later",st:"Idle",f:phone({body:`<div class="fc"><small>Blink · 20:45</small><b>Any spends I missed today?</b><small>Caught: Whole Foods $42.10 · Uber $18.40</small>${btn(["Add one","Nothing to add","Later"])}</div>`})},
+  {t:"Add it yourself",trig:"Add one",see:"Quick sheet: amount keypad, category guessed as you type, note, receipt photo, split with someone",do:"Save · Add another · Cancel",st:"Listening",f:phone({body:`<b style="font-size:1.6rem">$12.00</b><div class="fb"><span class="p">Food</span><span>Transport</span><span>Work</span><span>+</span></div><div class="fc"><small>Note</small>Lunch with Sam · cash</div><div class="fb"><span>📷 Receipt</span><span>Split ½</span></div>${btn(["Save","Add another"])}`})}
+ ]},
+ manual:{name:"Add it yourself",steps:[
+  {t:"From the notch",trig:"⌥Space then “/spent 12 lunch cash”",see:"Blink parses amount, category and note; one-line confirm",do:"⏎ to save · Edit",st:"Listening",f:mac({w:580,h:120,r:24,lt:"Ask Blink",rt:"Auto",below:`<div class="fc">/spent 12 lunch cash</div><small class="muted">$12.00 · Food · “lunch” · cash · today</small>`})},
+  {t:"From the iPhone",trig:"Money screen “+”, widget button, Control Center or Action Button",see:"The same quick sheet: keypad first, details optional",do:"Save · Add details",st:"Listening",f:phone({body:`<b style="font-size:1.6rem">$0</b><div class="fc" style="grid-template-columns:repeat(3,1fr);text-align:center;font-size:1rem"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span></div>${btn(["Save","Details"])}`})},
+  {t:"By voice",trig:"“Hey Siri, log 12 dollars lunch in Blink”",see:"Siri confirms; Blink files it",do:"Undo from the notification",st:"Done",f:phone({body:`<div class="fc" style="margin-top:40px"><small>Siri</small>Logged $12 for lunch in Blink.</div>`})},
+  {t:"Add details to anything",trig:"Any card → ✎ Details",see:"Same pattern for every item: notes on a meeting, a cost on a segment, a person on a task, a link on a post",do:"Save · Cancel",st:"Idle",f:mac({w:600,h:160,r:26,lt:"Details",rt:"Pexilim",below:`<b>Pexilim website</b><small class="muted">Budget $600 · Owner you · Link figma.com/… · People: Priya</small>${btn(["Save","Cancel"])}`})},
+  {t:"Blink fills gaps",trig:"Details missing (no category, no amount)",see:"Blink asks once, the next calm moment: “Was the $40 transfer to Sam rent or a loan?”",do:"Pick an answer · Skip",st:"Idle",f:mac({w:560,h:130,r:24,lt:"Quick question",rt:"1",below:`<b>Was the $40 to Sam rent or a loan?</b>${btn(["Rent","Loan","Skip"])}`})}
+ ]}
+};
+const keys=Object.keys(F);let cf="meeting",ci=0;
+function render(){const f=F[cf],s=f.steps[ci];$("frame").innerHTML=s.f;$("stTitle").textContent=s.t;$("stCount").textContent=`Step ${ci+1} of ${f.steps.length}`;$("stTrig").textContent=s.trig;$("stSee").textContent=s.see;$("stDo").textContent=s.do;$("stState").textContent=s.st;
+ $("dots").innerHTML=f.steps.map((x,i)=>`<button type="button" data-i="${i}" ${i===ci?'aria-current="step"':""} aria-label="Step ${i+1}: ${x.t}">${i+1}</button>`).join("");
+ $("prev").disabled=ci===0;$("next").disabled=ci===f.steps.length-1;
+ document.querySelectorAll("#flowsel .chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.k===cf?"true":"false"));}
+keys.forEach(k=>{const b=document.createElement("button");b.type="button";b.className="chip";b.dataset.k=k;b.textContent=F[k].name;b.onclick=()=>{cf=k;ci=0;render();};$("flowsel").appendChild(b);});
+$("dots").addEventListener("click",e=>{const b=e.target.closest("button");if(b){ci=+b.dataset.i;render();}});
+$("prev").onclick=()=>{if(ci>0){ci--;render();}};$("next").onclick=()=>{if(ci<F[cf].steps.length-1){ci++;render();}};
+document.addEventListener("keydown",e=>{const r=$("flows").getBoundingClientRect();if(r.top>innerHeight||r.bottom<0)return;if(e.key==="ArrowRight")$("next").click();if(e.key==="ArrowLeft")$("prev").click();});
+$("fmap").innerHTML=keys.map(k=>`<div class="fr"><b>${F[k].name}</b><div class="st">${F[k].steps.map(s=>`<span>${s.t}</span>`).join("<i>→</i>")}</div></div>`).join("");
+render();
+})();
+</script>
+
 
 <script>
 (function(){
 const $=id=>document.getElementById(id);
 const S={
  rest:{w:"272px",h:"37px",r:"12px",g:"transparent",eyes:"",lt:"",rt:'<span style="width:6px;height:6px;border-radius:50%;background:#FF5A47;box-shadow:0 0 6px #FF5A47;display:inline-block"></span>',below:"",cap:"<b>Rest.</b> The black shape is about 38 pt wider than the camera on each side. Eyes sit in the left ear, the waiting dot in the right. Nothing is drawn under the camera."},
- peek:{w:"440px",h:"37px",r:"12px",g:"rgba(52,224,210,.18)",eyes:"teal",lt:"Design sync",rt:"12:00",below:"",cap:"<b>Peek.</b> The ears stretch sideways. Text stays left of the camera, the countdown right of it."},
+ peek:{w:"480px",h:"37px",r:"12px",g:"rgba(52,224,210,.18)",eyes:"teal",lt:"Design sync",rt:"12:00",below:"",cap:"<b>Peek.</b> The ears stretch sideways. Text stays left of the camera, the countdown right of it."},
  ask:{w:"620px",h:"170px",r:"28px",g:"rgba(255,90,71,.18)",eyes:"coral",lt:"Waiting",rt:"1 of 2",below:'<div class="askc"><b>Send reply to Dana?</b><span class="muted" style="font-size:.82rem">“Report attached, happy to walk through it.”</span><div class="btns"><span class="p">Do it ⌘⏎</span><span>Edit ⌘E</span><span>Later ⌘L</span></div></div>',cap:"<b>Ask-First card.</b> The panel opens below the menu-bar line. The top band keeps the ears: eyes and title left, page count right."},
  glance:{w:"660px",h:"172px",r:"30px",g:"rgba(77,141,255,.16)",eyes:"",lt:"Today",rt:"3 meetings",below:`<div class="wtiles">
    <div class="wt"><span class="k">Next</span><b class="num">12 min</b><small>Design sync · Priya</small><div class="mbarline"><i style="width:72%;background:#34E0D2;box-shadow:0 0 6px #34E0D2"></i></div></div>
@@ -355,7 +573,7 @@ const S={
 const order=["rest","peek","ask","glance","chat","focus"];
 const shape=$("shape");
 function go(k){const s=S[k];shape.style.setProperty("--w",`min(${s.w}, calc(100% - 24px))`);shape.style.setProperty("--h",s.h);shape.style.setProperty("--r",s.r);shape.style.setProperty("--g",s.g);
-  shape.classList.toggle("open",!!s.below);$("below").innerHTML=s.below;$("eyesM").className="eyes bl "+s.eyes;if(k==="focus")$("eyesM").innerHTML='<i style="height:3px"></i><i style="height:3px"></i>';else $("eyesM").innerHTML="<i></i><i></i>";
+  shape.classList.toggle("open",!!s.below);$("below").innerHTML=s.below;$("eyesM").className="pe bl "+s.eyes+(k==="focus"?" closed":"");
   $("earLt").innerHTML=s.lt;$("earR").innerHTML=s.rt;$("mcap").innerHTML=s.cap;
   document.querySelectorAll("#mchips .chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.k===k?"true":"false"));}
 order.forEach(k=>{const b=document.createElement("button");b.type="button";b.className="chip";b.dataset.k=k;b.textContent=k[0].toUpperCase()+k.slice(1);b.onclick=()=>go(k);$("mchips").appendChild(b);});
