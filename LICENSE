@@ -1,0 +1,15 @@
+Copyright (c) 2026 Pexilim. All rights reserved.
+
+This software and its source code, documentation, designs (including the
+"Pip" mascot artwork) and related files are proprietary and confidential
+property of Pexilim.
+
+No part of this repository may be copied, modified, distributed, published,
+sublicensed, sold or used, in whole or in part, without prior written
+permission from Pexilim.
+
+Third-party components keep their own licenses. See THIRD_PARTY_NOTICES.md
+and SKILLS.md. Files under .claude/skills/ are third-party development tools
+licensed by their respective authors and are not covered by this notice.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

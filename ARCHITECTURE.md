@@ -725,7 +725,7 @@ What changes only if Pip is sold to other people (not built now): Sign in with A
 **32.5 Ownership**
 - **Mascot and brand:** Pip's design comes from your sketch, so you own it. Before selling, check that the name "Pip" isn't already a trademark in your market (many apps use it).
 - **Repo:** keep it private; consider moving it to a company GitHub organisation before a sale.
-- **Licence file for your own code:** add a proprietary "All rights reserved" `LICENSE` once the legal owner (you or your company) is decided.
+- **Licence file for your own code:** proprietary "All rights reserved" `LICENSE` in the repo root, owner **Pexilim**.
 - **AI-assisted code:** check Anthropic's commercial terms on output ownership, and get a lawyer's review before any sale. This plan is not legal advice.
 
 **32.6 Working on your own devices**
