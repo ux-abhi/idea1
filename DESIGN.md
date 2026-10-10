@@ -35,31 +35,39 @@ Pip **is the notch.** The black notch on your MacBook and the black Dynamic Isla
 
 Inspiration taken: the **liveliness** of Grok's animated companions and Google's Gemini avatars, which react, emote and feel present. What we leave out: humanlike faces and lip-sync, for the reasons above.
 
-### Anatomy
+### Look: particles in glass (v1, from your droplet sketch)
+Interactive study: [Pip Notch Studio](https://claude.ai/artifact/SDNx2J5QPNracfBuWnkaDS) · source in `design/pip-studio.html`.
+
+- **Eyes:** two **tilted white pills** (about 16°), taken from your sketch. The left one sits slightly lower. They're tilted enough that they never read as a pause button ⏸, which the Dynamic Island uses for music.
+- **Full body:** a **droplet of tinted glass** with **light particles drifting inside**. Used for the app icon, the setup conversation, the Mac Pip panel and the iPhone Pip button.
+- **In the notch / Dynamic Island:** the black hardware is the body. Only the eyes, the particles and the glass sheen appear, **all clipped inside the notch outline. No glow or shadow outside it.**
+- **Glass (Apple Liquid Glass style):** a soft specular band at the top inside edge, a thin rim of light along the bottom inner edge, and a faint colour glow rising from the bottom, all inside.
+- **Home colour:** warm orange when idle; particles change colour and motion per mood.
+- **Icon:** droplet with eyes, in light, dark and tinted variants for iOS 26 / macOS 26 icon modes.
+
 ```
   ╭──────────────────────────────╮
-  │        ●        ●            │   ← the notch / island = Pip's body
-  ╰──────────────────────────────╯      two eyes + an optional glow
+  │  ·  ˚   ⧸⧸   ·   ˚  ·        │   ← notch = body; tilted pill eyes,
+  ╰──────────────────────────────╯      light particles + glass sheen inside only
 ```
-- **Eyes:** the main expression (shape, size, direction, blink).
-- **Glow:** a soft edge light whose colour shows what kind of moment it is.
-- **Accessories** (rare, for delight): tiny sleep "z", a sparkle on a streak, a pencil while drafting.
 
 ### Expressions (state machine)
 
-| State | Eyes | Glow | When |
+| State | Eyes | Particles (inside only) | When |
 |---|---|---|---|
-| **Idle** | Calm dots, slow blink every 20–40 s | none | Default |
-| **Morning** | Opens eyes slowly, little stretch | sunrise amber | First wake/unlock of the day |
-| **Heads-up** | Eyes widen, small hop | teal | Meeting soon, reminder due |
-| **Important** | Eyes widen + one nudge | coral | Important email, budget limit hit |
-| **Listening** | Eyes wide, pulse ring | white | You're talking or typing to it |
-| **Thinking** | Eyes look up, drift side to side | soft white | Claude is working |
-| **Done / happy** | ^ ^ | green | Task done, approved, streak kept |
-| **Concerned** | Eyes tilt | amber | Habit missed, overspending, overdue |
-| **Focus** | Eyes closed, still | none | Focus mode / Do Not Disturb: it stays quiet |
-| **Sleepy** | Half-closed, slow "z" | dim amber | After evening planning, until morning |
-| **Celebrate** | Sparkles, bounce | gold | Streaks, a post published, a goal hit |
+| **Idle** | Tilted pills, slow blink every 20–40 s | Few, orange, slow drift (frozen at rest on device) | Default |
+| **Morning** | Opens slowly | Amber, rising | First wake/unlock of the day |
+| **Heads-up** | Wide | Teal, livelier drift | Meeting soon, reminder due |
+| **Important** | Wide | Coral, one pulse then calm | Important email, budget limit hit |
+| **Listening** | Wide | Warm orange, breathing with your voice | You're talking or typing to it |
+| **Thinking** | Look up | Ice blue, orbiting | Claude is working |
+| **Done / happy** | ∩ ∩ arcs | Green, rising | Task done, approved, streak kept |
+| **Concerned** | Tilt toward each other | Amber, slow | Habit missed, overspending, overdue |
+| **Focus** | Closed | Almost none, very dim | Focus mode / Do Not Disturb: it stays quiet |
+| **Sleepy** | Half-closed | Dim, sinking | After evening planning, until morning |
+| **Celebrate** | ∩ ∩ arcs | Gold burst | Streaks, a post published, a goal hit |
+
+**Particle budget:** at most 30 particles at 30 fps, only while Pip is reacting. At rest the frame freezes and only the blink plays. Calm mode stops all motion. iPhone surfaces use pre-rendered still poses.
 
 Rules:
 - **One reaction per event.** Pip nudges once, then waits in the "Waiting for you" queue, and never loops or nags.
@@ -84,7 +92,7 @@ Rules:
 - **Says what it did and how to undo it.** "Saved to Content · Undo"
 
 ### Production
-- Design the character in **Rive** (one file, a state machine with the states above). Rive suits stateful, interactive mascots; one React Native benchmark measured about 60 FPS for Rive versus about 17 FPS for Lottie.
+- Eyes and glass in **Rive** (one file, a state machine with the states above); particles drawn natively (SpriteKit or a small Metal/Canvas layer) behind the eyes, capped as above. Rive suits stateful, interactive mascots; one React Native benchmark measured about 60 FPS for Rive versus about 17 FPS for Lottie.
 - Export **still PNG poses** from the same file for the Dynamic Island, widgets and notifications.
 - Measure battery with Xcode **Instruments** on a real device before shipping (see §6).
 

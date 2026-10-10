@@ -1,0 +1,375 @@
+<title>Pip Notch Studio</title>
+<style>
+/* Layout: a single stage (MacBook bezel + notch) leads; body, Dynamic Island, icons and notes follow in one calm column. */
+:root{
+  --bg:#F2F2F4; --surface:#FFFFFF; --fg:#1C1C1E; --muted:#6C6C72; --line:#DEDEE3;
+  --chip:#E7E7EC; --chip-on:#1C1C1E; --chip-on-fg:#FFFFFF;
+  --hw:#000000; --hw-fg:#F5F5F7; --hw-muted:#8E8E93; --bezel:#111113; --screen:#1D1D22;
+  --pip:#FF7A2F;
+  --sans:-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0B0B0D; --surface:#161618; --fg:#F5F5F7; --muted:#98989F; --line:#2A2A2E;
+  --chip:#232327; --chip-on:#F5F5F7; --chip-on-fg:#0B0B0D; --bezel:#0E0E10; --screen:#18181C; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0B0B0D; --surface:#161618; --fg:#F5F5F7; --muted:#98989F; --line:#2A2A2E;
+  --chip:#232327; --chip-on:#F5F5F7; --chip-on-fg:#0B0B0D; --bezel:#0E0E10; --screen:#18181C; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.55 var(--sans);padding-inline:16px;padding-block:0 72px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:980px;margin:0 auto}
+h1,h2,h3{margin:0;text-wrap:balance;letter-spacing:-.022em}
+h1{font-size:clamp(2.2rem,6vw,3.6rem);font-weight:700;line-height:1.05}
+h2{font-size:clamp(1.4rem,3vw,1.9rem);font-weight:650;line-height:1.15}
+h3{font-size:1.05rem;font-weight:600}
+p{margin:0;max-width:62ch}
+.muted{color:var(--muted)}
+.eyebrow{font:600 .72rem/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+section{display:grid;gap:18px;padding-block:48px;border-top:1px solid var(--line)}
+header{display:grid;gap:14px;padding-block:44px 28px}
+button{font:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--pip);outline-offset:2px}
+
+/* ---------- Stage: MacBook top ---------- */
+.stage{background:var(--bezel);border-radius:22px 22px 10px 10px;padding:10px 10px 0;overflow:hidden}
+.screen{position:relative;height:300px;border-radius:12px 12px 0 0;background:
+  radial-gradient(120% 90% at 20% 10%, #2B2340 0%, transparent 55%),
+  radial-gradient(90% 80% at 85% 30%, #3A2418 0%, transparent 60%), var(--screen);overflow:hidden}
+.menubar{position:absolute;inset:0 0 auto 0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font:500 .78rem/1 var(--sans);color:#E8E8ED;opacity:.85}
+.menubar .r{display:flex;gap:14px}
+.notch-wrap{position:absolute;left:50%;top:0;transform:translateX(-50%);z-index:2}
+
+/* The notch: hardware black, with glass + particles living strictly inside its outline */
+.notch{position:relative;width:200px;height:34px;background:var(--hw);border-radius:0 0 14px 14px;overflow:hidden;isolation:isolate;
+  transition:width .55s cubic-bezier(.2,.9,.2,1.04),height .55s cubic-bezier(.2,.9,.2,1.04),border-radius .55s}
+.notch.active{width:236px;height:38px;border-radius:0 0 17px 17px}
+.notch.open{width:min(420px,calc(100vw - 64px));height:164px;border-radius:0 0 30px 30px}
+/* hardware "ears": the concave fillets where the notch meets the bezel (black, not glow) */
+.notch-wrap::before,.notch-wrap::after{content:"";position:absolute;top:0;width:10px;height:10px;background:radial-gradient(circle at 0 100%, transparent 9.5px, var(--hw) 10px)}
+.notch-wrap::before{left:-10px;transform:scaleX(-1)}
+.notch-wrap::after{right:-10px}
+.notch canvas,.island canvas{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+/* Liquid-glass sheen, inside only: top specular band + inner rim light. No outer shadow. */
+.glass{position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;
+  background:linear-gradient(180deg, rgba(255,255,255,.075) 0%, rgba(255,255,255,0) 42%),
+             radial-gradient(60% 120% at 50% 130%, rgba(255,255,255,.07), transparent 60%);
+  box-shadow:inset 0 -1px 0 rgba(255,255,255,.14), inset 0 0 0 .5px rgba(255,255,255,.06)}
+.notch .eyes{z-index:1}
+.n-content{position:absolute;inset:0;z-index:3;display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;padding:30px 22px 18px;opacity:0;transition:opacity .25s;color:var(--hw-fg);pointer-events:none}
+.notch.open .n-content{opacity:1;transition-delay:.25s;pointer-events:auto}
+.notch.open > .eyes{opacity:0}
+.n-pip{position:relative;width:64px;height:64px;border-radius:20px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.1)}
+.n-text{display:grid;gap:4px;min-width:0}
+.n-text b{font-size:1rem;font-weight:600}
+.n-text span{font-size:.8rem;color:var(--hw-muted)}
+.n-btns{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.n-btns button{border:0;border-radius:999px;padding:7px 12px;font-size:.76rem;font-weight:600;color:var(--hw-fg);background:rgba(255,255,255,.12);box-shadow:inset 0 .5px 0 rgba(255,255,255,.18)}
+.n-btns button.p{background:var(--hw-fg);color:#000}
+
+/* ---------- Eyes (from your concept: tilted pills) ---------- */
+.eyes{--ew:7px;--eh:16px;--gap:9px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:var(--gap);transition:opacity .2s}
+.eye{display:block;width:var(--ew);height:var(--eh);border-radius:999px;background:linear-gradient(180deg,#FFFFFF 0%,#E6ECF4 100%);
+  transform:rotate(16deg);box-shadow:0 0 6px rgba(255,255,255,.35);
+  transition:height .22s ease, width .22s ease, transform .22s ease, translate .3s ease, border-radius .22s, opacity .3s, background .2s}
+.eye:first-child{translate:0 calc(var(--eh) * .1)}
+.e-wide .eye{width:calc(var(--ew)*1.12);height:calc(var(--eh)*1.18)}
+.e-up .eye{translate:0 calc(var(--eh) * -.28)}
+.e-up .eye:first-child{translate:0 calc(var(--eh) * -.2)}
+.e-closed .eye,.e-sleepy .eye{height:calc(var(--ew)*.5);transform:rotate(0)}
+.e-sleepy .eye{opacity:.6}
+.e-happy .eye{width:calc(var(--ew)*1.9);height:calc(var(--ew)*1.9);background:transparent;border:calc(var(--ew)*.42) solid #fff;border-bottom-color:transparent;border-left-color:transparent;border-right-color:transparent;border-radius:50%;transform:rotate(0);translate:0 calc(var(--ew)*.6);box-shadow:none}
+.blink .eye{transform:rotate(16deg) scaleY(.1)}
+
+/* ---------- Controls ---------- */
+.controls{display:grid;gap:12px;padding:16px 4px 4px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:0;border-radius:999px;padding:8px 14px;font-size:.85rem;font-weight:500;background:var(--chip);color:var(--fg);display:inline-flex;align-items:center;gap:8px}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--c)}
+.chip[aria-pressed="true"]{background:var(--chip-on);color:var(--chip-on-fg)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.toggle{border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:999px;padding:8px 14px;font-size:.85rem;font-weight:500}
+.state-note{font-size:.95rem}
+.state-note b{font-weight:600}
+
+/* ---------- Glass body ---------- */
+.body-grid{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:32px;align-items:center}
+@media (max-width:720px){.body-grid{grid-template-columns:1fr;justify-items:center}}
+.drop{position:relative;width:100%;max-width:300px;aspect-ratio:300/340}
+.drop canvas{position:absolute;inset:0;width:100%;height:100%}
+.drop .eyes{--ew:22px;--eh:52px;--gap:26px;top:68%}
+.drop .eye{box-shadow:0 0 14px rgba(255,255,255,.55)}
+.list{margin:0;padding-left:18px;display:grid;gap:8px}
+
+/* ---------- Dynamic Island ---------- */
+.phones{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+.phone{background:var(--surface);border:1px solid var(--line);border-radius:28px;padding:18px;display:grid;gap:14px;justify-items:center;align-content:start}
+.phone small{font-size:.8rem;color:var(--muted);text-align:center}
+.island{position:relative;background:var(--hw);overflow:hidden;isolation:isolate;color:var(--hw-fg)}
+.island.compact{width:230px;height:37px;border-radius:999px;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 10px}
+.island .mini{position:relative;width:46px;height:26px;border-radius:13px;overflow:hidden}
+.island .mini .eyes{--ew:5px;--eh:11px;--gap:6px}
+.island .cd{position:relative;z-index:3;font:600 .9rem/1 var(--sans);font-variant-numeric:tabular-nums;color:#3FD0C9}
+.island.expanded{width:100%;max-width:340px;height:150px;border-radius:44px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:center;padding:18px 22px}
+.island .big{position:relative;width:70px;height:70px;border-radius:22px;overflow:hidden;background:rgba(255,255,255,.04)}
+.island .big .eyes{--ew:9px;--eh:21px;--gap:11px}
+.island .txt{position:relative;z-index:3;display:grid;gap:3px;min-width:0}
+.island .txt b{font-size:.98rem}
+.island .txt span{font-size:.78rem;color:var(--hw-muted)}
+
+/* ---------- Icons ---------- */
+.icons{display:flex;flex-wrap:wrap;gap:28px}
+.icon{display:grid;gap:8px;justify-items:center;font-size:.82rem;color:var(--muted)}
+.icon svg{width:112px;height:112px;display:block}
+
+/* ---------- Notes ---------- */
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:28px}
+.two > div{display:grid;gap:10px;align-content:start;min-width:0}
+.tag{display:inline-block;font:600 .7rem/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;padding:5px 8px;border-radius:6px;background:var(--chip);color:var(--muted);justify-self:start}
+footer{padding-top:24px;border-top:1px solid var(--line);font-size:.86rem;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Mascot study · v1</span>
+  <h1>Pip, made of light in glass</h1>
+  <p class="muted">Your droplet-and-pill-eyes idea, rebuilt as particles inside liquid glass. In the notch, everything stays inside the notch outline: the glow, the particles and the glass sheen. Nothing spills onto the screen.</p>
+</header>
+
+<div class="stage" aria-label="MacBook notch preview">
+  <div class="screen">
+    <div class="menubar"><span>Finder &nbsp; File &nbsp; Edit &nbsp; View</span><span class="r"><span>⌁ 82%</span><span class="mono" id="clock">Thu 2:57 PM</span></span></div>
+    <div class="notch-wrap">
+      <div class="notch active" id="notch">
+        <canvas id="cNotch"></canvas>
+        <div class="eyes" id="eNotch"><i class="eye"></i><i class="eye"></i></div>
+        <div class="n-content">
+          <div class="n-pip"><canvas id="cNotchPip" style="border-radius:20px"></canvas><div class="eyes" id="eNotchPip" style="--ew:8px;--eh:19px;--gap:10px"><i class="eye"></i><i class="eye"></i></div></div>
+          <div class="n-text"><b>Design sync in 3 min</b><span>Priya · 2 linked notes · Zoom</span>
+            <div class="n-btns"><button class="p" type="button">Join</button><button type="button">Open notes</button><button type="button">Later</button></div></div>
+        </div>
+        <div class="glass"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="controls">
+  <div class="chips" id="chips" role="group" aria-label="Pip state"></div>
+  <div class="row">
+    <button class="toggle" id="openBtn" type="button" aria-pressed="false">Expand notch</button>
+    <span class="state-note" id="note"></span>
+  </div>
+</div>
+
+<section aria-labelledby="b">
+  <span class="eyebrow">Full body</span>
+  <h2 id="b">The glass droplet</h2>
+  <div class="body-grid">
+    <div class="drop"><canvas id="cDrop"></canvas><div class="eyes" id="eDrop"><i class="eye"></i><i class="eye"></i></div></div>
+    <div style="display:grid;gap:14px">
+      <p>Where Pip has room, it shows its whole body: a droplet of tinted glass with light drifting inside. The particles change colour and movement with Pip’s mood, and the eyes do the talking.</p>
+      <ul class="list muted">
+        <li>App icon, setup conversation, the Pip panel in the Mac app, the floating Pip button on iPhone</li>
+        <li>In the notch and the Dynamic Island the black hardware is the body, so only the eyes and the inner light appear</li>
+        <li>Same state machine everywhere. The chips above drive this droplet too</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="di">
+  <span class="eyebrow">iPhone 15 and later</span>
+  <h2 id="di">Dynamic Island</h2>
+  <p class="muted">iOS shows Live Activities as still frames, so Pip appears here as a frozen pose of the same particles. It changes only when something happens, which is also the battery-friendly way.</p>
+  <div class="phones">
+    <div class="phone">
+      <div class="island compact"><div class="mini"><canvas id="cIsl1"></canvas><div class="eyes" id="eIsl1"><i class="eye"></i><i class="eye"></i></div><div class="glass"></div></div><span class="cd">3 min</span></div>
+      <small>Compact: Pip on the left, the countdown on the right</small>
+    </div>
+    <div class="phone">
+      <div class="island expanded"><div class="big"><canvas id="cIsl2"></canvas><div class="eyes" id="eIsl2"><i class="eye"></i><i class="eye"></i></div></div>
+        <div class="txt"><b>Design sync in 3 min</b><span>Priya · 2 linked notes</span><span style="color:#3FD0C9">Join · Notes</span></div><div class="glass" style="border-radius:44px"></div></div>
+      <small>Expanded: long-press the island</small>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="ic">
+  <span class="eyebrow">App icon</span>
+  <h2 id="ic">Light, dark and tinted</h2>
+  <div class="icons">
+    <div class="icon"><svg viewBox="0 0 120 120" aria-label="Light icon"><defs>
+      <linearGradient id="lb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#ECECF0"/></linearGradient>
+      <radialGradient id="ld" cx=".42" cy=".38" r=".75"><stop offset="0" stop-color="#FFA060"/><stop offset=".6" stop-color="#FF7A2F"/><stop offset="1" stop-color="#E2551A"/></radialGradient>
+      <radialGradient id="lh" cx=".35" cy=".3" r=".35"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+      <rect width="120" height="120" rx="27" fill="url(#lb)"/>
+      <path d="M56.5 20 Q60 16 63.5 20 L84 47 Q92 59 90 71 A30 30 0 0 1 30 71 Q28 59 36 47 Z" fill="url(#ld)"/>
+      <path d="M56.5 20 Q60 16 63.5 20 L84 47 Q92 59 90 71 A30 30 0 0 1 30 71 Q28 59 36 47 Z" fill="url(#lh)"/>
+      <rect x="49" y="62" width="9" height="22" rx="4.5" fill="#fff" transform="rotate(16 53.5 73)"/><rect x="64" y="60" width="9" height="22" rx="4.5" fill="#fff" transform="rotate(16 68.5 71)"/></svg>Light</div>
+    <div class="icon"><svg viewBox="0 0 120 120" aria-label="Dark icon"><defs>
+      <radialGradient id="dd" cx=".5" cy=".75" r=".7"><stop offset="0" stop-color="#FF8A45" stop-opacity=".95"/><stop offset=".55" stop-color="#C84A14" stop-opacity=".7"/><stop offset="1" stop-color="#3A160A" stop-opacity=".9"/></radialGradient>
+      <radialGradient id="dh" cx=".36" cy=".3" r=".3"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+      <rect width="120" height="120" rx="27" fill="#0A0A0C"/>
+      <path d="M56.5 20 Q60 16 63.5 20 L84 47 Q92 59 90 71 A30 30 0 0 1 30 71 Q28 59 36 47 Z" fill="url(#dd)"/>
+      <path d="M56.5 20 Q60 16 63.5 20 L84 47 Q92 59 90 71 A30 30 0 0 1 30 71 Q28 59 36 47 Z" fill="url(#dh)"/>
+      <path d="M56.5 20 Q60 16 63.5 20 L84 47 Q92 59 90 71 A30 30 0 0 1 30 71 Q28 59 36 47 Z" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="1"/>
+      <circle cx="50" cy="52" r="1.6" fill="#FFD2B0"/><circle cx="70" cy="44" r="1.2" fill="#FFD2B0"/><circle cx="62" cy="90" r="1.4" fill="#FFD2B0"/><circle cx="44" cy="80" r="1" fill="#FFD2B0"/>
+      <rect x="49" y="62" width="9" height="22" rx="4.5" fill="#fff" transform="rotate(16 53.5 73)"/><rect x="64" y="60" width="9" height="22" rx="4.5" fill="#fff" transform="rotate(16 68.5 71)"/></svg>Dark</div>
+    <div class="icon"><svg viewBox="0 0 120 120" aria-label="Tinted icon"><defs>
+      <linearGradient id="tb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2A2E"/><stop offset="1" stop-color="#151517"/></linearGradient></defs>
+      <rect width="120" height="120" rx="27" fill="url(#tb)"/>
+      <path d="M56.5 20 Q60 16 63.5 20 L84 47 Q92 59 90 71 A30 30 0 0 1 30 71 Q28 59 36 47 Z" fill="#8E8E93" fill-opacity=".55"/>
+      <rect x="49" y="62" width="9" height="22" rx="4.5" fill="#F5F5F7" transform="rotate(16 53.5 73)"/><rect x="64" y="60" width="9" height="22" rx="4.5" fill="#F5F5F7" transform="rotate(16 68.5 71)"/></svg>Tinted</div>
+  </div>
+</section>
+
+<section aria-labelledby="rv">
+  <span class="eyebrow">Review of your sketch</span>
+  <h2 id="rv">What works, and what I changed</h2>
+  <div class="two">
+    <div><span class="tag">Keep</span>
+      <ul class="list">
+        <li><b>The tilted pill eyes.</b> They are the most ownable part. They read as alive at 7 pixels wide, so they work in the notch.</li>
+        <li><b>The droplet.</b> A simple silhouette that stays recognisable as an app icon at any size.</li>
+        <li><b>Warm orange</b> as Pip’s home colour. Pip glows orange when idle and switches colour by mood.</li>
+      </ul></div>
+    <div><span class="tag">Changed</span>
+      <ul class="list">
+        <li><b>Two straight pills look like a pause button ⏸.</b> The Dynamic Island already uses that symbol for music, so the eyes keep a stronger tilt, sit at slightly different heights, and change shape with each mood.</li>
+        <li><b>Flat fill becomes glass with light inside</b>, to match Apple’s Liquid Glass look on macOS 26 and iOS 26.</li>
+        <li><b>The orange is close to Claude’s brand colour.</b> That fits, since Claude powers Pip, but particles in other colours keep Pip its own character.</li>
+      </ul></div>
+  </div>
+</section>
+
+<section aria-labelledby="rl">
+  <span class="eyebrow">Rules</span>
+  <h2 id="rl">Glow inside, battery first</h2>
+  <div class="two">
+    <div><h3>Inside the notch only</h3>
+      <ul class="list muted">
+        <li>The notch clips everything: particles, colour glow and glass sheen</li>
+        <li>No outer shadow or halo on the screen around the notch</li>
+        <li>Glass is a soft top highlight plus a thin inner rim of light along the bottom edge</li>
+        <li>The hardware fillets where the notch meets the bezel stay pure black</li>
+      </ul></div>
+    <div><h3>Particles and battery</h3>
+      <ul class="list muted">
+        <li>At most 30 particles, drawn at 30 frames per second, and only while Pip has something to say</li>
+        <li>At rest the frame freezes and only a blink plays. This page keeps it moving so you can see it</li>
+        <li>Calm mode stops all motion when the lid is closed, in full screen, or on battery under 20%</li>
+        <li>iPhone surfaces use pre-rendered still poses, never live particles</li>
+      </ul></div>
+  </div>
+</section>
+
+<footer>Pip design study for the personal assistant plan · interactive mock-up, not the app.</footer>
+</div>
+
+<script>
+(function(){
+const STATES={
+  idle:{label:"Idle",c:[255,122,47],n:14,mode:"drift",sp:.25,a:.6,eyes:"",note:"Resting. A slow blink now and then; particles drift."},
+  morning:{label:"Morning",c:[255,181,71],n:22,mode:"rise",sp:.45,a:.85,eyes:"",note:"First unlock of the day. Warm light rises."},
+  headsup:{label:"Heads-up",c:[63,208,201],n:24,mode:"drift",sp:.75,a:.9,eyes:"e-wide",note:"Meeting in 3 minutes. Eyes open wide."},
+  important:{label:"Important",c:[255,77,61],n:26,mode:"pulse",sp:.6,a:.95,eyes:"e-wide",note:"Key email or budget limit. One pulse, then calm."},
+  thinking:{label:"Thinking",c:[170,200,255],n:18,mode:"orbit",sp:1,a:.85,eyes:"e-up",note:"Claude is working. Light circles while Pip looks up."},
+  listening:{label:"Listening",c:[255,150,90],n:20,mode:"pulse",sp:1.1,a:.9,eyes:"e-wide",note:"You’re talking or typing. Light breathes with your voice."},
+  done:{label:"Done",c:[74,222,128],n:20,mode:"rise",sp:.7,a:.9,eyes:"e-happy",note:"Approved, finished, streak kept."},
+  focus:{label:"Focus",c:[255,122,47],n:4,mode:"still",sp:.06,a:.22,eyes:"e-closed",note:"Quiet. Everything waits in the queue."},
+  sleepy:{label:"Sleepy",c:[255,160,80],n:8,mode:"sink",sp:.18,a:.35,eyes:"e-sleepy",note:"After evening planning. Light settles."},
+  celebrate:{label:"Celebrate",c:[255,210,90],n:30,mode:"burst",sp:1.2,a:1,eyes:"e-happy",note:"Post published, goal hit."}
+};
+const reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+let current="headsup";
+
+function dropPath(ctx,w,h){
+  const cx=w/2,R=w*.36,cy=h*.64,tip=h*.06;
+  ctx.beginPath();
+  ctx.moveTo(cx-w*.025,tip+h*.02);
+  ctx.quadraticCurveTo(cx,tip-h*.008,cx+w*.025,tip+h*.02);
+  ctx.bezierCurveTo(cx+R*.45,tip+R*.45,cx+R,cy-R*.8,cx+R,cy);
+  ctx.arc(cx,cy,R,0,Math.PI,false);
+  ctx.bezierCurveTo(cx-R,cy-R*.8,cx-R*.45,tip+R*.45,cx-w*.025,tip+h*.02);
+  ctx.closePath();
+}
+
+class Field{
+  constructor(canvas,opts){this.cv=canvas;this.ctx=canvas.getContext("2d");this.o=Object.assign({drop:false,live:true,scale:1},opts);this.ps=[];this.t=0;this.resize();}
+  resize(){const r=this.cv.getBoundingClientRect();const d=Math.min(window.devicePixelRatio||1,2);this.w=Math.max(1,r.width);this.h=Math.max(1,r.height);this.cv.width=Math.round(this.w*d);this.cv.height=Math.round(this.h*d);this.ctx.setTransform(d,0,0,d,0,0);}
+  spawn(fresh){const s=STATES[current],w=this.w,h=this.h,k=this.o.scale;const p={x:Math.random()*w,y:Math.random()*h,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,r:(1+Math.random()*1.6)*k,life:0,max:120+Math.random()*160,ang:Math.random()*Math.PI*2,rad:.18+Math.random()*.22};
+    if(s.mode==="rise"){p.y=fresh?Math.random()*h:h+4;p.vy=-(.4+Math.random()*.6);}
+    if(s.mode==="sink"){p.y=fresh?Math.random()*h:-4;p.vy=.15+Math.random()*.2;}
+    if(s.mode==="burst"){p.x=w/2;p.y=h*.6;const a=Math.random()*Math.PI*2,v=.6+Math.random()*1.6;p.vx=Math.cos(a)*v;p.vy=Math.sin(a)*v-.4;p.max=60+Math.random()*60;}
+    return p;}
+  sync(){const s=STATES[current];while(this.ps.length<s.n)this.ps.push(this.spawn(true));if(this.ps.length>s.n)this.ps.length=s.n;}
+  step(dt){const s=STATES[current],w=this.w,h=this.h,k=this.o.scale;this.t+=dt;
+    for(let i=0;i<this.ps.length;i++){let p=this.ps[i];p.life+=dt*60;
+      if(s.mode==="orbit"){p.ang+=.025*s.sp*dt*60;const rx=w*p.rad,ry=h*p.rad*.9;p.x=w/2+Math.cos(p.ang)*rx;p.y=h*.55+Math.sin(p.ang)*ry;}
+      else{const m=s.sp*dt*60*k;p.x+=p.vx*m;p.y+=p.vy*m;
+        if(s.mode==="drift"){p.vy-=.002;p.vx+=(Math.random()-.5)*.02;}
+        if(s.mode==="pulse"){const cx=w/2,cy=h*.55,f=Math.sin(this.t*4*s.sp)*.012;p.vx+=(p.x-cx)*f*.05;p.vy+=(p.y-cy)*f*.05;p.vx*=.98;p.vy*=.98;p.vx+=(Math.random()-.5)*.03;p.vy+=(Math.random()-.5)*.03;}
+        if(s.mode==="burst"){p.vy+=.012;p.vx*=.99;}
+      }
+      const out=p.x<-8||p.x>w+8||p.y<-8||p.y>h+8;
+      if(out||p.life>p.max){this.ps[i]=this.spawn(false);if(s.mode==="drift"||s.mode==="pulse"||s.mode==="still"){this.ps[i].life=0;}}
+    }}
+  draw(){const c=this.ctx,w=this.w,h=this.h,s=STATES[current],[r,g,b]=s.c;c.clearRect(0,0,w,h);
+    const pulse=s.mode==="pulse"?(.75+.25*Math.sin(this.t*4*s.sp)):1;
+    if(this.o.drop){c.save();dropPath(c,w,h);c.clip();
+      const base=c.createRadialGradient(w*.5,h*.72,4,w*.5,h*.6,w*.6);
+      base.addColorStop(0,`rgba(${r},${g},${b},.55)`);base.addColorStop(.55,`rgba(${Math.round(r*.55)},${Math.round(g*.4)},${Math.round(b*.35)},.75)`);base.addColorStop(1,"rgba(20,12,10,.92)");
+      c.fillStyle=base;c.fillRect(0,0,w,h);}
+    // inner glow (stays inside: canvas is clipped by its container / drop path)
+    const gl=c.createRadialGradient(w/2,h*1.05,2,w/2,h*.9,Math.max(w,h)*.75);
+    gl.addColorStop(0,`rgba(${r},${g},${b},${.38*s.a*pulse})`);gl.addColorStop(1,`rgba(${r},${g},${b},0)`);c.fillStyle=gl;c.fillRect(0,0,w,h);
+    c.globalCompositeOperation="lighter";
+    for(const p of this.ps){const fade=Math.min(1,p.life/30)*Math.max(0,1-p.life/p.max*.85);const a=s.a*pulse*(s.mode==="still"?.8:fade||.6);
+      const rr=p.r*3.2;const gr=c.createRadialGradient(p.x,p.y,0,p.x,p.y,rr);
+      gr.addColorStop(0,`rgba(255,255,255,${a})`);gr.addColorStop(.25,`rgba(${r},${g},${b},${a*.9})`);gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
+      c.fillStyle=gr;c.beginPath();c.arc(p.x,p.y,rr,0,Math.PI*2);c.fill();}
+    c.globalCompositeOperation="source-over";
+    if(this.o.drop){
+      const hl=c.createRadialGradient(w*.36,h*.3,2,w*.36,h*.3,w*.32);hl.addColorStop(0,"rgba(255,255,255,.42)");hl.addColorStop(1,"rgba(255,255,255,0)");c.fillStyle=hl;c.fillRect(0,0,w,h);
+      const rim=c.createLinearGradient(0,h*.75,0,h);rim.addColorStop(0,"rgba(255,255,255,0)");rim.addColorStop(1,"rgba(255,255,255,.18)");c.fillStyle=rim;c.fillRect(0,0,w,h);
+      c.restore();c.save();dropPath(c,w,h);c.lineWidth=1.2;c.strokeStyle="rgba(255,255,255,.28)";c.stroke();c.restore();}
+  }
+}
+
+const notch=document.getElementById("notch");
+const fields=[
+  {f:new Field(document.getElementById("cNotch"),{scale:.9}),e:"eNotch",live:true},
+  {f:new Field(document.getElementById("cNotchPip"),{scale:.9}),e:"eNotchPip",live:true},
+  {f:new Field(document.getElementById("cDrop"),{drop:true,scale:2.2}),e:"eDrop",live:true},
+  {f:new Field(document.getElementById("cIsl1"),{scale:.7}),e:"eIsl1",live:false},
+  {f:new Field(document.getElementById("cIsl2"),{scale:1}),e:"eIsl2",live:false}
+];
+function frozen(F){F.f.ps=[];F.f.sync();for(let i=0;i<90;i++)F.f.step(1/30);F.f.draw();}
+
+function setState(k){current=k;const s=STATES[k];
+  fields.forEach(F=>{F.f.sync();const el=document.getElementById(F.e);el.className="eyes "+s.eyes;if(!F.live||reduce)frozen(F);});
+  document.getElementById("note").innerHTML=`<b>${s.label}.</b> ${s.note}`;
+  document.querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.k===k?"true":"false"));
+  notch.classList.toggle("active",k!=="idle"&&k!=="focus"&&k!=="sleepy");
+}
+const chips=document.getElementById("chips");
+Object.entries(STATES).forEach(([k,s])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.dataset.k=k;b.style.setProperty("--c",`rgb(${s.c.join(",")})`);b.innerHTML=`<i></i>${s.label}`;b.onclick=()=>setState(k);chips.appendChild(b);});
+
+const openBtn=document.getElementById("openBtn");
+openBtn.onclick=()=>{const o=notch.classList.toggle("open");openBtn.setAttribute("aria-pressed",o);openBtn.textContent=o?"Collapse notch":"Expand notch";};
+
+if(window.ResizeObserver){const ro=new ResizeObserver(()=>fields.forEach(F=>{F.f.resize();if(!F.live||reduce)frozen(F);}));fields.forEach(F=>ro.observe(F.f.cv));}
+
+// blink, idle-like states only
+setInterval(()=>{if(reduce)return;const s=STATES[current];if(s.eyes)return;document.querySelectorAll(".eyes").forEach(e=>{e.classList.add("blink");setTimeout(()=>e.classList.remove("blink"),140);});},4200);
+
+// 30 fps cap; only fields on screen animate
+const visible=new Set();
+if(window.IntersectionObserver){const io=new IntersectionObserver(es=>es.forEach(en=>{en.isIntersecting?visible.add(en.target):visible.delete(en.target);}));fields.forEach(F=>io.observe(F.f.cv));}else fields.forEach(F=>visible.add(F.f.cv));
+let last=0;
+function loop(ts){requestAnimationFrame(loop);if(ts-last<33)return;const dt=Math.min(.05,(ts-last)/1000||.033);last=ts;
+  fields.forEach(F=>{if(!F.live||!visible.has(F.f.cv))return;F.f.step(dt);F.f.draw();});}
+setState(current);
+if(!reduce)requestAnimationFrame(loop);else fields.forEach(frozen);
+})();
+</script>
