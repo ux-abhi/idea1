@@ -151,6 +151,19 @@ One card design used across the whole system:
 - **Widgets:** Today, Next meeting, Habits (interactive checkboxes).
 - **Action Button / Siri / Shortcuts:** "Add idea", "Plan my day", "What's next?"
 
+### 5.2a Getting it onto your iPhone without the App Store
+It never needs to go on the App Store. It's a personal app, so there's no App Store review and no listing. iPhone 15 and every later model has the Dynamic Island.
+
+| Stage | Cost | How | What works | Limits |
+|---|---|---|---|---|
+| **A. Start free** | $0 | Use the assistant on iPhone through the **Claude app** (custom connector) + a **web app** saved to your Home Screen (Safari → Share → Add to Home Screen) | Chat, today, notes, to-dos, plans, approvals; **web push notifications** (iOS 16.4+) | No Dynamic Island, no widgets |
+| **B. Native app, free account** | $0 | Free Apple ID in Xcode on your Mac → plug in the iPhone (Developer Mode on) → press **Run** | Native app, widgets, Dynamic Island **when started from the app**, Face ID, Shortcuts automations (Apple Pay / SMS budget capture) | App **expires every 7 days**: plug in and press Run again (data stays). No server push, so no automatic meeting countdowns or instant mail alerts. Max 3 such apps per phone |
+| **C. Full** | $99/yr Apple Developer Program | Same app, signed for a year; install by cable or **TestFlight** | Everything: server push, automatic Dynamic Island countdowns, instant alerts | — |
+
+- **The Mac notch app is free:** it runs on your own Mac with a free account; no fee and no weekly reinstall.
+- Recommended path: build on **A + Mac notch** first, at no cost. Move to **B** when the native iPhone app is ready. Pay for **C** only when you want automatic Dynamic Island countdowns and instant alerts.
+- The backend is designed so nothing changes when you upgrade: the same app gains push features once the account is paid.
+
 ### 5.3 Claude app (Mac, iPhone, web)
 - Our backend exposes a **remote MCP server**, added in Claude under *Settings → Connectors → Add custom connector*, with an OAuth login so only you can use it.
 - Tools it exposes: `get_today`, `search_notes`, `create_note`, `list_todos`, `create_reminder`, `get_calendar`, `draft_email`, `get_budget`, `content_board`, `project_status`, …
@@ -203,7 +216,7 @@ One card design used across the whole system:
 ### 6.3 Rough running costs (estimates, to verify)
 | Item | Cost |
 |---|---|
-| Apple Developer Program | $99 / year (needed for push, Live Activities via server, TestFlight) |
+| Apple Developer Program | **Optional at first.** $0 with a free account (iPhone app reinstall every 7 days, no server push); $99 / year later for push, automatic Live Activities and TestFlight |
 | Claude API | ~$1–2 / day all on Opus 5.5 for normal use; less with Batches, caching, or Haiku for triage |
 | Supabase | Free tier to start; Pro $25/month when needed |
 | SimpleFIN Bridge (optional) | $15 / year |
@@ -267,7 +280,7 @@ Trade-off: the backend must be able to read mail and transactions to alert you w
 
 - [ ] **Banks:** exact name of "Expedia bank" (Expedia credit card? another bank?) and confirm **Commerce Bank (US)**. Turn on SMS or email transaction alerts in both. Bank sync is optional.
 - [ ] **Mail provider** behind Apple Mail: iCloud, Google Workspace (pexilim.com?), Outlook, other? (Apple Mail → Settings → Accounts.)
-- [ ] **Mac setup:** do you have Xcode installed? OK with the Apple Developer Program ($99/yr)?
+- [ ] **Mac setup:** do you have Xcode installed? (Free.) Start with a free Apple account; decide on the $99/yr program later.
 - [ ] **Claude models:** Opus 5.5 everywhere, or Haiku 5.5 for email triage to save cost?
 - [ ] **Content:** LinkedIn only for now? How often to post (daily / 3× week)?
 - [ ] **Times:** usual wake-up time and evening planning time (default 9:30 pm)?
