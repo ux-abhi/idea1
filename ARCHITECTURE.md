@@ -49,6 +49,7 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 30. Risks and things to verify on device
 31. Decision log
 32. Sellable, clean codebase
+33. Privacy model: your server, your keys
 
 ---
 
@@ -323,7 +324,7 @@ flowchart TB
     IOS[iOS app: SwiftUI + widgets + Live Activities + App Intents]
     SCUT[Shortcuts automations: Apple Pay · Message]
   end
-  subgraph Backend[Supabase project: private, single user]
+  subgraph Backend[Your own server: Supabase cloud project or self-hosted Docker]
     API[Edge Functions: app API · chat stream · ingest]
     MCP[Edge Function: MCP server for the Claude app]
     DB[(Postgres + pgvector)]
@@ -355,6 +356,8 @@ flowchart TB
   CA[Claude app] --> MCP
 ```
 
+**Privacy rule: every person runs Pip's backend on their own server with their own API keys. Pexilim runs no database and can't read anyone's data (§33).**
+
 **Main rule: the server works, the devices sleep.** All AI, mail checking, research and planning run on the backend. Devices render results and capture input.
 
 ## 13. Tech stack
@@ -372,7 +375,7 @@ flowchart TB
 | Embeddings | Supabase built-in embedding model (gte-small) in Edge Functions + Postgres full-text search | Semantic search without adding another AI provider; Claude stays the only "brain" |
 | AI | **Claude API**: Messages + tool use, structured outputs, Batches, web search tool, prompt caching, Agent Skills (code execution) | See §19 |
 | Claude app access | **Remote MCP server** (Edge Function) with OAuth | Custom connector |
-| Push | **APNs** (paid account) · **Web Push** (free stage) | See §28 |
+| Push | **Web Push** straight from your server (encrypted by standard); **APNs via an encrypted relay** for the native iPhone app | §33 |
 | Mail | **IMAP + SMTP** worker | Works with any account behind Apple Mail |
 | Money | Shortcuts (Wallet "Transaction", "Message" triggers) → App Intent → API; email alerts; **SimpleFIN** optional | No bank app connection needed |
 | Social | LinkedIn Posts API, Instagram Graph API, X API (pay-per-use), one-tap handoff for the rest | §18 |
@@ -408,7 +411,7 @@ flowchart TB
 | `mcp` Edge Function | MCP server for the Claude app (OAuth), same tools as chat |
 | `jobs` Edge Functions | Triggered by pg_cron (§21) |
 | Mail worker | IMAP fetch (poll every 2–5 min; later an always-on IDLE worker on a tiny container), SMTP send, Drafts append |
-| Push sender | APNs (alerts, Live Activity start/update/end with tokens per device), Web Push (VAPID) |
+| Push sender | Web Push (VAPID, payload encrypted end-to-end by the standard) direct from your server; native iPhone pushes go encrypted through the Pexilim relay (§33) |
 
 **Calendar on the server:** EventKit lives on the device, so the Mac/iPhone app uploads a **14-day calendar snapshot** whenever EventKit reports a change. The meeting watcher on the server works from that snapshot. This means meeting pushes work even when the phone is locked.
 
@@ -610,8 +613,8 @@ idea1/
 | Item | Cost |
 |---|---|
 | Apple Developer Program | $0 to start (free account); $99/yr for push, auto Live Activities, TestFlight |
-| Claude API | Under ~$1–2/day with the router, caching and Batches |
-| Supabase | Free tier; $25/mo Pro when needed |
+| Claude API | Under ~$1–2/day with the router, caching and Batches, billed to **your own** Anthropic key |
+| Your server | Supabase free tier, or self-hosted Docker on your own machine/VPS (≈$5–10/mo VPS); each user pays their own |
 | SimpleFIN | Optional, $15/yr |
 | LinkedIn / Instagram APIs | Free |
 | X API | Optional, ~$0.015/post |
@@ -659,7 +662,8 @@ The design is the same in every stage; stage C only switches on server push.
 | Decision | Choice | Why |
 |---|---|---|
 | Apps | Native SwiftUI (no Electron/web) | Look, battery, Apple APIs |
-| Backend | Supabase | Postgres + vectors + functions + cron + vault in one |
+| Backend | Supabase, **run by each user** (cloud project or self-hosted Docker) | Open source; same stack either way; data stays with the user |
+| Privacy | Your server, your keys; Pexilim holds no data; encrypted push relay only | Privacy even from Pexilim |
 | AI provider | Claude only, Auto router | One brain; right model per job |
 | Embeddings | Supabase built-in model + full-text | No second AI provider for the "thinking" |
 | Notes | Own system (no Apple Notes) | Full control, linking, search |
@@ -731,3 +735,80 @@ What changes only if Pip is sold to other people (not built now): Sign in with A
 **32.6 Working on your own devices**
 - Development happens on **your Mac** with Claude Code (it can build with Xcode); this cloud session is for planning.
 - Each developer installs the pinned dev skills on their own machine; the product repo stays clean.
+
+## 33. Privacy model: your server, your keys
+
+**Promise:** every person's notes, mail, calendar, money and keys live **only on a server they control**. Pexilim, the maker of Pip, runs no central database, has no admin access and **can't read anyone's data, including yours**.
+
+**33.1 Who holds what**
+
+| Thing | Where it lives | Who can see it |
+|---|---|---|
+| All Pip data (notes, tasks, mail metadata, transactions, content, memory) | **Your server** (Postgres) | You |
+| API keys and tokens (Claude, mail, social, SimpleFIN) | **Your server's Vault** | You (never shown, replace-only) |
+| Device cache | Your Mac/iPhone (encrypted by the OS, Face ID) | You |
+| AI requests | Sent from your server **directly to Anthropic** with **your own** Claude key | You + Anthropic under your account's terms |
+| Social posts | From your server directly to LinkedIn/Instagram/X with your tokens | You + the platform |
+| Push notification content | Encrypted on your server, decrypted on your phone | You |
+| Pexilim | Ships the apps and the backend package. Runs only the encrypted push relay | Device tokens, message size and timing. **No content** |
+
+```mermaid
+flowchart LR
+  subgraph You[Under your control]
+    MAC[Your Mac app]
+    IOS[Your iPhone app]
+    SRV[(Your server: Supabase cloud project or self-hosted Docker)]
+  end
+  SRV -- your Claude key --> ANT[Anthropic API]
+  SRV -- your tokens --> SOC[LinkedIn · Instagram · X]
+  SRV -- IMAP/SMTP --> MAIL[Your mail provider]
+  MAC <-- TLS --> SRV
+  IOS <-- TLS --> SRV
+  SRV -- encrypted blob --> RELAY[Pexilim push relay: sees no content] --> APNS[Apple Push] --> IOS
+  SRV -- Web Push, encrypted by standard --> WP[Browser push service] --> IOS
+```
+
+**33.2 Ways to run your server**
+
+| Mode | For | How | Cost |
+|---|---|---|---|
+| **A. Your own Supabase cloud project** (default) | Most people | Setup wizard creates the tables, functions and schedules in *your* Supabase account | Free tier, then $25/mo if needed, paid by you |
+| **B. Self-hosted** | Maximum control | Supabase's open-source Docker stack (Postgres, Auth, Realtime, Edge Functions, Vault, pg_cron) on your own VPS or home server | Your hardware or ~$5–10/mo VPS |
+| C. Managed by Pexilim (maybe later) | Non-technical buyers | A separate, isolated project per customer. **Not** zero-knowledge, so it's labelled clearly and off by default | Subscription |
+
+Your own setup (today): Mode A in **your** Supabase account. Pexilim-as-company has no access to it.
+
+**33.3 Connecting the apps to your server**
+1. Run the setup wizard (Supabase CLI) → it prints your **server address** and a **pairing QR code**.
+2. Open Pip on the Mac or iPhone → *Connect your server* → scan the QR code (or paste the address).
+3. Sign in to **your** server's own login. Each device is registered with your server, not with Pexilim.
+4. Add API keys in Pip → they go **over TLS straight to your server's Vault**, never to Pexilim. The apps show "Connected ✓" and never display keys again.
+5. Optional: certificate pinning for self-hosted servers with your own domain.
+
+**33.4 Push notifications without giving up privacy**
+- **Mac:** talks directly to your server (Realtime when awake on power, short checks on battery). No relay needed.
+- **Web app / Stage A:** Web Push from your server; the payload is encrypted end-to-end by the Web Push standard. No relay needed.
+- **Native iPhone app:** Apple only accepts pushes signed with the app maker's key, so a user's server can't push to Pexilim's app directly. Solution (the pattern Matrix's Sygnal and Mastodon's toot-relay use):
+  - your server **encrypts** each notification with a key created on your phone at pairing;
+  - the **Pexilim push relay** forwards the encrypted blob to Apple (it holds no keys, stores nothing, and logs no content);
+  - a **Notification Service Extension** on your phone decrypts it and shows the real text.
+- **Live Activities (Dynamic Island):** their push updates go straight to the widget without a decryption step on the phone. So pushed Live Activities carry **only non-sensitive fields** ("Meeting", start time, Pip's state); titles and notes are filled in from the app's encrypted local cache when the app has synced them. Full detail stays on the device.
+- **Fully relay-free option:** build and sign the iPhone app yourself with your own Apple account and APNs key. Your server then pushes directly to Apple. Documented for advanced users and Pexilim's own use.
+
+**33.5 Third-party sign-ins (OAuth)**
+- **Privacy mode (default for self-hosters):** you register your own small developer apps (LinkedIn, Meta, X). Their tokens are exchanged by your server only. Pip has a guided checklist for this.
+- **Easy mode (later, optional):** Pexilim's registered apps with PKCE and app redirect; tokens are handed from the app to *your* server and never stored by Pexilim.
+- One-tap handoff (copy and open the app) needs no sign-in at all.
+
+**33.6 Keeping the promise honest**
+- **No telemetry to Pexilim.** Crash and performance data (MetricKit) go to *your* server, and only if you switch it on.
+- **No backdoor:** no Pexilim admin account, no remote config that can read data, no hidden endpoints.
+- **Source available for audit:** the backend package ships as readable code (it runs on customers' servers anyway). It stays proprietary under the Pexilim license, but anyone can check what it does.
+- **Your data, your exit:** one-click export (JSON + Markdown), `pg_dump` backups you own, and "delete everything" that wipes your server.
+- **Version handshake:** apps check the server version and guide upgrades (migrations run by you via the wizard), so nobody is forced onto a Pexilim-run service.
+
+**33.7 Trade-offs, stated plainly**
+- AI still means your data goes to **Anthropic** under your own key and account. That's the price of a Claude-powered assistant; Pip sends only what each task needs.
+- Self-hosting means **you** are responsible for backups and updates. The wizard and health page make that simple, but it isn't zero effort.
+- Live Activity pushes show less detail than a centralised design would.
+- Optional later step: **end-to-end encryption of notes** with keys only on your devices (server-side AI search over notes is then turned off).
