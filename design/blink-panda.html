@@ -1,0 +1,321 @@
+<title>Blink Panda Look</title>
+<style>
+/* Layout: soft blue-grey canvas; panda character first, then the look tokens, then three screens (iPhone Today, Mac dashboard, Segments folders) in the referenced style. */
+:root{
+  --bg:#E9EEF4; --bg2:#F4F6F9; --surface:#FFFFFF; --fg:#111114; --muted:#6E7380; --line:#E3E7EE; --soft:#F1F3F7;
+  --ink:#0E0E10; --ink2:#1D1D21; --ink-fg:#F5F5F7; --ink-muted:#9A9AA2;
+  --accent:#3A7BF6; --accent-soft:#DCE8FE; --green:#2FA35A; --coral:#E2483A; --amber:#E39B1B; --teal:#16A3A0;
+  --eye:#FFFFFF; --eye-glow:rgba(255,255,255,.55);
+  --r:26px;
+  --sans:-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D0F13; --bg2:#14171C; --surface:#1A1D23; --fg:#F2F4F7; --muted:#9097A3; --line:#2A2E36; --soft:#20242B;
+  --accent:#5B94FF; --accent-soft:#1C2B45; --green:#4CC57A; --coral:#FF6B5C; --amber:#F2B24A; --teal:#3FD0C9; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0D0F13; --bg2:#14171C; --surface:#1A1D23; --fg:#F2F4F7; --muted:#9097A3; --line:#2A2E36; --soft:#20242B;
+  --accent:#5B94FF; --accent-soft:#1C2B45; --green:#4CC57A; --coral:#FF6B5C; --amber:#F2B24A; --teal:#3FD0C9; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:linear-gradient(180deg,var(--bg2),var(--bg));color:var(--fg);font:16px/1.5 var(--sans);padding-inline:16px;padding-block:0 80px;-webkit-font-smoothing:antialiased;min-height:100%}
+.wrap{max-width:1080px;margin:0 auto}
+h1,h2,h3{margin:0;letter-spacing:-.025em;text-wrap:balance}
+h1{font-size:clamp(2.2rem,6vw,3.6rem);line-height:1.02;font-weight:700}
+h2{font-size:clamp(1.4rem,3.2vw,1.95rem);line-height:1.12}
+h3{font-size:1rem;font-weight:600}
+p{margin:0;max-width:64ch}
+.muted{color:var(--muted)}
+.eyebrow{font:600 .72rem/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:12px;padding-block:44px 22px}
+section{display:grid;gap:20px;padding-block:44px}
+.panel{background:var(--surface);border-radius:var(--r);padding:22px;box-shadow:0 1px 0 var(--line),0 24px 50px -40px rgba(20,30,60,.35)}
+
+/* ---------- Panda (CSS 3D) ---------- */
+.panda{--s:200px;--eyec:var(--eye);--glow:var(--eye-glow);position:relative;width:var(--s);height:calc(var(--s)*.86);flex:none}
+.face{position:absolute;inset:0;border-radius:50% 50% 48% 48% / 54% 54% 46% 46%;
+  background:radial-gradient(110% 95% at 34% 22%,#FFFFFF 0%,#F4F5F8 40%,#DFE2E8 75%,#C3C8D1 100%);
+  box-shadow:inset -12px -16px 28px rgba(30,40,60,.13),inset 10px 12px 20px rgba(255,255,255,.95),0 22px 36px -20px rgba(20,30,60,.45)}
+.patch{position:absolute;top:26%;width:30%;height:38%;border-radius:50% 50% 46% 54% / 58% 58% 42% 42%;
+  background:radial-gradient(90% 80% at 40% 28%,#3B3D44 0%,#141518 55%,#050506 100%);
+  box-shadow:inset 0 2px 3px rgba(255,255,255,.12),inset 0 -4px 8px rgba(0,0,0,.6);display:grid;place-items:center;overflow:hidden}
+.patch.l{left:15%;transform:rotate(24deg)}
+.patch.r{right:15%;transform:rotate(-24deg)}
+.patch::before{content:"";position:absolute;left:16%;top:8%;width:42%;height:24%;border-radius:50%;background:linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0))}
+.peye{width:34%;height:46%;border-radius:50%;background:radial-gradient(60% 50% at 45% 35%,#FFFFFF,var(--eyec) 70%);box-shadow:0 0 10px var(--glow);transition:height .2s,border-radius .2s,background .2s}
+.patch.l .peye{transform:rotate(-14deg)}.patch.r .peye{transform:rotate(14deg)}
+.nose{position:absolute;left:50%;top:63%;width:15%;height:10%;translate:-50% 0;border-radius:46% 46% 54% 54% / 40% 40% 60% 60%;
+  background:radial-gradient(80% 70% at 40% 30%,#4A4B52,#141518 60%,#050506);box-shadow:inset 0 1px 2px rgba(255,255,255,.25),0 3px 5px -2px rgba(0,0,0,.35)}
+.nose::after{content:"";position:absolute;left:26%;top:16%;width:32%;height:30%;border-radius:50%;background:rgba(255,255,255,.35)}
+/* moods */
+.m-wide .peye{height:56%}
+.m-happy .peye{background:transparent;box-shadow:none;border-top:calc(var(--s)*.022) solid var(--eyec);border-radius:50%;height:34%;width:44%;filter:drop-shadow(0 0 4px var(--glow))}
+.m-sleepy .peye{height:9%;border-radius:6px}
+.m-teal{--eyec:#9DF3EE;--glow:rgba(63,208,201,.75)}
+.m-coral{--eyec:#FFC2BA;--glow:rgba(255,107,92,.8)}
+.m-green{--eyec:#B9F5CC;--glow:rgba(76,197,122,.8)}
+.m-amber{--eyec:#FFE3A6;--glow:rgba(242,178,74,.8)}
+@media (prefers-reduced-motion:no-preference){.blinking .peye{animation:pb 5s infinite}@keyframes pb{0%,93%,100%{scale:1 1}96%{scale:1 .1}}}
+/* notch panda: hardware black; patches become glass, nose a glossy bump */
+.npanda{--eyec:var(--eye);--glow:var(--eye-glow);position:relative;width:250px;height:64px;background:#000;border-radius:0 0 28px 28px;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:40px}
+.npanda::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.07),transparent 45%),radial-gradient(60% 120% at 50% 150%,rgba(255,255,255,.14),transparent 60%);box-shadow:inset 0 -1px 0 rgba(255,255,255,.14)}
+.npanda .patch{position:relative;top:auto;left:auto;right:auto;width:34px;height:40px;background:radial-gradient(90% 80% at 40% 28%,#2A2C33,#0D0E10 70%);box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+.npanda .nose{top:auto;bottom:10px;width:16px;height:10px;background:radial-gradient(80% 70% at 40% 30%,#3A3B42,#0A0A0C);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.stage{display:grid;place-items:center;border-radius:var(--r);background:radial-gradient(100% 90% at 50% 0%,var(--surface),var(--soft));padding:30px 16px;min-height:260px}
+.moods{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
+.mood{display:grid;justify-items:center;gap:8px;text-align:center;font-size:.85rem}
+.mood span{color:var(--muted);font-size:.78rem}
+.icons{display:flex;flex-wrap:wrap;gap:22px;align-items:end}
+.ico{width:108px;height:108px;border-radius:26px;display:grid;place-items:center;overflow:hidden;box-shadow:0 14px 26px -16px rgba(20,30,60,.5)}
+.icap{display:grid;justify-items:center;gap:8px;font-size:.82rem;color:var(--muted)}
+.two{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px;align-items:center}
+@media (max-width:820px){.two{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- Tokens ---------- */
+.tok{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.sw{border-radius:18px;padding:14px;display:grid;gap:4px;min-height:96px;align-content:end;font-size:.8rem;border:1px solid var(--line)}
+.sw b{font-size:.9rem}
+.rules{margin:0;padding-left:18px;display:grid;gap:6px}
+
+/* ---------- iPhone (wallet-style) ---------- */
+.phones{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:24px;justify-items:center}
+.phone{width:100%;max-width:330px;background:var(--surface);border-radius:46px;padding:10px;border:8px solid #111;box-shadow:0 30px 60px -36px rgba(0,0,0,.6);display:grid;gap:14px;position:relative;padding-bottom:84px}
+.hero{background:radial-gradient(120% 90% at 50% 0%,#2A2B31,#0E0E10 60%);color:var(--ink-fg);border-radius:36px;padding:18px 18px 22px;display:grid;gap:14px;justify-items:center;text-align:center}
+.htop{width:100%;display:flex;justify-content:space-between;align-items:center}
+.bell{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);display:grid;place-items:center;font-size:.9rem}
+.di{width:96px;height:28px;border-radius:999px;background:#000}
+.sel{font-size:.95rem;opacity:.9}
+.bigt{font-size:3rem;font-weight:700;letter-spacing:-.04em;line-height:1;background:linear-gradient(180deg,#FFFFFF,#A9A9B2);-webkit-background-clip:text;background-clip:text;color:transparent;font-variant-numeric:tabular-nums}
+.pills{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap}
+.pill{border:0;border-radius:999px;padding:10px 16px;font:500 .82rem var(--sans);color:var(--ink-fg);background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}
+.plus{width:52px;height:52px;border-radius:50%;padding:0;font-size:1.5rem;background:rgba(255,255,255,.08)}
+.sync{font-size:.76rem;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.sync i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#4CC57A;margin-right:6px;vertical-align:middle}
+.sec{display:flex;justify-content:space-between;align-items:center;padding:0 8px;font-size:.95rem}
+.sec span{color:var(--muted);font-size:.85rem}
+.rows{display:grid;gap:10px;padding:0 4px}
+.rowc{display:flex;align-items:center;gap:12px;background:var(--soft);border-radius:20px;padding:12px;min-width:0}
+.rowc.x{padding:0;overflow:hidden;background:var(--soft)}
+.rowc .spark{background:#0E0E10;color:#F5F5F7;padding:12px;display:grid;gap:2px;min-width:104px;border-radius:20px 0 0 20px}
+.rowc .spark b{font-size:1rem}
+.rowc .spark small{opacity:.6;font-size:.7rem}
+.av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:.8rem;color:#fff;flex:none}
+.rowc .t{display:grid;flex:1;min-width:0}
+.rowc .t small{color:var(--muted);font-size:.76rem}
+.rowc .v{font-weight:600;font-size:.9rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tabbar{position:absolute;left:50%;bottom:18px;translate:-50% 0;background:#0E0E10;border-radius:999px;padding:8px;display:flex;gap:6px;box-shadow:0 10px 24px -10px rgba(0,0,0,.6)}
+.tabbar span{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;color:#9A9AA2;font-size:.9rem}
+.tabbar span.on{background:#2A2B31;color:#fff}
+
+/* ---------- Mac (mail-style) ---------- */
+.mac{border-radius:34px;background:linear-gradient(160deg,color-mix(in srgb,var(--accent) 10%,var(--bg2)),var(--bg));padding:16px;display:grid;grid-template-columns:64px minmax(0,1fr) minmax(0,.9fr);gap:14px;box-shadow:0 30px 60px -40px rgba(20,30,60,.5);border:1px solid var(--line)}
+.rail{display:grid;gap:10px;align-content:start;justify-items:center;padding-top:4px}
+.rb{width:48px;height:48px;border-radius:50%;background:var(--surface);display:grid;place-items:center;font-size:.95rem;color:var(--muted);box-shadow:0 1px 0 var(--line)}
+.rb.on{background:#0E0E10;color:#fff}
+.col{display:grid;gap:12px;align-content:start;min-width:0}
+.search{background:var(--surface);border-radius:999px;padding:12px 18px;color:var(--muted);font-size:.88rem;display:flex;justify-content:space-between}
+.mc{background:var(--surface);border-radius:28px;padding:16px;display:grid;gap:10px;min-width:0}
+.mh{display:flex;align-items:center;gap:10px}
+.mh .who{display:grid;font-size:.86rem;line-height:1.25;flex:1;min-width:0}
+.mh .who small{color:var(--muted)}
+.arrow{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;color:var(--muted);font-size:.85rem}
+.mc b.title{font-size:1.05rem;letter-spacing:-.01em}
+.rich{border-radius:22px;padding:14px;background:linear-gradient(135deg,#FCEFE3,#F6DCC8);color:#2A1A10;display:grid;gap:10px;position:relative;overflow:hidden}
+.rich .chips{display:flex;gap:8px;flex-wrap:wrap}
+.rich .chips span{background:#1D1D21;color:#fff;border-radius:999px;padding:6px 11px;font-size:.74rem;font-weight:600}
+.rich .big{position:absolute;right:10px;bottom:-8px;opacity:.9}
+.side{background:var(--surface);border-radius:28px;padding:18px;display:grid;gap:14px;align-content:start;min-width:0}
+.statc{border:1px solid var(--line);border-radius:18px;padding:12px 14px;display:grid;gap:6px}
+.statc small{color:var(--muted);font-size:.78rem}
+.statc b{font-size:1.35rem;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%}
+.kv{display:flex;justify-content:space-between;font-size:.86rem}
+.kv span:first-child{color:var(--muted)}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tags span{border:1px solid var(--line);border-radius:8px;padding:3px 8px;font-size:.74rem}
+.ask{border-radius:20px;background:var(--soft);padding:12px;display:grid;gap:8px;font-size:.86rem}
+.btns{display:flex;gap:6px;flex-wrap:wrap}
+.btns span{border-radius:999px;padding:6px 12px;font-size:.76rem;font-weight:600;border:1px solid var(--line);background:var(--surface)}
+.btns span.p{background:#0E0E10;color:#fff;border-color:#0E0E10}
+@media (max-width:900px){.mac{grid-template-columns:minmax(0,1fr)}.rail{grid-auto-flow:column;justify-content:start;overflow-x:auto}}
+
+/* ---------- Segments (folder cards) ---------- */
+.seg{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px}
+@media (max-width:900px){.seg{grid-template-columns:minmax(0,1fr)}}
+.folders{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+.fold{position:relative;border-radius:24px;padding:58px 16px 16px;min-height:170px;display:grid;gap:4px;align-content:end;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 60%,var(--soft)),var(--soft));box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 1px 0 var(--line)}
+.fold::before{content:"";position:absolute;left:14px;right:14px;top:14px;height:46px;border-radius:12px;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.fold::after{content:"";position:absolute;left:0;top:0;width:44%;height:22px;border-radius:24px 12px 0 0;background:inherit;filter:brightness(.98)}
+.fold b{font-size:1rem}
+.fold small{color:var(--muted);font-size:.8rem}
+.fold .ring{position:absolute;right:16px;bottom:16px;width:26px;height:26px;border-radius:50%;background:conic-gradient(var(--c) calc(var(--p)*1%),var(--line) 0)}
+.fold.on{background:linear-gradient(180deg,#7FAAFB,var(--accent));color:#fff;box-shadow:0 18px 30px -18px color-mix(in srgb,var(--accent) 80%,transparent)}
+.fold.on small{color:rgba(255,255,255,.8)}
+.fold.on::before{background:rgba(255,255,255,.85)}
+footer{padding-top:22px;border-top:1px solid var(--line);font-size:.85rem;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Blink · design round 3 · example data</span>
+  <h1>Panda Blink, in the look you picked</h1>
+  <p class="muted">A 3D panda face with only eyes and nose, and the app restyled after your three references: the black hero card and floating tab bar, soft rounded cards with a round icon rail, and clean folder cards with an info panel.</p>
+</header>
+
+<section aria-labelledby="pd">
+  <span class="eyebrow">Mascot</span>
+  <h2 id="pd">A panda face, nothing else</h2>
+  <div class="two">
+    <div class="stage"><div class="panda blinking" style="--s:240px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div></div>
+    <div style="display:grid;gap:12px">
+      <p>A soft white 3D face with two glossy black eye patches, glowing eyes inside them, and a small shiny nose. No ears, no mouth. The eyes still blink and still carry the mood colour.</p>
+      <ul class="rules muted">
+        <li>The patches tilt outward like a real panda; the eyes inside keep the slight tilt from round 1.</li>
+        <li>Mood shows in the eyes only: colour and shape. The face never changes, so it stays calm.</li>
+        <li>In the notch the black hardware is the face, so the patches become dark glass with the eyes and a glossy nose bump inside.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="moods">
+    <div class="mood"><div class="panda blinking" style="--s:110px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div>Rest<span>White eyes, slow blink</span></div>
+    <div class="mood"><div class="panda m-wide m-teal" style="--s:110px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div>Heads-up<span>Teal, wide</span></div>
+    <div class="mood"><div class="panda m-wide m-coral" style="--s:110px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div>Important<span>Coral, wide</span></div>
+    <div class="mood"><div class="panda m-happy m-green" style="--s:110px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div>Done<span>Green, smiling eyes</span></div>
+    <div class="mood"><div class="panda m-sleepy m-amber" style="--s:110px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div>Sleepy<span>Amber, half-closed</span></div>
+  </div>
+  <div class="two">
+    <div class="stage" style="background:#1B1D22"><div class="npanda blinking"><div class="patch"><i class="peye"></i></div><div class="patch"><i class="peye"></i></div><div class="nose" style="left:50%"></div></div></div>
+    <div class="icons">
+      <div class="icap"><div class="ico" style="background:linear-gradient(160deg,#8FB6FF,#3A7BF6)"><div class="panda" style="--s:78px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div></div>Blue</div>
+      <div class="icap"><div class="ico" style="background:linear-gradient(180deg,#26272C,#0B0B0D)"><div class="panda" style="--s:78px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div></div>Dark</div>
+      <div class="icap"><div class="ico" style="background:linear-gradient(180deg,#FFFFFF,#E8ECF2)"><div class="panda" style="--s:78px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div></div>Light</div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="lk">
+  <span class="eyebrow">Look and feel</span>
+  <h2 id="lk">What we took from your references</h2>
+  <div class="tok">
+    <div class="sw" style="background:#0E0E10;color:#F5F5F7;border-color:#0E0E10"><b>Ink</b>Hero cards, primary buttons, tab bar</div>
+    <div class="sw" style="background:var(--surface)"><b>Surface</b>Cards, very rounded</div>
+    <div class="sw" style="background:linear-gradient(180deg,var(--bg2),var(--bg))"><b>Canvas</b>Soft blue-grey wash</div>
+    <div class="sw" style="background:var(--accent);color:#fff;border-color:var(--accent)"><b>Blue</b>The one accent: selection, focus</div>
+    <div class="sw" style="background:linear-gradient(135deg,#FCEFE3,#F6DCC8);color:#2A1A10"><b>Rich card</b>Warm tint for one special card</div>
+  </div>
+  <ul class="rules">
+    <li><b>From the wallet app:</b> a black hero card with one big number, pill buttons with a round “+” in the middle, a status chip, and a floating dark tab bar.</li>
+    <li><b>From the mail app:</b> a soft gradient canvas, round icon rail, pill search, cards with 28px corners, and one “rich” card with chips inside.</li>
+    <li><b>From Kintsugi:</b> folder cards for spaces, one highlighted in blue, and a right info panel with stat cards, properties and tags.</li>
+    <li><b>Kept from Apple:</b> the system font, generous spacing, colour only where it means something.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="ip">
+  <span class="eyebrow">iPhone</span>
+  <h2 id="ip">Today, wallet-style</h2>
+  <div class="phones">
+    <div class="phone" aria-label="iPhone Today screen">
+      <div class="hero">
+        <div class="htop"><div class="panda" style="--s:40px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div><span class="di"></span><span class="bell">◔</span></div>
+        <span class="sel">Today ⌄</span>
+        <span class="bigt">12 min</span>
+        <span style="opacity:.8;font-size:.92rem">until Design sync · Priya</span>
+        <div class="pills"><button class="pill" type="button">↙ Capture</button><button class="pill plus" type="button" aria-label="New">+</button><button class="pill" type="button">↗ Ask</button></div>
+        <span class="sync"><i></i>Synced · your server</span>
+      </div>
+      <div class="sec"><b>Segments</b><span>View all ⌄</span></div>
+      <div class="rows">
+        <div class="rowc x"><div class="spark"><b>40%</b><small>3 days to design</small></div><div class="t" style="padding:10px 0"><b>Pexilim website</b><small>2 tasks left</small></div><span class="v" style="padding-right:12px">Nov 30</span></div>
+        <div class="rowc"><span class="av" style="background:var(--coral)">BB</span><div class="t"><b>Blink beta</b><small>Waitlist page due Dec 10</small></div><span class="v">20%</span></div>
+        <div class="rowc"><span class="av" style="background:var(--teal)">AC</span><div class="t"><b>Acme Studio</b><small>Invoice due in 5 days</small></div><span class="v">$3,200</span></div>
+      </div>
+      <div class="tabbar"><span class="on">◉</span><span>▤</span><span>$</span><span>◍</span></div>
+    </div>
+    <div class="phone" aria-label="iPhone money screen">
+      <div class="hero">
+        <div class="htop"><div class="panda m-green m-happy" style="--s:40px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div><span class="di"></span><span class="bell">◔</span></div>
+        <span class="sel">This week ⌄</span>
+        <span class="bigt">$412</span>
+        <span style="opacity:.8;font-size:.92rem">of $600 · on track</span>
+        <div class="pills"><button class="pill" type="button">↙ Add</button><button class="pill plus" type="button" aria-label="New">+</button><button class="pill" type="button">↗ Budgets</button></div>
+        <span class="sync"><i></i>Apple Pay · SMS · email</span>
+      </div>
+      <div class="sec"><b>Recent</b><span>View all ⌄</span></div>
+      <div class="rows">
+        <div class="rowc"><span class="av" style="background:#2FA35A">WF</span><div class="t"><b>Whole Foods</b><small>Food · Apple Pay</small></div><span class="v">$42.10</span></div>
+        <div class="rowc"><span class="av" style="background:#3A7BF6">UB</span><div class="t"><b>Uber</b><small>Transport · bank SMS</small></div><span class="v">$18.40</span></div>
+        <div class="rowc"><span class="av" style="background:#E39B1B">FG</span><div class="t"><b>Figma</b><small>Work · email alert</small></div><span class="v">$15.00</span></div>
+      </div>
+      <div class="tabbar"><span>◉</span><span>▤</span><span class="on">$</span><span>◍</span></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="mc">
+  <span class="eyebrow">Mac</span>
+  <h2 id="mc">Dashboard, mail-style</h2>
+  <div class="mac" aria-label="Mac dashboard">
+    <nav class="rail" aria-label="Sections"><div class="panda blinking" style="--s:44px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div><span class="rb on">◉</span><span class="rb">✉</span><span class="rb">◷</span><span class="rb">✎</span><span class="rb">▤</span><span class="rb">$</span><span class="rb" style="margin-top:20px">⚙</span></nav>
+    <div class="col">
+      <div class="search"><span>⌕ Ask Blink or search</span><span>⌥Space</span></div>
+      <div class="mc">
+        <div class="mh"><span class="av" style="background:#3A7BF6">PR</span><div class="who"><b>Priya Rao</b><small>Design sync · 15:00–15:30</small></div><span class="arrow">↗</span></div>
+        <b class="title">Pexilim homepage review</b>
+        <div class="rich"><div style="display:grid;gap:2px"><b>Notes ready</b><small>2 linked notes · last email Tue</small></div><div class="chips"><span>Join in 12 min</span><span>Open notes ↗</span></div><div class="big"><div class="panda m-wide m-teal" style="--s:64px"><div class="face"></div><div class="patch l"><i class="peye"></i></div><div class="patch r"><i class="peye"></i></div><div class="nose"></div></div></div></div>
+      </div>
+      <div class="mc">
+        <div class="mh"><span class="av" style="background:#16A3A0">DR</span><div class="who"><b>Dana Ruiz</b><small>Acme Studio · 9:12</small></div><span class="arrow">↗</span></div>
+        <b class="title">October report?</b><span class="muted" style="font-size:.86rem">Asks for the report by Friday. Blink drafted a reply from your notes.</span>
+      </div>
+      <div class="mc">
+        <div class="mh"><span class="av" style="background:#E39B1B">BL</span><div class="who"><b>Blink</b><small>Tonight · 21:30</small></div><span class="arrow">↗</span></div>
+        <b class="title">Plan tomorrow</b><div class="bar"><i style="width:60%;background:var(--accent)"></i></div>
+      </div>
+    </div>
+    <aside class="side" aria-label="Today details">
+      <div style="display:flex;justify-content:space-between;align-items:center"><h3>Today</h3><span class="muted">»</span></div>
+      <div class="statc"><small>Focus time left</small><b>90 min</b><div class="bar"><i style="width:62%;background:var(--accent)"></i></div></div>
+      <div class="statc"><small>Spent this week</small><b>$412</b><div class="bar"><i style="width:69%;background:var(--coral)"></i></div></div>
+      <h3>Properties</h3>
+      <div class="kv"><span>Next deadline</span><b>Design · Nov 1</b></div>
+      <div class="kv"><span>Workout streak</span><b>4 days</b></div>
+      <div class="kv"><span>Waiting for you</span><b>2</b></div>
+      <h3>Tags</h3>
+      <div class="tags"><span>● Work</span><span>● Personal</span><span>● Pexilim</span></div>
+      <div class="ask"><b>Reply to Dana?</b><span class="muted">“Report attached, happy to walk through it.”</span><div class="btns"><span class="p">Do it</span><span>Edit</span><span>Later</span></div></div>
+    </aside>
+  </div>
+</section>
+
+<section aria-labelledby="sg">
+  <span class="eyebrow">Segments</span>
+  <h2 id="sg">Spaces as folder cards</h2>
+  <div class="seg">
+    <div class="panel" style="display:grid;gap:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="font-size:1.3rem">Segments</h3><span class="btns"><span class="p">+ New segment</span></span></div>
+      <div class="folders">
+        <div class="fold on" style="--p:40;--c:#fff"><b>Pexilim website</b><small>Project · 9 tasks</small><small>Nov 30</small><span class="ring" style="background:conic-gradient(#fff 40%,rgba(255,255,255,.35) 0)"></span></div>
+        <div class="fold" style="--p:20;--c:var(--coral)"><b>Blink beta</b><small>Launch · 12 tasks</small><small>Jan 15</small><span class="ring"></span></div>
+        <div class="fold" style="--p:65;--c:var(--teal)"><b>Acme Studio</b><small>Client · 4 tasks</small><small>Retainer</small><span class="ring"></span></div>
+        <div class="fold" style="--p:55;--c:var(--green)"><b>Lisbon</b><small>Trip · 6 items</small><small>Mar 14</small><span class="ring"></span></div>
+        <div class="fold" style="--p:30;--c:var(--amber)"><b>Statistics 201</b><small>Course · exam Dec 12</small><small>58 days</small><span class="ring"></span></div>
+        <div class="fold" style="--p:70;--c:var(--accent)"><b>Home</b><small>Family · 3 shared</small><small>Ongoing</small><span class="ring"></span></div>
+      </div>
+    </div>
+    <aside class="panel" style="display:grid;gap:12px;align-content:start" aria-label="Segment info">
+      <div style="display:flex;justify-content:space-between"><h3>Info</h3><span class="muted">»</span></div>
+      <div class="statc"><small>Progress</small><b>40%</b><div class="bar"><i style="width:40%;background:var(--accent)"></i></div></div>
+      <div class="statc"><small>Budget used</small><b>$180 / $600</b><div class="bar"><i style="width:30%;background:var(--green)"></i></div></div>
+      <h3>Properties</h3>
+      <div class="kv"><span>Template</span><b>Project</b></div>
+      <div class="kv"><span>Next reminder</span><b>Mon 10:00</b></div>
+      <div class="kv"><span>Created</span><b>Oct 10</b></div>
+      <h3>Tags</h3>
+      <div class="tags"><span>● Pexilim</span><span>● Design</span><span>● Q4</span></div>
+    </aside>
+  </div>
+</section>
+
+<footer>Blink design round 3 for Pexilim · concept art, not the app · names, people and figures are examples.</footer>
+</div>

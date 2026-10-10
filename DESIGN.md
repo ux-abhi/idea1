@@ -53,6 +53,13 @@ Interactive study: [Blink Notch Studio](https://claude.ai/artifact/SDNx2J5QPNrac
   ╰──────────────────────────────╯      light particles + glass sheen inside only
 ```
 
+### Look v3: panda Blink + reference aesthetic (design round 3, current)
+Interactive page: [Blink Panda Look](design/blink-panda.html). Supersedes v1/v2 where they differ.
+- **Mascot:** 3D panda face with **only eyes and nose**: soft white glossy face, two glossy black eye patches tilted outward, glowing eyes inside (slight tilt and blink kept), small shiny nose. No ears, no mouth. Mood = eye colour and shape only (white rest, teal heads-up, coral important, green done with smiling eyes, amber sleepy).
+- **Notch:** the black hardware is the face; patches become dark glass holding the eyes, plus a glossy nose bump. Glow stays inside.
+- **Icons:** blue, dark and light backgrounds with the white panda face.
+- **Aesthetic (from the references):** soft blue-grey canvas; very rounded white cards (≈26–28px); **ink-black hero card** with one big number, pill buttons with a round "+", status chip and a **floating dark tab bar** (iPhone); **round icon rail**, pill search and one warm "rich" card (Mac); **folder cards** for Segments with one highlighted in blue and a right **info panel** with stat cards, properties and tags. One accent (blue); semantic colours only for status; system font.
+
 ### Look v2: 3D visor (design round 2)
 Interactive page: [Blink Wireframes](design/blink-wireframes.html).
 - **Visor Blink (main):** glossy white shell, **black glass visor**, warm glowing oval eyes (slight tilt kept). The visor and the notch are the same idea: on the Mac, the notch *is* Blink's visor.
