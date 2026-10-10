@@ -53,6 +53,15 @@ Interactive study: [Blink Notch Studio](https://claude.ai/artifact/SDNx2J5QPNrac
   ╰──────────────────────────────╯      light particles + glass sheen inside only
 ```
 
+### Look v4: glossy bot + panda duo-tone eyes, notch system (current)
+Interactive page: [Blink Notch System](design/blink-notch-system.html). Supersedes v3's panda face where they differ.
+- **Mascot:** the white glossy 3D shell (from the robot/bubble references) with the panda's **duo-tone eyes**: black glass patches with light eyes inside. **No nose, no mouth.** Mood = eye tint and shape (white rest, teal heads-up, coral important, blue thinking, green done ∩∩, amber sleepy, closed in focus).
+- **Notch:** the hardware is the patch, so only the two light eyes show; glow, particles and sheen stay inside.
+- **Notch states:** Rest (eyes + waiting dot) · Peek (one line + countdown) · Ask-First card · Glance (4 tiles) · Chat (⌥Space, "/" commands, hold to talk) · Focus strip · Done (∩∩ + Undo) · Drop zone.
+- **Tiles (dark widget style):** next-meeting ring, focus bar, today's spending stack, week bars, habit streak, segment ring, important mail, Ask/Capture actions, "+ add", saved/budget, day-load gauge, content KPIs. One big number per tile.
+- **Commands:** hover = peek, click = open, ⌥Space = chat, ⌥G = glance, ⌘⏎ approve, ⌘E edit, ⌘L later, Esc dismiss, ⌘Z undo, ⌥N capture, force-click = talk, right-click menu, double-click = open app; chat commands /remind /note /focus /spent /plan /segment /post /model.
+- **Motion:** interruptible springs (peek 0.35 s/0.82, open 0.45 s/0.78, close 0.38 s/0.9), shape first then content, 30 ms stagger, blink 90/120 ms, rolling digits, ring trims 600 ms on change only, haptic on approve; Reduce Motion = crossfades; nothing redraws at rest.
+
 ### Look v3: panda Blink + reference aesthetic (design round 3, current)
 Interactive page: [Blink Panda Look](design/blink-panda.html). Supersedes v1/v2 where they differ.
 - **Mascot:** 3D panda face with **only eyes and nose**: soft white glossy face, two glossy black eye patches tilted outward, glowing eyes inside (slight tilt and blink kept), small shiny nose. No ears, no mouth. Mood = eye colour and shape only (white rest, teal heads-up, coral important, green done with smiling eyes, amber sleepy).

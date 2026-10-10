@@ -1,0 +1,352 @@
+<title>Blink Notch System</title>
+<style>
+/* Layout: one dark, deliberately single-theme canvas (the notch lives in black). Live notch demo on top, then mascot, tile library, commands, utilities, motion spec. */
+:root{
+  color-scheme:dark;
+  --bg:#050506; --panel:#0E0E11; --tile:#17171B; --tile2:#1F1F24; --line:#2A2A30;
+  --fg:#F4F4F6; --muted:#8C8C95; --dim:#5A5A62;
+  --teal:#34E0D2; --green:#4BE37A; --lime:#A6F04B; --coral:#FF5A47; --amber:#FFB43A; --blue:#4D8DFF; --violet:#8C5BFF; --pink:#FF4F8B;
+  --sans:-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --spring:cubic-bezier(.32,.72,0,1);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--sans);padding-inline:16px;padding-block:0 80px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1100px;margin:0 auto}
+h1,h2,h3{margin:0;letter-spacing:-.025em;text-wrap:balance}
+h1{font-size:clamp(2.2rem,6vw,3.6rem);line-height:1.02}
+h2{font-size:clamp(1.4rem,3.2vw,1.95rem);line-height:1.12}
+h3{font-size:1rem;font-weight:600}
+p{margin:0;max-width:66ch}
+.muted{color:var(--muted)}
+.eyebrow{font:600 .72rem/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:12px;padding-block:44px 20px}
+section{display:grid;gap:20px;padding-block:44px;border-top:1px solid var(--line)}
+button{font:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+
+/* ---------- Mascot: glossy shell + panda duo-tone eyes (no nose) ---------- */
+.bot{--s:200px;--eye:#FFFFFF;--glow:rgba(255,255,255,.55);position:relative;width:var(--s);height:calc(var(--s)*.84);flex:none}
+.shell{position:absolute;inset:0;border-radius:50% 50% 44% 44% / 58% 58% 42% 42%;
+  background:radial-gradient(115% 95% at 32% 18%,#FFFFFF 0%,#F2F3F6 38%,#D8DBE2 72%,#AEB3BE 100%);
+  box-shadow:inset -12px -16px 28px rgba(0,0,0,.16),inset 10px 12px 20px rgba(255,255,255,.95),0 24px 40px -22px rgba(0,0,0,.8)}
+.shell::after{content:"";position:absolute;left:18%;top:8%;width:38%;height:18%;border-radius:50%;background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(255,255,255,0))}
+.patch{position:absolute;top:30%;width:31%;height:42%;border-radius:50% 50% 46% 54% / 58% 58% 42% 42%;
+  background:radial-gradient(90% 80% at 40% 26%,#3A3C44 0%,#121316 55%,#030304 100%);
+  box-shadow:inset 0 2px 3px rgba(255,255,255,.14),inset 0 -5px 9px rgba(0,0,0,.65);display:grid;place-items:center;overflow:hidden}
+.patch.l{left:14%;transform:rotate(22deg)}.patch.r{right:14%;transform:rotate(-22deg)}
+.patch::before{content:"";position:absolute;left:16%;top:8%;width:44%;height:24%;border-radius:50%;background:linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0))}
+.eye{width:36%;height:48%;border-radius:50%;background:radial-gradient(60% 50% at 45% 32%,#FFFFFF,var(--eye) 72%);box-shadow:0 0 12px var(--glow);transition:height .18s var(--spring),width .18s var(--spring),border-radius .18s,background .25s,box-shadow .25s}
+.patch.l .eye{transform:rotate(-14deg)}.patch.r .eye{transform:rotate(14deg)}
+.e-wide .eye{height:58%}
+.e-up .eye{translate:0 -18%}
+.e-happy .eye{background:transparent;box-shadow:none;border-top:calc(var(--s)*.024) solid var(--eye);height:36%;width:46%;filter:drop-shadow(0 0 4px var(--glow))}
+.e-sleepy .eye{height:9%;border-radius:6px}
+.e-closed .eye{height:6%;border-radius:4px;opacity:.7}
+.c-teal{--eye:#A8F7F0;--glow:rgba(52,224,210,.8)}.c-coral{--eye:#FFC6BE;--glow:rgba(255,90,71,.85)}.c-green{--eye:#C2F8D2;--glow:rgba(75,227,122,.85)}.c-amber{--eye:#FFE2A8;--glow:rgba(255,180,58,.85)}.c-blue{--eye:#CFE0FF;--glow:rgba(77,141,255,.85)}
+@media (prefers-reduced-motion:no-preference){.blink .eye{animation:bk 5.2s infinite}@keyframes bk{0%,93%,100%{scale:1 1}95.5%{scale:1 .08}}}
+.mstage{display:grid;place-items:center;border-radius:28px;background:radial-gradient(90% 90% at 50% 0%,#1A1A20,#08080A);padding:30px 16px;min-height:260px;border:1px solid var(--line)}
+.moods{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:14px}
+.md{display:grid;justify-items:center;gap:6px;font-size:.85rem;text-align:center}
+.md span{color:var(--muted);font-size:.76rem}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:center}
+@media (max-width:820px){.two{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- Live notch demo ---------- */
+.screen{position:relative;border-radius:22px 22px 10px 10px;background:radial-gradient(120% 90% at 20% 0%,#1D2030,#0B0C10 60%);border:1px solid var(--line);min-height:330px;overflow:hidden}
+.menubar{display:flex;justify-content:space-between;padding:8px 16px;font-size:.76rem;color:#C9C9CF}
+.nwrap{position:absolute;left:50%;top:0;translate:-50% 0}
+.nwrap::before,.nwrap::after{content:"";position:absolute;top:0;width:12px;height:12px;background:radial-gradient(circle at 0 100%,transparent 11.5px,#000 12px)}
+.nwrap::before{left:-12px;transform:scaleX(-1)}.nwrap::after{right:-12px}
+.notch{--w:200px;--h:34px;--r:14px;position:relative;width:var(--w);height:var(--h);background:#000;border-radius:0 0 var(--r) var(--r);overflow:hidden;isolation:isolate;
+  transition:width .5s var(--spring),height .5s var(--spring),border-radius .5s var(--spring)}
+.notch::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:5;
+  background:linear-gradient(180deg,rgba(255,255,255,.06),transparent 40%),radial-gradient(60% 90% at 50% 140%,var(--nglow,transparent),transparent 65%);
+  box-shadow:inset 0 -1px 0 rgba(255,255,255,.13),inset 0 0 0 .5px rgba(255,255,255,.05);transition:background .4s}
+.pane{position:absolute;inset:0;opacity:0;transform:scale(.96) translateY(-6px);transition:opacity .18s ease,transform .32s var(--spring);pointer-events:none;padding:30px 16px 14px}
+.pane.on{opacity:1;transform:none;transition-delay:.14s;pointer-events:auto}
+.pane.rest{padding:0;display:flex;align-items:center;justify-content:center;gap:10px}
+.neyes{display:flex;gap:9px;align-items:center}
+.neyes i{width:7px;height:15px;border-radius:9px;background:#fff;box-shadow:0 0 8px rgba(255,255,255,.6)}
+.neyes i:first-child{transform:rotate(14deg)}.neyes i:last-child{transform:rotate(-14deg)}
+.neyes.teal i{background:#A8F7F0;box-shadow:0 0 8px rgba(52,224,210,.9)}
+.neyes.coral i{background:#FFC6BE;box-shadow:0 0 8px rgba(255,90,71,.9)}
+.neyes.green i{background:#C2F8D2;box-shadow:0 0 8px rgba(75,227,122,.9)}
+@media (prefers-reduced-motion:no-preference){.neyes.blink i{animation:bk 4.6s infinite}}
+.dotu{position:absolute;right:18px;width:6px;height:6px;border-radius:50%;background:var(--coral);box-shadow:0 0 6px var(--coral)}
+.pane.peek{padding:0 14px;display:flex;align-items:center;gap:10px;font-size:.8rem}
+.peek .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.peek .cd{font:600 .8rem var(--mono);color:var(--teal)}
+.row{display:flex;align-items:center;gap:12px}
+.ask b{font-size:.98rem}
+.ask .s{color:var(--muted);font-size:.82rem}
+.pbtn{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.pbtn button{border:0;border-radius:999px;padding:7px 13px;font-size:.76rem;font-weight:600;color:var(--fg);background:rgba(255,255,255,.1);box-shadow:inset 0 .5px 0 rgba(255,255,255,.16);transition:transform .12s var(--spring),background .2s}
+.pbtn button:active{transform:scale(.94)}
+.pbtn button.p{background:var(--fg);color:#000}
+.kbd{font:500 .66rem var(--mono);color:var(--dim);margin-left:4px}
+.glgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;height:100%}
+.chatin{display:flex;gap:8px;align-items:center;background:rgba(255,255,255,.07);border-radius:14px;padding:10px 12px;color:var(--muted);font-size:.84rem}
+.chatin .caret{width:2px;height:16px;background:var(--teal);animation:cr 1s steps(2) infinite}@keyframes cr{50%{opacity:0}}
+.sugs{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.sugs span{border-radius:999px;padding:5px 10px;font-size:.72rem;background:rgba(255,255,255,.07);color:#D6D6DC}
+.focusbar{height:8px;border-radius:8px;background:#26262C;overflow:hidden;flex:1}
+.focusbar i{display:block;height:100%;width:62%;background:linear-gradient(90deg,#1BB8AC,var(--teal));box-shadow:0 0 10px var(--teal)}
+.controls{display:grid;gap:10px;padding-top:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:0;border-radius:999px;padding:8px 14px;font-size:.84rem;font-weight:500;background:var(--tile);color:var(--fg);box-shadow:inset 0 0 0 1px var(--line)}
+.chip[aria-pressed="true"]{background:var(--fg);color:#000}
+.cap{font-size:.92rem}
+
+/* ---------- Tiles ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.tile{position:relative;background:linear-gradient(180deg,var(--tile2),var(--tile));border-radius:26px;padding:16px;min-height:170px;display:grid;gap:8px;align-content:start;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 0 #000}
+.tile.sm{border-radius:16px;padding:10px;min-height:0;gap:4px}
+.k{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.big{font-size:2rem;font-weight:700;line-height:1}
+.sm .big{font-size:1.15rem}
+.sub{font-size:.8rem;color:var(--muted)}
+.sm .sub,.sm .k{font-size:.6rem}
+.ringwrap{position:relative;display:grid;place-items:center}
+.ringwrap svg{width:100%;max-width:150px;height:auto;display:block}
+.ringwrap .c{position:absolute;display:grid;justify-items:center;text-align:center;line-height:1.1}
+.bars{display:flex;align-items:end;gap:6px;height:64px}
+.bars i{flex:1;border-radius:5px;background:#33333A;min-height:4px}
+.bars i.on{background:var(--green);box-shadow:0 0 10px rgba(75,227,122,.6)}
+.days{display:flex;gap:6px;font-size:.62rem;color:var(--dim)}
+.days span{flex:1;text-align:center}
+.days span.on{color:#000;background:var(--green);border-radius:4px;font-weight:700}
+.stack{display:flex;height:14px;border-radius:8px;overflow:hidden;gap:2px}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;font-size:.72rem;color:#C9C9CF}
+.legend i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.lbar{height:10px;border-radius:10px;background:#26262C;overflow:hidden}
+.lbar i{display:block;height:100%;border-radius:10px}
+.avs{display:flex}
+.avs span{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:.6rem;font-weight:700;margin-left:-6px;box-shadow:0 0 0 2px var(--tile)}
+.avs span:first-child{margin-left:0}
+.qa{display:grid;gap:8px}
+.qa div{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.05);border-radius:14px;padding:9px 10px;font-size:.78rem;font-weight:600;letter-spacing:.04em}
+.qa i{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:.8rem}
+.plusc{width:66px;height:66px;border-radius:50%;display:grid;place-items:center;font-size:1.8rem;color:#D6D6DC;background:radial-gradient(circle,#2A2A30,#1C1C21);box-shadow:inset 0 0 0 1px #33333A;justify-self:center;margin:6px 0}
+.grad{background:linear-gradient(160deg,#7C8CFF,#5B3DF5);}
+.grad .k,.grad .sub{color:rgba(255,255,255,.8)}
+.pills2{display:flex;gap:6px}
+.pills2 span{flex:1;text-align:center;border-radius:999px;padding:6px 0;font-size:.74rem;font-weight:600}
+.trend-up{background:rgba(75,227,122,.15);color:var(--green)}.trend-dn{background:rgba(255,90,71,.15);color:var(--coral)}
+.arrowc{position:absolute;right:14px;top:14px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#000;font-weight:700}
+.wave{position:absolute;right:0;bottom:0;width:60%;height:55%;border-radius:40% 0 0 0;opacity:.55}
+
+/* ---------- Tables ---------- */
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:18px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:.88rem;min-width:640px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px;border-bottom:1px solid var(--line)}
+th{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+td code{font-family:var(--mono);font-size:.8rem;color:var(--teal)}
+kbd{font-family:var(--mono);font-size:.76rem;padding:2px 6px;border-radius:6px;background:var(--tile2);box-shadow:inset 0 -1px 0 #000;color:#E6E6EA;white-space:nowrap}
+.rules{margin:0;padding-left:18px;display:grid;gap:7px}
+footer{padding-top:22px;border-top:1px solid var(--line);font-size:.85rem;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Blink · notch system · example data</span>
+  <h1>Everything that happens in the notch</h1>
+  <p class="muted">States, widgets, commands, utilities and motion for Blink’s notch, in the dark widget style you shared: glowing arcs, big numbers, small bar charts and pill controls. Glow always stays inside the notch.</p>
+</header>
+
+<section aria-labelledby="live" style="border-top:0;padding-top:8px">
+  <span class="eyebrow">Live demo</span>
+  <h2 id="live">The notch, state by state</h2>
+  <div class="screen">
+    <div class="menubar"><span>Blink &nbsp; File &nbsp; View</span><span class="num">Thu 14:48</span></div>
+    <div class="nwrap"><div class="notch" id="notch">
+      <div class="pane rest on" data-p="rest"><div class="neyes blink" id="restEyes"><i></i><i></i></div><span class="dotu" id="dotu"></span></div>
+      <div class="pane peek" data-p="peek"><div class="neyes teal"><i></i><i></i></div><span class="t">Design sync with Priya</span><span class="cd num">12:00</span></div>
+      <div class="pane ask" data-p="ask"><div class="row" style="align-items:flex-start"><div class="neyes coral" style="margin-top:4px"><i></i><i></i></div><div><b>Send reply to Dana?</b><div class="s">“Report attached, happy to walk through it.”</div><div class="pbtn"><button class="p" type="button" id="doit">Do it<span class="kbd">⌘⏎</span></button><button type="button">Edit<span class="kbd">⌘E</span></button><button type="button">Later<span class="kbd">⌘L</span></button></div></div></div></div>
+      <div class="pane glance" data-p="glance" style="padding:28px 12px 12px"><div class="glgrid" id="glgrid"></div></div>
+      <div class="pane chat" data-p="chat"><div class="row" style="margin-bottom:10px"><div class="neyes"><i></i><i></i></div><span class="muted" style="font-size:.8rem">Ask Blink · Model: Auto</span></div><div class="chatin"><span>What’s left on Pexilim today</span><span class="caret"></span></div><div class="sugs"><span>/remind</span><span>/note</span><span>/focus 50</span><span>/spent</span></div></div>
+      <div class="pane focus" data-p="focus" style="padding:0 14px;display:flex;align-items:center;gap:10px"><div class="neyes" style="opacity:.7"><i style="height:3px"></i><i style="height:3px"></i></div><div class="focusbar"><i></i></div><span class="num" style="font:600 .82rem var(--mono)">31:08</span></div>
+      <div class="pane done" data-p="done" style="padding:0;display:flex;align-items:center;justify-content:center;gap:10px"><div class="neyes green"><i style="height:6px;border-radius:6px 6px 0 0"></i><i style="height:6px;border-radius:6px 6px 0 0"></i></div><span style="font-size:.8rem;color:var(--green);font-weight:600">Sent · Undo</span></div>
+    </div></div>
+  </div>
+  <div class="controls">
+    <div class="chips" id="chips" role="group" aria-label="Notch state"></div>
+    <p class="cap" id="cap"></p>
+  </div>
+</section>
+
+<section aria-labelledby="bot">
+  <span class="eyebrow">Mascot</span>
+  <h2 id="bot">Glossy bot, panda eyes</h2>
+  <div class="two">
+    <div class="mstage"><div class="bot blink" style="--s:230px"><div class="shell"></div><div class="patch l"><i class="eye"></i></div><div class="patch r"><i class="eye"></i></div></div></div>
+    <div style="display:grid;gap:12px">
+      <p>The white glossy shell from your first references, with the panda’s <b>duo-tone eyes</b>: black glass patches with light eyes inside. No nose, no mouth.</p>
+      <ul class="rules muted">
+        <li>Duo-tone stays fixed: black patch, light eye. Only the eye’s tint and shape change with mood.</li>
+        <li>In the notch the black hardware already is the patch, so only the two light eyes appear.</li>
+        <li>Eyes tilt slightly toward each other, which keeps them from reading as a pause icon.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="moods">
+    <div class="md"><div class="bot blink" style="--s:104px"><div class="shell"></div><div class="patch l"><i class="eye"></i></div><div class="patch r"><i class="eye"></i></div></div>Rest<span>White</span></div>
+    <div class="md"><div class="bot e-wide c-teal" style="--s:104px"><div class="shell"></div><div class="patch l"><i class="eye"></i></div><div class="patch r"><i class="eye"></i></div></div>Heads-up<span>Teal · wide</span></div>
+    <div class="md"><div class="bot e-wide c-coral" style="--s:104px"><div class="shell"></div><div class="patch l"><i class="eye"></i></div><div class="patch r"><i class="eye"></i></div></div>Important<span>Coral · wide</span></div>
+    <div class="md"><div class="bot e-up c-blue" style="--s:104px"><div class="shell"></div><div class="patch l"><i class="eye"></i></div><div class="patch r"><i class="eye"></i></div></div>Thinking<span>Blue · looking up</span></div>
+    <div class="md"><div class="bot e-happy c-green" style="--s:104px"><div class="shell"></div><div class="patch l"><i class="eye"></i></div><div class="patch r"><i class="eye"></i></div></div>Done<span>Green · smiling</span></div>
+    <div class="md"><div class="bot e-sleepy c-amber" style="--s:104px"><div class="shell"></div><div class="patch l"><i class="eye"></i></div><div class="patch r"><i class="eye"></i></div></div>Sleepy<span>Amber · half-closed</span></div>
+    <div class="md"><div class="bot e-closed" style="--s:104px"><div class="shell"></div><div class="patch l"><i class="eye"></i></div><div class="patch r"><i class="eye"></i></div></div>Focus<span>Closed · quiet</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="tl">
+  <span class="eyebrow">Widget library</span>
+  <h2 id="tl">Notch tiles</h2>
+  <p class="muted">Each tile answers one question with one big number. They appear four at a time in the notch’s Glance view, and full size in the app and widgets.</p>
+  <div class="tiles" id="tiles"></div>
+</section>
+
+<section aria-labelledby="cm">
+  <span class="eyebrow">Commands</span>
+  <h2 id="cm">Every action, every shortcut</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Action</th><th>Mouse / trackpad</th><th>Keyboard</th><th>What happens</th></tr></thead>
+    <tbody>
+      <tr><td>Peek</td><td>Hover the notch 250 ms</td><td>(none)</td><td>Rest → Peek: one line with the next thing</td></tr>
+      <tr><td>Open</td><td>Click</td><td><kbd>⌥ Space</kbd></td><td>Opens the top card, or Glance if nothing is waiting</td></tr>
+      <tr><td>Glance</td><td>Swipe down on the notch</td><td><kbd>⌥ G</kbd></td><td>Four tiles: next meeting, focus, money, segment</td></tr>
+      <tr><td>Next / previous page</td><td>Two-finger swipe left/right</td><td><kbd>⌘ ←</kbd> <kbd>⌘ →</kbd></td><td>Pages through tile sets or waiting cards</td></tr>
+      <tr><td>Approve</td><td>Click Do it</td><td><kbd>⌘ ⏎</kbd></td><td>🟢/🟡 done instantly; 🔴 asks Touch ID first</td></tr>
+      <tr><td>Edit</td><td>Click Edit</td><td><kbd>⌘ E</kbd></td><td>Opens the draft inline; chat to change it</td></tr>
+      <tr><td>Later</td><td>Click Later or scroll up on a card</td><td><kbd>⌘ L</kbd></td><td>Snooze menu: 10 min · 1 h · tonight · tomorrow</td></tr>
+      <tr><td>Dismiss</td><td>Click outside / swipe up</td><td><kbd>Esc</kbd></td><td>Card tucks back into the notch; stays in Waiting</td></tr>
+      <tr><td>Undo</td><td>Click Undo in the toast</td><td><kbd>⌘ Z</kbd></td><td>Within 5 s (🟢) or 10 s send countdown (🔴)</td></tr>
+      <tr><td>Chat</td><td>Click the eyes</td><td><kbd>⌥ Space</kbd> then type</td><td>Ask anything; “/” shows commands</td></tr>
+      <tr><td>Talk</td><td>Force-click the notch</td><td>Hold <kbd>⌥ Space</kbd></td><td>Push-to-talk; eyes switch to Listening</td></tr>
+      <tr><td>Capture</td><td>Drag a file, link or text onto the notch</td><td><kbd>⌥ N</kbd></td><td>Drop zone opens; choose Notes or a Segment</td></tr>
+      <tr><td>Menu</td><td>Right-click</td><td><kbd>⌥ ,</kbd></td><td>Focus 25/50 · Pause Blink 1 h · Calm mode · Open Blink</td></tr>
+      <tr><td>Open the app</td><td>Double-click</td><td><kbd>⌥ ⏎</kbd></td><td>Opens the full window on the same item</td></tr>
+    </tbody>
+  </table></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Chat command</th><th>Example</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td><code>/remind</code></td><td>/remind call Sam tomorrow 10</td><td>Reminder card, one tap</td></tr>
+      <tr><td><code>/note</code></td><td>/note homepage needs a pricing strip</td><td>Saved; Blink suggests a Segment link</td></tr>
+      <tr><td><code>/focus</code></td><td>/focus 50 homepage</td><td>Focus timer in the notch; Do Not Disturb on</td></tr>
+      <tr><td><code>/spent</code></td><td>/spent 12 lunch</td><td>Expense logged to Food</td></tr>
+      <tr><td><code>/plan</code></td><td>/plan tomorrow</td><td>Opens evening planning now</td></tr>
+      <tr><td><code>/segment</code></td><td>/segment trip Lisbon Mar 14–20</td><td>Draft Segment from the Trip template</td></tr>
+      <tr><td><code>/post</code></td><td>/post today’s win</td><td>Drafts for each of your platforms</td></tr>
+      <tr><td><code>/model</code></td><td>/model opus</td><td>Switches model for this chat</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="ut">
+  <span class="eyebrow">Utilities</span>
+  <h2 id="ut">Small tools that live in the notch</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Utility</th><th>Where</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Focus timer</td><td>Notch strip + Island</td><td>Bar fills like a charge meter; ends with a soft chime and Done eyes</td></tr>
+      <tr><td>Meeting countdown</td><td>Peek + Island</td><td>Ring empties toward start; Join button appears at 2 min</td></tr>
+      <tr><td>Quick capture</td><td>Drop zone, <kbd>⌥ N</kbd></td><td>Text, links, files, screenshots → Notes or a Segment</td></tr>
+      <tr><td>Clipboard to note</td><td>Right-click menu</td><td>Saves what you just copied, with its source app</td></tr>
+      <tr><td>Expense log</td><td><code>/spent</code>, tile “+”</td><td>Categorised by Haiku; shows on the money tile instantly</td></tr>
+      <tr><td>Receipt scan</td><td>iPhone tile</td><td>Camera → amount and merchant → budget</td></tr>
+      <tr><td>Snooze all</td><td>Right-click</td><td>Quiets Blink for 1 h; eyes close</td></tr>
+      <tr><td>Calm mode</td><td>Automatic</td><td>Lid closed, full screen, screen sharing or battery under 20%: no motion, no pop-outs</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section aria-labelledby="mo">
+  <span class="eyebrow">Motion</span>
+  <h2 id="mo">Micro-animations and smoothness</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Moment</th><th>Motion</th><th>Timing</th><th>Reduce Motion</th></tr></thead>
+    <tbody>
+      <tr><td>Rest → Peek</td><td>Notch widens; text fades in after the shape settles</td><td>Spring response 0.35 s, damping 0.82; text +80 ms, 120 ms fade</td><td>Crossfade 150 ms</td></tr>
+      <tr><td>Peek → Open</td><td>Height grows from the notch; cards rise 6 pt and stagger</td><td>Spring 0.45 s / 0.78; stagger 30 ms</td><td>Crossfade</td></tr>
+      <tr><td>Open → Rest</td><td>Content fades first, then the shape tucks up</td><td>Fade 90 ms; spring 0.38 s / 0.9</td><td>Crossfade</td></tr>
+      <tr><td>Approve</td><td>Button presses to 0.94, card collapses into the notch, eyes turn to ∩ ∩</td><td>Press 120 ms; collapse 280 ms; Done holds 1.2 s</td><td>Instant swap + toast</td></tr>
+      <tr><td>Blink</td><td>Eyes squash vertically, never fade</td><td>Close 90 ms, open 120 ms; every 20–40 s at rest</td><td>No blink</td></tr>
+      <tr><td>Mood change</td><td>Eye tint and shape morph; glow tint follows</td><td>250 ms ease</td><td>Instant</td></tr>
+      <tr><td>Numbers</td><td>Digits roll (SwiftUI numeric text transition)</td><td>300 ms, only when the value changes</td><td>Instant</td></tr>
+      <tr><td>Rings and bars</td><td>Stroke trims from the old value to the new one</td><td>600 ms ease-out, once per change</td><td>Instant</td></tr>
+      <tr><td>Listening glow</td><td>Bottom glow breathes with your voice level</td><td>Only while the mic is on</td><td>Static glow</td></tr>
+      <tr><td>Drop zone</td><td>Notch stretches toward the dragged file</td><td>Spring 0.3 s / 0.7</td><td>Outline only</td></tr>
+    </tbody>
+  </table></div>
+  <ul class="rules">
+    <li><b>Springs everywhere, and they can be interrupted:</b> a new event mid-animation continues from the current shape and speed instead of restarting.</li>
+    <li><b>One moving thing at a time:</b> the shape moves first, then the content. Never both at full speed.</li>
+    <li><b>Only cheap properties move:</b> size of the notch shape, opacity and transforms. Text never reflows during an animation.</li>
+    <li><b>120 Hz on ProMotion Macs</b>, drawn by the system compositor; nothing redraws while Blink is at rest.</li>
+    <li><b>Matched geometry:</b> a card that opens into the app window keeps its identity, so it grows into place instead of reappearing.</li>
+    <li><b>Haptics:</b> a light trackpad tap on approve and when a drop is accepted.</li>
+    <li><b>Battery:</b> countdowns are drawn by the system; rings and bars animate only on a value change; calm mode stops everything.</li>
+  </ul>
+</section>
+
+<footer>Blink notch system for Pexilim · interactive concept, not the app · all names and figures are examples.</footer>
+</div>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const ring=(pct,col,size=150,stroke=12,label="",sub="",track="#26262C")=>{const r=(size-stroke)/2,c=2*Math.PI*r,arc=.75;const len=c*arc;return `<div class="ringwrap"><svg viewBox="0 0 ${size} ${size}" aria-hidden="true"><g transform="rotate(135 ${size/2} ${size/2})"><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${len} ${c}"/><circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${col}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${len*pct} ${c}" style="filter:drop-shadow(0 0 6px ${col})"/></g></svg><div class="c"><b class="num" style="font-size:${size/150*1.6}rem">${label}</b><span class="sub">${sub}</span></div></div>`;};
+const bars=(vals,on)=>`<div class="bars">${vals.map((v,i)=>`<i class="${i===on?"on":""}" style="height:${v}%"></i>`).join("")}</div><div class="days">${"MTWTFSS".split("").map((d,i)=>`<span class="${i===on?"on":""}">${d}</span>`).join("")}</div>`;
+const T={
+ meet:`<span class="k">Next meeting</span>${ring(.72,"#34E0D2",150,12,"12 min","Design sync")}`,
+ focus:`<span class="k">Focus</span><span class="big num">31:08</span><div class="lbar"><i style="width:62%;background:linear-gradient(90deg,#1BB8AC,#34E0D2);box-shadow:0 0 10px #34E0D2"></i></div><div style="display:flex;justify-content:space-between" class="sub"><span><b style="color:#fff">62%</b> of 50 min</span><span>Homepage</span></div>`,
+ today:`<span class="k">Today’s spending</span><div class="stack"><i style="flex:5;background:#FF4F8B"></i><i style="flex:2;background:#8C5BFF"></i><i style="flex:1;background:#4D8DFF"></i><i style="flex:3;background:#33333A"></i></div><div class="legend"><span><i style="background:#FF4F8B"></i>Food</span><span><i style="background:#8C5BFF"></i>Work</span><span><i style="background:#4D8DFF"></i>Transport</span><span><i style="background:#33333A"></i>Left</span></div><span class="sub">Available</span><span class="big num" style="font-size:1.5rem">$536<small style="font-size:.8rem;color:var(--muted)"> · 46%</small></span>`,
+ week:`<span class="k">This week</span><span class="big num" style="font-size:1.5rem">$412</span>${bars([40,22,55,70,30,15,8],3)}`,
+ habit:`<span class="k">Workout</span><span class="big num" style="font-size:1.5rem">4-day streak</span>${bars([80,90,0,85,95,0,0],4)}`,
+ seg:`<span class="k">Pexilim website</span>${ring(.4,"#4D8DFF",150,14,"40%","design in 3 days")}`,
+ mail:`<span class="k">Important mail</span><span class="big num">2</span><div class="avs"><span style="background:#4D8DFF">PR</span><span style="background:#34E0D2;color:#000">DR</span></div><span class="sub">Reply to Dana is drafted</span><div class="pills2"><span class="trend-up">Review</span></div>`,
+ actions:`<span class="k">Blink</span><div class="qa"><div><i style="background:#8C5BFF">↗</i>ASK</div><div><i style="background:#FF5A47">↙</i>CAPTURE</div></div>`,
+ add:`<span class="k">Blink</span><span class="plusc">+</span><span class="sub" style="text-align:center;letter-spacing:.08em;text-transform:uppercase;font-size:.7rem">Add reminder</span>`,
+ budget:`<span class="k">Saved this month</span><span class="big num">$1,470</span><div class="lbar" style="background:rgba(255,255,255,.25)"><i style="width:64%;background:#A6F04B"></i></div><span class="big num" style="font-size:2.4rem;margin-top:6px">64%</span><span class="sub">of budget used</span>`,
+ load:`<span class="k">Day load</span>${ring(.7,"#FFB43A",150,12,"Busy","3 meetings · 70%")}`,
+ kpi:`<span class="k">Content this week</span><div style="display:flex;gap:16px"><div><span class="big num" style="font-size:1.6rem">3</span><div class="sub">posted</div></div><div><span class="big num" style="font-size:1.6rem">2</span><div class="sub">scheduled</div></div></div><div class="pills2"><span class="trend-up">+38% reach ▲</span><span class="trend-dn">1 skipped ▼</span></div><div class="arrowc" style="background:#4D8DFF">↗</div>`
+};
+const tiles=["meet","focus","today","week","habit","seg","mail","actions","add","budget","load","kpi"];
+$("tiles").innerHTML=tiles.map(k=>`<div class="tile ${k==="budget"?"grad":""}">${T[k]}</div>`).join("");
+// small versions inside the notch glance
+const sm={
+ meet:`<span class="k">Next</span>${ring(.72,"#34E0D2",120,12,"12m","Design")}`,
+ focus:`<span class="k">Focus</span><span class="big num">31:08</span><div class="lbar" style="height:6px"><i style="width:62%;background:#34E0D2;box-shadow:0 0 8px #34E0D2"></i></div><span class="sub">62% · Homepage</span>`,
+ today:`<span class="k">Spent today</span><span class="big num">$64</span><div class="stack" style="height:8px"><i style="flex:5;background:#FF4F8B"></i><i style="flex:2;background:#8C5BFF"></i><i style="flex:1;background:#4D8DFF"></i><i style="flex:3;background:#33333A"></i></div><span class="sub">$536 left</span>`,
+ seg:`<span class="k">Pexilim</span>${ring(.4,"#4D8DFF",120,13,"40%","3 days")}`
+};
+$("glgrid").innerHTML=["meet","focus","today","seg"].map(k=>`<div class="tile sm">${sm[k]}</div>`).join("");
+
+const S={
+ rest:{w:200,h:34,r:14,glow:"transparent",cap:"<b>Rest.</b> Eyes only, a red dot when something is waiting. Nothing moves except a blink every 20–40 s."},
+ peek:{w:310,h:38,r:16,glow:"rgba(52,224,210,.22)",cap:"<b>Peek.</b> Hover or an event: one line and a live countdown. Teal eyes mean time."},
+ ask:{w:440,h:150,r:30,glow:"rgba(255,90,71,.2)",cap:"<b>Ask-First card.</b> One card at a time, with keyboard shortcuts on every button. Try Do it."},
+ glance:{w:520,h:205,r:32,glow:"rgba(77,141,255,.18)",cap:"<b>Glance.</b> Four tiles: next meeting, focus, money and your active segment. Swipe for more."},
+ chat:{w:460,h:132,r:28,glow:"rgba(255,255,255,.08)",cap:"<b>Chat.</b> ⌥Space and type. “/” shows commands. Hold ⌥Space to talk."},
+ focus:{w:330,h:38,r:16,glow:"rgba(52,224,210,.18)",cap:"<b>Focus.</b> A slim strip like a charge bar. Eyes closed: Blink stays quiet until it ends."},
+ done:{w:240,h:36,r:15,glow:"rgba(75,227,122,.25)",cap:"<b>Done.</b> Smiling green eyes and Undo for a moment, then back to rest."}
+};
+const order=["rest","peek","ask","glance","chat","focus","done"];
+const notch=$("notch");let cur="rest",timer;
+function go(k){cur=k;const s=S[k];notch.style.setProperty("--w",`min(${s.w}px, calc(100vw - 72px))`);notch.style.setProperty("--h",s.h+"px");notch.style.setProperty("--r",s.r+"px");notch.style.setProperty("--nglow",s.glow);
+  notch.querySelectorAll(".pane").forEach(p=>p.classList.toggle("on",p.dataset.p===k));$("cap").innerHTML=s.cap;
+  document.querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.k===k?"true":"false"));
+  clearTimeout(timer);if(k==="done")timer=setTimeout(()=>go("rest"),1600);}
+order.forEach(k=>{const b=document.createElement("button");b.type="button";b.className="chip";b.dataset.k=k;b.textContent=k[0].toUpperCase()+k.slice(1);b.onclick=()=>go(k);$("chips").appendChild(b);});
+$("doit").onclick=()=>go("done");
+notch.addEventListener("mouseenter",()=>{if(cur==="rest")timer=setTimeout(()=>go("peek"),250);});
+notch.addEventListener("mouseleave",()=>{clearTimeout(timer);});
+notch.addEventListener("click",()=>{if(cur==="rest"||cur==="peek")go("glance");});
+document.addEventListener("keydown",e=>{if(e.altKey&&e.code==="Space"){e.preventDefault();go("chat");}if(e.key==="Escape")go("rest");if((e.metaKey||e.ctrlKey)&&e.key==="Enter"&&cur==="ask")go("done");});
+go("rest");
+})();
+</script>
