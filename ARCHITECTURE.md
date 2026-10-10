@@ -81,7 +81,7 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 | **Notes** | Your own second brain: linked, searchable by meaning | Blink DB |
 | **Tasks and habits** | To-dos, reminders, daily habit checks ✅ ❌ ⏭, streaks | Blink DB (optional mirror to Apple Reminders) |
 | **Segments** (projects and more) | Say "I have a project" → Blink builds a space from existing parts: goal, milestones, reminders, notes, calendar, people, money, content (§35) | Blink DB |
-| **Email** | Triage, drafts saved to Apple Mail, send after approval | IMAP/SMTP to the account behind Apple Mail |
+| **Email** | Triage, drafts saved to Apple Mail, send after approval | IMAP/SMTP to the accounts behind Apple Mail: **Gmail + iCloud Mail** (§36.8) |
 | **Money** | Spending capture and budgets, with no bank app connection needed | Apple Pay + bank SMS + bank email alerts (SimpleFIN optional) |
 | **Content** | One idea becomes native drafts for every platform | Blink DB + platform playbooks/skills |
 | **Chat** | You and Claude together, everywhere | Claude API |
@@ -271,7 +271,7 @@ Every mood pairs colour with an eye shape and a word (VoiceOver value), so it ne
 4. Wake time, evening planning time, work hours.
 5. Habits to track.
 6. Calendar access (EventKit) and Reminders mirroring (optional).
-7. Mail account (IMAP app password; stored in Vault).
+7. Mail accounts: Gmail and iCloud Mail, each with an app password (stored in Vault).
 8. Money: which banks alert by SMS or email → guided Shortcuts automation setup (Apple Pay + Message).
 9. Content: platforms, goals, 5–10 writing samples → voice profile.
 10. Claude key (stored in Vault) and model preference (Auto by default).
@@ -489,7 +489,7 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 |---|---|---|
 | Calendar | EventKit on device → snapshot to server | Covers iCloud/Google/Exchange accounts on the device |
 | Reminders | Blink tasks; optional mirror to Apple Reminders via EventKit | For Siri |
-| Email | IMAP/SMTP with app password; drafts appended to Drafts folder | Works with Apple Mail as-is |
+| Email | IMAP/SMTP with app passwords for Gmail and iCloud Mail; drafts appended to each account's Drafts folder | Works with Apple Mail as-is |
 | Apple Pay | Shortcuts **Transaction** trigger → `LogTransaction` intent | Apple Pay taps only |
 | Bank SMS | Shortcuts **Message** trigger → `IngestMessage` intent → Haiku extraction | Verify "run without asking" on device |
 | Bank email | Email module → extraction | Universal fallback |
@@ -1149,3 +1149,13 @@ Every phase also needs:
 - CI is green, including RLS and licence checks.
 
 **Phase 1** also needs the 2-minute value moment measured on a fresh install, and server-verified 🔴 approvals working end to end.
+
+### 36.8 Your setup (confirmed)
+
+| Item | Decision |
+|---|---|
+| **Mail** | Two accounts, both read in Apple Mail, both connected by IMAP/SMTP with an **app password** stored in Vault. One merged triage list; a reply always sends from the account the thread came in on. Each card shows a small account tag (Gmail / iCloud) |
+| Gmail | Turn on 2-Step Verification, then create an app password (Google Account › Security › App passwords). IMAP `imap.gmail.com:993`, SMTP `smtp.gmail.com:465`. Drafts go to `[Gmail]/Drafts`; Gmail files sent mail automatically. The Google connector is still used for Calendar and Drive; Gmail over the connector only if you ever sell (restricted-scope review) |
+| iCloud Mail | Create an app-specific password at account.apple.com › Sign-In and Security. IMAP `imap.mail.me.com:993`, SMTP `smtp.mail.me.com:587` (STARTTLS); the username is your iCloud address. Drafts go to `Drafts`. *Verify* that sent mail lands in `Sent Messages`; if not, Blink appends a copy |
+| **Banks** | No bank names needed. Capture works from Apple Pay taps, bank texts and alert emails from any bank; the nightly "any spends?" prompt catches the rest |
+| **Mac** | Your own MacBook is the build and test machine. Phase 0 checks: notch model (MacBook Pro 2021+ or Air M2+), macOS 26, Xcode installed, Claude Code running on it with this repo |
