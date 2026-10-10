@@ -1,0 +1,29 @@
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+secrets/
+Secrets.xcconfig
+*.local.xcconfig
+
+# Xcode / Swift
+DerivedData/
+build/
+.build/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+
+# Supabase / Node
+node_modules/
+supabase/.temp/
+.branches/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/

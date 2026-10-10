@@ -48,6 +48,7 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 29. Build phases
 30. Risks and things to verify on device
 31. Decision log
+32. Sellable, clean codebase
 
 ---
 
@@ -361,7 +362,7 @@ flowchart TB
 | Layer | Choice | Why |
 |---|---|---|
 | Apple apps | **Swift 6, SwiftUI**, one multiplatform Xcode project | Native look, battery, all Apple APIs |
-| Mac notch | **AppKit NSPanel** + [DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit) (patterns from [Boring Notch](https://github.com/TheBoredTeam/boring.notch)) | Proven notch overlay approach |
+| Mac notch | **AppKit NSPanel** + [DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit) (MIT). [Boring Notch](https://github.com/TheBoredTeam/boring.notch) is GPL-3.0: ideas only, never its code (§32) | Proven notch overlay approach |
 | Pip rendering | **Rive** (eyes + glass state machine) + **SpriteKit/Metal** particle layer; PNG still poses for iPhone surfaces | Stateful mascot, low cost, still poses where iOS requires |
 | Local store | **SwiftData** cache | Offline, fast UI |
 | Calendar / reminders | **EventKit** | All device calendar accounts, no extra logins |
@@ -391,7 +392,7 @@ flowchart TB
 | `PipIntents` | App Intents: Log Transaction, Ingest Message, Quick Capture, Plan My Day, What's Next, Focus Filter |
 
 **Mac notch controller**
-- Borderless, non-activating `NSPanel` at the notch rect of the built-in display; follows display changes (multi-monitor rules from NotchFlow).
+- Borderless, non-activating `NSPanel` at the notch rect of the built-in display; follows display changes and multiple monitors.
 - Observers: `NSWorkspace.didWakeNotification`, screen unlock (distributed notification), full-screen detection, screen-sharing detection, power source / battery level → calm mode.
 - Levels 0/1/2 as in §5; hover via tracking area; ⌥Space global hotkey.
 
@@ -448,7 +449,7 @@ erDiagram
 | `device` / `push_token` | platform, apns token, live-activity push-to-start token | Push routing |
 | `model_usage` | at, feature, model, input_tokens, output_tokens, cost | Cost meter |
 
-All tables are protected by **row-level security** with a single owner, and sign-ups are disabled.
+All tables carry an `owner_id` and are protected by **row-level security** (`owner_id = auth.uid()`). Today only one account exists and sign-ups are switched off by a setting, so the same schema can serve many users later without a rewrite (§32).
 
 ## 17. Sync and offline
 
@@ -537,7 +538,7 @@ All tables are protected by **row-level security** with a single owner, and sign
 | App access | Face ID to open; second check for Email, Money, Keys |
 | Device secrets | Keychain, `biometryCurrentSet` (adding a new face/finger invalidates) |
 | Server secrets | Supabase **Vault** (Claude key, mail password, bank/social tokens); never returned to clients; replace-only behind Face ID |
-| Auth | Single user; sign-ups disabled; short-lived sessions; device registration |
+| Auth | One account today (sign-ups off by setting, not by design); per-user rows and secrets; short-lived sessions; device registration |
 | Database | Row-level security on every table |
 | Transport | HTTPS only; APNs tokens per device |
 | Claude connector | OAuth to your account only; writes become `action` rows |
@@ -646,7 +647,7 @@ The design is the same in every stage; stage C only switches on server push.
 | Shortcuts "Message" automation may ask before running | Test on iOS 27; fallback to email alerts |
 | Live Activity countdown rendering and update budget | Test in Phase 6; keep updates to state changes |
 | Alarm/Sleep Focus trigger reliability (developer reports) | Widget + push-to-start as primary |
-| Notch overlay edge cases (multi-monitor, full screen, external display) | NotchFlow patterns; calm mode |
+| Notch overlay edge cases (multi-monitor, full screen, external display) | Test early on real displays; calm mode |
 | Rive + particles battery cost | Instruments per phase; still poses fallback |
 | Third-party skills changing | Pin to a reviewed commit; review before updates |
 | Prompt injection via email/web | Data-only handling, Ask-First, eval set |
@@ -669,3 +670,64 @@ The design is the same in every stage; stage C only switches on server push.
 | Mascot | Pip: tilted pill eyes, particles in glass, glow inside the notch only | Your sketch + Apple look |
 | Safety | Ask-First; 🔴 Face ID; never auto | Trust |
 | Distribution | Free first, $99 later | Budget |
+| Licenses in shipped code | Permissive only (MIT, Apache-2.0, BSD); GPL/AGPL projects are reference-only | Keeps Pip sellable |
+| Data model | `owner_id` + row-level security on every table | Multi-user ready without a rewrite |
+| Dev skills | Development tools only, never shipped in the app | Clean product boundary |
+
+## 32. Sellable, clean codebase
+
+Goal: Pip is built for you first, but the code can be **sold or licensed later** without legal clean-up or a rewrite.
+
+**32.1 Licenses: what may go into shipped code**
+
+| Allowed in the app and backend | Not allowed (reference for ideas only) |
+|---|---|
+| MIT, Apache-2.0, BSD-2/3, ISC, zlib | GPL, AGPL, LGPL (static linking in Swift), SSPL, "no license", non-commercial or "source-available" licenses |
+
+| Project | License | Use |
+|---|---|---|
+| [DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit) | MIT | ✅ Dependency |
+| [rive-ios](https://github.com/rive-app/rive-ios) | MIT | ✅ Dependency (Pip animation runtime) |
+| [supabase-swift](https://github.com/supabase/supabase-swift) | MIT | ✅ Dependency |
+| [iOS16-Live-Activities](https://github.com/1998code/iOS16-Live-Activities) | MIT | ✅ Sample to learn from |
+| [Boring Notch](https://github.com/TheBoredTeam/boring.notch) | GPL-3.0 | ⚠️ Ideas only: copying code would force Pip to be open source |
+| [Inbox Zero](https://github.com/elie222/inbox-zero) | AGPL-3.0 | ⚠️ Ideas only, same reason |
+| NotchFlow | No longer publicly available | Removed from the plan |
+
+- Every dependency is pinned (`Package.resolved`, lockfiles) and listed in **`THIRD_PARTY_NOTICES.md`** with its license.
+- A licence check runs before each release; anything not on the allowed list blocks it.
+
+**32.2 Development tools stay outside the product**
+- Claude Code skills in `.claude/skills/` are **development aids**, not part of the app. They never ship in the app or backend.
+- Most are MIT/Apache. dpearson2699's Apple skills are PolyForm Perimeter (any use except building a competing product). Keeping them as dev tools keeps the product clean.
+- Option before a sale: move them out of the repo and install them per developer at the user level (`~/.claude/skills`) from a pinned list.
+
+**32.3 Built for one user, ready for many**
+
+| Cheap now | Saves later |
+|---|---|
+| `owner_id` + row-level security on every table | Multi-user without a schema rewrite |
+| Secrets in Vault keyed per user | Each customer's keys stay separate |
+| No personal data, names or keys in code or config | Hand over the repo as-is |
+| Model router + cost meter per user | Per-user plans or "bring your own Claude key" |
+| Feature flags for integrations | Turn platforms on or off per market |
+| Platform playbooks as data/skills, not code | New platforms without releases |
+
+What changes only if Pip is sold to other people (not built now): Sign in with Apple, subscriptions (StoreKit), privacy policy and in-app data deletion, App Review / Developer ID notarisation, and Meta/LinkedIn/X app review to post for other users.
+
+**32.4 Code standards**
+- Swift 6 strict concurrency; SwiftLint + swift-format; small modules (`PipKit` shared package).
+- Tests with Swift Testing for parsers, money, Ask-First and anything risky; `/ponytail-review` before each merge; SwiftUI previews for every Pip state.
+- Secrets scanning before commits; no keys in git, ever.
+- Conventional commit messages, semantic versions, `CHANGELOG.md`, and decision records in `docs/decisions/`.
+- README with setup steps a buyer's developer can follow on a fresh Mac.
+
+**32.5 Ownership**
+- **Mascot and brand:** Pip's design comes from your sketch, so you own it. Before selling, check that the name "Pip" isn't already a trademark in your market (many apps use it).
+- **Repo:** keep it private; consider moving it to a company GitHub organisation before a sale.
+- **Licence file for your own code:** add a proprietary "All rights reserved" `LICENSE` once the legal owner (you or your company) is decided.
+- **AI-assisted code:** check Anthropic's commercial terms on output ownership, and get a lawyer's review before any sale. This plan is not legal advice.
+
+**32.6 Working on your own devices**
+- Development happens on **your Mac** with Claude Code (it can build with Xcode); this cloud session is for planning.
+- Each developer installs the pinned dev skills on their own machine; the product repo stays clean.
