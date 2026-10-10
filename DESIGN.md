@@ -315,3 +315,37 @@ Source of truth: `design/tokens.json`. Visual reference: `design/blink-colors.ht
 - **Notch:** pure black hardware, both appearances. Glow (0.55 alpha, 10 pt blur) stays inside the notch shape and only on live elements.
 - **Premium details:** continuous corners; concentric radii (inner = outer − padding); 0.5 pt hairlines; a 1 pt top specular edge; layered soft shadows in light, no shadows in dark (raised surface + specular edge instead); SF Pro Rounded tabular figures for numbers.
 - **Accessibility:** Reduce Transparency falls back to solid surfaces, Increase Contrast uses Apple's high-contrast variants, Reduce Motion swaps springs for fades, and text meets 4.5:1.
+
+## Motion (current)
+
+Source of truth: `design/tokens.json` → `motion`. Springs are given as response / damping fraction. Every row has a Reduce Motion fallback.
+
+| Token | Value | Used for | Reduce Motion |
+|---|---|---|---|
+| spring.peek | 0.35 / 0.82 | Rest↔Peek | fade 0.2 s |
+| spring.open | 0.45 / 0.78 | → Glance, Chat, card shape | snap + fade |
+| spring.openKey | 0.30 / 0.88, no stagger | Hotkey opens | snap + fade |
+| spring.morph | 0.42 / 0.85 | Glance↔Chat↔Card, matched eyes and title | crossfade |
+| spring.close | 0.38 / 0.90 | Any → Rest | fade 0.15 s |
+| spring.focus | 0.50 / 1.0 | Focus strip, Sleepy settle | fade 0.25 s |
+| spring.content | 0.30 / 0.90, +0.12 s, 30 ms stagger (max 150 ms) | Tiles and text in | opacity |
+| spring.cardIn / cardApprove | 0.40 / 0.82 · 0.30 / 1.0 | Ask-First card from and back into the eyes | fade |
+| spring.success | 0.40 / 0.60 | ∩∩ pop | static ∩∩ |
+| spring.eyeShape | 0.22 / 0.90 | Eye morphs | crossfade |
+| blink | 0.09 s in + 0.12 s out, every 20–40 s | Idle only | keep |
+| errorShake | ±4 pt × 3, decaying, 0.36 s, eyes only | Failure | tint + haptic |
+| thinkingCycle | 1.6 s sine → 3.2 s after 10 s → freeze at 30 s | Claude working | static + label |
+| holds | Done 2 s · Undo chip 6 s · min mood 0.6 s · hover 150 ms in / 350 ms out | Timing rules | — |
+| fps | transitions native · ambient 30 · rest 0 | Battery | — |
+
+**Choreography.** When opening, the shape moves first and content follows 0.12 s later, rising 6 pt, with tiles staggered left to right. When closing, content fades out first (0.12 s) and the shape follows. The Ask-First card grows from Blink's eyes.
+
+**Renderers.** Notch eyes are SwiftUI shapes (0 fps at rest). Particles use Canvas at 30 fps. The full mascot uses Rive or a pre-rendered loop, paused off screen. The Island and widgets use PNG poses. SpriteKit is dropped.
+
+## Naming and navigation (current)
+
+- Users see **Spaces**; the code says `segment`.
+- **iPhone tabs:** Today · Calendar · Tasks & Habits · Spaces · Search. Blink is one tinted glass button: tap to chat, long-press to talk. There is no custom tab bar.
+- **No-notch displays:** the pill is a black capsule (no material).
+- **Default hotkeys:** ⌃⌥Space and ⌃⌥N.
+- Full gap-review decisions are in ARCHITECTURE.md §36.

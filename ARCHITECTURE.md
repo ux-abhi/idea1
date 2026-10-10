@@ -52,6 +52,7 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 33. Privacy model: your server, your keys
 34. Connections: plug in tools instead of building them
 35. Segments: say it, Blink builds the space
+36. Gap review: skills audit decisions
 
 ---
 
@@ -199,7 +200,7 @@ Level 2  open      card or chat        (click / ⌥Space / important event)
 
 ## 7. Blink: character, state machine, rules
 
-**Look:** tilted white pill eyes (from your sketch) · glass droplet body with light particles inside · in the notch and Island the black hardware is the body · **glow, particles and glass sheen stay inside the notch outline only.** Interactive study: [Blink Notch Studio](https://claude.ai/artifact/SDNx2J5QPNracfBuWnkaDS) · `design/blink-studio.html`.
+**Look (v4, canonical):** glossy white bot with panda duo-tone glass eye patches, no nose. In the notch and Island only the eyes show, in the ears beside the camera; the black hardware is the body. Glow stays inside the notch outline. Colours come from `design/tokens.json` (`blink.mood.*`), motion from `motion.*`. See DESIGN.md "Look v4" and "Colour and materials".
 
 ```mermaid
 stateDiagram-v2
@@ -214,33 +215,37 @@ stateDiagram-v2
   Listening --> Thinking: request sent
   Thinking --> Done: success
   Thinking --> Concerned: problem / needs input
-  Done --> Idle: 2 s
+  Done --> Idle: 2 s (Undo chip stays 6 s)
   Concerned --> Idle: resolved / queued
   Idle --> Focus: Focus / meeting / DND on
   Focus --> Idle: off
-  Idle --> Sleepy: evening plan done
+  Idle --> Evening: 21:30 planning
+  Evening --> Sleepy: plan done
   Sleepy --> Morning: wake
   Done --> Celebrate: streak / post published
   Celebrate --> Idle: 3 s
 ```
 
-| State | Eyes | Particles (inside only) | Trigger |
+| State | Eyes (shape) | Eye colour token | Trigger |
 |---|---|---|---|
-| Idle | Tilted pills, blink 20–40 s | Few orange, slow drift (frozen at rest) | Default |
-| Morning | Opening | Amber, rising | First unlock |
-| Heads-up | Wide | Teal, lively | ≤10 min to event |
-| Important | Wide | Coral, one pulse | P1 mail / budget limit |
-| Listening | Wide | Warm, breathing with voice | Input |
-| Thinking | Look up | Ice blue, orbit | Claude working |
-| Done | ∩ ∩ | Green, rising | Success |
-| Concerned | Tilted in | Amber, slow | Missed habit, overspend |
-| Focus | Closed | Almost none | Focus / meeting / DND |
-| Sleepy | Half-closed | Dim, sinking | After evening plan |
-| Celebrate | ∩ ∩ | Gold burst | Streak / publish / goal |
+| Idle | Pills, blink every 20–40 s | `mood.rest` white | Default |
+| Morning | Opening (0.8 s) | `mood.rest` | First unlock |
+| Heads-up | Wide | `mood.headsUp` Mint | ≤10 min to event |
+| Important | Wide + "!" glint, one pulse | `mood.important` Red | P1 mail / budget limit |
+| Listening | Wide, breathing with voice | `mood.rest` | Input (mic open only) |
+| Thinking | Look up, 1.6 s cycle → slows at 10 s → freezes at 30 s with "Still working…" | `mood.thinking` Indigo | Claude working |
+| Done | ∩ ∩ pop | `mood.done` Green | Success |
+| Concerned | Tilted in | `mood.attention` Orange | Needs your action (not missed habits) |
+| Focus | Closed | dimmed | Focus / meeting / DND |
+| Evening | Soft | `mood.attention` Orange, low | 21:30 planning |
+| Sleepy | Half-closed (1.2 s) | dimmed | After evening plan |
+| Celebrate | ∩ ∩ + ≤30-particle gold burst | systemYellow | 7 / 30 / 100-day streak, publish, goal |
+
+Every mood pairs colour with an eye shape and a word (VoiceOver value), so it never relies on colour alone.
 
 **State priority** (highest wins when several apply): Focus > Listening > Thinking > Important > Heads-up > Concerned > Celebrate > Done > Morning > Sleepy > Idle.
 
-**Rules:** one reaction per event · never loops or nags · colours are semantic everywhere (teal = time, coral = important, green = done/money OK, amber = morning/night/attention, orange = Blink's home colour).
+**Rules:** one reaction per event · never loops or nags · transitions retarget, never queue · each mood shows at least 0.6 s · skip Thinking when the reply lands within 0.3 s · events within 0.25 s coalesce · Esc always wins · colours are semantic everywhere (Mint = time, Red = important, Green = done/OK, Orange = attention/evening, Indigo = thinking).
 
 **Voice:** short, numbers first, warm, never guilt-trips, says what it did and how to undo it. At most one emoji, and only in celebrations.
 
@@ -305,15 +310,15 @@ Apple Pay tap / bank SMS / alert email → extract (Haiku) → de-duplicate → 
 | Token group | Decision |
 |---|---|
 | **Platform** | Native SwiftUI, macOS 26 / iOS 26+; Liquid Glass on navigation only (sidebar, toolbar, tab bar); content on solid surfaces |
-| **Type** | SF Pro (system) with Dynamic Type sizes; SF Mono for times and numbers (tabular figures) |
-| **Icons** | SF Symbols |
-| **Colour** | System neutrals; semantic colours only: teal (time), coral (important), green (done/OK), amber (attention), orange (Blink home) |
+| **Type** | SF Pro (system) with Dynamic Type; SF Pro Rounded with tabular figures for numbers; SF Mono for code |
+| **Icons** | SF Symbols, plus one custom "Blink eyes" symbol (menu bar, Control Center, widgets). No emoji in UI chrome. Map in §36.2 |
+| **Colour** | Apple system colours by name, 90/8/2 rule. Source of truth `design/tokens.json`; see DESIGN.md "Colour and materials" |
 | **Spacing** | 4-pt grid; 8/12/16/24 standard gaps |
 | **Radii** | Continuous corners (system); notch bottom radius follows the hardware |
-| **Glass** | System materials; custom glass only inside the notch/Island (top specular + bottom inner rim), never an outer glow |
-| **Motion** | System springs; notch open 0.55 s spring; state changes 0.2–0.3 s; Reduce Motion → crossfades only |
+| **Glass** | System bars get Liquid Glass automatically (never add it again); `.glassEffect` only on custom floating controls; cards and reading surfaces solid; notch and no-notch pill are black, never material |
+| **Motion** | Named springs and timings in `tokens.json` → `motion`; each has a Reduce Motion fallback; 0 fps at rest |
 | **Cards** | One Ask-First card component used everywhere |
-| **Icon** | Glass droplet with eyes; light / dark / tinted variants |
+| **Icon** | Glossy bot face with panda eyes; light / dark / tinted / clear variants |
 
 ## 11. Accessibility and copy
 
@@ -321,7 +326,7 @@ Apple Pay tap / bank SMS / alert email → extract (Haiku) → de-duplicate → 
 - **Reduce Motion:** no particles, crossfade between poses. **Reduce Transparency:** solid notch, no glass.
 - **Dynamic Type** across the app; cards reflow.
 - **Contrast:** semantic colours checked against both light and dark.
-- **Keyboard:** every notch action has a shortcut (⏎ Do it, Esc dismiss, ⌘E edit, ⌘L later).
+- **Keyboard:** every notch action has a shortcut (⌘⏎ approve, Esc dismiss, ⌘E edit, ⌘L later). An auto-opened notch never takes focus; shortcuts work after a click or the hotkey. Full rules in §36.2.
 - **Copy rules:** plain words, numbers first, active voice, buttons say exactly what happens, toasts confirm ("Sent · Undo").
 
 ---
@@ -772,7 +777,7 @@ What changes only if Blink is sold to other people (not built now): Sign in with
 | AI requests | Sent from your server **directly to Anthropic** with **your own** Claude key | You + Anthropic under your account's terms |
 | Social posts | From your server directly to LinkedIn/Instagram/X with your tokens | You + the platform |
 | Push notification content | Encrypted on your server, decrypted on your phone | You |
-| Pexilim | Ships the apps and the backend package. Runs only the encrypted push relay | Device tokens, message size and timing. **No content** |
+| Pexilim | Ships the apps and the backend package. Runs only the encrypted push relay | Device tokens, message size and timing. **No content** in alert pushes; Live Activity pushes can't be encrypted, so they carry only IDs, times and generic text (§36.1) |
 
 ```mermaid
 flowchart LR
@@ -996,3 +1001,151 @@ Draft → Active → (Paused) → Done → Archived. On **Done**, Blink writes a
 - Creating a segment and its reminders is 🟡 (one tap). Anything outward-facing (emailing a client, posting) stays 🔴.
 - Blink never creates more than **one suggestion per topic**; "no" is remembered.
 - Segments reuse the same tables (`item`, `link`, `action`), so search, back-links, Ask-First and sync all work without extra code.
+
+---
+
+## 36. Gap review: skills audit decisions
+
+The plan was checked against all 64 installed skills in four reviews: Apple platform, UI/UX, motion, and content plus code quality. About 100 gaps were found. The decisions below close them. **Where they conflict with an earlier section, §36 wins.** Items marked *verify* must be confirmed on a device or in current vendor docs before the phase that needs them.
+
+### 36.1 Apple platform
+
+| Area | Decision | Fixes |
+|---|---|---|
+| **Live Activity lifetime** | A Live Activity lasts at most 8 h, plus 4 h on the Lock Screen. A segment's "final week" countdown is a **widget**. A Live Activity runs only on the day itself, starts in the morning and ends the same evening | §35.3, §35.6 |
+| **Live Activity lifecycle** | New `live_activity` table (activity_id, kind, ref_id, update_token, state, started_at, ended_at). After a push-to-start, the app collects the per-activity update token (it rotates).<br>• One date range covers T−10 → start → "started N min ago" and the system timer renders it.<br>• Pushes go only on start, moved, cancelled and end; priority 10 only at T−3 and at start.<br>• Every activity has a `staleDate` and an end event with a short dismissal date | §16, §21 |
+| **Local first** | The iPhone schedules its next meetings' Live Activities locally from EventKit (iOS 26 scheduled start, *verify* limits). Full titles never leave the phone, and it works in Stage B with no push. Server push-to-start is the fallback | §14, §28 |
+| **Live Activity budget** | One Blink activity type with a `kind` field, at most 2 live at once. `targetMaximumExceeded` is handled. Island buttons are `LiveActivityIntent`s or deep links. The morning brief ends within 2 h (*verify* App Review accepts it) | §9.2, §14 |
+| **Live Activity privacy** | Live Activity pushes can't be decrypted on the device, so their payloads carry only IDs, times, Blink state and generic alert text. The widget extension resolves titles from the App Group cache (file protection `completeUntilFirstUserAuthentication`) | §33.1, §33.4 |
+| **Encrypted push** | `mutable-content:1` with a **generic** placeholder alert, shown if the extension fails. HPKE to a per-device key, rotated when a device is re-paired. ≤2.5 KB plaintext; anything larger is sent as an ID and fetched. The decryption key uses `AfterFirstUnlockThisDeviceOnly` in a shared access group | §33.4 |
+| **Relay scope** | The relay forwards these push types: alert, background, liveactivity and widgets, with expiration and collapse IDs. Each device gets a relay credential at pairing, with rate limits. 410 Unregistered is handled. The Mac uses local notifications, so the APNs→Mac arrow is removed | §12, §15, §33.4 |
+| **Notifications** | P0 uses the Time-Sensitive entitlement. 🟢/🟡 notification buttons run in the background. 🔴 buttons open the app to show the preview and run Face ID (`.foreground`). Stage B schedules local notifications from EventKit. *Verify* which capabilities a free team lacks (App Groups, Time-Sensitive) | §8, §28 |
+| **Calendar** | The Mac (always running as a login item) uploads calendar snapshots. The iPhone uploads on foreground, background refresh and silent push. `snapshot_at` is stored per device and stale snapshots fall back to local scheduling.<br>• Permissions: full access for events and reminders, with the matching usage keys; handle write-only and denied.<br>• Events are keyed by external ID + occurrence start + source. The Google connector wins for Google calendars.<br>• Declined and all-day events are ignored | §9.1, §16, §18, §34.4 |
+| **Background work** | iPhone: `BGAppRefreshTask` and a background URLSession for receipt and voice uploads. Mac: `NSBackgroundActivityScheduler` for the 15-minute battery check | §17, §21 |
+| **Local store** | SwiftData lives in an App Group container with `cloudKitDatabase: .none` and `#Unique` on the server UUID. History tracking records the author (app, widget or intent). A `@ModelActor` importer. The server assigns a revision to each field; client clocks are never trusted. The cache is disposable: a schema change wipes it and resyncs. No embeddings on the device | §13, §17 |
+| **Widgets** | The app writes a display-ready day snapshot to the App Group. The timeline uses `Text(timerInterval:)` and reloads only when data changes. Widget push is a nudge, never state. Accented rendering and small PNG poses | §14, §23 |
+| **App Intents** | Capture intents (`LogTransaction`, `IngestMessage`) are always allowed. They write to an App Group outbox with a dedupe key from the device and never touch biometric Keychain items. Intents with 🟡/🔴 effects ask for confirmation or open the app. A Control Center control target is added. Every phrase includes the app name. Intents are also exposed on macOS for Spotlight | §14, §18 |
+| **Focus** | Setup walks the user through adding Blink's Focus filter. `INFocusStatusCenter` is a rough signal (*verify* on the Mac). Interruption levels do the enforcement | §8, §9.1 |
+| **Notch panel** | One fixed-size, transparent, click-through `NSPanel`.<br>• `.nonactivatingPanel` with `canBecomeKey` only after a click or hotkey. The panel joins all Spaces and works over full-screen apps, above the menu bar.<br>• The shape is drawn inside: one animatable `NotchShape`, hit-tested to the shape only.<br>• `sharingType = .none` to hide from screen capture (*verify* with ScreenCaptureKit).<br>• Hotkeys via Carbon `RegisterEventHotKey`, so no Accessibility permission is needed.<br>• Launch at login via `SMAppService`. | §14 |
+| **Mac menu bar** | macOS 26 mirrors iPhone Live Activities into the menu bar. Accept this; the notch stays complementary (eyes plus action). *Verify* whether there is an opt-out | §4 |
+| **Concurrency** | App and extension targets use Approachable Concurrency, MainActor by default. BlinkKit has no default isolation, and the sync engine is a single-flight `actor`. EventKit and Keychain stay off the main actor. Only Sendable values cross actors. *Verify* Swift 6 readiness of DynamicNotchKit, rive-ios and supabase-swift | §14, §32.4 |
+| **Measurement** | Use the Power Profiler, Time Profiler and Animation Hitches instruments, run through `xctrace` in CI. MetricKit is for production trends only, never a phase gate, and is uploaded to your server only after opt-in. Signposts cover sync, notch open and intents | §23, §24 |
+
+### 36.2 UX and UI
+
+| Area | Decision |
+|---|---|
+| **Canonical look** | Look v4 plus `tokens.json` is the single source. §7 has been rewritten to match. The 21:30 state is now called "Evening" |
+| **iPhone navigation** | Tabs: **Today · Calendar · Tasks & Habits · Spaces · Search** (`Tab(role: .search)`). Content and Money live in Today and can be pinned as tabs. Blink is one tinted glass button (tap = chat, long-press = talk), with no swipe-up gesture. "Waiting for you" becomes a chip in the Today header. No custom tab bar |
+| **Word list** | The user-facing name for a Segment is **Space**; `segment` stays internal. One label per concept on every surface: Waiting for you · Later (not Snooze) · Pause Blink (calm mode stays internal) · Activity · Automatic rules. The word list lives in §11 |
+| **Hotkeys** | Defaults are ⌃⌥Space (open/talk) and ⌃⌥N (new note). No ⌥-only or ⌘K defaults. All can be changed in Settings, with conflict detection |
+| **Notch focus** | An auto-opened notch never takes keyboard focus. Approve is ⌘⏎ only, never a bare ⏎. ⌘Z in the notch undoes only Blink's last action. Closing returns focus to the previous app |
+| **Notch pointer** | Hover peeks only after a 150 ms intent delay, and closes 350 ms after the pointer leaves. Hover is ignored during fast pointer movement and while dragging, except for a file drag in. A click opens at once; ⌘-click opens the app window; there is no double-click. Talk = hold the hotkey (force-click is an optional extra). Two-finger swipe up closes; ←/→ pages "1 of N". Right-click menu: Pause 1 h · Open Blink · Settings · Quit |
+| **Rest style** | Settings › Blink & Notch › Rest style: slim ears (default, ≤24 pt each), menu bar icon only, or hidden until an event. Ears widen only for a peek, so long app menus are never covered |
+| **Display contexts** | **Lid closed with an external display** = a no-notch Mac at full function. Calm mode is keyed to display sleep and battery, not the lid.<br>**No-notch display:** rest = menu bar icon. A black capsule pill appears for a peek or open, on the display with the key window. No material.<br>**Full-screen app:** only P0 shows (as a peek); P1 is queued.<br>**Mirroring or screen capture:** content is hidden; only the eyes show |
+| **Glass** | System bars adopt glass automatically. `.glassEffect` and `.buttonStyle(.glass)` go only on custom floating controls (the Blink button, the quick-sheet bar). Ask-First cards sit on solid `surface`. Every `.clear` glass has a dimming layer |
+| **Symbols** | Risk: `checkmark.circle` 🟢 · `clock.badge.checkmark` 🟡 · `faceid` 🔴 (`lock.shield` on Macs without Touch ID).<br>Habits: `checkmark.circle.fill` done · `circle.dashed` not yet · `forward.end` skipped.<br>Money: the locale's currency symbol or `banknote`. Capture: `square.and.pencil`. Ask: the custom "Blink eyes" symbol, made from a system template with 3 sources.<br>No emoji in UI chrome |
+| **States** | New §9.8 state matrix: every surface × empty · loading · partial · error · offline · permission denied · first run, each with an Xcode preview. Specific states:<br>• server unreachable (separate from device offline);<br>• Supabase project paused;<br>• server version mismatch;<br>• Claude key invalid, out of credit, rate-limited or at its spend cap;<br>• "All clear";<br>• "Last synced 5 min ago" in the ears and toolbar.<br>Copy templates: **error** = what happened · what Blink will do · one fix button; **empty** = what appears here and how, plus one example |
+| **Onboarding** | The value moment is your real next meeting in the notch within **2 minutes**. Order: connect server → Calendar → Claude key → first brief. Everything else (mail, money, content, habits, writing samples) is set up with just-in-time cards the first time you open that module, tracked by a "Setup 3/7" chip in Today.<br>• Notification permission is asked at the first heads-up.<br>• Adding a device: an existing device shows a code or QR. The Mac accepts a pasted address or code.<br>• "No server yet?" branches to the server setup guide.<br>• A permissions table (when · why · denied state) covers notifications, Time-Sensitive, Focus, microphone, speech, location, Photos add-only, Contacts, Calendars and Reminders |
+| **Activity and undo** | New **Activity** screen (Mac sidebar; reached from Today on iPhone): what Blink did · where · Undo/Reverse. 🟡 actions can be undone in place for 24 h; after that, Reverse creates a new card. Settings › **Automatic rules**: list, pause or delete each learned rule. Tapping a habit tick in a widget again undoes it |
+| **Settings** | Mac uses a `Settings {}` scene (⌘,). Sections: What Blink knows · Blink & Notch · Notifications & Focus · Models & cost · Connections · Automatic rules · Privacy & Security · Server · Devices · Data · About. The iPhone Form uses the same order |
+| **Cross-device** | A card answered on one device disappears everywhere. While the Mac is active (unlocked, with input in the last 2 min), the iPhone holds P1/P2 alerts; P0 goes to both. One deep link, `blink://item/<id>`, opens the same detail view from notifications, widgets, Live Activities, Spotlight and the Claude app |
+| **Habits without guilt** | • Missed = neutral dashed circle with Idle eyes. Concerned is reserved for things that need action.<br>• Answer buttons are neutral: Done / Not today / Skip.<br>• Skips and rest days never break a streak. Show "kept 5 of 7" alongside the run.<br>• One automatic streak freeze per week. A sick day is a separate pause.<br>• The day ends at your wake time, in the device's current time zone.<br>• No "streak at risk" push unless you opt in.<br>• Celebrate only at 7, 30 and 100 days |
+| **Accessibility** | **VoiceOver:** the notch has label "Blink", its value is the current state sentence, and its actions are Open, Talk, Pause and Next card. The eyes are hidden from VoiceOver. Only P0/P1 make announcements. The menu bar icon is the VoiceOver entry point.<br>**Other assistive tech:** every gesture has a named action plus a menu or keyboard equivalent. Voice Control input labels. A rotor for "Waiting for you". 44 pt minimum touch targets.<br>**Dynamic Type:** at accessibility sizes the ears show only a glyph and a number; the panel grows to ≤50% of the screen and scrolls.<br>**Colour:** mood colours are fills and glyphs, never body text on light surfaces. Every mood pairs colour with a shape and a word. Budget always shows text plus a symbol. Differentiate Without Color is honoured. Contrast is checked on `notch.tile` as well as on black |
+| **Copy** | The primary button is the verb (Send · Add reminder · Post · Create). "Do it" exists only as the ⌘⏎ alias. Notifications lead with the why. No ✨ or risk emoji in titles |
+| **Shoulder privacy** | Amounts and mail previews are `.privacySensitive()`, so they are redacted when the device is locked. "Show details on Lock Screen" is off by default for Money and Email. On an external or mirrored display, peeks show only the sender or category |
+| **Matrix additions** | Add these rows to the action matrix:<br>• Stop or regenerate a Thinking request.<br>• Page or clear the Waiting queue.<br>• Pause Blink until a time.<br>• Time zone change or travel.<br>• Revoke an automatic rule.<br>• Undo a Siri or Shortcut action.<br>• Split a merged duplicate.<br>• Chat history (list, delete).<br>• Person detail screen.<br>• Habit detail screen |
+
+### 36.3 Motion
+
+The full spec is `design/tokens.json` → `motion`, with a summary in DESIGN.md "Motion".
+
+- **Renderers.** Notch eyes are native SwiftUI animatable shapes, with no dependency and true 0 fps at rest. Particles and the thinking loop use `Canvas` with a `TimelineView` capped at 30 fps and paused when idle. **SpriteKit is dropped.** The full mascot (app panel, splash, setup) uses Rive or a pre-rendered loop, paused off screen. The Island, widgets and notifications use PNG poses exported from the same source.
+- **Frame rate.** Transitions run at native rate (≤120 fps), ambient animation at 30 fps, rest and calm at 0. In Low Power Mode or at a serious thermal state, ambient animation stops and only springs remain.
+- **Morphs.** States morph by animating `NotchShape` inside the fixed panel. `matchedGeometryEffect` moves the eyes and title. `glassEffectID` is used only for the iPhone Blink button → chat.
+- **The Island is system-animated only.** It swaps poses with `.contentTransition`, rolls numbers with `.numericText`, and counts down with `Text(timerInterval:)`. iPhone Ask-First cards are in-app sheets or notification actions.
+- **Feedback.**
+  - Error: the eyes shake ±4 pt three times, decaying (the notch shape never shakes), with a red tint.
+  - Success: a ∩∩ pop.
+  - Haptics follow user actions only, never Blink's mood changes.
+  - Sound is off by default; P0 uses the system sound.
+- **Acceptance.** Hitch ratio <5 ms/s on open and close · 0 fps at rest · energy impact "Low" · a Reduce Motion snapshot for every state. The web prototypes move to transform and clip-path, read CSS variables generated from the tokens, and blink on a random 20–40 s interval.
+
+### 36.4 Content engine
+
+| Area | Decision |
+|---|---|
+| **Pipeline** | `content_piece.status`: idea → atom → planned → drafted → humanized → linted → awaiting_approval → approved(hash) → scheduled → publishing → published / failed→handoff → metrics_collected → repurposed. A **recording_needed** state covers video. Each state names its skill, its job and its Ask-First tier |
+| **Formats** | A format matrix (platform × format → limits, media spec, skill, publish method) covering IG reel, carousel, story and post · LinkedIn post and document · X post and thread · YouTube long video, Short, title, thumbnail and chapters. LinkedIn, X and YouTube playbooks are **Phase 3 exit criteria**, not candidates |
+| **Video honesty** | Video formats produce a script, a shot list and a caption; you record. Carousels and story frames are rendered from HTML templates to PNG with Playwright (Apache-2.0) at 1080×1350 and 1080×1920, with safe-zone checks |
+| **Human voice** | Every outward text (posts, replies, DMs, emails) goes through the humanize-and-lint step before `awaiting_approval`. The score is stored, and the card shows the cleaned text with its score, never the score alone. Each platform gets its own list of AI-tell phrases in a Blink overlay file. The humanizer is for voice and quality, **never for evading detection**. Blink never strips C2PA or other media metadata, and each platform has an "AI-assisted" disclosure toggle |
+| **Voice profile** | `voice_profile` table: per-platform overrides, never-say words, banned topics, positions, #ad/sponsorship rules, version. **No fabrication:** a leftover `{{placeholder}}` or an invented number or client blocks approval |
+| **Feedback loop** | `content_metric` table (piece, at, views, reach, non-follower %, saves, shares, follows, retention, hook formula). A `metrics_pull` job runs at T+1 h, 24 h and 7 d. Where an API gives nothing, metrics come in by screenshot or CSV import. The ig-audit output feeds `weekly_content_plan` |
+| **Inbound** | `inbound_engagement` table (platform, kind, author, text, post, ig-reply bucket, `reply_window_expires_at`). A Meta webhook edge function, plus polling for X and YouTube. Triage runs on Haiku |
+| **Reply safety** | Every reply and DM is 🔴 and never eligible for automatic rules. There is a daily cap. Card expiry follows the platform's messaging window. Comment and DM text is added to the prompt-injection evals. Keyword auto-delivery of DMs is **off** (ADR). Commenting on other people's posts is a copy-and-open handoff only |
+| **Publishing jobs** | New jobs: `publish_due` (every minute), `token_refresh`, `metrics_pull`, `media_cleanup`. Approval stores a hash of text, media hashes, platform and time. On failure (token, quota or media), the post becomes a one-tap handoff with a P1 notice. X threads publish with resume-on-failure |
+| **Media storage** | A Supabase Storage bucket. Publishing uses a signed public URL with a short TTL, cleaned up after publish |
+| **Repurpose** | `link.kind = repurposed_from` and `atom.source_piece_id`. The weekly plan pulls from top performers and from QUESTION-bucket comments |
+| **ig-viral** | Interactive only, in the Mac app with you present. Overnight research uses the web search tool on public sources only. ADR covers scraping and terms-of-service limits |
+| **Skill wrapping** | The ig-* skills are wrapped, not edited, so pinning still works. An adaptation table maps their `~/.claude/instagram/*.md` files to tables: voice → `voice_profile`, swipe → `content_swipe`, plan → `content_plan`, log → `content_piece` + `hook_formula_id`. Each "never publish" line maps to the 🔴 step |
+
+**Platform realities (all *verify* before Phase 3):**
+- **LinkedIn:** the member token lasts about 60 days, so a reconnect nudge job is needed. Analytics and comments need partner scopes, so metrics are imported manually. Document posts start as a handoff.
+- **Instagram:** check whether Instagram Login works without a Page. Containers need a public media URL. About 100 API posts per day. No licensed music. Long-lived tokens need refreshing.
+- **X:** reads cost money too, so put them in `cost_guard` and §27.
+- **YouTube:** about 10k quota units per day, and an upload costs about 1,600. Unaudited projects upload as private, so the default is "private draft, you publish in Studio". Metrics come from the Analytics API.
+
+### 36.5 Security
+
+- **Server-verified approvals.** Each device has a Secure Enclave P-256 key bound to current biometrics, registered at pairing. For a 🔴 action, the server issues a challenge (action ID, payload hash, expiry). The device signs it after Face ID / Touch ID / passcode, and the Edge Function verifies the signature before executing. "Autopost week" signs the exact list of post hashes and times. The Claude-app connector can never approve a 🔴 action.
+- **Keychain tiers.** Session and refresh tokens and the push decryption key use `AfterFirstUnlockThisDeviceOnly` in a shared group, so widgets, intents and the extension work while the phone is locked. Only the approval key is biometry-bound. App lock is a UX gate. The Mac uses the data-protection keychain.
+- **Fallbacks.** Authentication uses `deviceOwnerAuthentication` (passcode or password fallback). Cancelling returns the card; it is not dismissed. A Mac with no Touch ID approves 🔴 actions on the iPhone (a pushed request) or with the account password. If the biometric set changes, the device re-enrols: re-authenticate to your server, register a new key and revoke the old one.
+- **Pairing.** The QR code carries a one-time code with a short lifetime and the server's SPKI hash, which is pinned on first use with custom `SecTrust` evaluation. The code is exchanged for a device-bound refresh token. OAuth connectors use a `blink://` callback with PKCE, and the exchange happens on your server (*verify* Google client-type rules). No passkeys or Sign in with Apple, because per-user domains rule them out.
+- **Secrets.**
+  - The service-role key never leaves edge functions.
+  - Tokens and the Claude key never enter Agent Skills containers or prompts; only IDs and short-lived signed URLs do.
+  - Logs and connector audit rows redact tokens.
+  - Each platform has a refresh and rotation schedule. "Disconnect" revokes upstream.
+  - `.gitignore` adds `supabase/.env`, `*.pem`, `*.key` and `GoogleService-Info.plist`.
+  - A test asserts that no secret string appears in skill inputs or logs.
+
+### 36.6 Codebase, licences, CI and tests
+
+- **Ponytail habits (§32.4).**
+  - Shortcuts are marked with a `shortcut: <limit>, <when to upgrade>` comment and tracked in a debt ledger with `/ponytail-debt`.
+  - `/ponytail-audit` runs at the end of every phase.
+  - One small test for any new branch, parser, money or security logic.
+  - Never cut: trust-boundary validation, data-loss handling, security, accessibility.
+  - Plugin auto-update is off, because skills are pinned.
+- **Repo additions (§26).** `docs/decisions/` with the ADR template; §31 rows become ADR-0001…n. README, CHANGELOG, `.github/`, test folders, and a project `CLAUDE.md`. The CLAUDE.md names the skills, turns ponytail on, and states the licence rule (never paste GPL/AGPL code, clean-room for Boring Notch and Inbox Zero) and the secret rules.
+- **CI (new §25.1, GitHub Actions).**
+  - macOS: `swift build`/`swift test` plus SwiftLint.
+  - Supabase: `supabase db lint` plus pgTAP RLS tests.
+  - Edge functions: `deno test`.
+  - Secrets: gitleaks as a pre-commit hook and in CI.
+  - Licences: a checker allowlists SPM, Deno, npm and Python locks.
+  - Evals (triage, injection, voice and fabrication) run when prompts change.
+  - Playwright end-to-end tests of the web app's approval queue and Connections screen.
+  - `xctrace` performance traces.
+- **Tests (§25).**
+  - RLS per table; job idempotency.
+  - Publish adapters against recorded fixtures; approval-hash integrity; token-expiry fallback.
+  - Shared JSON fixtures (Live Activity content-state and push-to-start, widget snapshot, push envelope, sync payloads), decoded by both the Deno and Swift tests.
+  - Keychain and Secure Enclave tests run serialized on a device. Flows use XCUITest.
+- **Licences.**
+  - Move the PolyForm Perimeter skills out of the repo now, before history makes them stick, into `scripts/install-dev-skills.sh`, which installs a pinned list into `~/.claude/skills`.
+  - The ig-* skills that run on the server are **shipped code** (MIT; keep the notice) or are replaced with Blink-native skills.
+  - Complete the runtime list in THIRD_PARTY_NOTICES: ig-mcp (check upstream), google_workspace_mcp, Supabase components, Playwright, Python dependencies.
+  - Add a **customer EULA** granting the right to run and inspect the backend on the customer's own server; today's LICENSE alone grants no such right.
+  - The licence scan of shipped code excludes `.claude/`; that folder is scanned separately.
+
+### 36.7 Updated "done when" gates (add to §29)
+
+Every phase also needs:
+- `/ponytail-audit` shows no must-fix items, and the debt ledger has no entries without an upgrade trigger;
+- the state matrix is covered for that phase's surfaces;
+- VoiceOver and Reduce Motion pass;
+- 0 fps at rest is verified in Instruments;
+- CI is green, including RLS and licence checks.
+
+**Phase 1** also needs the 2-minute value moment measured on a fresh install, and server-verified 🔴 approvals working end to end.

@@ -27,3 +27,9 @@ supabase/.temp/
 .DS_Store
 .vscode/
 .idea/
+
+# Secrets (§36.5)
+supabase/.env
+*.pem
+*.key
+GoogleService-Info.plist

@@ -176,8 +176,8 @@ footer{padding-top:22px;border-top:.5px solid var(--sep);font-size:.85rem;color:
   <div class="wall">
     <div class="mats">
       <div class="mat m-ut"><b>Ultra thin</b><span>Hover peeks</span></div>
-      <div class="mat m-th"><b>Thin</b><span>Popovers, pill on non-notch Macs</span></div>
-      <div class="mat m-rg"><b>Regular</b><span>Sheets, iPhone Ask-First cards</span></div>
+      <div class="mat m-th"><b>Thin</b><span>Popovers only</span></div>
+      <div class="mat m-rg"><b>Regular</b><span>System sheets</span></div>
       <div class="mat m-tk"><b>Thick</b><span>Text-heavy overlays</span></div>
     </div>
     <div class="glassrow">
@@ -191,7 +191,7 @@ footer{padding-top:22px;border-top:.5px solid var(--sep);font-size:.85rem;color:
   <div class="tbl"><table>
     <thead><tr><th>Material</th><th>SwiftUI</th><th>Where in Blink</th></tr></thead>
     <tbody>
-      <tr><td><b>Liquid Glass · regular</b></td><td><code>.glassEffect(.regular)</code></td><td>Mac sidebar and toolbar, iPhone tab bar, floating Blink button</td></tr>
+      <tr><td><b>Liquid Glass · regular</b></td><td><code>.glassEffect(.regular)</code></td><td>Custom floating controls only: the Blink button, the quick-sheet bar. System toolbars, tab bars and sidebars get glass automatically, so never add it again</td></tr>
       <tr><td><b>Liquid Glass · clear</b></td><td><code>.glassEffect(.clear)</code></td><td>Only over photos and the mascot stage</td></tr>
       <tr><td><b>Liquid Glass · tinted</b></td><td><code>.glassEffect(.regular.tint(.accentColor))</code></td><td>One primary floating control per screen, never more</td></tr>
       <tr><td><b>Grouping</b></td><td><code>GlassEffectContainer</code> + <code>glassEffectID</code></td><td>Pill buttons that morph into each other (Capture · + · Ask)</td></tr>
@@ -259,7 +259,7 @@ extension Color {
     static let blinkAttention = Color.orange
 }
 // glass on the navigation layer only
-TabView { … }.glassEffect(.regular)
+TabView { … }   // system tab bar: glass is automatic, add nothing
 Button("Ask") { … }.glassEffect(.regular.tint(.accentColor))</pre>
 </section>
 
