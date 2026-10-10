@@ -1,0 +1,264 @@
+# Personal Assistant: Master Plan
+
+> **One line:** A Claude-powered second brain that lives in your MacBook notch and your iPhone Dynamic Island. It knows your day, prepares things before you ask, and never acts without your OK.
+
+Status: **Planning.** Nothing is built yet. This file is the single source of truth: update it as decisions are made.
+
+---
+
+## 1. The 6 principles
+
+1. **Part of your life, not another app.** It comes to you: when you wake up, open the laptop, unlock the phone, finish a meeting, or wind down at night.
+2. **Prepares ahead of time.** It plans tomorrow with you at night, researches and drafts overnight, and has everything ready in the morning.
+3. **Asks before acting.** "Do you want me to do it?" is on every screen. Small things take one tap with Undo; email, posts and money need Face ID.
+4. **Everything is connected.** Meetings ↔ notes ↔ emails ↔ people ↔ tasks ↔ projects ↔ habits ↔ money ↔ content. So "Summarise everything about X" works.
+5. **Claude is the brain.** One AI provider: Claude. It powers chat, summaries, plans, drafts, triage and research.
+6. **Only you can see it.** Your own private backend, Face ID locks, keys that are never displayed, and a single-user login.
+
+---
+
+## 2. A day with it
+
+| Moment | Where | What you see |
+|---|---|---|
+| **Wake up** | iPhone Lock Screen + Dynamic Island | ☀️ "Good morning. Today: 3 meetings (first at 10:00) · Focus: notch animations · LinkedIn post ready · 2 important emails · Workout planned 7:00" |
+| **Open the laptop** | Mac notch expands once | Same morning brief + **project status**: "Assistant app: Phase 1, 4/7 done · Client X: waiting on their reply" → [Start focus] [Review post] [Open inbox] |
+| **Chat** | Mac notch, app or Claude app | "What are we creating content on today?" → Claude answers with options from your projects + overnight research → [Save to content board] |
+| **"Remind me about the 3 pm meeting"** | Chat | Claude fetches the 3 pm event from your calendar → "Design sync with Priya at 3:00, 2 linked notes. Remind you 10 min before?" → [Do it] |
+| **2:57 pm** | Dynamic Island + Mac menu bar + notch | ⏱ "Design sync in 3 min" · notes · [Join] |
+| **3:03 pm** | Dynamic Island | "Design sync started 3 min ago" · [Open notes] |
+| **Meeting ends** | Notch / notification | "Capture notes? Set a follow-up? Draft a follow-up email?" |
+| **Important email** | Notch / notification | "Client X replied about the invoice. Draft ready." → [Review] [Send] [Snooze] |
+| **Spending** | Quiet badge | "$42 at Whole Foods. Food budget 70% used." |
+| **To-do check** | Notch, afternoon | "You have 'Send proposal' due today and a free hour at 4. Work on it then?" |
+| **Night (~9:30)** | Notch / Dynamic Island | "You haven't planned tomorrow yet. **Plan with me** / **Auto-plan, I'll review** / Later" |
+| **Evening check-in** | Chat card | "Workout today?" No → ❌ → "Put it at 7:00 tomorrow?" · "Here are tomorrow's important meetings" (mini calendar) · "Anything from today worth posting?" |
+| **Overnight** | Backend | Researches your topic, drafts the LinkedIn post, summarises the day, prepares tomorrow's brief |
+
+---
+
+## 3. Modules
+
+### 3.1 Today (home screen)
+- One screen: next meeting, focus task, to-dos, important emails, habit checklist, budget pulse, content of the day, project status.
+- The same data powers the notch, Dynamic Island, widgets and the morning brief.
+
+### 3.2 Calendar
+- Reads all your calendars through **EventKit**: iCloud, Google and Exchange accounts that are added to your Mac or iPhone.
+- **Before a meeting:** a brief with attendees, your linked notes, last email thread with them, and open tasks.
+- **After a meeting:** a wrap-up prompt (notes / follow-up / email).
+- Can create, move and decline events from chat, always through an Ask-First card.
+
+### 3.3 Notes / second brain (your own system, primary)
+- Fast notes in Markdown, with templates (meeting, idea, journal).
+- **Links:** any note can link to a meeting, person, email, project or idea, and back-links appear automatically.
+- **Semantic search:** "what did I promise Sam?" finds it even if the words don't match.
+- **Quick capture** from anywhere: notch, global hotkey, iPhone Action Button, Share Sheet, Siri, or dragging something onto the notch.
+
+### 3.4 To-dos, reminders and habits ("schedule checker")
+- To-dos with due dates, linked to projects, meetings and notes.
+- Reminders show in the **notch** (Mac) and **Dynamic Island** (iPhone) first. Copying them into Apple Reminders is optional (for Siri).
+- **Habits** (workout, reading, …) get daily ✅ / ❌ / ⏭, streaks, and weekly stats ("Workout 3/7").
+- The nightly check-in fills the schedule checker by conversation.
+
+### 3.5 Projects
+- Each project has a status, next step, linked to-dos, notes, emails and people.
+- Status is shown in the morning brief and on opening the laptop: "Phase 1, 4/7 done · blocked on X".
+- Optional later: pull activity from GitHub so it knows what you shipped.
+
+### 3.6 Email (works with your Apple Mail setup)
+- Apple Mail is only the app that displays mail. The assistant connects to **the account behind it** (iCloud / Google / Outlook / your domain host) over **IMAP + SMTP**.
+- **Triage:** Important / Needs reply / FYI / Noise. Only *Important* interrupts you.
+- **Drafts in your voice** are saved to your Drafts folder, **so they appear inside Apple Mail too**.
+- **Send / Send later** happens only after your approval (Face ID).
+- **Summaries:** daily inbox summary, and "summarise this thread".
+
+### 3.7 Budget
+- **Bank connection:** SimpleFIN Bridge (read-only, $15/yr, US banks). If one of your banks isn't supported, use Plaid or Teller as a fallback.
+- **Universal fallback:** read your bank's transaction-alert emails (already flowing in through the email module) + CSV import + manual entry from the notch.
+- Auto-categorisation by Claude; monthly budgets per category; alerts at 80% / 100%.
+- Weekly money summary in the Sunday review.
+
+### 3.8 Content studio + Content Autopilot (LinkedIn first)
+- Pipeline: **Idea → Outline → Draft → Scheduled → Published**, with a content calendar.
+- **Autopilot (nightly):** collects your day (finished tasks, project notes, meetings) → web research on the topic → picks **today's post** + 2 backups → writes a draft in your voice (learned from 5–10 of your past posts).
+- **Morning:** "Post ready" card → [Review] [Post now] [Schedule 9:00] [Skip].
+- **LinkedIn:** posts to your own profile through the official API (Share on LinkedIn, `w_member_social`). The backend handles scheduling because the API has no scheduling. **It never posts without your tap.**
+- Learns what works: you mark performance, or paste stats, since LinkedIn's API doesn't give personal post analytics to apps.
+
+### 3.9 Chat ("you + Claude together")
+- A chat panel in the notch, the app and the Claude app, all sharing the same memory and data.
+- Anything in chat can be **saved** (to notes, content board or to-dos) or **acted on** (reminder, calendar event, draft) through Ask-First cards.
+
+---
+
+## 4. The Ask-First Helper (everywhere)
+
+One card design used across the whole system:
+
+```
+✨ Post to LinkedIn?
+"3 things I learned building a notch app…"   Scheduled 9:00
+[ ✓ Do it ]  [ ✎ Edit ]  [ ⏰ Later ]  [ ✕ ]
+```
+
+| Level | Examples | Confirmation |
+|---|---|---|
+| 🟢 Small | Mark habit, save idea, add note | Done immediately + 5 s **Undo** |
+| 🟡 Medium | Reminder, calendar event, plan tomorrow | One tap **Do it** |
+| 🔴 Important | Send email, post to LinkedIn, anything money | Preview → **Face ID** → 10 s "Sending… Undo" |
+
+- **"Waiting for you" queue:** missed cards collect in one place ("3 things waiting").
+- **Learns your preferences, and asks first:** "You always approve marking workouts. Do it automatically?" 🔴 actions are **never** automatic.
+- **Suggestions while you work:** after you write a note → "Turn into a LinkedIn post?"; after a meeting → "Follow-up?"; when an email mentions a date → "Add to calendar?"
+
+---
+
+## 5. Where it lives: surfaces
+
+### 5.1 Mac
+- **Notch overlay**, built with [DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit), using patterns from [Boring Notch](https://github.com/TheBoredTeam/boring.notch).
+  - Resting: thin strip with dots/counts (unread important, next meeting countdown, reminders).
+  - Hover/click: expands into a mini dashboard plus chat input.
+  - Proactive pop-outs: meetings, reminders, important mail, Ask-First cards.
+  - Drag-and-drop onto the notch saves to notes/content.
+- **Wake/unlock trigger:** listen for `NSWorkspace.didWakeNotification` and the screen-unlock system notification → show the morning brief once per day (or "while you were away" later in the day).
+- **Menu bar:** macOS 26+ automatically shows the **iPhone's Live Activities in the Mac menu bar**, so the meeting countdown appears there for free.
+- **Global hotkey** (e.g. ⌥Space) for capture or chat.
+- Distribution: signed and notarised, installed directly (not the Mac App Store, because the notch overlay doesn't fit App Store rules).
+
+### 5.2 iPhone 15 (has the Dynamic Island)
+- **Live Activities** (ActivityKit):
+  - Meeting countdown "in 3 min" → "started 3 min ago", **started by the server via push-to-start**.
+  - Reminder countdowns.
+  - Morning brief activity (short-lived, ends when you open it).
+  - Live Activities also mirror to the **Mac menu bar** and **Apple Watch Smart Stack** automatically.
+- **Waking up:** iOS doesn't let apps detect "phone unlocked", so we cover it in three ways:
+  1. **Lock Screen widget** that always shows Today.
+  2. **Push-to-start Live Activity** at your usual wake time.
+  3. Optional **Shortcuts automation**: "When Sleep Focus turns off → run *Morning Brief* (our App Intent)". Test this on a real device: there are developer reports that alarm-based triggers can be unreliable.
+- **Notifications:** Time-Sensitive, with action buttons (Do it / Snooze / Draft reply).
+- **Widgets:** Today, Next meeting, Habits (interactive checkboxes).
+- **Action Button / Siri / Shortcuts:** "Add idea", "Plan my day", "What's next?"
+
+### 5.3 Claude app (Mac, iPhone, web)
+- Our backend exposes a **remote MCP server**, added in Claude under *Settings → Connectors → Add custom connector*, with an OAuth login so only you can use it.
+- Tools it exposes: `get_today`, `search_notes`, `create_note`, `list_todos`, `create_reminder`, `get_calendar`, `draft_email`, `get_budget`, `content_board`, `project_status`, …
+- **Skills** (our own, written in the style of [anthropics/skills](https://github.com/anthropics/skills)): `morning-brief`, `evening-planning`, `weekly-review`, `meeting-prep`, `email-triage`, `content-autopilot`, `linkedin-post`, `budget-check`.
+- In the Claude app, write actions also go through confirmation: Claude asks, you say yes.
+
+---
+
+## 6. Architecture
+
+```
+┌──────────────── Apple apps — Swift / SwiftUI, shared code ────────────────┐
+│ macOS: notch overlay · menu bar · hotkey · wake/unlock trigger            │
+│ iOS:   Live Activities · widgets · App Intents · notifications            │
+│ Both:  Face ID lock · Keychain · local cache (SwiftData, works offline)   │
+│        EventKit (calendar + optional Apple Reminders)                     │
+└──────────────────────────────────┬────────────────────────────────────────┘
+                                   │ HTTPS (your login only)
+┌──────────────────────────── Backend (Supabase) ───────────────────────────┐
+│ Postgres + pgvector  — items, links, embeddings (semantic search)        │
+│ Edge Functions       — API for apps · MCP server for Claude app          │
+│ pg_cron schedules    — mail check · meeting watcher · nightly autopilot  │
+│ Vault                — encrypted secrets (never returned to apps)        │
+│ Push sender          — APNs: notifications + Live Activity start/update  │
+│ Mail worker          — IMAP/SMTP (polling every 2–5 min to start;        │
+│                        always-on IMAP IDLE worker later for instant mail)│
+└───────────┬─────────────────────┬─────────────────────┬──────────────────┘
+            │                     │                     │
+      Claude API            SimpleFIN / Plaid      LinkedIn API
+```
+
+### 6.1 Data model (simple version)
+- `items`: one table for everything (note, todo, habit_log, event_ref, email_ref, transaction, idea, post, project), with `type`, `title`, `body`, `status`, `due_at`, `metadata`, `embedding`.
+- `links`: `from_item`, `to_item`, `kind` (about, follow_up, source_of, belongs_to).
+- `actions`: the Ask-First queue: proposed action, risk level, status (pending/approved/done/undone), who proposed it.
+- `rules`: your auto-approve preferences.
+- `daily_logs`: morning brief, evening check-in answers, summaries.
+
+### 6.2 How Claude is used
+
+| Job | Claude feature | Model (to decide) |
+|---|---|---|
+| Chat, planning, drafts, briefs | Messages API + **tool use** (tools = our modules), streaming | **Claude Opus 5.5** (`claude-opus-5-5`), the default |
+| Email triage (many small calls) | **Structured outputs** (fixed JSON categories) | Opus 5.5 by default; **Claude Haiku 5.5** is a much cheaper option if you choose it |
+| Overnight autopilot (content, summaries, tomorrow's brief) | **Message Batches** (50% cheaper, not urgent) + **web search tool** for research | Opus 5.5 |
+| Your voice, preferences, long-term memory | **Prompt caching** of your profile + voice examples; memory stored in our DB | — |
+| Nightly jobs, alternative path | **Claude Managed Agents** with scheduled deployments (Anthropic runs the loop; secrets in vaults) | Evaluate in Phase 3 |
+| Safety | Email/web text treated as **data, never instructions**; write actions only via Ask-First; refusal fallback enabled | — |
+
+### 6.3 Rough running costs (estimates, to verify)
+| Item | Cost |
+|---|---|
+| Apple Developer Program | $99 / year (needed for push, Live Activities via server, TestFlight) |
+| Claude API | ~$1–2 / day all on Opus 5.5 for normal use; less with Batches, caching, or Haiku for triage |
+| Supabase | Free tier to start; Pro $25/month when needed |
+| SimpleFIN Bridge | $15 / year |
+| LinkedIn API | Free |
+
+---
+
+## 7. Privacy and security
+
+| Where | What | Protection |
+|---|---|---|
+| Apps | Everything | **Face ID** to open; a second Face ID check for **Email**, **Budget**, **Keys** |
+| Device Keychain | Personal keys and tokens | Locked to *current* biometrics: adding a new face or finger makes them unreadable |
+| Backend | Claude key, mail password, bank token, LinkedIn token | Encrypted in **Supabase Vault**; **never sent to any app**. UI shows "Connected ✓"; replacing a key requires Face ID; viewing is not possible |
+| Database | Your data | Row-level security, **sign-ups disabled**, single user |
+| Claude connector | Claude app access | OAuth with your account only; write tools go through confirmation |
+| Git | Code | **No secrets ever committed** (ignored config files + Keychain) |
+| AI safety | Emails/web pages | Never followed as instructions; 🔴 actions always need Face ID |
+
+Trade-off: the backend must be able to read mail and transactions to alert you while your phone is locked. Notes can optionally be **end-to-end encrypted** later; server-side AI search over them would then be turned off.
+
+---
+
+## 8. Build phases (one at a time)
+
+| # | Phase | Done when… |
+|---|---|---|
+| 0 | **Setup:** Apple Developer account, Xcode multiplatform project, Supabase project, Face ID lock, Keychain, secrets in Vault | App opens with Face ID on Mac + iPhone; backend reachable with your login only |
+| 1 | **Notch + Calendar + Reminders + Ask-First Helper** | Meeting "in 10 min" pops from the notch with notes; reminder fires in the notch; Ask-First card works; morning brief shows on laptop open |
+| 2 | **Notes + To-dos + Habits + Evening planning + Projects** | Nightly "plan tomorrow?" conversation fills the schedule checker and creates tomorrow's plan; project status shows in the brief |
+| 3 | **Claude chat + Content Autopilot + LinkedIn** | Chat in notch; overnight draft waits in the morning; approve → posted/scheduled |
+| 4 | **Claude app connector + skills** | Same assistant usable inside the Claude app with your login |
+| 5 | **Email** | Important mail alerts; drafts appear in Apple Mail; send after Face ID |
+| 6 | **iPhone: Dynamic Island + widgets + wake-up** | "Meeting in 3 min / started 3 min ago" Live Activity; Lock Screen Today widget |
+| 7 | **Budget** | Transactions flow in; categories + alerts work |
+| 8 | **Polish:** weekly review, "while you were away", learning rules | Sunday review summarises habits, money, content, projects |
+
+**How we'll work:** Claude Code running **on your Mac** (it can build with Xcode), or code written here → pushed to GitHub → you press Run in Xcode. Each phase gets a checklist in this file.
+
+---
+
+## 9. Building blocks (open source to learn from)
+
+| Area | Repo / service | Use |
+|---|---|---|
+| Notch | [MrKai77/DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit) | Core notch UI package |
+| Notch | [TheBoredTeam/boring.notch](https://github.com/TheBoredTeam/boring.notch) | Reference: animations, calendar, shelf |
+| Notch | [zzfadi/NotchFlow](https://github.com/zzfadi/NotchFlow) | Multi-display handling |
+| Dynamic Island | [1998code/iOS16-Live-Activities](https://github.com/1998code/iOS16-Live-Activities) | Live Activity sample |
+| Apple coding | [rshankras/claude-code-apple-skills](https://github.com/rshankras/claude-code-apple-skills) | Claude Code skills for Live Activities etc. |
+| Email AI | [elie222/inbox-zero](https://github.com/elie222/inbox-zero) | Reference for triage + drafting design |
+| Budget | SimpleFIN Bridge, Actual Budget, Firefly III | Bank data; category/rule design |
+| Skills | [anthropics/skills](https://github.com/anthropics/skills), awesome-claude-skills | Templates for our own skills |
+| Planning UX | Sunsama (shutdown ritual), Motion (auto-scheduling) | Inspiration for evening/morning flows |
+
+> Check each repo's licence before copying code. For personal use any licence works. For a product you sell, copy only MIT/Apache code.
+
+---
+
+## 10. Open decisions
+
+- [ ] **Banks:** exact name of "Expedia bank" (Expedia credit card? another bank?) and confirm **Commerce Bank (US)**. Check both in the SimpleFIN Bridge institution list.
+- [ ] **Mail provider** behind Apple Mail: iCloud, Google Workspace (pexilim.com?), Outlook, other? (Apple Mail → Settings → Accounts.)
+- [ ] **Mac setup:** do you have Xcode installed? OK with the Apple Developer Program ($99/yr)?
+- [ ] **Claude models:** Opus 5.5 everywhere, or Haiku 5.5 for email triage to save cost?
+- [ ] **Content:** LinkedIn only for now? How often to post (daily / 3× week)?
+- [ ] **Times:** usual wake-up time and evening planning time (default 9:30 pm)?
+- [ ] **Backend host:** Supabase (recommended) — confirm.
