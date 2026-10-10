@@ -1,0 +1,211 @@
+<title>Blink Segments</title>
+<style>
+/* Layout: one column; a chat card creates the segment, a Mac-window mock shows it built from shared blocks, template chips swap the content. */
+:root{
+  --bg:#F2F2F4; --surface:#FFFFFF; --fg:#1C1C1E; --muted:#6C6C72; --line:#E0E0E5; --chip:#E8E8ED; --side:#ECECF0;
+  --chip-on:#1C1C1E; --chip-on-fg:#FFFFFF;
+  --blink:#E8641E; --teal:#0A8F8A; --coral:#D2412E; --green:#2F8F4E; --amber:#B9770E;
+  --hw:#000000; --hw-fg:#F5F5F7; --hw-muted:#8E8E93;
+  --sans:-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0B0B0D; --surface:#161618; --fg:#F5F5F7; --muted:#98989F; --line:#2A2A2E; --chip:#232327; --side:#1B1B1E;
+  --chip-on:#F5F5F7; --chip-on-fg:#0B0B0D; --blink:#FF8A45; --teal:#3FD0C9; --coral:#FF6B57; --green:#5CC27D; --amber:#E9A04F; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0B0B0D; --surface:#161618; --fg:#F5F5F7; --muted:#98989F; --line:#2A2A2E; --chip:#232327; --side:#1B1B1E;
+  --chip-on:#F5F5F7; --chip-on-fg:#0B0B0D; --blink:#FF8A45; --teal:#3FD0C9; --coral:#FF6B57; --green:#5CC27D; --amber:#E9A04F; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.55 var(--sans);padding-inline:16px;padding-block:0 72px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto}
+h1,h2,h3{margin:0;letter-spacing:-.022em;text-wrap:balance}
+h1{font-size:clamp(2.1rem,5.5vw,3.3rem);line-height:1.05}
+h2{font-size:clamp(1.35rem,3vw,1.8rem);line-height:1.15}
+h3{font-size:.95rem;font-weight:600}
+p{margin:0;max-width:64ch}
+.muted{color:var(--muted)}
+.eyebrow{font:600 .72rem/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:12px;padding-block:44px 24px}
+section{display:grid;gap:18px;padding-block:40px;border-top:1px solid var(--line)}
+button{font:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--blink);outline-offset:2px}
+
+/* chat */
+.chat{display:grid;gap:10px;max-width:620px}
+.b{padding:10px 14px;border-radius:18px;max-width:88%}
+.b.me{justify-self:end;background:var(--blink);color:#fff;border-bottom-right-radius:6px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;display:grid;gap:10px}
+.card ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.who{display:flex;align-items:center;gap:10px;font-weight:600}
+.mini{width:40px;height:20px;background:var(--hw);border-radius:0 0 10px 10px;display:flex;align-items:center;justify-content:center;gap:6px;position:relative;overflow:hidden;flex:none}
+.mini i{width:4px;height:10px;border-radius:9px;background:#fff;transform:rotate(16deg)}
+.mini i:first-child{translate:0 1px}
+.mini::after{content:"";position:absolute;inset:0;background:radial-gradient(70% 90% at 50% 130%,color-mix(in srgb,var(--blink) 70%,transparent),transparent 70%)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:999px;padding:8px 14px;font-size:.88rem;font-weight:500}
+.btn.p{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.toast{font-size:.86rem;color:var(--green);font-weight:600}
+
+/* chips */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:0;border-radius:999px;padding:8px 14px;font-size:.86rem;font-weight:500;background:var(--chip);color:var(--fg)}
+.chip[aria-pressed="true"]{background:var(--chip-on);color:var(--chip-on-fg)}
+
+/* mac window */
+.mac{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:0 24px 50px -30px rgba(0,0,0,.45)}
+.bar{display:flex;align-items:center;gap:7px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
+.bar i{width:11px;height:11px;border-radius:50%;background:var(--line)}
+.bar span{margin-left:10px;font-size:.8rem;color:var(--muted)}
+.body{display:grid;grid-template-columns:200px minmax(0,1fr) 220px;min-height:460px}
+.side{background:var(--side);padding:14px 10px;display:grid;gap:2px;align-content:start;font-size:.86rem}
+.side .lab{font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:12px 8px 4px}
+.side .it{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px}
+.side .it.on{background:var(--surface);font-weight:600}
+.ring{--p:40;--c:var(--blink);width:14px;height:14px;border-radius:50%;flex:none;background:conic-gradient(var(--c) calc(var(--p)*1%),var(--line) 0)}
+.main{padding:20px;display:grid;gap:14px;align-content:start;min-width:0}
+.head{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.bigring{--p:40;--c:var(--blink);width:58px;height:58px;border-radius:50%;background:conic-gradient(var(--c) calc(var(--p)*1%),var(--line) 0);display:grid;place-items:center;flex:none}
+.bigring b{width:44px;height:44px;border-radius:50%;background:var(--surface);display:grid;place-items:center;font:600 .8rem var(--mono)}
+.head .t{display:grid;gap:2px;min-width:0}
+.head .t h3{font-size:1.25rem;letter-spacing:-.01em}
+.status{font:600 .7rem/1 var(--sans);text-transform:uppercase;letter-spacing:.08em;padding:5px 8px;border-radius:6px;background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+.blocks{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.blk{border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;gap:8px;align-content:start;min-width:0}
+.blk .bt{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.blk .src{font-size:.68rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.row{display:flex;justify-content:space-between;gap:10px;font-size:.86rem}
+.row span:last-child{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.miles{display:grid;gap:6px}
+.track{height:6px;border-radius:6px;background:var(--line);overflow:hidden}
+.track i{display:block;height:100%;background:var(--blink)}
+.panel{border-left:1px solid var(--line);padding:16px;display:grid;gap:12px;align-content:start;font-size:.86rem}
+.sug{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px}
+@media (max-width:860px){.body{grid-template-columns:minmax(0,1fr)}.side{display:none}.panel{border-left:0;border-top:1px solid var(--line)}}
+
+/* surfaces */
+.surf{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.sf{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:12px;justify-items:start}
+.notch{background:var(--hw);color:var(--hw-fg);border-radius:0 0 16px 16px;padding:8px 14px;display:flex;gap:10px;align-items:center;font-size:.8rem}
+.island{background:var(--hw);color:var(--hw-fg);border-radius:999px;padding:8px 14px;display:flex;gap:14px;align-items:center;font-size:.82rem}
+.island b{color:var(--blink);font-variant-numeric:tabular-nums}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--blink)}
+.list{margin:0;padding-left:18px;display:grid;gap:6px}
+footer{padding-top:22px;border-top:1px solid var(--line);font-size:.85rem;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Blink · concept · example data</span>
+  <h1>Say it. Blink builds the space.</h1>
+  <p class="muted">A Segment is a space for one project, client, trip or course, built from parts Blink already has: tasks, reminders, notes, calendar, people, money and content. Pick a template below to see the same blocks serve different people.</p>
+</header>
+
+<section aria-labelledby="s1">
+  <span class="eyebrow">Create</span>
+  <h2 id="s1">One sentence, one tap</h2>
+  <div class="chat">
+    <div class="b me" id="say">I have a project: redesign pexilim.com, launch by 30 Nov.</div>
+    <div class="card">
+      <div class="who"><span class="mini" aria-hidden="true"><i></i><i></i></span><span id="draftTitle">Drafted “Pexilim website”</span></div>
+      <ul id="draftList">
+        <li>Goal: new site live by <b>Sun 30 Nov</b></li>
+        <li>Milestones: brief Oct 15 · design Nov 1 · build Nov 20 · launch Nov 30</li>
+        <li>Reminders: weekly check-in Mon 10:00, and 2 days before each milestone</li>
+        <li>Linked: “Website ideas” note · Tuesday’s call with Priya</li>
+      </ul>
+      <div class="btns"><button class="btn p" id="createBtn" type="button">✓ Create</button><button class="btn" type="button">✎ Edit</button><button class="btn" type="button">⏰ Later</button></div>
+      <span class="toast" id="toast" hidden>Created · it’s in your sidebar · Undo</span>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="s2">
+  <span class="eyebrow">Same blocks, any person</span>
+  <h2 id="s2">Templates</h2>
+  <div class="chips" id="chips" role="group" aria-label="Template"></div>
+  <div class="mac" aria-label="Mac app with a segment open">
+    <div class="bar"><i></i><i></i><i></i><span id="winTitle">Blink</span></div>
+    <div class="body">
+      <nav class="side" aria-label="Sidebar">
+        <span class="it">Today</span><span class="it">Inbox</span><span class="it">Calendar</span><span class="it">Notes</span><span class="it">Tasks &amp; Habits</span>
+        <span class="lab">Segments</span>
+        <div id="segList"></div>
+        <span class="it muted">+ New segment</span>
+        <span class="lab">More</span><span class="it">Content</span><span class="it">Money</span>
+      </nav>
+      <div class="main" id="main"></div>
+      <aside class="panel" id="panel"></aside>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="s3">
+  <span class="eyebrow">Everywhere</span>
+  <h2 id="s3">Where the segment shows up</h2>
+  <div class="surf">
+    <div class="sf"><h3>Morning brief</h3><span id="briefLine">Pexilim website: design due in 3 days · 2 tasks left</span></div>
+    <div class="sf"><h3>Mac notch</h3><div class="notch"><span class="dot"></span><span id="notchLine">Pexilim website · check-in now</span></div></div>
+    <div class="sf"><h3>Dynamic Island</h3><div class="island"><span id="islandName">Launch</span><b id="islandCount">3 days</b></div><span class="muted" style="font-size:.82rem">Countdown in the final week and on milestone days</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="s4">
+  <span class="eyebrow">Rules</span>
+  <h2 id="s4">How it behaves</h2>
+  <ul class="list">
+    <li>Creating a segment and its reminders takes one tap. Emailing a client or posting still needs Face ID.</li>
+    <li>Blink suggests a segment once per topic. If you say no, it remembers.</li>
+    <li>Templates are data, so new ones arrive without an app update. A segment you like can become your own template.</li>
+    <li>On Done, Blink writes a short retro: what shipped, what slipped, time spent.</li>
+    <li>Later: share a segment with family, a client or a teammate. Data stays on the owner’s server.</li>
+  </ul>
+</section>
+
+<footer>Blink Segments concept for Pexilim · all names, dates and figures are examples.</footer>
+</div>
+
+<script>
+(function(){
+const T={
+ project:{label:"Project",title:"Pexilim website",goal:"New site live by Sun 30 Nov",p:40,c:"--blink",say:"I have a project: redesign pexilim.com, launch by 30 Nov.",
+  blocks:[["Milestones","Items",["Brief|Oct 15 ✓","Design|Nov 1","Build|Nov 20","Launch|Nov 30"],"m"],["Next up","Tasks",["Pick 3 reference sites|today","Draft sitemap|Wed","Send brief to Priya|Thu"]],["Reminders","Notch · Island",["Weekly check-in|Mon 10:00","Design due soon|Oct 30","Build due soon|Nov 18"]],["Calendar","EventKit · Google",["Design review with Priya|Tue 15:00","Focus: homepage|Thu 9–11"]],["Notes & files","Notes · Drive",["Website ideas|note","Brand colours|doc"]],["Content","Content engine",["Build-in-public post|Fri · LinkedIn"]]],
+  sug:["Design is due in 3 days and 2 tasks are open. Block Thursday morning?","Turn Tuesday’s review notes into tasks?"],brief:"Pexilim website: design due in 3 days · 2 tasks left",notch:"Pexilim website · check-in now",isl:["Launch","3 days"]},
+ client:{label:"Client",title:"Acme Studio",goal:"Retainer · Oct deliverables",p:65,c:"--teal",say:"New client: Acme Studio, monthly retainer.",
+  blocks:[["People","Contacts · Mail",["Dana Ruiz · lead|replied 2 h ago","Sam Lee · finance|last week"]],["Next up","Tasks",["Send October report|Fri","Prep QBR deck|Mon"]],["Money","Budget · Invoices",["Invoice #014 · $3,200|due in 5 days","Hours this month|18 / 24"]],["Calendar","Google (work)",["Weekly sync|Wed 11:00"]],["Reminders","Notch",["Follow up after sync|Wed 12:00","Invoice reminder|Oct 28"]]],
+  sug:["Dana asked for the report by Friday. Draft it from your notes?","Invoice #014 is due in 5 days. Send a friendly reminder?"],brief:"Acme Studio: report due Fri · invoice due in 5 days",notch:"Acme · follow up after sync",isl:["Invoice","5 days"]},
+ course:{label:"Course / Exam",title:"Statistics 201",goal:"Final exam · Dec 12",p:30,c:"--amber",say:"My stats exam is on December 12.",
+  blocks:[["Milestones","Items",["Ch. 1–4 revised|Nov 1","Mock exam|Nov 25","Exam|Dec 12"],"m"],["Habits","Habit tracker",["Study 45 min|4-day streak","Flashcards|daily"]],["Calendar","EventKit",["Lecture|Mon & Wed 10:00","Study group|Thu 18:00"]],["Reminders","Notch · Island",["Revise ch. 3|tonight 20:00","Mock exam|Nov 25"]],["Notes & files","Notes",["Formula sheet|note","Lecture 7 slides|pdf"]]],
+  sug:["You missed study yesterday. 30 minutes at 20:00 tonight?","Make flashcards from Lecture 7?"],brief:"Statistics 201: mock exam in 2 weeks · 4-day streak",notch:"Stats · revise ch. 3 at 20:00",isl:["Exam","58 days"]},
+ trip:{label:"Trip",title:"Lisbon",goal:"Mar 14–20 · budget €1,200",p:55,c:"--teal",say:"I'm going to Lisbon from March 14 to 20.",
+  blocks:[["Bookings","From mail",["Flight TP1351|Mar 14 07:40","Hotel Alfama|5 nights"]],["Money","Budget",["Spent|€640 / €1,200","Food budget|€35 / day"]],["Checklist","Tasks",["Passport check|done","Adapter|to buy","Offline maps|to do"]],["Day plan","Calendar",["Day 1: Alfama walk|Mar 14","Day 2: Sintra|Mar 15"]],["Reminders","Notch · Island",["Check in online|Mar 13 07:40","Leave for airport|Mar 14 05:30"]]],
+  sug:["Online check-in opens tomorrow at 07:40. Remind you?","Your hotel email has a late check-in note. Add it to Day 1?"],brief:"Lisbon: check-in opens tomorrow · €560 left",notch:"Lisbon · check in tomorrow",isl:["Flight","2 days"]},
+ launch:{label:"Launch",title:"Blink beta",goal:"Public beta · Jan 15",p:20,c:"--coral",say:"I want to launch the Blink beta on January 15.",
+  blocks:[["Milestones","Items",["Private alpha|Dec 1","Waitlist page|Dec 10","Beta|Jan 15"],"m"],["Content","Content engine",["Teaser reel|Instagram · Dec 5","Build-in-public post|LinkedIn · weekly","Launch thread|X · Jan 15"]],["Next up","Tasks",["Record demo|Sat","Write FAQ|Mon"]],["People","Contacts",["10 beta testers|invited 4"]],["Reminders","Island",["Launch countdown|final week"]]],
+  sug:["Teaser reel script is ready. Review it?","6 beta invites left to send. Draft them?"],brief:"Blink beta: waitlist page due Dec 10 · 6 invites left",notch:"Blink beta · review teaser",isl:["Launch","97 days"]},
+ family:{label:"Home / Family",title:"Home",goal:"Shared chores and school",p:70,c:"--green",say:"Make a family space for chores and school.",
+  blocks:[["Shared reminders","Notch · members",["Bins out|Tue 20:00 · Sam","School trip form|Thu · you"]],["Calendar","Shared calendar",["Parents’ evening|Oct 22 18:00","Swim class|Sat 9:00"]],["Habits","Habit tracker",["Reading 20 min|kids · daily"]],["Money","Budget",["Groceries|£310 / £450"]]],
+  sug:["The school trip form is due Thursday. Remind you Wednesday evening?"],brief:"Home: trip form due Thu · groceries £140 left",notch:"Home · bins out tonight",isl:["Trip form","2 days"]}
+};
+const order=["project","client","course","trip","launch","family"];
+let cur="project",created=false;
+const $=id=>document.getElementById(id);
+
+function render(){
+  const t=T[cur];
+  $("winTitle").textContent="Blink · "+t.title;
+  $("segList").innerHTML=order.filter(k=>k===cur||created||k!=="project").slice(0,4).map(k=>`<span class="it${k===cur?" on":""}"><span class="ring" style="--p:${T[k].p};--c:var(${T[k].c})"></span>${T[k].title}</span>`).join("");
+  const blocks=t.blocks.map(([h,src,rows,kind])=>{
+    const body=kind==="m"
+      ? `<div class="miles">${rows.map((r,i)=>{const[a,b]=r.split("|");return `<div class="row"><span>${a}</span><span>${b}</span></div>`}).join("")}<div class="track"><i style="width:${t.p}%;background:var(${t.c})"></i></div></div>`
+      : rows.map(r=>{const[a,b]=r.split("|");return `<div class="row"><span>${a}</span><span>${b}</span></div>`}).join("");
+    return `<div class="blk"><div class="bt"><h3>${h}</h3><span class="src">${src}</span></div>${body}</div>`;}).join("");
+  $("main").innerHTML=`<div class="head"><div class="bigring" style="--p:${t.p};--c:var(${t.c})"><b>${t.p}%</b></div><div class="t"><h3>${t.title}</h3><span class="muted">${t.goal}</span></div><span class="status">Active</span></div><div class="blocks">${blocks}</div>`;
+  $("panel").innerHTML=`<div class="who"><span class="mini" aria-hidden="true"><i></i><i></i></span>Blink</div>`+t.sug.map(s=>`<div class="sug"><span>${s}</span><div class="btns"><button class="btn p" type="button">Do it</button><button class="btn" type="button">Later</button></div></div>`).join("")+`<span class="muted">Ask about this segment…</span>`;
+  $("briefLine").textContent=t.brief;$("notchLine").textContent=t.notch;$("islandName").textContent=t.isl[0];$("islandCount").textContent=t.isl[1];
+  document.querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.k===cur?"true":"false"));
+}
+order.forEach(k=>{const b=document.createElement("button");b.type="button";b.className="chip";b.dataset.k=k;b.textContent=T[k].label;b.onclick=()=>{cur=k;$("say").textContent=T[k].say;$("draftTitle").textContent="Drafted “"+T[k].title+"”";$("draftList").innerHTML=T[k].blocks.slice(0,4).map(([h,,rows])=>`<li>${h}: ${rows.map(r=>r.split("|")[0]).slice(0,3).join(" · ")}</li>`).join("");$("toast").hidden=true;render();};$("chips").appendChild(b);});
+$("createBtn").onclick=()=>{created=true;$("toast").hidden=false;render();};
+render();
+})();
+</script>

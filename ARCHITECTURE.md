@@ -51,6 +51,7 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 32. Sellable, clean codebase
 33. Privacy model: your server, your keys
 34. Connections: plug in tools instead of building them
+35. Segments: say it, Blink builds the space
 
 ---
 
@@ -78,7 +79,7 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 | **Calendar** | Prep briefs before meetings, wrap-ups after | EventKit (all accounts on the device) |
 | **Notes** | Your own second brain: linked, searchable by meaning | Blink DB |
 | **Tasks and habits** | To-dos, reminders, daily habit checks ✅ ❌ ⏭, streaks | Blink DB (optional mirror to Apple Reminders) |
-| **Projects** | Status, next step, everything linked | Blink DB |
+| **Segments** (projects and more) | Say "I have a project" → Blink builds a space from existing parts: goal, milestones, reminders, notes, calendar, people, money, content (§35) | Blink DB |
 | **Email** | Triage, drafts saved to Apple Mail, send after approval | IMAP/SMTP to the account behind Apple Mail |
 | **Money** | Spending capture and budgets, with no bank app connection needed | Apple Pay + bank SMS + bank email alerts (SimpleFIN optional) |
 | **Content** | One idea becomes native drafts for every platform | Blink DB + platform playbooks/skills |
@@ -150,7 +151,7 @@ Sidebar                    Content                 Inspector
 ├ Calendar                 └ Editors                   ├ chat ("Ask about this…")
 ├ Notes                                                ├ Model: Auto ▾
 ├ Tasks & Habits                                       └ Waiting for you (n)
-├ Projects
+├ Segments   (one entry per project, client, trip, course…)
 ├ Content  (board · calendar · playbooks)
 ├ Money    (spend · budgets · rules)
 ├──────────
@@ -443,7 +444,10 @@ erDiagram
 |---|---|---|
 | `profile` | name, timezone, wake_time, evening_time, work_hours, model_prefs | Single row |
 | `memory_fact` | category, text, source, confidence, updated_at | "What Blink knows", editable |
-| `item` | id, type (note, task, event_ref, email_ref, project, idea, doc), title, body, status, due_at, metadata jsonb, embedding vector | One table for searchable things |
+| `item` | id, type (note, task, reminder, milestone, event_ref, email_ref, idea, doc), title, body, status, due_at, metadata jsonb, embedding vector | One table for searchable things |
+| `segment` | id, owner_id, template_id, title, goal, status (draft, active, paused, done, archived), due_at, color, icon, layout jsonb (blocks), rules jsonb (Blink behaviours) | A space built from existing parts (§35) |
+| `segment_member` | segment_id, person_id, role (owner, editor, viewer, assignee) | Shared segments (later) |
+| `template` | id, name, audience, blocks, default_items, default_rules, version | Templates as data, like playbooks |
 | `link` | from_item, to_item, kind (about, follow_up, source_of, belongs_to, with_person) | Back-links are automatic |
 | `person` | name, emails, notes, last_contact | People graph |
 | `calendar_event` | ext_id, title, start, end, attendees, location, url, snapshot_at | From device snapshots |
@@ -644,7 +648,7 @@ The design is the same in every stage; stage C only switches on server push.
 |---|---|---|
 | 0 | Setup + Blink design: Xcode project, Supabase, Face ID, Vault, Rive Blink + still poses, setup script | Face ID gate works; backend accepts only your login; Blink states approved |
 | 1 | Notch + Blink + Calendar + Reminders + Ask-First | Meeting card pops out at T−10; morning brief on unlock; Ask-First works; idle CPU ≈ 0 |
-| 2 | Notes, tasks, habits, projects, evening planning, Mac window | Evening check-in fills the schedule checker and builds tomorrow; Blink panel everywhere |
+| 2 | Notes, tasks, habits, **Segments** (Project template first), evening planning, Mac window | Evening check-in fills the schedule checker and builds tomorrow; Blink panel everywhere |
 | 3 | Chat + router + content engine (Instagram skills first, then LinkedIn/X) | One idea → native drafts per platform; morning card → publish/handoff |
 | 4 | Claude app connector + Blink skills | Same assistant inside the Claude app |
 | 5 | Email | P1 mail alerts; drafts appear in Apple Mail; send after Face ID |
@@ -681,6 +685,7 @@ The design is the same in every stage; stage C only switches on server push.
 | Money | Apple Pay + SMS + email alerts; bank sync optional | No bank app connection needed |
 | Content | Core message → platform skills; proposed weekly plan | Any platform, ask once |
 | Posting | Blink prepares and publishes everything; you approve once per post or once per week | Fully hands-off after one yes, never without one |
+| Segments | Projects and other spaces built from existing blocks + templates as data | One mechanism serves students, freelancers, creators, families |
 | Integrations | Plug in MCP connectors through Blink's gateway on your server; build only what has no connector | Less code, more apps, same privacy and Ask-First rules |
 | Mascot | Blink: tilted pill eyes, particles in glass, glow inside the notch only | Your sketch + Apple look |
 | Safety | Ask-First; 🔴 Face ID; never auto | Trust |
@@ -902,3 +907,87 @@ Each card: what Blink can read · what it can do (always asks) · last used · D
 - Google's official connectors are still in **preview** and need sign-up; the open-source Google connector covers the gap.
 - **Instagram:** Meta has no official connector; community ones need a Creator/Business account and a Meta app; publishing to other people's accounts needs Meta App Review.
 - **LinkedIn and X** connectors still need checking before we rely on them; until then Blink uses its own small publish step or the one-tap handoff.
+
+## 35. Segments: say it, Blink builds the space
+
+**Idea:** you say *"I have a project"* (or a client, a trip, an exam, a launch), and Blink builds a **Segment**: a dedicated space made from parts Blink already has. **No new feature code per use**: a Segment is just a goal plus a set of existing building blocks plus Blink's behaviours.
+
+**35.1 Example: your project**
+
+> **You:** I have a project: redesign pexilim.com, launch by 30 Nov.
+>
+> **Blink** (Thinking → Done): Drafted **"Pexilim website"**:
+> - Goal: new site live by **Sun 30 Nov**
+> - Milestones: brief **Oct 15** · design **Nov 1** · build **Nov 20** · launch **Nov 30**
+> - Reminders: weekly check-in **Mon 10:00**, plus **2 days before** each milestone
+> - Linked: your "Website ideas" note and Tuesday's call with Priya
+>
+> **[ ✓ Create ]  [ ✎ Edit ]  [ ⏰ Later ]**
+
+One tap creates it. It then appears in the sidebar, the morning brief ("Pexilim website: design due in 3 days"), the notch, and a Dynamic Island countdown in the final week.
+
+**35.2 Built from existing parts (blocks)**
+
+| Block | Comes from | Shows |
+|---|---|---|
+| Header | Segment | Goal, due date, progress ring, status |
+| Next up | Tasks | The next 3 actions |
+| Reminders | Tasks/reminders + notch/Island | Timeline of upcoming nudges |
+| Milestones | Items (milestone) | Dates with a progress bar |
+| Calendar | EventKit + Google connector | Related meetings, focus blocks |
+| Notes and files | Notes, Drive/Docs connector | Linked pages and files |
+| People | Person graph, email | Who's involved, last contact |
+| Money | Budget + transactions | Spend against the segment budget |
+| Content | Content engine | Posts about this project ("build in public") |
+| Habits | Habit tracker | Recurring routines tied to the goal |
+| Blink panel | Ask-First + chat | Suggestions for this segment |
+
+A **layout** is just an ordered list of blocks, so every segment type reuses the same UI.
+
+**35.3 Templates for different people**
+
+| Template | Who it's for | Blocks + Blink behaviours |
+|---|---|---|
+| **Project** | Anyone | Milestones, reminders, notes, weekly status check-in |
+| **Client** | Freelancers, agencies | Contacts, meetings, invoices (money), follow-up nudges after calls |
+| **Launch** | Founders, creators | Milestones, content series, countdown in the Island |
+| **Course / Exam** | Students | Classes (calendar), study habits, revision reminders, exam countdown |
+| **Trip** | Travellers | Bookings from email, packing checklist, budget, day-by-day plan |
+| **Event / Wedding** | Organisers | Guests (people), vendors, budget, deadlines |
+| **Job hunt** | Job seekers | Applications pipeline, interview prep, follow-ups |
+| **Health goal** | Anyone | Habits, streaks, check-ins |
+| **Content series** | Creators | Content atoms, platform drafts, posting plan |
+| **Home / Family** | Parents, households | Shared reminders, chores, school calendar |
+
+- Templates are **data**, like platform playbooks: adding one needs no app release. Blink can propose a new template when you build a custom segment you like.
+- People choose templates in setup ("I'm a freelancer and a creator"), so Blink fits many kinds of users. That makes it broader to sell later.
+
+**35.4 Ways a segment gets created**
+- **Say it or type it:** "I have a project…", "I'm going to Lisbon in March", "my exam is on the 12th".
+- **From a template:** Segments → New → pick a template.
+- **Blink notices:** a topic keeps coming up in mail, meetings and notes → *"Make 'Pexilim website' a segment?"* (one suggestion, never repeated if you say no).
+- **From an email or meeting:** "Turn this thread into a segment."
+
+**35.5 Lifecycle**
+Draft → Active → (Paused) → Done → Archived. On **Done**, Blink writes a short **retro** (what shipped, what slipped, time spent) and suggests reusing the setup as a template.
+
+**35.6 Where segments show up**
+
+| Surface | What you see |
+|---|---|
+| Mac sidebar | One entry per active segment, with a progress ring |
+| Morning brief | Status line per active segment ("Design due in 3 days · 2 tasks left") |
+| Notch | The segment you're focused on shows as a small chip; reminders slide out with its colour |
+| Dynamic Island | Countdown Live Activity in a segment's final week or on milestone days |
+| Claude app | "How's the Pexilim website going?" answers from the segment |
+| Evening planning | Tomorrow's plan pulls the next actions from active segments |
+
+**35.7 Sharing (later)**
+- Invite people to a segment (family, client, teammate). Roles: owner, editor, viewer, assignee.
+- Assign reminders to people; they get them in their own Blink or by email/link.
+- Data stays on **the owner's server** (§33); members see only that segment.
+
+**35.8 Rules**
+- Creating a segment and its reminders is 🟡 (one tap). Anything outward-facing (emailing a client, posting) stays 🔴.
+- Blink never creates more than **one suggestion per topic**; "no" is remembered.
+- Segments reuse the same tables (`item`, `link`, `action`), so search, back-links, Ask-First and sync all work without extra code.
