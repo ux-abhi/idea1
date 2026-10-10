@@ -1,0 +1,275 @@
+<title>Blink Wireframes</title>
+<style>
+/* Layout: one column. Bot concept first, then notch kit, splash wireframes (greyscale), dashboard wireframes (greyscale), then one finished-look dashboard. */
+:root{
+  --bg:#F3F3F5; --surface:#FFFFFF; --fg:#1C1C1E; --muted:#6C6C72; --line:#DCDCE2;
+  --wf:#E6E6EB; --wf2:#D4D4DB; --wf-ink:#8A8A92;
+  --eye:#FFD66B; --eye-glow:rgba(255,214,107,.55); --blink:#E8641E; --teal:#0A8F8A; --coral:#D2412E; --green:#2F8F4E; --sky:#3B9BF2;
+  --hw:#000000; --hw-fg:#F5F5F7; --hw-muted:#8E8E93;
+  --sans:-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0B0B0D; --surface:#161618; --fg:#F5F5F7; --muted:#98989F; --line:#2A2A2E;
+  --wf:#202024; --wf2:#2C2C31; --wf-ink:#7C7C84; --blink:#FF8A45; --teal:#3FD0C9; --coral:#FF6B57; --green:#5CC27D; --sky:#64B5FF; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0B0B0D; --surface:#161618; --fg:#F5F5F7; --muted:#98989F; --line:#2A2A2E;
+  --wf:#202024; --wf2:#2C2C31; --wf-ink:#7C7C84; --blink:#FF8A45; --teal:#3FD0C9; --coral:#FF6B57; --green:#5CC27D; --sky:#64B5FF; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.55 var(--sans);padding-inline:16px;padding-block:0 72px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1060px;margin:0 auto}
+h1,h2,h3{margin:0;letter-spacing:-.022em;text-wrap:balance}
+h1{font-size:clamp(2.1rem,5.5vw,3.3rem);line-height:1.05}
+h2{font-size:clamp(1.35rem,3vw,1.85rem);line-height:1.15}
+h3{font-size:1rem;font-weight:600}
+p{margin:0;max-width:66ch}
+.muted{color:var(--muted)}
+.eyebrow{font:600 .72rem/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+header{display:grid;gap:12px;padding-block:44px 24px}
+section{display:grid;gap:20px;padding-block:44px;border-top:1px solid var(--line)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.cap{display:grid;gap:4px;font-size:.9rem}
+.cap b{font-weight:600}
+.list{margin:0;padding-left:18px;display:grid;gap:6px}
+.tag{font:500 .68rem/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--wf-ink)}
+
+/* ---------- 3D bot (CSS only) ---------- */
+.stage3d{display:grid;place-items:center;padding:28px 12px;border-radius:20px;background:radial-gradient(120% 90% at 50% 0%, var(--surface), var(--bg));border:1px solid var(--line);min-height:250px}
+.bot{position:relative;width:180px;height:160px}
+.shell{position:absolute;inset:0;border-radius:50% 50% 44% 44% / 58% 58% 42% 42%;
+  background:radial-gradient(120% 90% at 30% 18%, #FFFFFF 0%, #F1F2F5 38%, #D9DCE3 70%, #B9BDC7 100%);
+  box-shadow:inset -10px -14px 24px rgba(0,0,0,.12), inset 8px 10px 18px rgba(255,255,255,.9), 0 18px 30px -16px rgba(0,0,0,.45)}
+.visor{position:absolute;left:12%;right:12%;top:16%;height:58%;border-radius:46% 46% 40% 40% / 56% 56% 44% 44%;
+  background:radial-gradient(110% 90% at 35% 20%, #3A3A40 0%, #121214 45%, #000 100%);
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.08), inset 0 -8px 16px rgba(255,255,255,.05);overflow:hidden}
+.visor::before{content:"";position:absolute;left:10%;top:8%;width:46%;height:26%;border-radius:50%;background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,0));transform:rotate(-12deg)}
+.eyes3{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:28%}
+.eye3{width:22%;height:44%;border-radius:50%;background:radial-gradient(60% 50% at 45% 35%, #FFF3C4, var(--eye) 60%, #E6B23D);box-shadow:0 0 18px var(--eye-glow), 0 0 4px rgba(255,255,255,.6) inset;transform:rotate(10deg)}
+.eye3:first-child{translate:0 4%}
+@media (prefers-reduced-motion:no-preference){.eyes3 .eye3{animation:bl 5.5s infinite}@keyframes bl{0%,92%,100%{scale:1 1}95%{scale:1 .08}}}
+/* bubble variant (blue glass blob) */
+.bubble{position:relative;width:170px;height:150px;border-radius:50% 50% 46% 46% / 60% 60% 40% 40%;
+  background:radial-gradient(90% 80% at 50% 70%, #CFE7FF 0%, #7FBCF7 45%, #2F86E6 85%);
+  box-shadow:inset 0 -14px 30px rgba(255,255,255,.55), inset 0 10px 24px rgba(255,255,255,.35), 0 18px 34px -18px rgba(20,90,180,.6)}
+.bubble::before{content:"";position:absolute;left:18%;top:10%;width:40%;height:22%;border-radius:50%;background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0))}
+.bubble .eye3{background:radial-gradient(60% 50% at 45% 35%, #FFFFFF, #E2F1FF);box-shadow:0 0 12px rgba(255,255,255,.7)}
+/* notch visor variant */
+.nvis{position:relative;width:230px;height:60px;background:var(--hw);border-radius:0 0 26px 26px;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:34px}
+.nvis::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.08),transparent 45%),radial-gradient(60% 120% at 50% 140%,rgba(255,214,107,.22),transparent 60%);box-shadow:inset 0 -1px 0 rgba(255,255,255,.14)}
+.nvis .eye3{width:16px;height:30px}
+/* icons */
+.icons{display:flex;flex-wrap:wrap;gap:22px}
+.ico{width:104px;height:104px;border-radius:24px;position:relative;overflow:hidden;display:grid;place-items:center;box-shadow:0 10px 24px -14px rgba(0,0,0,.45)}
+.ico.light{background:linear-gradient(180deg,#FFFFFF,#E9EBF0)}
+.ico.dark{background:linear-gradient(180deg,#26262B,#0C0C0E)}
+.ico.blue{background:linear-gradient(180deg,#5AA9F5,#1F6FD1)}
+.ico .mini{transform:scale(.5)}
+.icap{display:grid;justify-items:center;gap:8px;font-size:.82rem;color:var(--muted)}
+
+/* ---------- Notch kit ---------- */
+.kit{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.kc{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:12px;align-content:start}
+.kc .demo{display:grid;place-items:center;padding:14px 8px;border-radius:12px;background:#1C1C22}
+.n0{width:190px;height:32px;background:var(--hw);border-radius:0 0 13px 13px;display:flex;align-items:center;justify-content:center;gap:12px;position:relative;overflow:hidden}
+.n0 i,.pill i,.isl i{width:5px;height:11px;border-radius:9px;background:var(--eye);transform:rotate(10deg);box-shadow:0 0 6px var(--eye-glow)}
+.n0 .d{position:absolute;right:16px;width:6px;height:6px;border-radius:50%;background:var(--coral)}
+.n1{width:250px;height:36px;background:var(--hw);border-radius:0 0 16px 16px;display:flex;align-items:center;gap:10px;padding:0 14px;color:var(--hw-fg);font-size:.78rem;overflow:hidden}
+.n1 .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.n1 .c{color:#3FD0C9;font:600 .78rem var(--mono)}
+.n2{width:300px;background:var(--hw);border-radius:0 0 26px 26px;padding:30px 16px 14px;color:var(--hw-fg);display:grid;gap:8px;font-size:.82rem}
+.n2 .s{color:var(--hw-muted)}
+.btnd{display:flex;gap:6px;flex-wrap:wrap}
+.btnd span{border-radius:999px;padding:5px 10px;font-size:.72rem;font-weight:600;background:rgba(255,255,255,.12)}
+.btnd span.p{background:var(--hw-fg);color:#000}
+.isl{background:var(--hw);color:var(--hw-fg);border-radius:999px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px;width:220px;font-size:.8rem}
+.isl.min{width:44px;justify-content:center;padding:10px}
+.drop{width:260px;height:70px;border:1.5px dashed rgba(255,255,255,.35);border-radius:0 0 22px 22px;display:grid;place-items:center;color:var(--hw-muted);font-size:.78rem;background:var(--hw)}
+.inp{width:300px;background:var(--hw);border-radius:0 0 22px 22px;padding:12px 14px;display:flex;gap:8px;align-items:center;color:var(--hw-muted);font-size:.8rem}
+.inp span{flex:1;background:rgba(255,255,255,.08);border-radius:10px;padding:7px 10px}
+.mini{display:inline-flex;width:40px;height:20px;background:var(--hw);border-radius:0 0 10px 10px;align-items:center;justify-content:center;gap:7px;flex:none}
+.mini i{width:4px;height:10px;border-radius:9px;background:var(--eye);transform:rotate(10deg);box-shadow:0 0 5px var(--eye-glow)}
+.src{display:grid;gap:8px;font-size:.92rem}
+
+/* ---------- Wireframe primitives ---------- */
+.wf{background:var(--surface);border:1.5px solid var(--wf2);border-radius:14px;overflow:hidden}
+.wfbar{display:flex;gap:6px;padding:8px 10px;border-bottom:1.5px solid var(--wf2)}
+.wfbar i{width:9px;height:9px;border-radius:50%;background:var(--wf2)}
+.box{background:var(--wf);border-radius:10px;padding:10px;display:grid;gap:6px;align-content:start;min-width:0}
+.ln{height:8px;border-radius:5px;background:var(--wf2)}
+.ln.s{width:40%}.ln.m{width:65%}.ln.l{width:85%}
+.lbl{font:600 .66rem/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--wf-ink)}
+.circ{border-radius:50%;background:var(--wf2)}
+.btnw{height:28px;border-radius:999px;background:var(--wf2)}
+.note{font:500 .7rem/1.3 var(--mono);color:var(--blink)}
+
+/* splash frames */
+.frames{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}
+.phone{width:100%;max-width:240px;aspect-ratio:9/19.5;border:1.5px solid var(--wf2);border-radius:34px;background:var(--surface);padding:14px 16px 18px;display:grid;grid-template-rows:auto 1fr auto;justify-self:center}
+.phone .di{width:84px;height:22px;border-radius:999px;background:var(--wf2);justify-self:center}
+.center{display:grid;place-items:center;align-content:center;gap:12px;text-align:center}
+.fr{display:grid;gap:10px;justify-items:center}
+
+/* dashboard wireframe */
+.dash{display:grid;grid-template-columns:150px minmax(0,1fr) 170px;min-height:440px}
+.dside{border-right:1.5px solid var(--wf2);padding:12px 10px;display:grid;gap:8px;align-content:start}
+.dmain{padding:14px;display:grid;gap:10px;align-content:start;min-width:0}
+.drow{display:grid;gap:10px}
+.c3{grid-template-columns:repeat(3,minmax(0,1fr))}.c2{grid-template-columns:2fr 1fr}
+.dpan{border-left:1.5px solid var(--wf2);padding:12px;display:grid;gap:10px;align-content:start}
+@media (max-width:860px){.dash{grid-template-columns:minmax(0,1fr)}.dside{display:none}.dpan{border-left:0;border-top:1.5px solid var(--wf2)}.c3{grid-template-columns:minmax(0,1fr)}.c2{grid-template-columns:minmax(0,1fr)}}
+
+/* hi-fi dashboard */
+.hifi{border-radius:16px;overflow:hidden;border:1px solid var(--line);background:var(--surface);box-shadow:0 30px 60px -36px rgba(0,0,0,.5)}
+.hbar{display:flex;align-items:center;gap:7px;padding:10px 12px;background:var(--bg);border-bottom:1px solid var(--line)}
+.hbar i{width:11px;height:11px;border-radius:50%;background:var(--line)}
+.hbody{display:grid;grid-template-columns:190px minmax(0,1fr) 230px;min-height:520px}
+.hside{padding:14px 10px;display:grid;gap:2px;align-content:start;font-size:.86rem;background:color-mix(in srgb,var(--bg) 70%,transparent);backdrop-filter:blur(20px)}
+.hside .it{padding:6px 10px;border-radius:8px;display:flex;justify-content:space-between}
+.hside .on{background:var(--surface);font-weight:600;box-shadow:0 1px 0 var(--line)}
+.hside .lab{font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:12px 10px 4px}
+.hmain{padding:22px;display:grid;gap:16px;align-content:start;min-width:0}
+.hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.hero .bot{width:74px;height:66px}
+.hero h3{font-size:1.5rem;letter-spacing:-.02em}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.cd{border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:8px;align-content:start;min-width:0}
+.cd .k{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.cd .big{font-size:1.5rem;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.r{display:flex;justify-content:space-between;gap:8px;font-size:.86rem}
+.r span:last-child{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bar2{height:6px;border-radius:6px;background:var(--line);overflow:hidden}.bar2 i{display:block;height:100%}
+.tl{display:grid;gap:8px}
+.tl .ev{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;align-items:center;font-size:.86rem}
+.tl .ev span:first-child{font:500 .78rem var(--mono);color:var(--muted)}
+.tl .ev div{border-left:3px solid var(--teal);padding:4px 8px;border-radius:4px;background:color-mix(in srgb,var(--teal) 8%,transparent)}
+.hpan{border-left:1px solid var(--line);padding:16px;display:grid;gap:12px;align-content:start;font-size:.86rem}
+.ask{border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:8px}
+.bt{display:flex;gap:6px;flex-wrap:wrap}
+.bt span{border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:.78rem;font-weight:600}
+.bt span.p{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+@media (max-width:900px){.hbody{grid-template-columns:minmax(0,1fr)}.hside{display:none}.hpan{border-left:0;border-top:1px solid var(--line)}}
+footer{padding-top:22px;border-top:1px solid var(--line);font-size:.85rem;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Blink · design round 2 · example data</span>
+  <h1>Blink, in 3D, with its first screens</h1>
+  <p class="muted">Your two references merged into one character, a notch component kit, wireframes for the splash and start screens, and the dashboard as a wireframe and in its finished look.</p>
+</header>
+
+<section aria-labelledby="b3">
+  <span class="eyebrow">Bot design</span>
+  <h2 id="b3">One character, three bodies</h2>
+  <p>From your references: the glossy white helmet with a <b>black glass visor</b> and glowing oval eyes, and the soft <b>blue glass bubble</b>. The big idea: the visor and the notch are the same thing. On the Mac the notch is Blink’s visor, so the hardware becomes the face.</p>
+  <div class="grid">
+    <div class="cap"><div class="stage3d"><div class="bot"><div class="shell"></div><div class="visor"><div class="eyes3"><i class="eye3"></i><i class="eye3"></i></div></div></div></div><b>Visor Blink (main)</b><span class="muted">White shell, black glass visor, warm glowing eyes. For the app icon, splash, setup and the Blink panel.</span></div>
+    <div class="cap"><div class="stage3d"><div class="bubble"><div class="eyes3" style="gap:26%"><i class="eye3"></i><i class="eye3"></i></div></div></div><b>Bubble Blink (soft mode)</b><span class="muted">Glass blob from your blue reference. For widgets, empty states and a calmer theme.</span></div>
+    <div class="cap"><div class="stage3d" style="background:#1C1C22"><div class="nvis"><i class="eye3"></i><i class="eye3"></i></div></div><b>Notch Blink</b><span class="muted">The visor only. Eyes and glow stay inside the notch outline; eye colour carries the mood.</span></div>
+  </div>
+  <div class="icons">
+    <div class="icap"><div class="ico light"><div class="bot" style="width:84px;height:74px"><div class="shell"></div><div class="visor"><div class="eyes3"><i class="eye3"></i><i class="eye3"></i></div></div></div></div>Light</div>
+    <div class="icap"><div class="ico dark"><div class="bot" style="width:84px;height:74px"><div class="shell" style="background:radial-gradient(120% 90% at 30% 18%,#4A4A52,#26262B 60%,#151518)"></div><div class="visor"><div class="eyes3"><i class="eye3"></i><i class="eye3"></i></div></div></div></div>Dark</div>
+    <div class="icap"><div class="ico blue"><div class="bubble" style="width:84px;height:72px"><div class="eyes3" style="gap:26%"><i class="eye3"></i><i class="eye3"></i></div></div></div>Bubble</div>
+  </div>
+  <ul class="list muted">
+    <li><b>Kept from round 1:</b> the slight eye tilt (so it never reads as a pause icon), the blink, the mood colours, and the rule that glow stays inside the notch.</li>
+    <li><b>New:</b> real 3D materials. Glossy shell, glass visor with a reflection, and eyes that glow like light behind glass. Built in Rive for the app, still renders for iPhone surfaces.</li>
+    <li><b>Eye colour = mood:</b> warm yellow at rest, teal for time, coral for important, green for done.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="nk">
+  <span class="eyebrow">Notch element library</span>
+  <h2 id="nk">Blink Notch Kit</h2>
+  <p class="muted">Every notch and Island piece Blink needs, as reusable components on top of DynamicNotchKit (MIT), the main open-source notch library for SwiftUI.</p>
+  <div class="kit">
+    <div class="kc"><div class="demo"><div class="n0"><i></i><i></i><span class="d"></span></div></div><h3>Resting</h3><span class="muted">Eyes plus an unread dot. Nothing animates except the blink.</span></div>
+    <div class="kc"><div class="demo"><div class="n1"><span class="mini"><i></i><i></i></span><span class="t">Design sync with Priya</span><span class="c">3:00</span></div></div><h3>Peek</h3><span class="muted">One line with a countdown. Hover or an event opens it.</span></div>
+    <div class="kc"><div class="demo"><div class="n2"><b>Send reply to Priya?</b><span class="s">“Thursday works, I’ll bring the draft.”</span><div class="btnd"><span class="p">Do it</span><span>Edit</span><span>Later</span></div></div></div><h3>Ask-First card</h3><span class="muted">The open notch. One card at a time, keyboard shortcuts.</span></div>
+    <div class="kc"><div class="demo"><div class="inp"><span class="mini"><i></i><i></i></span><span>Ask Blink or add a note…</span></div></div><h3>Chat input</h3><span class="muted">⌥Space opens it. Typing goes to chat; “/” for commands.</span></div>
+    <div class="kc"><div class="demo"><div class="drop">Drop to save to Notes or a Segment</div></div><h3>Capture drop zone</h3><span class="muted">Appears while dragging a file or text near the notch.</span></div>
+    <div class="kc"><div class="demo" style="gap:10px"><div class="isl"><i></i><span>Design sync</span><b style="color:#3FD0C9">3 min</b></div><div class="isl min"><i></i></div></div><h3>Dynamic Island</h3><span class="muted">Compact and minimal. Still poses, countdown drawn by iOS.</span></div>
+  </div>
+  <div class="src">
+    <h3>Libraries and references</h3>
+    <ul class="list">
+      <li><a href="https://github.com/MrKai77/DynamicNotchKit" target="_blank" rel="noopener">DynamicNotchKit</a> (MIT): the base. Shows SwiftUI content from the notch, with expanded and compact states.</li>
+      <li><a href="https://github.com/cucumber-sp/TasksInNotch" target="_blank" rel="noopener">TasksInNotch</a>: a small open-source notch task app built on DynamicNotchKit. Reference for structure.</li>
+      <li><a href="https://github.com/jackson-storm/dynamicnotch" target="_blank" rel="noopener">DynamicNotch</a> and Boring Notch: ideas only (check licences before reading code).</li>
+      <li>Apple Design Resources: official Figma and Sketch kits for macOS and iOS, including Dynamic Island templates, for mock-ups.</li>
+    </ul>
+  </div>
+</section>
+
+<section aria-labelledby="sp">
+  <span class="eyebrow">Wireframe only</span>
+  <h2 id="sp">Splash and start screens</h2>
+  <div class="frames">
+    <div class="fr"><div class="phone"><span class="di"></span><div class="center"><span class="circ" style="width:84px;height:76px"></span><span class="ln m" style="width:90px;height:14px"></span><span class="ln s" style="width:130px"></span></div><span class="lbl" style="text-align:center">loading · 0.8 s max</span></div><span class="lbl">1 · Splash</span><span class="note">Blink fades in, opens its eyes, blinks once</span></div>
+    <div class="fr"><div class="phone"><span class="di"></span><div class="center"><span class="circ" style="width:64px;height:58px"></span><span class="ln m" style="width:140px;height:12px"></span><span class="circ" style="width:46px;height:46px;border-radius:12px"></span><span class="ln s" style="width:100px"></span></div><span class="btnw"></span></div><span class="lbl">2 · Unlock (returning)</span><span class="note">“Good morning” + Face ID. Fails → passcode</span></div>
+    <div class="fr"><div class="phone"><span class="di"></span><div class="center"><span class="circ" style="width:64px;height:58px"></span><span class="ln l" style="width:160px;height:12px"></span><span class="ln m" style="width:150px"></span><span class="box" style="width:150px;height:110px;place-items:center"><span class="lbl">QR scan</span></span></div><div style="display:grid;gap:8px"><span class="btnw"></span><span class="ln s" style="justify-self:center"></span></div></div><span class="lbl">3 · Connect your server</span><span class="note">Scan the pairing QR or paste the address</span></div>
+    <div class="fr"><div class="phone"><span class="di"></span><div class="center" style="align-content:start;padding-top:24px;justify-items:start;text-align:left"><span class="circ" style="width:40px;height:36px"></span><span class="box" style="width:160px"><span class="ln l"></span><span class="ln m"></span></span><span class="box" style="width:150px;justify-self:end"><span class="ln m"></span></span><span class="box" style="width:170px"><span class="ln l"></span><span class="ln s"></span></span></div><span class="btnw"></span></div><span class="lbl">4 · Setup chat</span><span class="note">The one-time conversation. Blink asks once</span></div>
+  </div>
+  <div class="wf" style="max-width:760px">
+    <div class="wfbar"><i></i><i></i><i></i></div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);min-height:260px">
+      <div class="center" style="border-right:1.5px solid var(--wf2);padding:20px"><span class="circ" style="width:96px;height:86px"></span><span class="ln m" style="width:110px;height:14px"></span><span class="ln s" style="width:150px"></span></div>
+      <div style="padding:22px;display:grid;gap:12px;align-content:center"><span class="lbl">Mac · first launch</span><span class="ln l"></span><span class="ln m"></span><span class="btnw" style="width:160px"></span><span class="btnw" style="width:200px;background:var(--wf)"></span><span class="note">Get started · Connect your server · then the notch shows Blink for the first time</span></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="dw">
+  <span class="eyebrow">Wireframe</span>
+  <h2 id="dw">Dashboard (Today)</h2>
+  <div class="wf">
+    <div class="wfbar"><i></i><i></i><i></i></div>
+    <div class="dash">
+      <div class="dside"><span class="lbl">Sidebar</span><span class="ln l"></span><span class="ln m"></span><span class="ln m"></span><span class="ln l"></span><span class="ln s"></span><span class="lbl" style="margin-top:8px">Segments</span><span class="ln m"></span><span class="ln l"></span><span class="ln s"></span><span class="lbl" style="margin-top:8px">Waiting (2)</span></div>
+      <div class="dmain">
+        <div class="box" style="grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px"><span class="circ" style="width:54px;height:48px"></span><div style="display:grid;gap:6px"><span class="lbl">Hero · greeting + one-line day summary</span><span class="ln l"></span></div></div>
+        <div class="drow c2"><div class="box" style="min-height:120px"><span class="lbl">Up next · timeline</span><span class="ln l"></span><span class="ln m"></span><span class="ln l"></span><span class="ln s"></span></div><div class="box"><span class="lbl">Focus</span><span class="ln m"></span><span class="btnw"></span></div></div>
+        <div class="drow c3"><div class="box"><span class="lbl">Segments · rings</span><span class="ln m"></span><span class="ln s"></span></div><div class="box"><span class="lbl">Important mail</span><span class="ln l"></span><span class="ln m"></span></div><div class="box"><span class="lbl">Money pulse</span><span class="ln m"></span><span class="ln s"></span></div></div>
+        <div class="drow c3"><div class="box"><span class="lbl">Habits ✅❌⏭</span><span class="ln m"></span></div><div class="box"><span class="lbl">Content queue</span><span class="ln l"></span></div><div class="box"><span class="lbl">Tonight · plan</span><span class="ln s"></span></div></div>
+      </div>
+      <div class="dpan"><span class="lbl">Blink panel</span><span class="circ" style="width:40px;height:36px"></span><div class="box"><span class="lbl">Ask-First card</span><span class="ln l"></span><span class="btnw"></span></div><div class="box"><span class="lbl">Suggestion</span><span class="ln m"></span></div><span class="ln l" style="margin-top:auto"></span></div>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="cap"><b>Order on screen</b><span class="muted">Greeting → what’s next → your focus → everything else. The most time-sensitive thing is always top-left.</span></div>
+    <div class="cap"><b>One glance rule</b><span class="muted">Each card answers one question in one line: “what’s next”, “am I on track”, “anything urgent”.</span></div>
+    <div class="cap"><b>Blink panel</b><span class="muted">Always on the right on Mac, the floating Blink button on iPhone. It changes with the screen.</span></div>
+  </div>
+  <div class="frames">
+    <div class="fr"><div class="phone"><span class="di"></span><div style="display:grid;gap:8px;align-content:start;padding-top:14px"><div class="box" style="grid-template-columns:auto minmax(0,1fr);align-items:center"><span class="circ" style="width:34px;height:30px"></span><span class="ln l"></span></div><div class="box"><span class="lbl">Up next</span><span class="ln l"></span><span class="ln m"></span></div><div class="box"><span class="lbl">Segments</span><span class="ln m"></span></div><div class="box"><span class="lbl">Habits</span><span class="ln s"></span></div></div><div style="display:flex;justify-content:space-between;align-items:center"><span class="ln s" style="width:22px"></span><span class="ln s" style="width:22px"></span><span class="circ" style="width:42px;height:38px"></span><span class="ln s" style="width:22px"></span><span class="ln s" style="width:22px"></span></div></div><span class="lbl">iPhone · Today</span><span class="note">Same cards stacked, Blink button in the tab bar</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="hf">
+  <span class="eyebrow">Look and feel</span>
+  <h2 id="hf">Dashboard, finished look</h2>
+  <p class="muted">Apple-native: a glass sidebar, solid content cards, the system font, colour only where it means something, and Blink in 3D at the top.</p>
+  <div class="hifi">
+    <div class="hbar"><i></i><i></i><i></i></div>
+    <div class="hbody">
+      <nav class="hside" aria-label="Sidebar"><span class="it on">Today</span><span class="it">Inbox <span class="muted">3</span></span><span class="it">Calendar</span><span class="it">Notes</span><span class="it">Tasks &amp; Habits</span><span class="lab">Segments</span><span class="it">Pexilim website <span class="muted">40%</span></span><span class="it">Blink beta <span class="muted">20%</span></span><span class="lab">More</span><span class="it">Content</span><span class="it">Money</span><span class="it">Waiting <span class="muted">2</span></span></nav>
+      <div class="hmain">
+        <div class="hero"><div class="bot"><div class="shell"></div><div class="visor"><div class="eyes3"><i class="eye3"></i><i class="eye3"></i></div></div></div><div style="display:grid;gap:2px"><h3>Good morning</h3><span class="muted">3 meetings · design due in 3 days · 2 important emails</span></div></div>
+        <div class="cards">
+          <div class="cd" style="grid-column:span 2;min-width:0"><span class="k">Up next</span><div class="tl"><div class="ev"><span>10:00</span><div>Standup · 15 min</div></div><div class="ev"><span>15:00</span><div>Design sync with Priya · notes ready</div></div><div class="ev"><span>19:00</span><div style="border-color:var(--green);background:color-mix(in srgb,var(--green) 8%,transparent)">Workout · planned last night</div></div></div></div>
+          <div class="cd"><span class="k">Focus</span><b>Homepage wireframe</b><span class="muted" style="font-size:.84rem">Pexilim website · 90 min free at 11:00</span><div class="bt"><span class="p">Start focus</span></div></div>
+          <div class="cd"><span class="k">Segments</span><div class="r"><span>Pexilim website</span><span>40%</span></div><div class="bar2"><i style="width:40%;background:var(--blink)"></i></div><div class="r"><span>Blink beta</span><span>20%</span></div><div class="bar2"><i style="width:20%;background:var(--coral)"></i></div></div>
+          <div class="cd"><span class="k">Important mail</span><div class="r"><span>Priya · Thursday review</span><span>9:12</span></div><div class="r"><span>Acme · invoice question</span><span>8:40</span></div></div>
+          <div class="cd"><span class="k">Money this week</span><span class="big">$412</span><div class="r"><span>Food</span><span>70% of budget</span></div><div class="bar2"><i style="width:70%;background:var(--green)"></i></div></div>
+          <div class="cd"><span class="k">Habits</span><div class="r"><span>Workout</span><span>✅ 4-day streak</span></div><div class="r"><span>Reading</span><span>⏭ skipped</span></div></div>
+          <div class="cd"><span class="k">Content queue</span><div class="r"><span>Carousel · Instagram</span><span>ready</span></div><div class="r"><span>Post · LinkedIn</span><span>Fri 9:00</span></div></div>
+        </div>
+      </div>
+      <aside class="hpan"><div style="display:flex;align-items:center;gap:8px;font-weight:600"><span class="mini"><i></i><i></i></span>Blink</div><div class="ask"><b>Reply to Priya?</b><span class="muted">“Thursday works, I’ll bring the draft.”</span><div class="bt"><span class="p">Do it</span><span>Edit</span><span>Later</span></div></div><div class="ask"><span>Design is due in 3 days. Block Thursday 9–11?</span><div class="bt"><span class="p">Block it</span><span>Later</span></div></div><span class="muted">Ask Blink… · Model: Auto ▾</span></aside>
+    </div>
+  </div>
+</section>
+
+<footer>Blink design round 2 for Pexilim · wireframes and concept art, not the app · all names and figures are examples.</footer>
+</div>

@@ -53,6 +53,15 @@ Interactive study: [Blink Notch Studio](https://claude.ai/artifact/SDNx2J5QPNrac
   ╰──────────────────────────────╯      light particles + glass sheen inside only
 ```
 
+### Look v2: 3D visor (design round 2)
+Interactive page: [Blink Wireframes](design/blink-wireframes.html).
+- **Visor Blink (main):** glossy white shell, **black glass visor**, warm glowing oval eyes (slight tilt kept). The visor and the notch are the same idea: on the Mac, the notch *is* Blink's visor.
+- **Bubble Blink (soft mode):** blue glass blob for widgets, empty states and a calmer theme.
+- **Notch Blink:** visor only; eyes and glow inside the notch outline. Eye colour = mood (warm yellow rest, teal time, coral important, green done).
+- **Icons:** light (white shell), dark (graphite shell), bubble (blue).
+- **Notch Kit:** resting, peek, Ask-First card, chat input, capture drop zone, Dynamic Island compact/minimal, built on DynamicNotchKit (MIT).
+- **Screens:** splash (eyes open + one blink, ≤0.8 s), Face ID unlock, connect-your-server (QR), setup chat; Today dashboard wireframe and finished look.
+
 ### Expressions (state machine)
 
 | State | Eyes | Particles (inside only) | When |
