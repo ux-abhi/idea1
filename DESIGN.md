@@ -303,3 +303,15 @@ Backend
 - Battery: server does the work; no polling; still poses in the Island; calm mode on Mac.
 
 Facts only you can provide come up once, in the setup conversation (which banks send alerts, which mail account, wake time). They are not separate questions.
+
+## Colour and materials (current)
+
+Source of truth: `design/tokens.json`. Visual reference: `design/blink-colors.html`.
+
+- **Apple system colours only.** In SwiftUI use the named system colour (`.red`, `.mint`, `Color(.secondarySystemGroupedBackground)`), never a hex, so Dark Mode, Increase Contrast and the Mac accent colour adapt for free.
+- **90 / 8 / 2.** 90% neutrals (grays, surfaces, text), 8% one accent (the user's system accent, default systemBlue), 2% meaning (mood, status, money).
+- **Mood colours:** rest white, heads-up Mint, important Red, thinking Indigo, done Green, attention Orange. Money categories: Pink, Purple, Cyan, Brown.
+- **Glass where you navigate, solid where you read.** Liquid Glass (`.glassEffect`) for toolbars, tab bar, sidebar and floating buttons; one tinted primary control per screen; `.clear` only over photos and the mascot stage. Lists, mail, notes and cards sit on solid surfaces. Never glass on glass; group with `GlassEffectContainer`.
+- **Notch:** pure black hardware, both appearances. Glow (0.55 alpha, 10 pt blur) stays inside the notch shape and only on live elements.
+- **Premium details:** continuous corners; concentric radii (inner = outer − padding); 0.5 pt hairlines; a 1 pt top specular edge; layered soft shadows in light, no shadows in dark (raised surface + specular edge instead); SF Pro Rounded tabular figures for numbers.
+- **Accessibility:** Reduce Transparency falls back to solid surfaces, Increase Contrast uses Apple's high-contrast variants, Reduce Motion swaps springs for fades, and text meets 4.5:1.

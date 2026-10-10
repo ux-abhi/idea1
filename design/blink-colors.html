@@ -1,0 +1,284 @@
+<title>Blink Colour and Materials</title>
+<style>
+/* Layout: one reading column built entirely on Apple's semantic palette (light + dark); swatches show both appearances side by side; glass demos sit on a vivid wallpaper stage. */
+:root{
+  --bg:#F2F2F7; --surface:#FFFFFF; --raised:#FFFFFF; --label:#000000; --label2:rgba(60,60,67,.60); --label3:rgba(60,60,67,.30);
+  --sep:rgba(60,60,67,.29); --fill:rgba(120,120,128,.20); --fill2:rgba(120,120,128,.12);
+  --accent:#007AFF; --red:#FF3B30; --orange:#FF9500; --yellow:#FFCC00; --green:#34C759; --mint:#00C7BE; --teal:#30B0C7; --cyan:#32ADE6; --indigo:#5856D6; --purple:#AF52DE; --pink:#FF2D55; --brown:#A2845E;
+  --spec:inset 0 1px 0 rgba(255,255,255,.7); --shadow:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.08);
+  --sans:-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --round:ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --mono:ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#000000; --surface:#1C1C1E; --raised:#2C2C2E; --label:#FFFFFF; --label2:rgba(235,235,245,.60); --label3:rgba(235,235,245,.30);
+  --sep:rgba(84,84,88,.60); --fill:rgba(120,120,128,.36); --fill2:rgba(120,120,128,.24);
+  --accent:#0A84FF; --red:#FF453A; --orange:#FF9F0A; --yellow:#FFD60A; --green:#30D158; --mint:#63E6E2; --teal:#40CBE0; --cyan:#64D2FF; --indigo:#5E5CE6; --purple:#BF5AF2; --pink:#FF375F; --brown:#AC8E68;
+  --spec:inset 0 1px 0 rgba(255,255,255,.10); --shadow:none; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#000000; --surface:#1C1C1E; --raised:#2C2C2E; --label:#FFFFFF; --label2:rgba(235,235,245,.60); --label3:rgba(235,235,245,.30);
+  --sep:rgba(84,84,88,.60); --fill:rgba(120,120,128,.36); --fill2:rgba(120,120,128,.24);
+  --accent:#0A84FF; --red:#FF453A; --orange:#FF9F0A; --yellow:#FFD60A; --green:#30D158; --mint:#63E6E2; --teal:#40CBE0; --cyan:#64D2FF; --indigo:#5E5CE6; --purple:#BF5AF2; --pink:#FF375F; --brown:#AC8E68;
+  --spec:inset 0 1px 0 rgba(255,255,255,.10); --shadow:none; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--label);font:16px/1.5 var(--sans);padding-inline:16px;padding-block:0 80px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto}
+h1,h2,h3{margin:0;letter-spacing:-.025em;text-wrap:balance}
+h1{font-size:clamp(2.3rem,6vw,3.7rem);line-height:1.02}
+h2{font-size:clamp(1.4rem,3.2vw,1.95rem);line-height:1.12}
+h3{font-size:1rem;font-weight:600}
+p{margin:0;max-width:66ch}
+.l2{color:var(--label2)}
+.eyebrow{font:600 .72rem/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--label2)}
+header{display:grid;gap:14px;padding-block:44px 22px}
+section{display:grid;gap:18px;padding-block:44px;border-top:.5px solid var(--sep)}
+.card{background:var(--surface);border-radius:22px;padding:16px;box-shadow:var(--spec),var(--shadow);display:grid;gap:8px;align-content:start;min-width:0}
+code{font-family:var(--mono);font-size:.8rem;color:var(--accent)}
+.rules{margin:0;padding-left:18px;display:grid;gap:7px}
+
+/* ratio bar */
+.ratio{display:flex;height:44px;border-radius:14px;overflow:hidden;box-shadow:var(--spec)}
+.ratio div{display:grid;place-items:center;font:600 .78rem var(--sans)}
+.legendr{display:flex;gap:18px;flex-wrap:wrap;font-size:.85rem;color:var(--label2)}
+
+/* swatches */
+.sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.s{border-radius:18px;overflow:hidden;background:var(--surface);box-shadow:var(--spec),var(--shadow);display:grid}
+.s .chips{display:grid;grid-template-columns:1fr 1fr;height:74px}
+.s .chips span{display:flex;align-items:flex-end;padding:6px 8px;font:500 .64rem var(--mono)}
+.s .chips span:first-child{color:rgba(0,0,0,.65)}.s .chips span:last-child{color:rgba(255,255,255,.8)}
+.s .meta{padding:10px 12px;display:grid;gap:2px}
+.s .meta b{font-size:.86rem}
+.s .meta small{font-size:.74rem;color:var(--label2)}
+.ladder{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.ladder div{border-radius:12px;height:64px;display:flex;align-items:flex-end;padding:6px;font:500 .6rem var(--mono)}
+@media (max-width:600px){.ladder{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.tbl{overflow-x:auto;border-radius:18px;background:var(--surface);box-shadow:var(--spec),var(--shadow)}
+table{border-collapse:collapse;width:100%;font-size:.86rem;min-width:640px}
+th,td{text-align:left;vertical-align:middle;padding:10px 14px;border-bottom:.5px solid var(--sep)}
+th{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--label2);font-weight:600}
+tr:last-child td{border-bottom:0}
+.dot{display:inline-block;width:14px;height:14px;border-radius:5px;vertical-align:middle;margin-right:8px;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.15)}
+
+/* moods in the notch */
+.moods{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.mood{display:grid;gap:8px;justify-items:center;text-align:center;font-size:.85rem}
+.mood small{color:var(--label2);font-size:.74rem}
+.nt{width:140px;height:40px;background:#000;border-radius:0 0 14px 14px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;box-shadow:inset 0 -1px 0 rgba(255,255,255,.12)}
+.nt::after{content:"";position:absolute;inset:0;background:radial-gradient(70% 120% at 50% 150%,var(--mc),transparent 65%);opacity:.45}
+.pe{--pw:15px;display:inline-flex;gap:5px;position:relative;z-index:1}
+.pe i{width:var(--pw);height:calc(var(--pw)*1.25);border-radius:50% 50% 46% 54% / 58% 58% 42% 42%;display:grid;place-items:center;background:radial-gradient(90% 80% at 40% 24%,#48484A,#1C1C1E 55%,#000);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 0 0 .6px rgba(255,255,255,.14)}
+.pe i:first-child{transform:rotate(22deg)}.pe i:last-child{transform:rotate(-22deg)}
+.pe b{width:36%;height:50%;border-radius:50%;background:radial-gradient(60% 50% at 45% 32%,#fff,var(--mc) 75%);box-shadow:0 0 6px var(--mc)}
+
+/* glass stage */
+.wall{position:relative;border-radius:26px;overflow:hidden;min-height:360px;padding:22px;display:grid;gap:14px;align-content:start;
+  background:radial-gradient(40% 50% at 20% 20%,#FF9F0A 0%,transparent 60%),radial-gradient(45% 55% at 80% 25%,#BF5AF2 0%,transparent 60%),radial-gradient(50% 60% at 55% 85%,#0A84FF 0%,transparent 60%),radial-gradient(40% 50% at 10% 90%,#30D158 0%,transparent 60%),#1C1C1E}
+.mats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.mat{border-radius:20px;padding:14px;min-height:110px;display:grid;align-content:space-between;color:#fff;font-size:.82rem}
+.mat b{font-size:.92rem}
+.m-ut{background:rgba(255,255,255,.10);backdrop-filter:blur(8px) saturate(160%);-webkit-backdrop-filter:blur(8px) saturate(160%)}
+.m-th{background:rgba(255,255,255,.18);backdrop-filter:blur(16px) saturate(170%);-webkit-backdrop-filter:blur(16px) saturate(170%)}
+.m-rg{background:rgba(30,30,32,.45);backdrop-filter:blur(26px) saturate(180%);-webkit-backdrop-filter:blur(26px) saturate(180%)}
+.m-tk{background:rgba(28,28,30,.72);backdrop-filter:blur(36px) saturate(180%);-webkit-backdrop-filter:blur(36px) saturate(180%)}
+.lg{position:relative;background:rgba(255,255,255,.12);backdrop-filter:blur(14px) saturate(190%) brightness(1.08);-webkit-backdrop-filter:blur(14px) saturate(190%) brightness(1.08);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 rgba(255,255,255,.12),inset 0 0 0 .5px rgba(255,255,255,.35),0 10px 30px -12px rgba(0,0,0,.45)}
+.lg::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0) 45%)}
+.lg.clear{background:rgba(255,255,255,.04)}
+.lg.tint{background:color-mix(in srgb,#0A84FF 55%,transparent)}
+.glassrow{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.gbtn{border-radius:999px;padding:12px 20px;color:#fff;font-weight:600;font-size:.9rem}
+.gcirc{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:1.3rem}
+.tabbar{display:flex;gap:4px;border-radius:999px;padding:6px;color:#fff;font-size:.78rem}
+.tabbar span{padding:8px 14px;border-radius:999px}
+.tabbar span.on{background:rgba(255,255,255,.22)}
+
+/* premium details */
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:700px){.cmp{grid-template-columns:1fr}}
+.plain{border-radius:12px;padding:16px;background:var(--surface);border:1px solid #9a9a9a;display:grid;gap:6px}
+.plain b{font-size:1.6rem;font-family:var(--sans);font-weight:400}
+.prem{border-radius:22px;padding:18px;background:var(--surface);box-shadow:var(--spec),var(--shadow);display:grid;gap:6px}
+.prem b{font:600 1.9rem var(--round);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.bar{height:8px;border-radius:8px;background:var(--fill2);overflow:hidden}.bar i{display:block;height:100%;border-radius:8px}
+.det{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.conc{position:relative;width:140px;height:96px;border-radius:28px;background:var(--fill2);padding:10px}
+.conc div{width:100%;height:100%;border-radius:18px;background:var(--surface);box-shadow:var(--spec)}
+.hair{height:60px;border-radius:16px;background:var(--surface);box-shadow:var(--spec);display:grid;grid-template-rows:1fr 1fr}
+.hair div{padding:0 12px;display:flex;align-items:center;font-size:.8rem}
+.hair div:first-child{border-bottom:.5px solid var(--sep)}
+
+/* applied */
+.applied{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start}
+.hero{border-radius:30px;padding:20px;background:radial-gradient(120% 90% at 50% 0%,#2C2C2E,#000 65%);color:#fff;display:grid;gap:10px;justify-items:center;text-align:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
+.hero b{font:700 2.6rem var(--round);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.hero small{color:rgba(235,235,245,.6)}
+.hpills{display:flex;gap:8px}
+.hpills span{border-radius:999px;padding:9px 14px;font-size:.8rem;font-weight:600;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.25),inset 0 1px 0 rgba(255,255,255,.18)}
+.tile{border-radius:18px;padding:14px;background:linear-gradient(180deg,#2C2C2E,#1C1C1E);color:#fff;display:grid;gap:6px;box-shadow:inset 0 1px 0 rgba(255,255,255,.10)}
+.tile small{color:rgba(235,235,245,.6);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+.tile b{font:600 1.6rem var(--round);font-variant-numeric:tabular-nums}
+pre{margin:0;overflow-x:auto;border-radius:16px;background:var(--surface);box-shadow:var(--spec),var(--shadow);padding:14px 16px;font:12.5px/1.6 var(--mono);color:var(--label)}
+footer{padding-top:22px;border-top:.5px solid var(--sep);font-size:.85rem;color:var(--label2)}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">Blink · colour and materials · Pexilim</span>
+  <h1>Apple’s colours, Blink’s restraint</h1>
+  <p class="l2">Blink uses Apple’s own system colours and materials, so it looks native in light and dark, follows your accent colour on the Mac, and adapts to Increase Contrast and Reduce Transparency for free. Premium comes from restraint: mostly neutrals, one accent, colour only when it means something.</p>
+  <div class="ratio" aria-label="Colour budget"><div style="flex:90;background:var(--fill2);color:var(--label2)">Neutrals 90%</div><div style="flex:8;background:var(--accent);color:#fff">8%</div><div style="flex:2;background:var(--red)"></div></div>
+  <div class="legendr"><span><b style="color:var(--label)">90%</b> grays, surfaces, text</span><span><b style="color:var(--accent)">8%</b> one accent (your system accent)</span><span><b style="color:var(--red)">2%</b> meaning: status, mood, money</span></div>
+</header>
+
+<section aria-labelledby="sys">
+  <span class="eyebrow">Apple system colours</span>
+  <h2 id="sys">The palette, light and dark</h2>
+  <p class="l2">Left half is the light value, right half the dark value. In the app we use the system colour by name, never the hex, so Apple’s contrast and accessibility variants apply automatically.</p>
+  <div class="sw" id="sw"></div>
+</section>
+
+<section aria-labelledby="neu">
+  <span class="eyebrow">Neutrals</span>
+  <h2 id="neu">Grays, surfaces and text</h2>
+  <h3>System grays (light row, dark row)</h3>
+  <div class="ladder" id="ladL"></div>
+  <div class="ladder" id="ladD"></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Blink token</th><th>Light</th><th>Dark</th><th>SwiftUI</th><th>Used for</th></tr></thead>
+    <tbody id="sem"></tbody>
+  </table></div>
+  <ul class="rules l2">
+    <li>Dark mode isn’t an inversion: surfaces get <b>lighter</b> as they rise (black → #1C1C1E → #2C2C2E) instead of using shadows.</li>
+    <li>Text never uses pure grey hex: secondary and tertiary text are translucent labels, so they stay balanced on any surface.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="bm">
+  <span class="eyebrow">Blink tokens</span>
+  <h2 id="bm">What each colour means in Blink</h2>
+  <div class="moods" id="moods"></div>
+  <div class="tbl"><table>
+    <thead><tr><th>Blink token</th><th>Apple colour</th><th>Meaning</th></tr></thead>
+    <tbody id="map"></tbody>
+  </table></div>
+  <ul class="rules l2">
+    <li><b>Accent:</b> system blue on iPhone; on the Mac it follows the colour you picked in System Settings, like every Apple app.</li>
+    <li><b>Mood colours</b> only appear in Blink’s eyes, the glow inside the notch and status pills. Never as large fills.</li>
+    <li><b>Money categories</b> use their own fixed colours, so a category looks the same in every chart.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="gl">
+  <span class="eyebrow">Materials and Liquid Glass</span>
+  <h2 id="gl">Glass where you navigate, solid where you read</h2>
+  <div class="wall">
+    <div class="mats">
+      <div class="mat m-ut"><b>Ultra thin</b><span>Hover peeks</span></div>
+      <div class="mat m-th"><b>Thin</b><span>Popovers, pill on non-notch Macs</span></div>
+      <div class="mat m-rg"><b>Regular</b><span>Sheets, iPhone Ask-First cards</span></div>
+      <div class="mat m-tk"><b>Thick</b><span>Text-heavy overlays</span></div>
+    </div>
+    <div class="glassrow">
+      <span class="gbtn lg">Liquid Glass</span>
+      <span class="gbtn lg clear">Clear</span>
+      <span class="gbtn lg tint">Tinted · primary</span>
+      <span class="gcirc lg">+</span>
+      <span class="tabbar lg"><span class="on">Today</span><span>Calendar</span><span>Content</span><span>Money</span></span>
+    </div>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>Material</th><th>SwiftUI</th><th>Where in Blink</th></tr></thead>
+    <tbody>
+      <tr><td><b>Liquid Glass · regular</b></td><td><code>.glassEffect(.regular)</code></td><td>Mac sidebar and toolbar, iPhone tab bar, floating Blink button</td></tr>
+      <tr><td><b>Liquid Glass · clear</b></td><td><code>.glassEffect(.clear)</code></td><td>Only over photos and the mascot stage</td></tr>
+      <tr><td><b>Liquid Glass · tinted</b></td><td><code>.glassEffect(.regular.tint(.accentColor))</code></td><td>One primary floating control per screen, never more</td></tr>
+      <tr><td><b>Grouping</b></td><td><code>GlassEffectContainer</code> + <code>glassEffectID</code></td><td>Pill buttons that morph into each other (Capture · + · Ask)</td></tr>
+      <tr><td><b>Classic materials</b></td><td><code>.ultraThinMaterial</code> … <code>.thickMaterial</code></td><td>Sheets, popovers, overlays</td></tr>
+      <tr><td><b>Notch</b></td><td>Custom, inside the shape only</td><td>Pure black hardware look: top specular band, bottom rim light, mood glow from below</td></tr>
+      <tr><td><b>Reduce Transparency</b></td><td>Automatic</td><td>Every material falls back to a solid surface</td></tr>
+    </tbody>
+  </table></div>
+  <ul class="rules l2">
+    <li>Glass is for the navigation layer that floats over content. Lists, cards, emails and notes sit on solid surfaces so text stays crisp.</li>
+    <li>Never stack glass on glass. Group nearby glass controls in one container so they share a single surface.</li>
+    <li>Text on glass uses vibrant label colours, which Apple tunes for legibility over any background.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="pd">
+  <span class="eyebrow">Premium details</span>
+  <h2 id="pd">The small things that make it feel Apple</h2>
+  <div class="cmp">
+    <div class="plain"><span class="l2" style="font-size:.8rem">Spent this week</span><b>$412</b><div style="height:8px;background:#ccc"><div style="width:69%;height:100%;background:#2a7"></div></div><span style="font-size:.8rem">Plain: hard border, small radius, default digits, flat bar</span></div>
+    <div class="prem"><span class="l2" style="font-size:.8rem">Spent this week</span><b>$412</b><div class="bar"><i style="width:69%;background:var(--green)"></i></div><span class="l2" style="font-size:.8rem">Premium: continuous corners, specular top edge, soft layered shadow, SF Rounded numbers, system green</span></div>
+  </div>
+  <div class="det">
+    <div class="card"><h3>Continuous corners</h3><p class="l2" style="font-size:.88rem">Squircle curves everywhere (<code>RoundedRectangle(style: .continuous)</code>). Circles only for avatars and buttons.</p></div>
+    <div class="card"><h3>Concentric radii</h3><div class="conc"><div></div></div><p class="l2" style="font-size:.88rem">Inner radius = outer radius − padding (28 − 10 = 18), so nested shapes look parallel.</p></div>
+    <div class="card"><h3>Hairlines</h3><div class="hair"><div>Design sync</div><div>Standup</div></div><p class="l2" style="font-size:.88rem">Separators are one physical pixel (0.5 pt) in the separator colour, never 1 pt grey.</p></div>
+    <div class="card"><h3>Specular edge</h3><p class="l2" style="font-size:.88rem">A 1 px light line on the top inner edge of cards and tiles. Strong in light (70% white), faint in dark (10%).</p></div>
+    <div class="card"><h3>Elevation</h3><p class="l2" style="font-size:.88rem">Light: two soft shadows (tight + wide). Dark: no shadows, a lighter surface instead.</p></div>
+    <div class="card"><h3>Glow with a reason</h3><p class="l2" style="font-size:.88rem">Only live things glow: mood eyes, countdown rings, the listening state. 55% colour, 10 pt blur, inside the shape.</p></div>
+    <div class="card"><h3>Numbers</h3><p class="l2" style="font-size:.88rem">SF Pro Rounded, semibold, tabular figures for big numbers (like Fitness and the Watch). Digits roll when values change.</p></div>
+    <div class="card"><h3>Symbols</h3><p class="l2" style="font-size:.88rem">SF Symbols in hierarchical rendering, matched to text weight; symbol effects (bounce, pulse) only on state changes.</p></div>
+  </div>
+</section>
+
+<section aria-labelledby="ap">
+  <span class="eyebrow">Applied</span>
+  <h2 id="ap">The tokens on real Blink pieces</h2>
+  <div class="applied">
+    <div class="hero"><small>Today ⌄</small><b>12 min</b><small>until Design sync · Priya</small><div class="hpills"><span>↙ Capture</span><span>+</span><span>↗ Ask</span></div></div>
+    <div style="display:grid;gap:12px">
+      <div class="tile"><small>Next</small><b>12 min</b><div class="bar" style="background:rgba(120,120,128,.24)"><i style="width:72%;background:#63E6E2;box-shadow:0 0 8px rgba(99,230,226,.55)"></i></div></div>
+      <div class="tile"><small>Spent today</small><b>$64</b><div style="display:flex;height:8px;border-radius:8px;overflow:hidden;gap:2px"><i style="flex:5;background:#FF375F"></i><i style="flex:2;background:#BF5AF2"></i><i style="flex:1;background:#64D2FF"></i><i style="flex:3;background:rgba(120,120,128,.24)"></i></div></div>
+    </div>
+    <div class="card"><span class="l2" style="font-size:.78rem">Pexilim website</span><b style="font:600 1.5rem var(--round)">40%</b><div class="bar"><i style="width:40%;background:var(--accent)"></i></div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:.74rem;padding:4px 9px;border-radius:999px;background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange);font-weight:600">Design in 3 days</span><span style="font-size:.74rem;padding:4px 9px;border-radius:999px;background:var(--fill2);color:var(--label2);font-weight:600">2 tasks</span></div></div>
+  </div>
+</section>
+
+<section aria-labelledby="ax">
+  <span class="eyebrow">Accessibility and code</span>
+  <h2 id="ax">Built to adapt</h2>
+  <ul class="rules">
+    <li><b>Increase Contrast:</b> system colours switch to their high-contrast versions automatically; custom glows turn off.</li>
+    <li><b>Reduce Transparency:</b> all glass and materials become solid surfaces.</li>
+    <li><b>Reduce Motion:</b> no glow pulses, no digit rolls; crossfades only.</li>
+    <li><b>Contrast:</b> text 4.5:1 minimum; status is never colour alone (each pill also has a word or symbol).</li>
+    <li><b>Source of truth:</b> <code>design/tokens.json</code> in the repo, mapped to SwiftUI names.</li>
+  </ul>
+<pre>// SwiftUI: tokens map to Apple semantic colours, never hex
+extension Color {
+    static let blinkSurface   = Color(.secondarySystemGroupedBackground)
+    static let blinkHeadsUp   = Color.mint      // time
+    static let blinkImportant = Color.red       // needs you
+    static let blinkThinking  = Color.indigo    // Claude working
+    static let blinkDone      = Color.green
+    static let blinkAttention = Color.orange
+}
+// glass on the navigation layer only
+TabView { … }.glassEffect(.regular)
+Button("Ask") { … }.glassEffect(.regular.tint(.accentColor))</pre>
+</section>
+
+<footer>Blink colour and material system for Pexilim · values are Apple’s published iOS system colours · example data.</footer>
+</div>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const C=[["Red","#FF3B30","#FF453A","Important · needs you"],["Orange","#FF9500","#FF9F0A","Attention · evening"],["Yellow","#FFCC00","#FFD60A","Highlights (rare)"],["Green","#34C759","#30D158","Done · on track"],["Mint","#00C7BE","#63E6E2","Time · heads-up"],["Teal","#30B0C7","#40CBE0","Charts"],["Cyan","#32ADE6","#64D2FF","Transport"],["Blue","#007AFF","#0A84FF","Accent"],["Indigo","#5856D6","#5E5CE6","Thinking"],["Purple","#AF52DE","#BF5AF2","Work"],["Pink","#FF2D55","#FF375F","Food"],["Brown","#A2845E","#AC8E68","Home"]];
+$("sw").innerHTML=C.map(([n,l,d,u])=>`<div class="s"><div class="chips"><span style="background:${l}">${l}</span><span style="background:${d}">${d}</span></div><div class="meta"><b>system${n}</b><small>${u}</small></div></div>`).join("");
+const G=[["Gray","#8E8E93","#8E8E93"],["Gray2","#AEAEB2","#636366"],["Gray3","#C7C7CC","#48484A"],["Gray4","#D1D1D6","#3A3A3C"],["Gray5","#E5E5EA","#2C2C2E"],["Gray6","#F2F2F7","#1C1C1E"]];
+$("ladL").innerHTML=G.map(([n,l])=>`<div style="background:${l};color:rgba(0,0,0,.6)">${n}<br>${l}</div>`).join("");
+$("ladD").innerHTML=G.map(([n,,d])=>`<div style="background:${d};color:rgba(255,255,255,.75)">${n}<br>${d}</div>`).join("");
+const S=[["background","#F2F2F7","#000000","Color(.systemGroupedBackground)","Window and screen background"],["surface","#FFFFFF","#1C1C1E","Color(.secondarySystemGroupedBackground)","Cards"],["surfaceRaised","#FFFFFF","#2C2C2E","Color(.tertiarySystemGroupedBackground)","Cards on cards, tiles"],["label","#000000","#FFFFFF",".primary","Main text"],["labelSecondary","rgba(60,60,67,.6)","rgba(235,235,245,.6)",".secondary","Subtitles, times"],["labelTertiary","rgba(60,60,67,.3)","rgba(235,235,245,.3)",".tertiary","Placeholders"],["separator","rgba(60,60,67,.29)","rgba(84,84,88,.6)","Color(.separator)","Hairlines"],["fill","rgba(120,120,128,.2)","rgba(120,120,128,.36)","Color(.systemFill)","Chips, tracks, pill backgrounds"]];
+$("sem").innerHTML=S.map(([t,l,d,sw,u])=>`<tr><td><b>${t}</b></td><td><span class="dot" style="background:${l}"></span><code style="color:inherit">${l}</code></td><td><span class="dot" style="background:${d}"></span><code style="color:inherit">${d}</code></td><td><code>${sw}</code></td><td>${u}</td></tr>`).join("");
+const M=[["Rest","#FFFFFF","white"],["Heads-up","#63E6E2","systemMint"],["Important","#FF453A","systemRed"],["Thinking","#5E5CE6","systemIndigo"],["Done","#30D158","systemGreen"],["Attention","#FF9F0A","systemOrange"]];
+$("moods").innerHTML=M.map(([n,c,a])=>`<div class="mood"><div class="nt" style="--mc:${c}"><span class="pe" style="--mc:${c}"><i><b></b></i><i><b></b></i></span></div><span>${n}</span><small>${a}</small></div>`).join("");
+const T=[["blink.accent","systemBlue · your Mac accent","Buttons, selection, links, progress"],["mood.headsUp","systemMint","Meetings, reminders, countdowns"],["mood.important","systemRed","Important mail, limits, failures"],["mood.thinking","systemIndigo","Claude is working"],["mood.done","systemGreen","Done, approved, on track"],["mood.attention","systemOrange","Concerned, evening, sleepy"],["money.food / work / transport / home","systemPink / Purple / Cyan / Brown","Spending categories in every chart"],["notch.hardware","pure black","The notch and Island, both appearances"],["mascot.shell / patch","Gray6 → Gray2 / Gray3 → black","Porcelain shell and ink eye patches"]];
+$("map").innerHTML=T.map(([t,a,m])=>`<tr><td><code>${t}</code></td><td>${a}</td><td>${m}</td></tr>`).join("");
+})();
+</script>
