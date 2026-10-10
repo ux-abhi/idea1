@@ -73,9 +73,19 @@ Status: **Planning.** Nothing is built yet. This file is the single source of tr
 - **Send / Send later** happens only after your approval (Face ID).
 - **Summaries:** daily inbox summary, and "summarise this thread".
 
-### 3.7 Budget
-- **Bank connection:** SimpleFIN Bridge (read-only, $15/yr, US banks). If one of your banks isn't supported, use Plaid or Teller as a fallback.
-- **Universal fallback:** read your bank's transaction-alert emails (already flowing in through the email module) + CSV import + manual entry from the notch.
+### 3.7 Budget: no bank app connection needed
+Reading the bank app's **notifications** directly isn't possible: iOS never lets one app read another app's notifications, and on macOS the notification database is protected and changes between versions. The same information reaches you through three channels we *can* read, so we use those instead:
+
+| Source | How | Covers |
+|---|---|---|
+| **Apple Pay taps** | Shortcuts **"Transaction" automation** (Wallet) runs our *Log Transaction* App Intent with amount + merchant + card, the moment you pay | Every Apple Pay purchase, any card in Wallet |
+| **Bank SMS alerts** | Shortcuts **"Message" automation** (sender = bank, contains "debited"/"purchase") passes the text to our intent → Claude extracts amount, merchant, date | Card swipes, online purchases, transfers (turn on SMS alerts in each bank's settings) |
+| **Bank email alerts** | Already flowing in through the email module → Claude extracts the transaction | Same as SMS, for banks that email instead |
+| Optional: **SimpleFIN Bridge** | Read-only bank sync, $15/yr (Plaid/Teller as fallback) | Balances + anything the alerts missed; only if you want it later |
+
+- **Duplicates are removed automatically:** the same purchase arriving via Apple Pay + SMS + email is merged by amount, merchant and time.
+- **Manual entry** from the notch or Siri for cash.
+- To test on your iPhone: which bank SMS formats parse cleanly, and whether the Message automation runs without asking each time on your iOS version.
 - Auto-categorisation by Claude; monthly budgets per category; alerts at 80% / 100%.
 - Weekly money summary in the Sunday review.
 
@@ -169,7 +179,7 @@ One card design used across the whole system:
 │                        always-on IMAP IDLE worker later for instant mail)│
 └───────────┬─────────────────────┬─────────────────────┬──────────────────┘
             │                     │                     │
-      Claude API            SimpleFIN / Plaid      LinkedIn API
+      Claude API      Apple Pay + SMS (Shortcuts)  LinkedIn API
 ```
 
 ### 6.1 Data model (simple version)
@@ -196,7 +206,7 @@ One card design used across the whole system:
 | Apple Developer Program | $99 / year (needed for push, Live Activities via server, TestFlight) |
 | Claude API | ~$1–2 / day all on Opus 5.5 for normal use; less with Batches, caching, or Haiku for triage |
 | Supabase | Free tier to start; Pro $25/month when needed |
-| SimpleFIN Bridge | $15 / year |
+| SimpleFIN Bridge (optional) | $15 / year |
 | LinkedIn API | Free |
 
 ---
@@ -228,7 +238,7 @@ Trade-off: the backend must be able to read mail and transactions to alert you w
 | 4 | **Claude app connector + skills** | Same assistant usable inside the Claude app with your login |
 | 5 | **Email** | Important mail alerts; drafts appear in Apple Mail; send after Face ID |
 | 6 | **iPhone: Dynamic Island + widgets + wake-up** | "Meeting in 3 min / started 3 min ago" Live Activity; Lock Screen Today widget |
-| 7 | **Budget** | Transactions flow in; categories + alerts work |
+| 7 | **Budget** (Apple Pay + SMS + email alerts) | An Apple Pay tap and a bank SMS both show up in the budget within a minute, without duplicates; categories + alerts work |
 | 8 | **Polish:** weekly review, "while you were away", learning rules | Sunday review summarises habits, money, content, projects |
 
 **How we'll work:** Claude Code running **on your Mac** (it can build with Xcode), or code written here → pushed to GitHub → you press Run in Xcode. Each phase gets a checklist in this file.
@@ -255,7 +265,7 @@ Trade-off: the backend must be able to read mail and transactions to alert you w
 
 ## 10. Open decisions
 
-- [ ] **Banks:** exact name of "Expedia bank" (Expedia credit card? another bank?) and confirm **Commerce Bank (US)**. Check both in the SimpleFIN Bridge institution list.
+- [ ] **Banks:** exact name of "Expedia bank" (Expedia credit card? another bank?) and confirm **Commerce Bank (US)**. Turn on SMS or email transaction alerts in both. Bank sync is optional.
 - [ ] **Mail provider** behind Apple Mail: iCloud, Google Workspace (pexilim.com?), Outlook, other? (Apple Mail → Settings → Accounts.)
 - [ ] **Mac setup:** do you have Xcode installed? OK with the Apple Developer Program ($99/yr)?
 - [ ] **Claude models:** Opus 5.5 everywhere, or Haiku 5.5 for email triage to save cost?
