@@ -1,5 +1,7 @@
 # Design Direction
 
+> **Superseded on conflict by [ARCHITECTURE.md](ARCHITECTURE.md)**, the single source of truth for tech and UX architecture.
+
 Companion to [PLAN.md](PLAN.md). This file decides **how the assistant looks, feels, thinks and saves battery**. Planning only: no app code yet.
 
 ---

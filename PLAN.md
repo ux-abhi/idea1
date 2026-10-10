@@ -1,5 +1,7 @@
 # Personal Assistant: Master Plan
 
+> **Superseded on conflict by [ARCHITECTURE.md](ARCHITECTURE.md)**, the single source of truth for tech and UX architecture.
+
 > **One line:** A Claude-powered second brain that lives in your MacBook notch and your iPhone Dynamic Island. It knows your day, prepares things before you ask, and never acts without your OK.
 
 Status: **Planning.** Nothing is built yet. This file is the single source of truth: update it as decisions are made.
