@@ -3,17 +3,19 @@
 > **One line:** A Claude-powered second brain that lives in your MacBook notch and your iPhone Dynamic Island. It knows your day, prepares things before you ask, and never acts without your OK.
 
 Status: **Planning.** Nothing is built yet. This file is the single source of truth: update it as decisions are made.
+Look, mascot (**Pip**), model switching, content engine and battery decisions live in **[DESIGN.md](DESIGN.md)**.
 
 ---
 
-## 1. The 6 principles
+## 1. The 7 principles
 
 1. **Part of your life, not another app.** It comes to you: when you wake up, open the laptop, unlock the phone, finish a meeting, or wind down at night.
 2. **Prepares ahead of time.** It plans tomorrow with you at night, researches and drafts overnight, and has everything ready in the morning.
 3. **Asks before acting.** "Do you want me to do it?" is on every screen. Small things take one tap with Undo; email, posts and money need Face ID.
 4. **Everything is connected.** Meetings ↔ notes ↔ emails ↔ people ↔ tasks ↔ projects ↔ habits ↔ money ↔ content. So "Summarise everything about X" works.
-5. **Claude is the brain.** One AI provider: Claude. It powers chat, summaries, plans, drafts, triage and research.
-6. **Only you can see it.** Your own private backend, Face ID locks, keys that are never displayed, and a single-user login.
+5. **Claude is the brain.** One AI provider: Claude. An Auto router picks Opus, Sonnet or Haiku per job, and you can switch any time.
+6. **Ask once, learn forever.** One setup conversation with Pip; after that it learns from what you approve, edit and skip, and never asks the same thing twice.
+7. **Only you can see it, and it's easy on the battery.** Private backend, Face ID, keys never displayed. The server does the work and the devices sleep.
 
 ---
 
@@ -21,7 +23,7 @@ Status: **Planning.** Nothing is built yet. This file is the single source of tr
 
 | Moment | Where | What you see |
 |---|---|---|
-| **Wake up** | iPhone Lock Screen + Dynamic Island | ☀️ "Good morning. Today: 3 meetings (first at 10:00) · Focus: notch animations · LinkedIn post ready · 2 important emails · Workout planned 7:00" |
+| **Wake up** | iPhone Lock Screen + Dynamic Island | ☀️ "Good morning. Today: 3 meetings (first at 10:00) · Focus: notch animations · posts ready for your platforms · 2 important emails · Workout planned 7:00" |
 | **Open the laptop** | Mac notch expands once | Same morning brief + **project status**: "Assistant app: Phase 1, 4/7 done · Client X: waiting on their reply" → [Start focus] [Review post] [Open inbox] |
 | **Chat** | Mac notch, app or Claude app | "What are we creating content on today?" → Claude answers with options from your projects + overnight research → [Save to content board] |
 | **"Remind me about the 3 pm meeting"** | Chat | Claude fetches the 3 pm event from your calendar → "Design sync with Priya at 3:00, 2 linked notes. Remind you 10 min before?" → [Do it] |
@@ -33,7 +35,7 @@ Status: **Planning.** Nothing is built yet. This file is the single source of tr
 | **To-do check** | Notch, afternoon | "You have 'Send proposal' due today and a free hour at 4. Work on it then?" |
 | **Night (~9:30)** | Notch / Dynamic Island | "You haven't planned tomorrow yet. **Plan with me** / **Auto-plan, I'll review** / Later" |
 | **Evening check-in** | Chat card | "Workout today?" No → ❌ → "Put it at 7:00 tomorrow?" · "Here are tomorrow's important meetings" (mini calendar) · "Anything from today worth posting?" |
-| **Overnight** | Backend | Researches your topic, drafts the LinkedIn post, summarises the day, prepares tomorrow's brief |
+| **Overnight** | Backend | Researches your topic, drafts today's content for each of your platforms, summarises the day, prepares tomorrow's brief |
 
 ---
 
@@ -89,12 +91,13 @@ Reading the bank app's **notifications** directly isn't possible: iOS never lets
 - Auto-categorisation by Claude; monthly budgets per category; alerts at 80% / 100%.
 - Weekly money summary in the Sunday review.
 
-### 3.8 Content studio + Content Autopilot (LinkedIn first)
-- Pipeline: **Idea → Outline → Draft → Scheduled → Published**, with a content calendar.
-- **Autopilot (nightly):** collects your day (finished tasks, project notes, meetings) → web research on the topic → picks **today's post** + 2 backups → writes a draft in your voice (learned from 5–10 of your past posts).
-- **Morning:** "Post ready" card → [Review] [Post now] [Schedule 9:00] [Skip].
-- **LinkedIn:** posts to your own profile through the official API (Share on LinkedIn, `w_member_social`). The backend handles scheduling because the API has no scheduling. **It never posts without your tap.**
-- Learns what works: you mark performance, or paste stats, since LinkedIn's API doesn't give personal post analytics to apps.
+### 3.8 Content engine (any platform)
+Full design: [DESIGN.md §5](DESIGN.md#5-content-engine-any-platform-no-setup-per-platform).
+- **One idea becomes a "core message"** (story, points, proof, CTA, assets), which is **adapted natively** for each platform you use: LinkedIn post/carousel, Instagram carousel + caption + Reel script, X post/thread, YouTube script + titles + thumbnail idea + chapters, Shorts, and more.
+- **Platform Playbooks:** one Claude skill per platform describes how it works (formats, limits, hooks, tone, timing, what performs now). They are refreshed monthly by research. **Adding a platform = adding a playbook**, with no code change.
+- **Cadence is proposed, not asked:** every Sunday night Pip proposes the week's content plan from your goals, calendar load and results. You approve once.
+- **Autopilot (nightly):** your day + research → today's pieces drafted in your voice → morning card [Review] [Post] [Schedule] [Skip].
+- **Publishing:** direct API where allowed (LinkedIn, Instagram Creator/Business, X pay-per-use). **One-tap handoff** everywhere else (YouTube, TikTok, …): caption copied, media saved, app opened. **Nothing posts without your tap.**
 
 ### 3.9 Chat ("you + Claude together")
 - A chat panel in the notch, the app and the Claude app, all sharing the same memory and data.
@@ -116,11 +119,11 @@ One card design used across the whole system:
 |---|---|---|
 | 🟢 Small | Mark habit, save idea, add note | Done immediately + 5 s **Undo** |
 | 🟡 Medium | Reminder, calendar event, plan tomorrow | One tap **Do it** |
-| 🔴 Important | Send email, post to LinkedIn, anything money | Preview → **Face ID** → 10 s "Sending… Undo" |
+| 🔴 Important | Send email, publish a post, anything money | Preview → **Face ID** → 10 s "Sending… Undo" |
 
 - **"Waiting for you" queue:** missed cards collect in one place ("3 things waiting").
 - **Learns your preferences, and asks first:** "You always approve marking workouts. Do it automatically?" 🔴 actions are **never** automatic.
-- **Suggestions while you work:** after you write a note → "Turn into a LinkedIn post?"; after a meeting → "Follow-up?"; when an email mentions a date → "Add to calendar?"
+- **Suggestions while you work:** after you write a note → "Turn into a post?"; after a meeting → "Follow-up?"; when an email mentions a date → "Add to calendar?"
 
 ---
 
@@ -192,8 +195,9 @@ It never needs to go on the App Store. It's a personal app, so there's no App St
 │                        always-on IMAP IDLE worker later for instant mail)│
 └───────────┬─────────────────────┬─────────────────────┬──────────────────┘
             │                     │                     │
-      Claude API      Apple Pay + SMS (Shortcuts)  LinkedIn API
+  Claude API (router)  Apple Pay + SMS (Shortcuts)  Social APIs + handoff
 ```
+Additional services (event bus, Pip state, model router, content engine, playbook refresher): see [DESIGN.md §7](DESIGN.md#7-architecture-additions).
 
 ### 6.1 Data model (simple version)
 - `items`: one table for everything (note, todo, habit_log, event_ref, email_ref, transaction, idea, post, project), with `type`, `title`, `body`, `status`, `due_at`, `metadata`, `embedding`.
@@ -204,10 +208,13 @@ It never needs to go on the App Store. It's a personal app, so there's no App St
 
 ### 6.2 How Claude is used
 
-| Job | Claude feature | Model (to decide) |
+Models are chosen by the **Auto router** ([DESIGN.md §4](DESIGN.md#4-model-switching-claude-only)). You can override per chat or per feature.
+
+| Job | Claude feature | Auto picks |
 |---|---|---|
-| Chat, planning, drafts, briefs | Messages API + **tool use** (tools = our modules), streaming | **Claude Opus 5.5** (`claude-opus-5-5`), the default |
-| Email triage (many small calls) | **Structured outputs** (fixed JSON categories) | Opus 5.5 by default; **Claude Haiku 5.5** is a much cheaper option if you choose it |
+| Evening planning, weekly review, content writing, hard questions | Messages API + **tool use** (tools = our modules), streaming | **Opus 5.5** (`claude-opus-5-5`) |
+| Everyday chat, meeting briefs, summaries | Same | **Sonnet 5.5** (`claude-sonnet-5-5`) |
+| Email triage, transaction extraction, categories | **Structured outputs** (fixed JSON categories) | **Haiku 5.5** (`claude-haiku-5-5`) |
 | Overnight autopilot (content, summaries, tomorrow's brief) | **Message Batches** (50% cheaper, not urgent) + **web search tool** for research | Opus 5.5 |
 | Your voice, preferences, long-term memory | **Prompt caching** of your profile + voice examples; memory stored in our DB | — |
 | Nightly jobs, alternative path | **Claude Managed Agents** with scheduled deployments (Anthropic runs the loop; secrets in vaults) | Evaluate in Phase 3 |
@@ -217,10 +224,11 @@ It never needs to go on the App Store. It's a personal app, so there's no App St
 | Item | Cost |
 |---|---|
 | Apple Developer Program | **Optional at first.** $0 with a free account (iPhone app reinstall every 7 days, no server push); $99 / year later for push, automatic Live Activities and TestFlight |
-| Claude API | ~$1–2 / day all on Opus 5.5 for normal use; less with Batches, caching, or Haiku for triage |
+| Claude API | Under ~$1–2 / day with the Auto router (Haiku for small jobs, Batches overnight, caching) |
 | Supabase | Free tier to start; Pro $25/month when needed |
 | SimpleFIN Bridge (optional) | $15 / year |
-| LinkedIn API | Free |
+| LinkedIn, Instagram APIs | Free |
+| X API (optional) | ~$0.015 per post, ~$0.20 with a link |
 
 ---
 
@@ -230,7 +238,7 @@ It never needs to go on the App Store. It's a personal app, so there's no App St
 |---|---|---|
 | Apps | Everything | **Face ID** to open; a second Face ID check for **Email**, **Budget**, **Keys** |
 | Device Keychain | Personal keys and tokens | Locked to *current* biometrics: adding a new face or finger makes them unreadable |
-| Backend | Claude key, mail password, bank token, LinkedIn token | Encrypted in **Supabase Vault**; **never sent to any app**. UI shows "Connected ✓"; replacing a key requires Face ID; viewing is not possible |
+| Backend | Claude key, mail password, bank token, social tokens | Encrypted in **Supabase Vault**; **never sent to any app**. UI shows "Connected ✓"; replacing a key requires Face ID; viewing is not possible |
 | Database | Your data | Row-level security, **sign-ups disabled**, single user |
 | Claude connector | Claude app access | OAuth with your account only; write tools go through confirmation |
 | Git | Code | **No secrets ever committed** (ignored config files + Keychain) |
@@ -244,13 +252,13 @@ Trade-off: the backend must be able to read mail and transactions to alert you w
 
 | # | Phase | Done when… |
 |---|---|---|
-| 0 | **Setup:** Apple Developer account, Xcode multiplatform project, Supabase project, Face ID lock, Keychain, secrets in Vault | App opens with Face ID on Mac + iPhone; backend reachable with your login only |
-| 1 | **Notch + Calendar + Reminders + Ask-First Helper** | Meeting "in 10 min" pops from the notch with notes; reminder fires in the notch; Ask-First card works; morning brief shows on laptop open |
-| 2 | **Notes + To-dos + Habits + Evening planning + Projects** | Nightly "plan tomorrow?" conversation fills the schedule checker and creates tomorrow's plan; project status shows in the brief |
-| 3 | **Claude chat + Content Autopilot + LinkedIn** | Chat in notch; overnight draft waits in the morning; approve → posted/scheduled |
+| 0 | **Setup + design:** Xcode multiplatform project (free account), Supabase project, Face ID lock, Keychain, secrets in Vault; **Pip designed in Rive** (all states + still poses); setup conversation script | App opens with Face ID on Mac + iPhone; backend reachable with your login only; Pip's states approved |
+| 1 | **Notch + Pip + Calendar + Reminders + Ask-First Helper** | Pip lives in the notch; meeting "in 10 min" pops out with notes; Ask-First card works; morning brief on laptop open; **idle CPU near zero** |
+| 2 | **Notes + To-dos + Habits + Evening planning + Projects + Mac app window** | Nightly "plan tomorrow?" conversation fills the schedule checker; project status in the brief; Pip panel on every screen |
+| 3 | **Chat + model router + Content engine** (playbooks for your platforms) | One idea becomes native drafts per platform; overnight drafts wait in the morning; publish or one-tap handoff |
 | 4 | **Claude app connector + skills** | Same assistant usable inside the Claude app with your login |
 | 5 | **Email** | Important mail alerts; drafts appear in Apple Mail; send after Face ID |
-| 6 | **iPhone: Dynamic Island + widgets + wake-up** | "Meeting in 3 min / started 3 min ago" Live Activity; Lock Screen Today widget |
+| 6 | **iPhone app: Pip button, Dynamic Island + widgets + wake-up** | "Meeting in 3 min / started 3 min ago" with Pip's poses; Lock Screen Today widget; the app isn't a significant user in Settings → Battery |
 | 7 | **Budget** (Apple Pay + SMS + email alerts) | An Apple Pay tap and a bank SMS both show up in the budget within a minute, without duplicates; categories + alerts work |
 | 8 | **Polish:** weekly review, "while you were away", learning rules | Sunday review summarises habits, money, content, projects |
 
@@ -276,12 +284,10 @@ Trade-off: the backend must be able to read mail and transactions to alert you w
 
 ---
 
-## 10. Open decisions
+## 10. Decided, and what's collected in setup
 
-- [ ] **Banks:** exact name of "Expedia bank" (Expedia credit card? another bank?) and confirm **Commerce Bank (US)**. Turn on SMS or email transaction alerts in both. Bank sync is optional.
-- [ ] **Mail provider** behind Apple Mail: iCloud, Google Workspace (pexilim.com?), Outlook, other? (Apple Mail → Settings → Accounts.)
-- [ ] **Mac setup:** do you have Xcode installed? (Free.) Start with a free Apple account; decide on the $99/yr program later.
-- [ ] **Claude models:** Opus 5.5 everywhere, or Haiku 5.5 for email triage to save cost?
-- [ ] **Content:** LinkedIn only for now? How often to post (daily / 3× week)?
-- [ ] **Times:** usual wake-up time and evening planning time (default 9:30 pm)?
-- [ ] **Backend host:** Supabase (recommended) — confirm.
+**Decided:** Supabase backend · native SwiftUI · Pip mascot · Auto model router · platform playbooks with proposed cadence · free Apple account first · budget from Apple Pay/SMS/email alerts. Details in [DESIGN.md §8](DESIGN.md#8-decisions-made-so-you-dont-have-to-answer-them).
+
+**Collected once in Pip's setup conversation (not separate questions):** which banks send alerts, the mail account behind Apple Mail, wake and evening times, platforms and goals, writing samples, habits, budget categories.
+
+**Needed before Phase 0:** a Mac with Xcode installed (free).
