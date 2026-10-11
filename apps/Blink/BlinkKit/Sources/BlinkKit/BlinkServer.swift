@@ -76,6 +76,29 @@ public final class BlinkServer: Sendable {
         return now
     }
 
+    /// Uploads this device's calendar snapshot for `window` (§36.1): upsert what's there, then drop what's gone.
+    public func uploadCalendar(_ events: [AgendaEvent], window: DateInterval) async throws {
+        guard let saved = try keychain.data(for: Self.deviceIDKey), let device = String(data: saved, encoding: .utf8) else { return }
+        // Whole seconds survive the round trip exactly, so the "older than this upload" delete can't hit this upload's rows.
+        let now = Date(timeIntervalSince1970: Date.now.timeIntervalSince1970.rounded(.down))
+        let rows = events.map {
+            CalendarRow(source: $0.source, ext_id: $0.extID, occurrence_start: $0.start, ends_at: $0.end, title: $0.title,
+                        location: $0.location, url: $0.url?.absoluteString, snapshot_device: device, snapshot_at: now)
+        }
+        if !rows.isEmpty {
+            try await client.from("calendar_event")
+                .upsert(rows, onConflict: "owner_id,source,ext_id,occurrence_start", returning: .minimal)
+                .execute()
+        }
+        // Rows from this device in the window that this snapshot didn't touch were deleted or moved.
+        try await client.from("calendar_event").delete()
+            .eq("snapshot_device", value: device)
+            .gte("occurrence_start", value: window.start)
+            .lt("occurrence_start", value: window.end)
+            .lt("snapshot_at", value: now)
+            .execute()
+    }
+
     /// Marks this device revoked, then ends the session. Local state is cleared even when offline.
     /// shortcut: an offline sign-out leaves the server row un-revoked; retry it when Phase 1 puts approval keys on device rows.
     public func signOut() async {
@@ -87,6 +110,14 @@ public final class BlinkServer: Sendable {
     }
 
     private struct DeviceRow: Decodable { let id: UUID }
+    private struct CalendarRow: Encodable {
+        let source, ext_id: String
+        let occurrence_start, ends_at: Date
+        let title: String
+        let location, url: String?
+        let snapshot_device: String
+        let snapshot_at: Date
+    }
     private struct NewDevice: Encodable {
         let platform: String
         let name: String

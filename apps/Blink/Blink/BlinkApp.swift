@@ -14,7 +14,12 @@ struct BlinkApp: App {
             RootView()
                 .environment(model)
                 .onChange(of: scenePhase, initial: true) { _, phase in model.scenePhaseChanged(phase) }
-                .task { await model.load() }
+                .task {
+                    #if os(macOS)
+                    appDelegate.startNotch(model)
+                    #endif
+                    await model.load()
+                }
         }
         #if os(macOS)
         .defaultSize(width: 480, height: 640)
@@ -25,7 +30,9 @@ struct BlinkApp: App {
 #if os(macOS)
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notch: NotchController?
-    func applicationDidFinishLaunching(_ notification: Notification) { notch = NotchController() }
+    func startNotch(_ app: AppModel) {
+        if notch == nil { notch = NotchController(app: app) }
+    }
 }
 #endif
 

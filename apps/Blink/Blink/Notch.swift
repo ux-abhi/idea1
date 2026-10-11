@@ -13,19 +13,20 @@ final class NotchModel {
     var mood = Mood.idle
     /// The hardware notch, measured from the screen.
     var notchSize = CGSize(width: 200, height: 32)
-    /// shortcut: fixed placeholder until calendar lands in Phase 1 step 2; then this is the next event.
-    var statusLine = "All clear"
+    /// Rows in the glance (events + reminders, at most 4); sets the open height.
+    var glanceRows = 0
+    static let maxGlanceRows = 4
 
     /// Ears beside the camera stay slim at rest so long app menus are never covered (§36.2).
     static let ear: CGFloat = 24
 
-    func size(for level: Level) -> CGSize {
+    func size(for level: Level, rows: Int? = nil) -> CGSize {
         let rest = CGSize(width: notchSize.width + 2 * Self.ear, height: notchSize.height)
         switch level {
         case .rest: return rest
         case .peek: return CGSize(width: max(rest.width, 320), height: rest.height + 36)
-        // Sized to today's card; grows when the tiles land in step 2.
-        case .open: return CGSize(width: max(rest.width, 420), height: rest.height + 100)
+        // Title plus one 22 pt line per row; an empty glance shows a two-line message.
+        case .open: return CGSize(width: max(rest.width, 420), height: rest.height + 56 + CGFloat(max(rows ?? glanceRows, 2)) * 22)
         }
     }
 }
@@ -44,6 +45,7 @@ final class NotchHostingView: NSHostingView<NotchView> {
 /// Owns the notch panel: placement, hover, open and close.
 final class NotchController {
     private let model = NotchModel()
+    private let app: AppModel
     private var panel: NotchPanel?
     private var monitors: [Any] = []
     private var hoverTask: Task<Void, Never>?
@@ -51,7 +53,8 @@ final class NotchController {
     private var previousApp: NSRunningApplication?
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
-    init() {
+    init(app: AppModel) {
+        self.app = app
         place()
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
@@ -81,7 +84,7 @@ final class NotchController {
         }
         let side = (screen.auxiliaryTopLeftArea?.width ?? 0) + (screen.auxiliaryTopRightArea?.width ?? 0)
         model.notchSize = CGSize(width: screen.frame.width - side, height: screen.safeAreaInsets.top)
-        let size = model.size(for: .open)
+        let size = model.size(for: .open, rows: NotchModel.maxGlanceRows)
         let frame = NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
                            width: size.width, height: size.height)
 
@@ -102,7 +105,7 @@ final class NotchController {
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
         panel.sharingType = .none // hidden from screen capture and sharing (§36.1)
-        panel.contentView = NotchHostingView(rootView: NotchView(model: model, open: { [weak self] in self?.open() }))
+        panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app, open: { [weak self] in self?.open() }))
         return panel
     }
 
@@ -174,13 +177,24 @@ final class NotchController {
 
 struct NotchView: View {
     let model: NotchModel
+    let app: AppModel
     let open: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        // Once a minute, never per frame: keeps the countdown current at ~0 CPU.
+        TimelineView(.everyMinute) { context in
+            shape(statusLine: app.agenda.statusLine(now: context.date), now: context.date)
+                .onChange(of: GlanceView.rows(agenda: app.agenda, now: context.date), initial: true) { _, rows in
+                    model.glanceRows = rows
+                }
+        }
+    }
+
+    private func shape(statusLine: String, now: Date) -> some View {
         let size = model.size(for: model.level)
         let radius = model.level == .rest ? Tokens.Radius.notchRest : Tokens.Radius.notchOpen
-        VStack(spacing: 8) {
+        return VStack(spacing: 8) {
             BlinkEyes(mood: model.mood, notchGap: model.notchSize.width)
                 .frame(width: model.size(for: .rest).width, height: model.notchSize.height)
                 .accessibilityHidden(true)
@@ -188,12 +202,12 @@ struct NotchView: View {
             case .rest:
                 EmptyView()
             case .peek:
-                Text(model.statusLine)
+                Text(statusLine)
                     .font(.callout.weight(.medium))
                     .foregroundStyle(.white)
                     .transition(contentTransition)
             case .open:
-                GlanceView(statusLine: model.statusLine)
+                GlanceView(statusLine: statusLine, agenda: app.agenda, access: app.calendarAccess, now: now)
                     .transition(contentTransition)
             }
         }
@@ -211,7 +225,7 @@ struct NotchView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Blink")
-        .accessibilityValue(model.statusLine)
+        .accessibilityValue(statusLine)
         .accessibilityAction(named: "Open", open)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
@@ -227,19 +241,44 @@ struct NotchView: View {
     }
 }
 
-/// Level 2. shortcut: empty-state only; tiles (next meeting, reminders) arrive with calendar in Phase 1 step 2.
-/// Not gated by the app lock yet because it shows nothing personal; gate it when it does.
+/// Level 2: today's remaining events and reminders.
+/// Not gated by the app lock yet; gate it when the Mac lock policy for the notch is decided (§36.5).
 struct GlanceView: View {
     let statusLine: String
+    let agenda: Agenda
+    let access: CalendarReader.Access
+    let now: Date
+
+    static func rows(agenda: Agenda, now: Date) -> Int {
+        min(min(agenda.today(now: now).count, 3) + agenda.reminders.count, NotchModel.maxGlanceRows)
+    }
 
     var body: some View {
+        let events = Array(agenda.today(now: now).prefix(3))
+        let reminders = Array(agenda.reminders.prefix(max(0, NotchModel.maxGlanceRows - events.count)))
         VStack(alignment: .leading, spacing: 6) {
             Text(statusLine)
                 .font(.title3.weight(.semibold))
-            Text("Your next meeting and today's reminders show here once Calendar is connected.")
-                .font(.callout)
-                .foregroundStyle(.white.opacity(0.7))
+            if access != .granted {
+                Text("Your next meeting and today's reminders show here once Calendar is connected.")
+                    .foregroundStyle(.white.opacity(0.7))
+            } else if events.isEmpty && reminders.isEmpty {
+                Text("Nothing else on your calendar today.")
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            ForEach(events) { event in
+                HStack(spacing: 8) {
+                    Text(event.start, format: .dateTime.hour().minute())
+                        .monospacedDigit()
+                        .foregroundStyle(.mint) // mood.headsUp: time
+                    Text(event.title).lineLimit(1)
+                }
+            }
+            ForEach(reminders) { reminder in
+                Label(reminder.title, systemImage: "circle").lineLimit(1)
+            }
         }
+        .font(.callout)
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 24)

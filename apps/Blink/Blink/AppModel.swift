@@ -1,5 +1,6 @@
 // © Pexilim
 import BlinkKit
+import EventKit
 import Foundation
 import SwiftUI
 #if os(iOS)
@@ -22,6 +23,11 @@ final class AppModel {
 
     private var refreshing = false
 
+    private(set) var agenda = Agenda.empty
+    private(set) var calendarAccess = CalendarReader.access
+    private let calendarReader = CalendarReader()
+    private var watchingCalendar = false
+
     private(set) var locked = true
     private var awaySince: Date?
     /// The unlock prompt opens by itself once per lock; the prompt itself makes the scene inactive and active again.
@@ -40,6 +46,7 @@ final class AppModel {
         } else {
             screen = .connect
         }
+        if calendarAccess == .granted { await startCalendar() }
     }
 
     func connect(url: String, key: String) async throws(ServerConfig.Problem) {
@@ -87,6 +94,7 @@ final class AppModel {
             lastSync = at
             UserDefaults.standard.set(at, forKey: "lastSync")
             status = .connected
+            await reloadAgenda()
         } catch {
             switch ServerProblem(error) {
             case .signedOut:
@@ -111,6 +119,36 @@ final class AppModel {
         UserDefaults.standard.removeObject(forKey: "lastSync")
         signInNotice = notice
         screen = .signIn
+    }
+
+    // MARK: Calendar
+
+    /// Asked only when the user taps Connect Calendar, never at launch.
+    func connectCalendar() async {
+        calendarAccess = await calendarReader.requestAccess()
+        if calendarAccess == .granted { await startCalendar() }
+    }
+
+    private func startCalendar() async {
+        await reloadAgenda()
+        guard !watchingCalendar else { return }
+        watchingCalendar = true
+        Task {
+            for await _ in NotificationCenter.default.notifications(named: .EKEventStoreChanged) {
+                await reloadAgenda()
+            }
+        }
+    }
+
+    /// Re-reads the calendar and uploads the snapshot when signed in.
+    /// shortcut: reloads on launch, sign-in, check-in and calendar changes only; add a wake/midnight reload when reminders go stale overnight.
+    private func reloadAgenda() async {
+        guard calendarAccess == .granted else { return }
+        let window = CalendarReader.window(from: .now)
+        agenda = await calendarReader.agenda(in: window)
+        guard let server, email != nil else { return }
+        // The device is the source of truth; a failed upload is simply retried by the next reload.
+        try? await server.uploadCalendar(agenda.events, window: window)
     }
 
     // MARK: App lock

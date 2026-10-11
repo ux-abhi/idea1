@@ -153,3 +153,45 @@ extension Tokens {
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }()
 }
+
+@Suite struct AgendaTests {
+    private let cal: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+        return c
+    }()
+    private func at(_ h: Int, _ m: Int, day: Int = 11) -> Date {
+        cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: h, minute: m))!
+    }
+    private func event(_ title: String, _ start: Date, minutes: Double = 30) -> AgendaEvent {
+        AgendaEvent(extID: title, title: title, start: start, end: start.addingTimeInterval(minutes * 60))
+    }
+
+    @Test func statusLineCountsDownThenCountsUp() {
+        let agenda = Agenda(events: [event("Review", at(15, 0))], reminders: [])
+        #expect(agenda.statusLine(now: at(14, 48), calendar: cal) == "Review in 12 min")
+        #expect(agenda.statusLine(now: at(14, 59, ).addingTimeInterval(30), calendar: cal) == "Review in 1 min")
+        #expect(agenda.statusLine(now: at(15, 0), calendar: cal) == "Review now")
+        #expect(agenda.statusLine(now: at(15, 3), calendar: cal) == "Review · started 3 min ago")
+        #expect(agenda.statusLine(now: at(15, 30), calendar: cal) == "All clear") // ended
+    }
+
+    @Test func farEventsShowTheTimeAndTomorrowIsNotToday() {
+        let agenda = Agenda(events: [event("Lunch", at(13, 0)), event("Tomorrow", at(9, 0, day: 12))], reminders: [])
+        #expect(agenda.statusLine(now: at(9, 0), calendar: cal).hasPrefix("Next: Lunch at "))
+        #expect(agenda.today(now: at(14, 0), calendar: cal).isEmpty)
+        #expect(agenda.next(after: at(14, 0))?.title == "Tomorrow")
+    }
+
+    @Test func remindersShowWhenNoEventsAreLeft() {
+        let one = Agenda(events: [], reminders: [AgendaReminder(id: "1", title: "Pay rent", due: nil)])
+        #expect(one.statusLine(now: at(9, 0), calendar: cal) == "1 reminder today")
+        #expect(Agenda.empty.statusLine(now: at(9, 0), calendar: cal) == "All clear")
+    }
+
+    @Test func eventsAreSortedAndOngoingCountsAsNext() {
+        let agenda = Agenda(events: [event("B", at(11, 0)), event("A", at(10, 0), minutes: 90)], reminders: [])
+        #expect(agenda.events.map(\.title) == ["A", "B"])
+        #expect(agenda.next(after: at(11, 15))?.title == "A") // A runs until 11:30
+    }
+}
