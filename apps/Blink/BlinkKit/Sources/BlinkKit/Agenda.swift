@@ -163,6 +163,18 @@ public actor CalendarReader {
         return Self.access
     }
 
+    /// Creates a reminder in the default list; returns its identifier for the action's result (undo later).
+    public func addReminder(_ title: String, due: Date?, calendar: Calendar = .current) throws -> String {
+        let reminder = EKReminder(eventStore: store)
+        reminder.title = title
+        reminder.calendar = store.defaultCalendarForNewReminders()
+        if let due {
+            reminder.dueDateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: due)
+        }
+        try store.save(reminder, commit: true)
+        return reminder.calendarItemIdentifier
+    }
+
     /// The span Blink reads and uploads: from now to the end of the 7th day.
     public static func window(from now: Date, calendar: Calendar = .current) -> DateInterval {
         let end = calendar.date(byAdding: .day, value: 7, to: calendar.startOfDay(for: now)) ?? now

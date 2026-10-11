@@ -46,6 +46,39 @@ do $$ begin
   end;
 end $$;
 
+-- payload_hash is computed by the server, whatever the client sends.
+do $$ begin
+  assert (select payload_hash from public.action where risk = 'green')
+       = sha256(convert_to((select payload::text from public.action where risk = 'green'), 'UTF8')),
+       'payload_hash must be sha256 of the stored payload';
+end $$;
+
+-- Approval keys: the first device may enrol once; nothing can replace, remove or add a second key.
+insert into public.device (id, platform, name) values
+  ('00000000-0000-0000-0000-0000000000d1', 'macos', 'Mac'),
+  ('00000000-0000-0000-0000-0000000000d2', 'ios', 'Phone');
+update public.device set approval_key = '\x04' || decode(repeat('ab', 64), 'hex') where id = '00000000-0000-0000-0000-0000000000d1';
+do $$ begin
+  begin
+    update public.device set approval_key = '\x04' || decode(repeat('cd', 64), 'hex') where id = '00000000-0000-0000-0000-0000000000d1';
+    raise exception 'key replace should have failed';
+  exception when raise_exception then
+    if sqlerrm not like '%only be enrolled once%' then raise; end if;
+  end;
+  begin
+    update public.device set approval_key = '\x04' || decode(repeat('cd', 64), 'hex') where id = '00000000-0000-0000-0000-0000000000d2';
+    raise exception 'second device key should have failed';
+  exception when raise_exception then
+    if sqlerrm not like '%only be enrolled once%' then raise; end if;
+  end;
+  begin
+    update public.device set approval_key = null where id = '00000000-0000-0000-0000-0000000000d1';
+    raise exception 'key removal should have failed';
+  exception when raise_exception then
+    if sqlerrm not like '%cannot be removed%' then raise; end if;
+  end;
+end $$;
+
 -- A cannot write usage rows.
 do $$ begin
   begin

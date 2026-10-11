@@ -79,9 +79,17 @@ final class NotchController {
                 if self?.model.level == .open { self?.close() }
             },
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.keyCode == 53, self?.model.level == .open else { return event } // Esc
-                self?.close()
-                return nil
+                guard let self, self.model.level == .open else { return event }
+                if event.keyCode == 53 { // Esc
+                    self.close()
+                    return nil
+                }
+                // ⌘⏎ approves; never a bare ⏎ (§36.2).
+                if event.keyCode == 36, event.modifierFlags.contains(.command), let first = self.app.pending.first {
+                    Task { await self.app.approve(first) }
+                    return nil
+                }
+                return event
             },
         ].compactMap { $0 }
 
@@ -240,6 +248,7 @@ final class NotchController {
         guard model.level != .open, let panel else { return }
         previousApp = NSWorkspace.shared.frontmostApplication
         set(.open)
+        Task { await app.loadActions() }
         panel.allowsKey = true
         panel.makeKey() // for Esc; the panel never activates Blink
     }
@@ -300,7 +309,8 @@ struct NotchView: View {
 
     private func glance(statusLine: String, now: Date) -> GlanceView {
         GlanceView(statusLine: statusLine, agenda: app.agenda, access: app.calendarAccess, now: now,
-                   briefing: model.briefing, done: close)
+                   briefing: model.briefing, done: close,
+                   card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) })
     }
 
     private func shape(statusLine: String, now: Date) -> some View {
@@ -309,6 +319,12 @@ struct NotchView: View {
         return VStack(spacing: 8) {
             BlinkEyes(mood: model.mood, notchGap: model.notchSize.width)
                 .frame(width: model.size(for: .rest).width, height: model.notchSize.height)
+                .overlay(alignment: .bottomTrailing) {
+                    // Waiting for you: a small dot in the right ear (§4).
+                    if !app.pending.isEmpty {
+                        Circle().fill(.orange).frame(width: 5, height: 5).padding(.trailing, 4).padding(.bottom, 5)
+                    }
+                }
                 .accessibilityHidden(true)
             switch model.level {
             case .rest:
@@ -337,7 +353,7 @@ struct NotchView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Blink")
-        .accessibilityValue(statusLine)
+        .accessibilityValue(app.pending.isEmpty ? statusLine : "\(statusLine). \(app.pending.count) waiting for you")
         .accessibilityAction(named: "Open", open)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
@@ -362,11 +378,17 @@ struct GlanceView: View {
     let now: Date
     let briefing: Bool
     let done: () -> Void
+    /// The first Ask-First card, shown above the agenda.
+    let card: CardView?
 
     var body: some View {
         let events = Array(agenda.today(now: now).prefix(3))
         let reminders = Array(agenda.reminders.prefix(max(0, 4 - events.count)))
         VStack(alignment: .leading, spacing: 8) {
+            if let card {
+                card
+                Divider().overlay(.white.opacity(0.2))
+            }
             Text(briefing ? "Good morning" : statusLine)
                 .font(.title3.weight(.semibold))
             if briefing {
@@ -405,6 +427,52 @@ struct GlanceView: View {
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 24)
+    }
+}
+/// One Ask-First card: the question, a preview line, the verb button (⌘⏎) and Dismiss (§6, §36.2).
+struct CardView: View {
+    let action: BlinkAction
+    let count: Int
+    let problem: String?
+    let app: AppModel
+    @State private var working = false
+
+    private var symbol: String {
+        switch action.risk {
+        case .green: "checkmark.circle"
+        case .amber: "clock.badge.checkmark"
+        case .red: "touchid"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: symbol).foregroundStyle(.orange) // mood.attention: needs you
+                Text(action.title).font(.headline).lineLimit(2)
+                Spacer(minLength: 4)
+                if count > 1 { Text("1 of \(count)").font(.caption).foregroundStyle(.white.opacity(0.6)) }
+            }
+            if let summary = action.payload.summary {
+                Text(summary).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+            }
+            if let problem {
+                Text(problem).font(.caption).foregroundStyle(.orange)
+            }
+            HStack(spacing: 8) {
+                Button {
+                    Task { working = true; await app.approve(action); working = false }
+                } label: {
+                    Text(action.payload.verb ?? "Approve")
+                }
+                .buttonStyle(.borderedProminent)
+                .help("⌘⏎")
+                Button("Dismiss") { Task { await app.dismiss(action) } }
+                    .buttonStyle(.bordered)
+            }
+            .controlSize(.small)
+            .disabled(working)
+        }
     }
 }
 #endif

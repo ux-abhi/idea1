@@ -99,6 +99,54 @@ public final class BlinkServer: Sendable {
             .execute()
     }
 
+    // MARK: Ask-First
+
+    /// Enrols this device's approval key if the server has none for it yet. The server allows only the first device (§36.5).
+    public func enrollApprovalKeyIfNeeded() async throws {
+        guard ApprovalKey.isAvailable, let device = try deviceID() else { return }
+        let rows: [KeyRow] = try await client.from("device").select("approval_key").eq("id", value: device).execute().value
+        guard rows.first?.approval_key == nil else { return }
+        let key = try await ApprovalKey.publicKey(keychain: keychain)
+        try await client.from("device")
+            .update(["approval_key": "\\x" + key.map { String(format: "%02x", $0) }.joined()])
+            .eq("id", value: device)
+            .execute()
+    }
+
+    public func pendingActions() async throws -> [BlinkAction] {
+        try await client.from("action")
+            .select("id, kind, risk, payload, payload_hash")
+            .eq("status", value: "pending")
+            .order("created_at")
+            .execute().value
+    }
+
+    /// Green and amber actions are decided by the client directly; the database refuses this for red approvals.
+    public func setStatus(_ status: String, for action: BlinkAction, result: [String: String]? = nil) async throws {
+        var change: [String: AnyJSON] = ["status": .string(status), "decided_at": .string(Date.now.ISO8601Format())]
+        if let device = try deviceID() { change["decided_by_device"] = .string(device) }
+        if let result { change["result"] = .object(result.mapValues { .string($0) }) }
+        try await client.from("action").update(change).eq("id", value: action.id).execute()
+    }
+
+    /// Red: sign (action, payload hash, expiry) with the Secure Enclave key after Touch ID, and let the server verify it.
+    public func approveRed(_ action: BlinkAction) async throws {
+        guard let device = try deviceID() else { throw ApprovalKey.Problem.unavailable }
+        let expires = Int(Date.now.timeIntervalSince1970) + 120
+        let message = BlinkAction.approvalMessage(actionID: action.id, payloadHash: action.payloadHash, expires: expires)
+        let signature = try await ApprovalKey.sign(message, reason: action.title, keychain: keychain)
+        try await client.functions.invoke("approve", options: .init(body: [
+            "action_id": AnyJSON.string(action.id),
+            "device_id": .string(device),
+            "expires": .integer(expires),
+            "signature": .string(signature.base64EncodedString()),
+        ]))
+    }
+
+    private func deviceID() throws -> String? {
+        try keychain.data(for: Self.deviceIDKey).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     /// Marks this device revoked, then ends the session. Local state is cleared even when offline.
     /// shortcut: an offline sign-out leaves the server row un-revoked; retry it when Phase 1 puts approval keys on device rows.
     public func signOut() async {
@@ -110,6 +158,7 @@ public final class BlinkServer: Sendable {
     }
 
     private struct DeviceRow: Decodable { let id: UUID }
+    private struct KeyRow: Decodable { let approval_key: String? }
     private struct CalendarRow: Encodable {
         let source, ext_id: String
         let occurrence_start, ends_at: Date

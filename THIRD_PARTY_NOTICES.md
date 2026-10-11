@@ -17,6 +17,12 @@ Pinned in `apps/Blink/BlinkKit/Package.resolved`.
 | swift-issue-reporting (via supabase-swift) | 2.1.1 | MIT | https://github.com/pointfreeco/swift-issue-reporting |
 | xctest-dynamic-overlay (via supabase-swift) | 1.13.1 | MIT | https://github.com/pointfreeco/xctest-dynamic-overlay |
 
+## Backend dependencies (Edge Functions)
+
+| Component | Version | License | Source |
+|---|---|---|---|
+| supabase-js | 2.49.4 | MIT | https://github.com/supabase/supabase-js |
+
 ## Planned runtime dependencies
 
 | Component | License | Source |

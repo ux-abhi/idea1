@@ -23,6 +23,10 @@ final class AppModel {
 
     private var refreshing = false
 
+    /// Ask-First cards waiting for the user (§6).
+    private(set) var pending: [BlinkAction] = []
+    private(set) var actionProblem: String?
+
     private(set) var agenda = Agenda.empty
     private(set) var calendarAccess = CalendarReader.access
     private let calendarReader = CalendarReader()
@@ -94,7 +98,10 @@ final class AppModel {
             lastSync = at
             UserDefaults.standard.set(at, forKey: "lastSync")
             status = .connected
+            // Creating the key shows no prompt; only signing a red approval asks for Touch ID.
+            try? await server.enrollApprovalKeyIfNeeded()
             await reloadAgenda()
+            await loadActions()
         } catch {
             switch ServerProblem(error) {
             case .signedOut:
@@ -119,6 +126,61 @@ final class AppModel {
         UserDefaults.standard.removeObject(forKey: "lastSync")
         signInNotice = notice
         screen = .signIn
+    }
+
+    // MARK: Ask-First
+
+    /// shortcut: fetched on check-in and when the notch opens; subscribe with Realtime when server-side proposers land (Phase 3).
+    func loadActions() async {
+        guard let server, email != nil, let actions = try? await server.pendingActions() else { return }
+        pending = actions
+    }
+
+    func approve(_ action: BlinkAction) async {
+        guard let server else { return }
+        actionProblem = nil
+        do {
+            switch action.risk {
+            case .red:
+                // shortcut: approval only; the server executors (mail, posts) and the 10 s "Sending… Cancel" land with them.
+                try await server.approveRed(action)
+            case .green, .amber:
+                try await server.setStatus("approved", for: action)
+                try await execute(action, server: server)
+            }
+            pending.removeAll { $0.id == action.id }
+        } catch ApprovalKey.Problem.cancelled {
+            // Cancel keeps the card (§36.5).
+        } catch {
+            actionProblem = "That didn't work. Check your connection and try again."
+        }
+    }
+
+    func dismiss(_ action: BlinkAction) async {
+        guard let server else { return }
+        do {
+            try await server.setStatus("declined", for: action)
+            pending.removeAll { $0.id == action.id }
+        } catch {
+            actionProblem = "Couldn't dismiss. Check your connection and try again."
+        }
+    }
+
+    /// Actions this device can carry out after approval. Unknown kinds stay approved for whoever handles them.
+    private func execute(_ action: BlinkAction, server: BlinkServer) async throws {
+        switch action.kind {
+        case "reminder.add":
+            do {
+                let id = try await calendarReader.addReminder(action.payload.reminder ?? action.title, due: action.payload.due)
+                try await server.setStatus("done", for: action, result: ["reminder_id": id])
+            } catch {
+                // Approved but not done: say so in the log rather than leave it looking approved.
+                try? await server.setStatus("failed", for: action, result: ["error": error.localizedDescription])
+                throw error
+            }
+        default:
+            break
+        }
     }
 
     // MARK: Calendar

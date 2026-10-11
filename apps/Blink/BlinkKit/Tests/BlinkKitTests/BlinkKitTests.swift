@@ -226,3 +226,19 @@ extension Tokens {
         #expect(agenda.next(after: at(11, 15))?.title == "A") // A runs until 11:30
     }
 }
+
+@Suite struct ApprovalTests {
+    /// Must match approvalMessage() in backend/supabase/functions/approve/index.ts byte for byte.
+    @Test func approvalMessageFormat() {
+        let message = BlinkAction.approvalMessage(actionID: "3f2a-id", payloadHash: "\\xABCDEF", expires: 1791720000)
+        #expect(String(decoding: message, as: UTF8.self) == "blink-approve:v1\n3f2a-id\nabcdef\n1791720000")
+    }
+
+    @Test func decodesAnActionRow() throws {
+        let json = #"{"id":"a1","kind":"reminder.add","risk":"amber","payload_hash":"\\x01","payload":{"title":"Add reminder?","summary":"Tomorrow","verb":"Add reminder","due":"2026-10-12T09:00:00Z"}}"#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let action = try decoder.decode(BlinkAction.self, from: Data(json.utf8))
+        #expect(action.risk == .amber && action.payload.verb == "Add reminder" && action.payload.due != nil)
+    }
+}
