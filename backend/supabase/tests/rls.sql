@@ -109,10 +109,33 @@ do $$ begin
   end;
 end $$;
 
+-- Spaces: A makes a project space and puts the note in it; a bad status or blank title is refused.
+insert into public.segment (id, title, goal) values ('00000000-0000-0000-0000-0000000000c1', 'Website', 'Launch by November');
+update public.item set segment_id = '00000000-0000-0000-0000-0000000000c1';
+do $$ begin
+  assert (select count(*) from public.item where segment_id is not null) = 1, 'A''s note should be in the space';
+  begin
+    insert into public.segment (title, status) values ('x', 'someday');
+    raise exception 'bad space status should have failed';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.segment (title) values ('   ');
+    raise exception 'blank space title should have failed';
+  exception when check_violation then null;
+  end;
+end $$;
+
 -- User B sees nothing of A's and cannot write rows owned by A.
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
   assert (select count(*) from public.habit) = 0, 'B must not see A''s habits';
+  assert (select count(*) from public.segment) = 0, 'B must not see A''s spaces';
+  begin
+    insert into public.item (type, title, segment_id) values ('task', 'sneak', '00000000-0000-0000-0000-0000000000c1');
+    raise exception 'B put an item into A''s space';
+  exception when insufficient_privilege then null;
+  end;
   begin
     insert into public.habit_log (habit_id, day, status) values ('00000000-0000-0000-0000-0000000000f1', '2026-10-14', 'done');
     raise exception 'B logged A''s habit';
@@ -146,5 +169,7 @@ end $$;
 reset role;
 do $$ begin
   assert (select title from public.item) = 'A secret', 'A''s data must survive B''s attempts';
+  delete from public.segment;
+  assert (select segment_id from public.item) is null, 'deleting a space keeps its items';
 end $$;
 select 'all RLS checks passed' as result;
