@@ -201,6 +201,27 @@ final class AppModel {
     /// Actions this device can carry out after approval. Unknown kinds stay approved for whoever handles them.
     private func execute(_ action: BlinkAction, server: BlinkServer) async throws {
         switch action.kind {
+        case "task.complete", "task.delete":
+            guard let id = action.payload.targetID, let task = items.first(where: { $0.id == id }) else {
+                try await server.setStatus("failed", for: action, result: ["error": "That task is gone."])
+                return
+            }
+            if action.kind == "task.delete" { await delete(task) } else if task.status != .done { await toggle(task) }
+            try await server.setStatus("done", for: action, result: ["item_id": id])
+        case "reminder.complete", "reminder.delete":
+            guard let id = action.payload.targetID else { return }
+            do {
+                if action.kind == "reminder.delete" {
+                    try await calendarReader.deleteReminder(id: id)
+                } else {
+                    try await calendarReader.updateReminder(id: id, completed: true)
+                }
+                try await server.setStatus("done", for: action, result: ["reminder_id": id])
+                await reloadAgenda()
+            } catch {
+                try? await server.setStatus("failed", for: action, result: ["error": error.localizedDescription])
+                throw error
+            }
         case "task.add":
             let task = create(.task, title: action.payload.reminder ?? action.title, due: action.payload.due)
             try await server.setStatus("done", for: action, result: ["item_id": task.id])
@@ -371,7 +392,10 @@ final class AppModel {
         thinking = true
         defer { thinking = false }
         do {
-            let answer = try await server.chat(message, history: history, timeZone: TimeZone.current.identifier)
+            // Open reminders go along so Claude can propose finishing or deleting one (they stay on the Mac otherwise).
+            let reminders = calendarAccess == .granted ? await calendarReader.openReminders() : []
+            let answer = try await server.chat(message, history: history, timeZone: TimeZone.current.identifier,
+                                               reminders: reminders)
             chat.append(.init(role: .assistant, text: answer.reply))
             if answer.proposed > 0 { await loadActions() }
         } catch let problem as BlinkServer.ChatProblem {

@@ -259,6 +259,26 @@ public actor CalendarReader {
 
     public struct ReminderGone: Error {}
 
+    /// Every incomplete reminder (any date, at most `limit`), for chat: Claude can then propose finishing or deleting one.
+    public func openReminders(limit: Int = 50, calendar: Calendar = .current) async -> [AgendaReminder] {
+        guard Self.access == .granted else { return [] }
+        let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: nil)
+        return await withCheckedContinuation { continuation in
+            store.fetchReminders(matching: predicate) { found in
+                let mapped = (found ?? []).prefix(limit).map {
+                    AgendaReminder(id: $0.calendarItemIdentifier, title: $0.title ?? "Untitled",
+                                   due: $0.dueDateComponents.flatMap { calendar.date(from: $0) })
+                }
+                continuation.resume(returning: Array(mapped))
+            }
+        }
+    }
+
+    public func deleteReminder(id: String) throws {
+        guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder else { throw ReminderGone() }
+        try store.remove(reminder, commit: true)
+    }
+
     /// Edits an Apple Reminder in place (synced by iCloud like any other edit).
     public func updateReminder(id: String, title: String? = nil, completed: Bool? = nil) throws {
         guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder else { throw ReminderGone() }

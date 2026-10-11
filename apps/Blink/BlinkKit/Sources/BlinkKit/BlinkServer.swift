@@ -280,11 +280,14 @@ public final class BlinkServer: Sendable {
     public struct ChatProblem: Error, Sendable { public let message: String }
 
     /// Asks Blink on the owner's server; Claude's proposals arrive as Ask-First cards.
-    public func chat(_ message: String, history: [ChatTurn], timeZone: String) async throws -> ChatReply {
-        struct Body: Encodable { let message: String; let history: [ChatTurn]; let timeZone: String }
+    public func chat(_ message: String, history: [ChatTurn], timeZone: String,
+                     reminders: [AgendaReminder] = []) async throws -> ChatReply {
+        struct Reminder: Encodable { let id: String; let title: String; let due: Date? }
+        struct Body: Encodable { let message: String; let history: [ChatTurn]; let timeZone: String; let reminders: [Reminder] }
         do {
             return try await client.functions.invoke(
-                "chat", options: .init(body: Body(message: message, history: Array(history.suffix(20)), timeZone: timeZone)))
+                "chat", options: .init(body: Body(message: message, history: Array(history.suffix(20)), timeZone: timeZone,
+                                                  reminders: reminders.map { Reminder(id: $0.id, title: $0.title, due: $0.due) })))
         } catch let FunctionsError.httpError(_, data) {
             // The function explains itself in words, e.g. a missing API key.
             struct ErrorBody: Decodable { let error: String }

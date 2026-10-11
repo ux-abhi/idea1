@@ -30,6 +30,13 @@ public struct BlinkAction: Decodable, Identifiable, Equatable, Sendable {
         /// For `reminder.add`: the reminder's text and due date.
         public let reminder: String?
         public let due: Date?
+        /// For `task.complete` / `task.delete` / `reminder.complete` / `reminder.delete`.
+        public let targetID: String?
+
+        enum CodingKeys: String, CodingKey {
+            case title, summary, verb, reminder, due
+            case targetID = "target_id"
+        }
     }
 
     /// The card's question; falls back to the kind.

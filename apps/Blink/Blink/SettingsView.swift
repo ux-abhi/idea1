@@ -173,7 +173,7 @@ struct CalendarSettings: View {
                 }
             }
             Section {
-                Text("Blink reads every calendar on this Mac. All-day events and ones you've declined are left out. The next 7 days are copied to your server so your other devices can use them; reminders stay on this Mac.")
+                Text("Blink reads every calendar on this Mac. All-day events and ones you've declined are left out. The next 7 days are copied to your server so your other devices can use them. Reminders stay on this Mac, except their titles and times go along when you ask Blink something.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -225,8 +225,11 @@ struct PrivacySettings: View {
                 Label("This Mac's name and your time zone", systemImage: "laptopcomputer")
                 Label("Your decisions on cards, and a signature for red ones", systemImage: "checkmark.seal")
             }
+            Section("Only when you ask Blink") {
+                Label("Your open reminders' titles and times go with your question, so Blink can finish or delete one for you", systemImage: "list.bullet")
+                Label("Your question, with your calendar, tasks, notes and habits, goes to Claude through your server", systemImage: "bubble.left")
+            }
             Section("What stays on this Mac") {
-                Label("Reminders", systemImage: "list.bullet")
                 Label("Your fingerprint. Touch ID only unlocks a key that never leaves the Secure Enclave", systemImage: "touchid")
             }
             Section {

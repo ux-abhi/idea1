@@ -2,7 +2,8 @@
 // The trust boundary for chat requests, kept free of server code so it can be tested on its own.
 
 export type Turn = { role: "user" | "assistant"; text: string };
-export type ChatRequest = { message: string; history: Turn[]; timeZone: string };
+export type Reminder = { id: string; title: string; due: string | null };
+export type ChatRequest = { message: string; history: Turn[]; timeZone: string; reminders: Reminder[] };
 
 export const MAX_MESSAGE = 2000;
 export const MAX_TURNS = 20;
@@ -11,7 +12,7 @@ export const MAX_TURN_TEXT = 4000;
 /** Returns the checked request, or a sentence saying what's wrong. */
 export function parseChatRequest(body: unknown): ChatRequest | string {
   if (typeof body !== "object" || body === null) return "Send a JSON body.";
-  const { message, history = [], timeZone = "UTC" } = body as Record<string, unknown>;
+  const { message, history = [], timeZone = "UTC", reminders = [] } = body as Record<string, unknown>;
   if (typeof message !== "string" || message.trim().length === 0) return "message is required.";
   if (message.length > MAX_MESSAGE) return `message is longer than ${MAX_MESSAGE} characters.`;
   if (!Array.isArray(history) || history.length > MAX_TURNS) return `history must be at most ${MAX_TURNS} turns.`;
@@ -24,7 +25,18 @@ export function parseChatRequest(body: unknown): ChatRequest | string {
     turns.push({ role, text });
   }
   if (typeof timeZone !== "string" || !isTimeZone(timeZone)) return "timeZone must be an IANA name like Europe/Berlin.";
-  return { message: message.trim(), history: turns, timeZone };
+  // Open Apple Reminders, sent by the Mac so Claude can propose completing or deleting one.
+  if (!Array.isArray(reminders) || reminders.length > 50) return "reminders must be at most 50 items.";
+  const checked: Reminder[] = [];
+  for (const r of reminders) {
+    const { id, title, due } = (r ?? {}) as Record<string, unknown>;
+    if (typeof id !== "string" || id.length > 200 || typeof title !== "string" || title.length > 500 ||
+        (due !== null && due !== undefined && (typeof due !== "string" || Number.isNaN(Date.parse(due))))) {
+      return "Each reminder needs an id, a title and an optional ISO due date.";
+    }
+    checked.push({ id, title, due: typeof due === "string" ? due : null });
+  }
+  return { message: message.trim(), history: turns, timeZone, reminders: checked };
 }
 
 function isTimeZone(tz: string): boolean {
@@ -45,6 +57,15 @@ export function parseProposal(input: unknown): { title: string; due: string | nu
     return { title: title.trim(), due: new Date(due_at).toISOString() };
   }
   return { title: title.trim(), due: null };
+}
+
+/** A proposed change to an existing task or reminder: the id must be one Blink showed Claude. */
+export function parseChange(input: unknown, known: Map<string, string>):
+  { kind: "task" | "reminder"; id: string; title: string } | null {
+  const { kind, id } = (input ?? {}) as Record<string, unknown>;
+  if ((kind !== "task" && kind !== "reminder") || typeof id !== "string") return null;
+  const title = known.get(`${kind}:${id}`);
+  return title === undefined ? null : { kind, id, title };
 }
 
 /** Claude Opus 5.5 list prices per million tokens, for the model_usage cost meter. */

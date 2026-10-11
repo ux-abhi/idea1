@@ -18,7 +18,8 @@ final class NotchModel {
     static let openWidth: CGFloat = 420
     static let chatWidth: CGFloat = 500
     /// The chat's input splits off below the notch as its own bubble.
-    static let inputGap: CGFloat = 10
+    /// Wider than the goo's merge distance, so at rest the bubble sits cleanly apart from the notch.
+    static let inputGap: CGFloat = 22
     static let inputHeight: CGFloat = 46
     var inputOut: Bool { level == .open && chatting }
     /// The tallest the open shape can get; the panel is sized for it.
@@ -414,9 +415,8 @@ struct NotchView: View {
         .frame(width: size.width, height: size.height, alignment: .top)
         .background(.black) // notch.hardware: always pure black
         .overlay {
-            // Glow stays inside the notch outline (tokens: glow.rule).
-            ThinkingGlow(shape: UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous),
-                         active: app.thinking && model.level == .open)
+            // Inside the notch only (tokens: glow.rule).
+            ThinkingGlow(active: app.thinking && model.level == .open)
         }
         .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous))
         .contentShape(UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous))
@@ -435,11 +435,11 @@ struct NotchView: View {
         .opacity(model.level == .rest && restStyle != .ears ? 0 : 1)
         .overlay(alignment: .top) {
             SplitInput(app: app, progress: model.inputOut ? 1 : 0, notchBottom: size.height,
-                       width: model.size(for: .open).width - 24)
-                // Opening: the shape first, then the bubble pulls free. Closing: the bubble tucks back in first.
+                       notchWidth: size.width, width: model.size(for: .open).width - 24)
+                // Opening: the shape first, then the bubble pulls free with a little wobble. Closing: it tucks back in first.
                 .animation(reduceMotion ? nil : (model.inputOut
-                    ? .spring(response: 0.55, dampingFraction: 0.7).delay(Tokens.Motion.contentDelay)
-                    : .spring(response: 0.3, dampingFraction: 0.9)), value: model.inputOut)
+                    ? .spring(response: 0.62, dampingFraction: 0.62).delay(Tokens.Motion.contentDelay)
+                    : .spring(response: 0.34, dampingFraction: 0.92)), value: model.inputOut)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
@@ -588,12 +588,15 @@ struct ChatPanel: View {
     }
 }
 
-/// The input that splits off the notch: a droplet grows out of the notch's bottom edge, stretches on a thin neck,
-/// then pulls free into its own bubble. `progress` 0 = tucked inside the notch, 1 = a separate bubble below it.
+/// The input that splits off the notch like a droplet. A sliver of the notch's bottom and the bubble are drawn
+/// blurred and then cut at an alpha threshold (the "gooey" metaball technique), so while they are close a smooth
+/// liquid neck joins them and it pinches off by itself as the bubble moves away. `progress` 0 = inside the notch,
+/// 1 = its own bubble below.
 struct SplitInput: View, Animatable {
     let app: AppModel
     var progress: Double
     let notchBottom: CGFloat
+    let notchWidth: CGFloat
     let width: CGFloat
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -603,28 +606,47 @@ struct SplitInput: View, Animatable {
         set { progress = newValue }
     }
 
+    private static let goo: CGFloat = 9 // blur radius: shapes closer than about this merge
+
     var body: some View {
-        let p = min(max(progress, 0), 1)
-        let eased = 1 - pow(1 - p, 3)
-        let w = 60 + (width - 60) * eased
-        let h = 14 + (NotchModel.inputHeight - 14) * p
-        let top = notchBottom - h * (1 - p) + NotchModel.inputGap * p
-        let neck = 34 * pow(1 - p, 0.6) // the bridge thins to nothing as it pulls free
+        let p = max(progress, 0) // may overshoot past 1 on the spring: that's the wobble
+        // First a small round drop pulls down from the middle of the notch and pinches off; then it stretches wide.
+        let drop: CGFloat = 0.55
+        let stretch = p < drop ? 0 : min((p - drop) / (1 - drop), 1)
+        let eased = 1 - pow(1 - stretch, 3)
+        let dropSize = 26 + 14 * min(p / drop, 1)
+        let w = dropSize + (width - dropSize) * eased
+        let h = dropSize + (NotchModel.inputHeight - dropSize) * eased
+        let start = notchBottom - h - 2 // fully tucked inside the notch's bottom edge
+        let top = start + (NotchModel.inputGap + h + 2) * min(p / drop, 1) + max(p - 1, 0) * 30
+        let canvasHeight = notchBottom + NotchModel.inputGap + NotchModel.inputHeight + 24
 
         ZStack(alignment: .top) {
-            Neck(width: neck, from: notchBottom - 2, to: top + h / 2)
-                .fill(.black)
-            RoundedRectangle(cornerRadius: h / 2, style: .continuous)
-                .fill(.black)
-                .overlay {
-                    ThinkingGlow(shape: RoundedRectangle(cornerRadius: h / 2, style: .continuous), active: app.thinking)
-                        .clipShape(RoundedRectangle(cornerRadius: h / 2, style: .continuous))
+            Canvas { context, size in
+                context.addFilter(.alphaThreshold(min: 0.5, color: .black))
+                context.addFilter(.blur(radius: Self.goo))
+                context.drawLayer { layer in
+                    let cx = size.width / 2
+                    // Kept clear of the notch's rounded corners so nothing shows outside them.
+                    let sliver = min(max(notchWidth - 2 * Tokens.Radius.notchOpen - 24, 60), 150) // pull from the middle
+                    layer.fill(Path(CGRect(x: cx - sliver / 2, y: notchBottom - 40, width: sliver, height: 40)),
+                               with: .color(.black))
+                    layer.fill(Path(roundedRect: CGRect(x: cx - w / 2, y: top, width: w, height: h), cornerRadius: h / 2),
+                               with: .color(.black))
                 }
-                .overlay(RoundedRectangle(cornerRadius: h / 2, style: .continuous)
-                    .strokeBorder(.white.opacity(focused ? 0.22 : 0.1)))
-                .overlay { field.opacity(p > 0.75 ? (p - 0.75) * 4 : 0) }
+            }
+            .frame(height: canvasHeight)
+
+            // The crisp parts sit on the goo once the bubble is out.
+            RoundedRectangle(cornerRadius: h / 2, style: .continuous)
+                .strokeBorder(.white.opacity(focused ? 0.2 : 0.1))
                 .frame(width: w, height: h)
                 .offset(y: top)
+                .opacity(p > 0.9 ? 1 : 0)
+            field
+                .frame(width: w, height: h)
+                .offset(y: top)
+                .opacity(p > 0.8 ? min((p - 0.8) * 5, 1) : 0)
         }
         .frame(maxWidth: .infinity)
         .opacity(p > 0.01 ? 1 : 0)
@@ -662,44 +684,25 @@ struct SplitInput: View, Animatable {
     }
 }
 
-/// The droplet's neck: pinched in the middle like liquid pulling apart.
-private nonisolated struct Neck: Shape {
-    var width: CGFloat
-    let from: CGFloat
-    let to: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        guard width > 0.5, to > from else { return path }
-        let cx = rect.midX, mid = (from + to) / 2, pinch = width * 0.35
-        path.move(to: CGPoint(x: cx - width / 2, y: from))
-        path.addQuadCurve(to: CGPoint(x: cx - width / 2, y: to), control: CGPoint(x: cx - pinch / 2, y: mid))
-        path.addLine(to: CGPoint(x: cx + width / 2, y: to))
-        path.addQuadCurve(to: CGPoint(x: cx + width / 2, y: from), control: CGPoint(x: cx + pinch / 2, y: mid))
-        path.closeSubpath()
-        return path
-    }
-}
-
-/// While Claude thinks: a soft gradient travels around the inside edge, like an edge glow.
+/// While Claude thinks: a soft blue and light-red glow inside the notch's bottom edge, drifting side to side.
 /// 30 fps at most and fully paused otherwise (tokens: fps.ambient); still under Reduce Motion.
-struct ThinkingGlow<S: InsettableShape>: View {
-    let shape: S
+struct ThinkingGlow: View {
     let active: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / Tokens.Motion.ambientFPS, paused: !active || reduceMotion)) { context in
-            let turns = context.date.timeIntervalSinceReferenceDate / 3 // one lap every 3 s
-            let gradient = AngularGradient(colors: [.indigo, .purple, .pink, .mint, .indigo], center: .center,
-                                           angle: .degrees(reduceMotion ? 0 : (turns * 360).truncatingRemainder(dividingBy: 360)))
-            ZStack {
-                shape.strokeBorder(gradient, lineWidth: 8).blur(radius: 10)
-                shape.strokeBorder(gradient, lineWidth: 1.5)
-            }
+            let drift = reduceMotion ? 0 : sin(context.date.timeIntervalSinceReferenceDate * 2 * .pi / 4) * 0.3
+            LinearGradient(colors: [.blue, .red.opacity(0.6), .blue],
+                           startPoint: UnitPoint(x: -0.3 + drift, y: 0.5), endPoint: UnitPoint(x: 1.3 + drift, y: 0.5))
+                .frame(height: 30)
+                .blur(radius: 16)
+                .opacity(0.8)
+                .offset(y: 14) // half of it below the edge, so it reads as light along the bottom
+                .frame(maxHeight: .infinity, alignment: .bottom)
         }
         .opacity(active ? 1 : 0)
-        .animation(.easeInOut(duration: 0.3), value: active)
+        .animation(.easeInOut(duration: 0.35), value: active)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
