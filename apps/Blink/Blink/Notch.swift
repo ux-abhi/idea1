@@ -533,6 +533,9 @@ struct ChatPanel: View {
                         .padding(.vertical, 2)
                     }
                     .frame(maxHeight: 150)
+                    // Fade the top edge so a message scrolled half out of view doesn't look cut off.
+                    .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.12)],
+                                         startPoint: .top, endPoint: .bottom))
                     .onChange(of: app.chat.count) {
                         withAnimation { proxy.scrollTo(app.chat.last?.id, anchor: .bottom) }
                     }
@@ -572,6 +575,12 @@ struct ChatPanel: View {
         .onAppear { focused = true }
     }
 
+    /// Claude writes light Markdown (bold, italics, links); show it formatted rather than as ** marks.
+    static func markdown(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
+    }
+
     private var canSend: Bool { !app.thinking && !text.trimmingCharacters(in: .whitespaces).isEmpty }
 
     private func send() {
@@ -590,7 +599,7 @@ struct ChatPanel: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.leading, 40)
         } else {
-            Text(turn.text)
+            Text(Self.markdown(turn.text))
                 .textSelection(.enabled)
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .background(.white.opacity(0.08), in: .rect(cornerRadius: 14, style: .continuous))
