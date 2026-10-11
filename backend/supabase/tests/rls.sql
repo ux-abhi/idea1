@@ -88,8 +88,37 @@ do $$ begin
   end;
 end $$;
 
+-- Habits: A logs a day once per habit; a bad status or empty name is refused.
+insert into public.habit (id, name) values ('00000000-0000-0000-0000-0000000000f1', 'Read 20 pages');
+insert into public.habit_log (habit_id, day, status) values ('00000000-0000-0000-0000-0000000000f1', '2026-10-12', 'done');
+do $$ begin
+  begin
+    insert into public.habit_log (habit_id, day, status) values ('00000000-0000-0000-0000-0000000000f1', '2026-10-12', 'done');
+    raise exception 'duplicate day should have failed';
+  exception when unique_violation then null;
+  end;
+  begin
+    insert into public.habit_log (habit_id, day, status) values ('00000000-0000-0000-0000-0000000000f1', '2026-10-13', 'missed');
+    raise exception 'bad status should have failed';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.habit (name, weekdays) values ('x', '{8}');
+    raise exception 'bad weekday should have failed';
+  exception when check_violation then null;
+  end;
+end $$;
+
 -- User B sees nothing of A's and cannot write rows owned by A.
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  assert (select count(*) from public.habit) = 0, 'B must not see A''s habits';
+  begin
+    insert into public.habit_log (habit_id, day, status) values ('00000000-0000-0000-0000-0000000000f1', '2026-10-14', 'done');
+    raise exception 'B logged A''s habit';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
 do $$ begin
   assert (select count(*) from public.item) = 0, 'B must not see A''s items';
   assert (select count(*) from public.action) = 0, 'B must not see A''s actions';

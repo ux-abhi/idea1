@@ -313,3 +313,58 @@ extension Tokens {
         #expect(lastYear.title == "Notes from 3 March 2020" && lastYear.due == nil)
     }
 }
+
+@Suite struct HabitTests {
+    private let cal: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+        c.firstWeekday = 2 // weeks start Monday
+        return c
+    }()
+    /// Mon 12 Oct 2026 is the reference "today".
+    private func day(_ offset: Int) -> Date {
+        cal.date(byAdding: .day, value: offset, to: cal.date(from: DateComponents(year: 2026, month: 10, day: 12))!)!
+    }
+    private func answers(_ pairs: [(Int, HabitAnswer)]) -> [String: HabitAnswer] {
+        Dictionary(uniqueKeysWithValues: pairs.map { (HabitDay.key(day($0.0), calendar: cal), $0.1) })
+    }
+    private let daily = Habit(id: "h", name: "Read", createdAt: Date(timeIntervalSince1970: 1_700_000_000))
+
+    @Test func countsDoneDaysAndWaitsForToday() {
+        #expect(daily.progress(answers: answers([(0, .done), (-1, .done), (-2, .done)]), today: day(0), calendar: cal).streak == 3)
+        // Today not answered yet: yesterday's run still stands.
+        #expect(daily.progress(answers: answers([(-1, .done), (-2, .done)]), today: day(0), calendar: cal).streak == 2)
+    }
+
+    @Test func skipsAndRestDaysNeverBreakIt() {
+        #expect(daily.progress(answers: answers([(0, .done), (-1, .skipped), (-2, .done)]), today: day(0), calendar: cal).streak == 2)
+        let weekdaysOnly = Habit(id: "w", name: "Run", weekdays: [2, 3, 4, 5, 6], createdAt: daily.createdAt)
+        // Mon done, Sat/Sun are rest days, Fri done → 2.
+        #expect(weekdaysOnly.progress(answers: answers([(0, .done), (-3, .done)]), today: day(0), calendar: cal).streak == 2)
+    }
+
+    @Test func oneMissPerWeekIsForgivenTwoAreNot() {
+        // Week of 5–11 Oct: one miss on Thu 8th, forgiven.
+        let one = answers([(-1, .done), (-2, .done), (-3, .done), (-4, .notToday), (-5, .done), (-6, .done), (-7, .done)])
+        // 6 done days; the run ends in the week before, at its second unanswered day.
+        #expect(daily.progress(answers: one, today: day(0), calendar: cal).streak == 6)
+        // Two misses in that week: the run stops at the second one.
+        let two = answers([(-1, .done), (-2, .notToday), (-3, .done), (-4, .notToday), (-5, .done)])
+        #expect(daily.progress(answers: two, today: day(0), calendar: cal).streak == 2)
+    }
+
+    @Test func keptOutOfSevenAndMilestones() {
+        let progress = daily.progress(answers: answers([(0, .done), (-1, .done), (-2, .notToday), (-3, .skipped),
+                                                        (-4, .done), (-5, .done), (-6, .done)]), today: day(0), calendar: cal)
+        #expect(progress.kept == 5 && progress.of == 6) // the skip isn't counted against you
+        let week = answers((0..<7).map { (-$0, .done) })
+        #expect(daily.progress(answers: week, today: day(0), calendar: cal).isMilestone)
+    }
+
+    @Test func theDayEndsAtWakeTime() {
+        let early = cal.date(from: DateComponents(year: 2026, month: 10, day: 13, hour: 6, minute: 30))!
+        let later = cal.date(from: DateComponents(year: 2026, month: 10, day: 13, hour: 7, minute: 30))!
+        #expect(HabitDay.key(HabitDay.day(for: early, wakeHour: 7, wakeMinute: 0, calendar: cal), calendar: cal) == "2026-10-12")
+        #expect(HabitDay.key(HabitDay.day(for: later, wakeHour: 7, wakeMinute: 0, calendar: cal), calendar: cal) == "2026-10-13")
+    }
+}
