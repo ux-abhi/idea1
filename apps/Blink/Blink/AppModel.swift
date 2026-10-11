@@ -322,10 +322,61 @@ final class AppModel {
         }
     }
 
-    /// Several at once from Select mode: tasks by id, reminders by id.
+    /// Several at once from Select mode: tasks by id, reminders by id. One Undo brings them all back.
     func completeAll(tasks: [BlinkItem], reminders: [AgendaReminder]) async {
-        for task in tasks where task.status != .done { await toggle(task) }
-        for reminder in reminders { await complete(reminder) }
+        let open = tasks.filter { $0.status != .done }
+        for task in open { await toggle(task, offeringUndo: false) }
+        for reminder in reminders { await complete(reminder, offeringUndo: false) }
+        let count = open.count + reminders.count
+        guard count > 0 else { return }
+        offerUndo(count == 1 ? "Done: \((open.first?.title ?? reminders.first?.title) ?? "")" : "\(count) done") { [weak self] in
+            for task in open { await self?.reopen(task.id) }
+            for reminder in reminders { await self?.reopen(reminder) }
+        }
+    }
+
+    // MARK: Undo (Done ∩∩ + Undo chip, tokens hold.undoChip)
+
+    struct UndoChip: Identifiable {
+        let id = UUID()
+        let text: String
+        let undo: @MainActor () async -> Void
+    }
+
+    /// The last thing marked done, undoable for a few seconds in the window and the notch.
+    private(set) var undoChip: UndoChip?
+
+    func offerUndo(_ text: String, undo: @escaping @MainActor () async -> Void) {
+        let chip = UndoChip(text: text, undo: undo)
+        undoChip = chip
+        Task {
+            try? await Task.sleep(for: .seconds(Tokens.Hold.undoChip))
+            if undoChip?.id == chip.id { undoChip = nil }
+        }
+    }
+
+    func undo() async {
+        guard let chip = undoChip else { return }
+        undoChip = nil
+        await chip.undo()
+    }
+
+    /// Ticks off a task or reminder from the notch or the timeline by id.
+    func complete(id: String) async {
+        if let task = openTasks.first(where: { $0.id == id }) {
+            await toggle(task)
+        } else if let reminder = agenda.reminders.first(where: { $0.id == id }) {
+            await complete(reminder)
+        }
+    }
+
+    private func reopen(_ taskID: String) async {
+        guard let task = items.first(where: { $0.id == taskID }), task.status == .done else { return }
+        await toggle(task, offeringUndo: false)
+    }
+
+    private func reopen(_ reminder: AgendaReminder) async {
+        await writeReminder { try await calendarReader.updateReminder(id: reminder.id, completed: false) }
     }
 
     func deleteAll(tasks: [BlinkItem], reminders: [AgendaReminder]) async {
@@ -340,10 +391,13 @@ final class AppModel {
         if unsaved.contains(id) { await save(id) }
     }
 
-    func toggle(_ task: BlinkItem) async {
+    func toggle(_ task: BlinkItem, offeringUndo: Bool = true) async {
         var changed = task
         changed.status = task.status == .done ? .open : .done
         edit(changed)
+        if offeringUndo && changed.status == .done {
+            offerUndo("Done: \(task.title)") { [weak self] in await self?.reopen(task.id) }
+        }
         await save(task.id)
     }
 
@@ -573,8 +627,9 @@ final class AppModel {
     // MARK: Apple Reminders
 
     /// Ticks off a reminder. It leaves the list at once; the change reaches Apple Reminders straight after.
-    func complete(_ reminder: AgendaReminder) async {
+    func complete(_ reminder: AgendaReminder, offeringUndo: Bool = true) async {
         agenda.reminders.removeAll { $0.id == reminder.id }
+        if offeringUndo { offerUndo("Done: \(reminder.title)") { [weak self] in await self?.reopen(reminder) } }
         await writeReminder { try await calendarReader.updateReminder(id: reminder.id, completed: true) }
     }
 

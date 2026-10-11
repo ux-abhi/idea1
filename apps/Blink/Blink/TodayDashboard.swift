@@ -74,17 +74,8 @@ struct TodayView: View {
             if !habits.isEmpty {
                 DashCard("Habits") { CardRows(items: habits) { HabitRow(habit: $0) } }
             }
-            let dueTasks = model.openTasks.filter { $0.isDue(by: now) }
-            if !dueTasks.isEmpty {
-                DashCard("Tasks due") { CardRows(items: dueTasks) { TaskRow(task: $0) } }
-            }
-            let meetings = Array(model.agenda.today(now: now).dropFirst())
-            if !meetings.isEmpty {
-                DashCard("Later today") { CardRows(items: meetings) { EventRow(event: $0, now: now) } }
-            }
-            if !model.agenda.reminders.isEmpty {
-                DashCard("Reminders") { CardRows(items: model.agenda.reminders) { ReminderRow(reminder: $0) } }
-            }
+            DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks,
+                                          reminders: model.agenda.reminders, now: now), now: now)
             if model.calendarAccess != .granted {
                 DashCard("Calendar") { ConnectCalendarRow() }
             }
@@ -249,6 +240,92 @@ private struct NextMeetingCard: View {
         )
         .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Today on one time axis: overdue first, then things with no time, then the day in order with a now line.
+private struct DayTimelineCard: View {
+    @Environment(AppModel.self) private var model
+    let plan: DayPlan
+    let now: Date
+
+    var body: some View {
+        DashCard("Your day") {
+            if plan.isEmpty {
+                Text("Nothing planned for the rest of today. Add a task above, or ask Blink to plan your day (⌃⌥Space).")
+                    .foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                if !plan.overdue.isEmpty {
+                    group("Overdue")
+                    ForEach(plan.overdue) { row($0, time: $0.start.formatted(.dateTime.weekday(.abbreviated)), late: true) }
+                }
+                if !plan.anytime.isEmpty {
+                    group("Anytime today")
+                    ForEach(plan.anytime) { row($0, time: "", late: false) }
+                }
+                if !plan.timed.isEmpty, !(plan.overdue.isEmpty && plan.anytime.isEmpty) { group("Timeline") }
+                ForEach(Array(plan.timed.enumerated()), id: \.element.id) { index, entry in
+                    if index == plan.nowIndex { nowLine }
+                    row(entry, time: entry.start.formatted(.dateTime.hour().minute()),
+                        late: entry.kind != .meeting && entry.start < now)
+                }
+                if !plan.timed.isEmpty && plan.nowIndex == plan.timed.count { nowLine }
+            }
+        }
+    }
+
+    private func group(_ title: String) -> some View {
+        Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 4)
+    }
+
+    private var nowLine: some View {
+        HStack(spacing: 8) {
+            Text(now, format: .dateTime.hour().minute())
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .frame(width: 56, alignment: .trailing)
+            Circle().frame(width: 7, height: 7)
+            Rectangle().frame(height: 1.5)
+        }
+        .foregroundStyle(.red)
+        .accessibilityElement()
+        .accessibilityLabel("Now, \(now.formatted(date: .omitted, time: .shortened))")
+    }
+
+    private func row(_ entry: DayEntry, time: String, late: Bool) -> some View {
+        let tint: Color = switch entry.kind {
+        case .meeting: .blue
+        case .task: .orange
+        case .reminder: .purple
+        }
+        return HStack(spacing: 10) {
+            Text(time)
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(late ? .orange : .secondary)
+                .frame(width: 56, alignment: .trailing)
+            Capsule().fill(tint).frame(width: 4, height: entry.kind == .meeting ? 36 : 24)
+            if entry.kind != .meeting {
+                Button { Task { await model.complete(id: entry.id) } } label: {
+                    Image(systemName: "circle").imageScale(.large).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Mark \(entry.title) as done")
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.title).lineLimit(1)
+                if let event = entry.event, let end = entry.end {
+                    Text("\(event.start.formatted(date: .omitted, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened))\(event.location.map { " · \($0)" } ?? "")")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                } else {
+                    Text(entry.kind == .task ? "Task" : "Reminder").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 8)
+            if let url = entry.event?.joinURL {
+                Link("Join", destination: url).buttonStyle(.bordered)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 

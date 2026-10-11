@@ -142,6 +142,18 @@ final class NotchController {
             }
         }
 
+        // Something ticked off (here or in the window): Done ∩∩ for a moment, then back to what's next.
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await chip in Observations({ app.undoChip?.id }) where chip != nil {
+                guard let self else { return }
+                guard self.model.mood != .thinking else { continue }
+                self.model.mood = .done
+                try? await Task.sleep(for: .seconds(Tokens.Hold.done))
+                if self.model.mood == .done { self.evaluateCue() }
+            }
+        }
+
         // Timer running: widen the ears for the countdown. Timer ended: open with Done eyes (the chime already played).
         Task { [weak self] in
             guard let app = self?.app else { return }
@@ -642,8 +654,23 @@ struct GlanceView: View {
                     Text(item.due, format: .dateTime.hour().minute())
                         .monospacedDigit()
                         .foregroundStyle(item.due < now ? .orange : .mint)
-                    Label(item.title, systemImage: "circle").lineLimit(1)
+                    if let app {
+                        Button { Task { await app.complete(id: item.id) } } label: { Image(systemName: "circle") }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Mark \(item.title) as done")
+                    }
+                    Text(item.title).lineLimit(1)
                 }
+            }
+            if let chip = app?.undoChip {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text(chip.text).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Button("Undo") { Task { await app?.undo() } }.buttonStyle(.plain).foregroundStyle(.mint)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(.white.opacity(0.08), in: .capsule)
             }
             if let app { TimerQuickStarts(app: app).padding(.top, 2) }
         }

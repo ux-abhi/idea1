@@ -495,3 +495,22 @@ extension Tokens {
     let progress = habit.progress(answers: [HabitDay.key(sunday, calendar: cal): .done], today: sunday, calendar: cal)
     #expect(progress.streak == 1)
 }
+
+@Test func dayPlanPutsTodayOnOneAxis() {
+    let cal = Calendar(identifier: .gregorian)
+    func at(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+        cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: hour, minute: minute))!
+    }
+    let now = at(12, 11)
+    let plan = DayPlan(
+        events: [AgendaEvent(extID: "m", title: "Standup", start: at(12, 10, 30), end: at(12, 11, 30)),
+                 AgendaEvent(extID: "t", title: "Tomorrow", start: at(13, 9), end: at(13, 10))],
+        tasks: [DueItem(id: "t1", title: "Invoice", due: at(12, 15)), DueItem(id: "t0", title: "Old", due: at(10, 9))],
+        reminders: [AgendaReminder(id: "r1", title: "Call", due: at(12, 9)), AgendaReminder(id: "r2", title: "Any", due: at(12, 0)),
+                    AgendaReminder(id: "r3", title: "Undated", due: nil)],
+        now: now, calendar: cal)
+    #expect(plan.overdue.map(\.title) == ["Old"])
+    #expect(plan.anytime.map(\.title) == ["Any"])
+    #expect(plan.timed.map(\.title) == ["Call", "Standup", "Invoice"])
+    #expect(plan.nowIndex == 2) // after the meeting under way, before the 15:00 task
+}

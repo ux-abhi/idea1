@@ -102,6 +102,29 @@ struct EmptyCard: View {
     }
 }
 
+/// "Done: Call Sam · Undo" at the bottom of the window for a few seconds after something is ticked off (⌘Z works too).
+struct UndoToast: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let chip = model.undoChip {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityHidden(true)
+                Text(chip.text).lineLimit(1)
+                Button("Undo") { Task { await model.undo() } }
+                    .keyboardShortcut("z", modifiers: .command)
+            }
+            .padding(.leading, 16).padding(.trailing, 10).padding(.vertical, 8)
+            .background(.regularMaterial, in: .capsule)
+            .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
+            .padding(.bottom, 20)
+            .id(chip.id)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .onAppear { AccessibilityNotification.Announcement("\(chip.text). Undo available.").post() }
+        }
+    }
+}
+
 /// Rows separated by thin dividers, for inside a card.
 struct CardRows<Item: Identifiable, Row: View>: View {
     let items: [Item]

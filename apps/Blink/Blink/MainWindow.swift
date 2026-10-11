@@ -34,6 +34,7 @@ struct MainWindow: View {
 
     @Environment(AppModel.self) private var model
     @State private var section: Section? = .today
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationSplitView {
@@ -60,6 +61,8 @@ struct MainWindow: View {
             case .activity: ActivityView()
             }
         }
+        .overlay(alignment: .bottom) { UndoToast() }
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : Tokens.Motion.content.animation, value: model.undoChip?.id)
         // One title per page: the big heading in the page; the toolbar carries the app name and sync state.
         .navigationTitle("Blink")
         .navigationSubtitle(subtitle)

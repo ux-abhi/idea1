@@ -49,6 +49,7 @@ public enum Tokens {
 
     public enum Hold {
         public static let done = 2.0
+        public static let undoChip = 6.0
         public static let celebrate = 3.0
     }
 
