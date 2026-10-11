@@ -38,6 +38,27 @@ public struct AgendaReminder: Sendable, Equatable, Identifiable {
     }
 }
 
+extension AgendaReminder {
+    /// Reminders that have a due date today or earlier. Undated ones stay in Reminders, out of the notch.
+    public static func dueToday(_ reminders: [AgendaReminder], now: Date, calendar: Calendar = .current) -> [AgendaReminder] {
+        guard let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) else { return [] }
+        return reminders.filter { ($0.due ?? .distantFuture) < endOfToday }
+    }
+}
+
+/// Something with a due time: a timed Apple Reminder or a Blink task.
+public struct DueItem: Sendable, Equatable, Identifiable {
+    public let id: String
+    public let title: String
+    public let due: Date
+
+    public init(id: String, title: String, due: Date) {
+        self.id = id
+        self.title = title
+        self.due = due
+    }
+}
+
 /// What's coming up: timed events (no all-day, no declined) and reminders due today.
 public struct Agenda: Sendable, Equatable {
     public var events: [AgendaEvent]
@@ -60,9 +81,23 @@ public struct Agenda: Sendable, Equatable {
         events.filter { $0.end > now && calendar.isDate($0.start, inSameDayAs: now) }
     }
 
+    /// Timed reminders plus the given tasks, soonest first.
+    public func dueItems(adding tasks: [DueItem] = []) -> [DueItem] {
+        (reminders.compactMap { r in r.due.map { DueItem(id: r.id, title: r.title, due: $0) } } + tasks)
+            .sorted { $0.due < $1.due }
+    }
+
     /// The notch's one line: numbers first, short (§7 Voice).
-    public func statusLine(now: Date, calendar: Calendar = .current) -> String {
-        if let event = today(now: now, calendar: calendar).first {
+    public func statusLine(now: Date, tasks: [DueItem] = [], calendar: Calendar = .current) -> String {
+        let due = dueItems(adding: tasks)
+        // A reminder or task due within the hour (or in the last 5 min) is told like a meeting.
+        let soon = due.first { $0.due > now - MeetingCue.lingerAfterStart && $0.due.timeIntervalSince(now) <= 3600 }
+        let event = today(now: now, calendar: calendar).first
+        if let soon, event.map({ soon.due < $0.start }) ?? true {
+            let minutes = Int((soon.due.timeIntervalSince(now) / 60).rounded(.up))
+            return minutes <= 0 ? "\(soon.title) now" : "\(soon.title) in \(minutes) min"
+        }
+        if let event {
             let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
             if minutes <= 0 {
                 let ago = Int(now.timeIntervalSince(event.start) / 60)
@@ -71,11 +106,9 @@ public struct Agenda: Sendable, Equatable {
             if minutes <= 60 { return "\(event.title) in \(minutes) min" }
             return "Next: \(event.title) at \(event.start.formatted(date: .omitted, time: .shortened))"
         }
-        switch reminders.count {
-        case 0: return "All clear"
-        case 1: return "1 reminder today"
-        default: return "\(reminders.count) reminders today"
-        }
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+        let today = due.filter { $0.due < endOfToday }.count
+        return today == 0 ? "All clear" : "\(today) due today"
     }
 }
 
@@ -85,9 +118,24 @@ public enum MeetingCue: Equatable, Sendable {
     case headsUp(AgendaEvent)
     /// T−3 to T+5: P0, open the meeting card once.
     case imminent(AgendaEvent)
+    /// 10 min before a reminder or task: peek once, eyes Heads-up (§7: "meeting/reminder ≤10 min").
+    case dueSoon(DueItem)
+    /// Due now to +5 min: a reminder or task you set for now (P0, §8).
+    case due(DueItem)
 
-    public var event: AgendaEvent {
-        switch self { case .headsUp(let e), .imminent(let e): e }
+    public var event: AgendaEvent? {
+        switch self {
+        case .headsUp(let e), .imminent(let e): e
+        case .dueSoon, .due: nil
+        }
+    }
+
+    /// Identity for "speak once": the event or the item.
+    public var id: String {
+        switch self {
+        case .headsUp(let e), .imminent(let e): e.id
+        case .dueSoon(let item), .due(let item): item.id
+        }
     }
 
     static let headsUpLead: TimeInterval = 10 * 60
@@ -96,8 +144,22 @@ public enum MeetingCue: Equatable, Sendable {
 }
 
 extension Agenda {
-    /// The first event with something to say right now.
-    public func cue(now: Date) -> MeetingCue? {
+    /// What the notch should say first right now: an imminent meeting, then anything due now, then a heads-up.
+    public func cue(now: Date, tasks: [DueItem] = []) -> MeetingCue? {
+        let meeting = meetingCue(now: now)
+        if case .imminent = meeting { return meeting }
+        let due = dueItems(adding: tasks)
+        if let item = due.first(where: { $0.due <= now && now < $0.due + MeetingCue.lingerAfterStart }) {
+            return .due(item)
+        }
+        if let meeting { return meeting }
+        if let item = due.first(where: { $0.due > now && $0.due.timeIntervalSince(now) <= MeetingCue.headsUpLead }) {
+            return .dueSoon(item)
+        }
+        return nil
+    }
+
+    private func meetingCue(now: Date) -> MeetingCue? {
         for event in events where event.end > now {
             let toStart = event.start.timeIntervalSince(now)
             if toStart > MeetingCue.headsUpLead { return nil } // sorted: nothing later is closer
@@ -108,12 +170,14 @@ extension Agenda {
     }
 
     /// The next moment `cue(now:)` can change, so the notch can sleep until then instead of polling.
-    public func nextCueChange(after now: Date) -> Date? {
-        events.flatMap { e in
+    public func nextCueChange(after now: Date, tasks: [DueItem] = []) -> Date? {
+        let meetingTimes = events.flatMap { e in
             [e.start - MeetingCue.headsUpLead, e.start - MeetingCue.imminentLead, e.start + MeetingCue.lingerAfterStart]
         }
-        .filter { $0 > now }
-        .min()
+        let dueTimes = dueItems(adding: tasks).flatMap {
+            [$0.due - MeetingCue.headsUpLead, $0.due, $0.due + MeetingCue.lingerAfterStart]
+        }
+        return (meetingTimes + dueTimes).filter { $0 > now }.min()
     }
 
     /// The morning brief's summary line, numbers first.
@@ -175,6 +239,22 @@ public actor CalendarReader {
         return reminder.calendarItemIdentifier
     }
 
+    public struct ReminderGone: Error {}
+
+    /// Edits an Apple Reminder in place (synced by iCloud like any other edit).
+    public func updateReminder(id: String, title: String? = nil, completed: Bool? = nil) throws {
+        guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder else { throw ReminderGone() }
+        if let title { reminder.title = title }
+        if let completed { reminder.isCompleted = completed }
+        try store.save(reminder, commit: true)
+    }
+
+    public func setReminderDue(id: String, due: Date?, calendar: Calendar = .current) throws {
+        guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder else { throw ReminderGone() }
+        reminder.dueDateComponents = due.map { calendar.dateComponents([.year, .month, .day, .hour, .minute], from: $0) }
+        try store.save(reminder, commit: true)
+    }
+
     /// The span Blink reads and uploads: from now to the end of the 7th day.
     public static func window(from now: Date, calendar: Calendar = .current) -> DateInterval {
         let end = calendar.date(byAdding: .day, value: 7, to: calendar.startOfDay(for: now)) ?? now
@@ -205,6 +285,6 @@ public actor CalendarReader {
                 continuation.resume(returning: mapped)
             }
         }
-        return Agenda(events: events, reminders: reminders)
+        return Agenda(events: events, reminders: AgendaReminder.dueToday(reminders, now: now, calendar: calendar))
     }
 }

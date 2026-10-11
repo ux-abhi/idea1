@@ -97,7 +97,7 @@ struct TodayView: View {
             let now = context.date
             Form {
                 SwiftUI.Section {
-                    Text(model.agenda.statusLine(now: now))
+                    Text(model.agenda.statusLine(now: now, tasks: model.dueTasks))
                         .font(.title2.weight(.semibold))
                     if model.calendarAccess == .granted {
                         Text(model.agenda.briefLine(now: now)).foregroundStyle(.secondary)
@@ -133,7 +133,7 @@ struct TodayView: View {
 
                 if !model.agenda.reminders.isEmpty {
                     SwiftUI.Section("Reminders") {
-                        ForEach(model.agenda.reminders) { Label($0.title, systemImage: "circle") }
+                        ForEach(model.agenda.reminders) { ReminderRow(reminder: $0) }
                     }
                 }
             }

@@ -187,7 +187,7 @@ extension Tokens {
 
     @Test func remindersShowWhenNoEventsAreLeft() {
         let one = Agenda(events: [], reminders: [AgendaReminder(id: "1", title: "Pay rent", due: nil)])
-        #expect(one.statusLine(now: at(9, 0), calendar: cal) == "1 reminder today")
+        #expect(one.statusLine(now: at(9, 0), calendar: cal) == "All clear") // undated: not due today
         #expect(Agenda.empty.statusLine(now: at(9, 0), calendar: cal) == "All clear")
     }
 
@@ -220,6 +220,30 @@ extension Tokens {
         let zoom = AgendaEvent(extID: "z", title: "Z", start: at(9, 0), end: at(10, 0), location: " https://zoom.us/j/1 ")
         #expect(zoom.joinURL?.host() == "zoom.us")
         #expect(AgendaEvent(extID: "r", title: "R", start: at(9, 0), end: at(10, 0), location: "Room 4").joinURL == nil)
+    }
+
+    @Test func tasksAndRemindersDueSoonSpeakLikeMeetings() {
+        let task = DueItem(id: "t1", title: "Pay rent", due: at(0, 38, day: 12))
+        let agenda = Agenda(events: [], reminders: [AgendaReminder(id: "r1", title: "Call bank", due: at(17, 0, day: 12))])
+        let now = at(0, 18, day: 12)
+        #expect(agenda.statusLine(now: now, tasks: [task], calendar: cal) == "Pay rent in 20 min")
+        #expect(agenda.statusLine(now: at(0, 38, day: 12), tasks: [task], calendar: cal) == "Pay rent now")
+        #expect(agenda.statusLine(now: at(9, 0, day: 12), tasks: [task], calendar: cal) == "2 due today") // one overdue, one later
+        #expect(agenda.cue(now: at(0, 27, day: 12), tasks: [task]) == nil)
+        #expect(agenda.cue(now: at(0, 28, day: 12), tasks: [task]) == .dueSoon(task)) // T−10: mint eyes, one peek
+        #expect(agenda.cue(now: at(0, 37, day: 12), tasks: [task]) == .dueSoon(task))
+        #expect(agenda.cue(now: at(0, 38, day: 12), tasks: [task]) == .due(task))
+        #expect(agenda.cue(now: at(0, 43, day: 12), tasks: [task]) == nil) // 5 min later it's done speaking
+        #expect(agenda.nextCueChange(after: at(0, 0, day: 12), tasks: [task]) == at(0, 28, day: 12))
+        #expect(agenda.nextCueChange(after: at(0, 28, day: 12), tasks: [task]) == at(0, 38, day: 12))
+    }
+
+    @Test func onlyRemindersWithADueDateTodayOrEarlierCount() {
+        let list = [AgendaReminder(id: "undated", title: "u", due: nil),
+                    AgendaReminder(id: "today", title: "t", due: at(18, 0)),
+                    AgendaReminder(id: "overdue", title: "o", due: at(9, 0, day: 9)),
+                    AgendaReminder(id: "tomorrow", title: "m", due: at(9, 0, day: 12))]
+        #expect(AgendaReminder.dueToday(list, now: at(10, 0), calendar: cal).map(\.id) == ["today", "overdue"])
     }
 
     @Test func eventsAreSortedAndOngoingCountsAsNext() {

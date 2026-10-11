@@ -31,6 +31,13 @@ struct TasksView: View {
                 }
                 ForEach(model.openTasks) { TaskRow(task: $0) }
             }
+            if !model.agenda.reminders.isEmpty {
+                Section {
+                    ForEach(model.agenda.reminders) { ReminderRow(reminder: $0) }
+                } header: {
+                    Text("Apple Reminders due today")
+                }
+            }
             if !model.doneTasks.isEmpty {
                 Section(isExpanded: $showDone) {
                     ForEach(model.doneTasks) { TaskRow(task: $0) }
@@ -76,7 +83,12 @@ struct TaskRow: View {
                 .onSubmit(commit)
 
             Spacer()
-            DueMenu(task: task)
+            DueMenu(due: task.dueAt, highlight: task.isDue(by: .now)) { date in
+                var changed = task
+                changed.dueAt = date
+                model.edit(changed)
+                Task { await model.save(task.id) }
+            }
         }
         .onAppear { title = task.title }
         .onChange(of: task.title) { title = task.title }
@@ -97,21 +109,22 @@ struct TaskRow: View {
 
 /// Due date: one-click choices, or one compact date-and-time field like Reminders. Picking applies at once.
 struct DueMenu: View {
-    @Environment(AppModel.self) private var model
-    let task: BlinkItem
+    let due: Date?
+    let highlight: Bool
+    let onSet: (Date?) -> Void
     @State private var showing = false
 
     var body: some View {
         Button { showing = true } label: {
-            if let due = task.dueAt {
+            if let due {
                 Text(due, format: .dateTime.weekday(.abbreviated).day().month().hour().minute())
-                    .foregroundStyle(task.isDue(by: .now) ? .orange : .secondary)
+                    .foregroundStyle(highlight ? .orange : .secondary)
             } else {
                 Image(systemName: "calendar.badge.plus").foregroundStyle(.secondary)
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(task.dueAt == nil ? "Add due date" : "Change due date")
+        .accessibilityLabel(due == nil ? "Add due date" : "Change due date")
         .popover(isPresented: $showing, arrowEdge: .trailing) {
             VStack(alignment: .leading, spacing: 4) {
                 quick("This evening", "moon", Self.at(hour: 18, daysFromToday: 0))
@@ -119,11 +132,11 @@ struct DueMenu: View {
                 quick("Next Monday", "calendar", Self.nextMonday())
                 Divider().padding(.vertical, 4)
                 DatePicker("Custom", selection: Binding(
-                    get: { task.dueAt ?? Self.at(hour: 18, daysFromToday: 0) },
+                    get: { due ?? Self.at(hour: 18, daysFromToday: 0) },
                     set: { set($0, close: false) }
                 ), displayedComponents: [.date, .hourAndMinute])
                 .datePickerStyle(.compact)
-                if task.dueAt != nil {
+                if due != nil {
                     Divider().padding(.vertical, 4)
                     Button(role: .destructive) { set(nil) } label: { Label("Remove Due Date", systemImage: "xmark.circle") }
                         .buttonStyle(.plain)
@@ -147,12 +160,9 @@ struct DueMenu: View {
         .padding(.vertical, 3)
     }
 
-    private func set(_ due: Date?, close: Bool = true) {
-        var changed = task
-        changed.dueAt = due
-        model.edit(changed)
+    private func set(_ date: Date?, close: Bool = true) {
+        onSet(date)
         if close { showing = false }
-        Task { await model.save(task.id) }
     }
 
     static func at(hour: Int, daysFromToday: Int) -> Date {
@@ -165,6 +175,40 @@ struct DueMenu: View {
         let cal = Calendar.current
         let monday = cal.nextDate(after: .now, matching: DateComponents(weekday: 2), matchingPolicy: .nextTime) ?? .now
         return cal.date(bySettingHour: 9, minute: 0, second: 0, of: monday) ?? monday
+    }
+}
+
+/// An Apple Reminder, editable in place: tick off, rename, change the due date.
+struct ReminderRow: View {
+    @Environment(AppModel.self) private var model
+    let reminder: AgendaReminder
+    @State private var title = ""
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button {
+                Task { await model.complete(reminder) }
+            } label: {
+                Image(systemName: "circle").foregroundStyle(.secondary).imageScale(.large)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Mark as done")
+
+            TextField("Reminder", text: $title)
+                .textFieldStyle(.plain)
+                .onSubmit {
+                    let trimmed = title.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty, trimmed != reminder.title else { return }
+                    Task { await model.rename(reminder, to: trimmed) }
+                }
+            Spacer()
+            DueMenu(due: reminder.due, highlight: (reminder.due ?? .distantFuture) < .now) { date in
+                Task { await model.setDue(reminder, to: date) }
+            }
+        }
+        .onAppear { title = reminder.title }
+        .onChange(of: reminder.title) { title = reminder.title }
+        .help("From Apple Reminders")
     }
 }
 

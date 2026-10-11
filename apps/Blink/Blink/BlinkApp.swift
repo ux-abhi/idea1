@@ -59,7 +59,7 @@ struct MenuBarContent: View {
     let showNotch: () -> Void
 
     var body: some View {
-        Text(model.agenda.statusLine(now: .now))
+        Text(model.agenda.statusLine(now: .now, tasks: model.dueTasks))
         if !model.pending.isEmpty {
             Text(model.pending.count == 1 ? "1 waiting for you" : "\(model.pending.count) waiting for you")
         }

@@ -206,6 +206,8 @@ final class AppModel {
 
     var notes: [BlinkItem] { items.filter { $0.type == .note }.sorted { $0.updatedAt > $1.updatedAt } }
     var openTasks: [BlinkItem] { items.filter { $0.type == .task && $0.status == .open } }
+    /// Open tasks with a due time, for the notch's cues and status line.
+    var dueTasks: [DueItem] { openTasks.compactMap { t in t.dueAt.map { DueItem(id: t.id, title: t.title, due: $0) } } }
     var doneTasks: [BlinkItem] { items.filter { $0.type == .task && $0.status == .done } }
 
     func loadItems() async {
@@ -273,6 +275,32 @@ final class AppModel {
             items.insert(item, at: min(index, items.count)) // put it back rather than lose it silently
             saveProblem = "Couldn't delete. Check your connection and try again."
         }
+    }
+
+    // MARK: Apple Reminders
+
+    /// Ticks off a reminder. It leaves the list at once; the change reaches Apple Reminders straight after.
+    func complete(_ reminder: AgendaReminder) async {
+        agenda.reminders.removeAll { $0.id == reminder.id }
+        await writeReminder { try await calendarReader.updateReminder(id: reminder.id, completed: true) }
+    }
+
+    func rename(_ reminder: AgendaReminder, to title: String) async {
+        await writeReminder { try await calendarReader.updateReminder(id: reminder.id, title: title) }
+    }
+
+    func setDue(_ reminder: AgendaReminder, to due: Date?) async {
+        await writeReminder { try await calendarReader.setReminderDue(id: reminder.id, due: due) }
+    }
+
+    private func writeReminder(_ write: () async throws -> Void) async {
+        do {
+            try await write()
+            saveProblem = nil
+        } catch {
+            saveProblem = "Couldn't change that reminder. It may have been deleted in Reminders."
+        }
+        await reloadAgenda() // show what Reminders really holds now
     }
 
     // MARK: Calendar

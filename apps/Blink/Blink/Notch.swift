@@ -96,7 +96,8 @@ final class NotchController {
         // Re-plan the cues whenever the agenda changes; sleep until the next cue in between.
         Task { [weak self] in
             guard let app = self?.app else { return }
-            for await _ in Observations({ app.agenda }) { self?.scheduleCues() }
+            // Calendar, reminders and tasks all feed the cues.
+            for await _ in Observations({ (app.agenda, app.items) }) { self?.scheduleCues() }
         }
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"),
                                                             object: nil, queue: .main) { [weak self] _ in
@@ -114,10 +115,10 @@ final class NotchController {
 
     private func scheduleCues() {
         cueWake?.cancel()
-        let ids = Set(app.agenda.events.map(\.id))
+        let ids = Set(app.agenda.events.map(\.id) + app.agenda.dueItems(adding: app.dueTasks).map(\.id))
         spoken = spoken.filter { ids.contains($0.key) } // forget meetings that are gone
         evaluateCue()
-        guard let next = app.agenda.nextCueChange(after: .now) else { return }
+        guard let next = app.agenda.nextCueChange(after: .now, tasks: app.dueTasks) else { return }
         cueWake = Task { [weak self] in
             // ContinuousClock keeps counting while the Mac sleeps, so an overdue cue fires on wake.
             try? await Task.sleep(for: .seconds(max(next.timeIntervalSinceNow, 0) + 0.5))
@@ -129,20 +130,25 @@ final class NotchController {
     /// T−10 peeks once with mint eyes; T−3 opens the card once without taking focus (§9.3, §36.2).
     /// shortcut: ignores screen sharing and full-screen apps (§8 asks to hold pop-outs); add with display contexts.
     private func evaluateCue() {
-        let cue = app.agenda.cue(now: .now)
+        let cue = app.agenda.cue(now: .now, tasks: app.dueTasks)
         if !model.briefing { model.mood = cue == nil ? .idle : .headsUp }
         guard let cue else {
             if autoOpened && model.level == .open { close() }
             return
         }
-        let kind = if case .imminent = cue { "imminent" } else { "headsUp" }
-        guard spoken[cue.event.id, default: []].insert(kind).inserted else { return }
+        let kind = switch cue {
+        case .headsUp, .dueSoon: "headsUp"
+        case .imminent: "imminent"
+        case .due: "due"
+        }
+        guard spoken[cue.id, default: []].insert(kind).inserted else { return }
         switch cue {
-        case .headsUp: if model.level == .rest { show(.peek, closingAfter: 8) }
-        case .imminent: if model.level != .open { show(.open, closingAfter: nil) } // closes at T+5 or on a click elsewhere
+        case .headsUp, .dueSoon: if model.level == .rest { show(.peek, closingAfter: 8) }
+        // P0: open without focus; closes 5 min later or on a click elsewhere.
+        case .imminent, .due: if model.level != .open { show(.open, closingAfter: nil) }
         }
         // Only P0/P1 speak (§36.2); the notch itself is out of VoiceOver's reach.
-        AccessibilityNotification.Announcement(app.agenda.statusLine(now: .now)).post()
+        AccessibilityNotification.Announcement(app.agenda.statusLine(now: .now, tasks: app.dueTasks)).post()
     }
 
     /// First unlock of the day: Good morning eyes and today's brief (§9.2).
@@ -300,7 +306,7 @@ struct NotchView: View {
     var body: some View {
         // Once a minute, never per frame: keeps the countdown current at ~0 CPU.
         TimelineView(.everyMinute) { context in
-            let statusLine = app.agenda.statusLine(now: context.date)
+            let statusLine = app.agenda.statusLine(now: context.date, tasks: app.dueTasks)
             shape(statusLine: statusLine, now: context.date)
                 // A hidden copy keeps the glance's real height current, so the shape opens straight to the right size.
                 .background(alignment: .top) {
@@ -314,7 +320,7 @@ struct NotchView: View {
     }
 
     private func glance(statusLine: String, now: Date) -> GlanceView {
-        GlanceView(statusLine: statusLine, agenda: app.agenda, access: app.calendarAccess, now: now,
+        GlanceView(statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
                    briefing: model.briefing, done: close,
                    card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) })
     }
@@ -381,6 +387,7 @@ struct NotchView: View {
 struct GlanceView: View {
     let statusLine: String
     let agenda: Agenda
+    let tasks: [DueItem]
     let access: CalendarReader.Access
     let now: Date
     let briefing: Bool
@@ -390,7 +397,9 @@ struct GlanceView: View {
 
     var body: some View {
         let events = Array(agenda.today(now: now).prefix(3))
-        let reminders = Array(agenda.reminders.prefix(max(0, 4 - events.count)))
+        // Reminders and tasks due today, after the meetings; four lines at most.
+        let endOfToday = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) ?? now
+        let due = Array(agenda.dueItems(adding: tasks).filter { $0.due < endOfToday }.prefix(max(0, 4 - events.count)))
         VStack(alignment: .leading, spacing: 8) {
             if let card {
                 card
@@ -404,11 +413,11 @@ struct GlanceView: View {
             if access != .granted {
                 Text("Your next meeting and today's reminders show here once Calendar is connected.")
                     .foregroundStyle(.white.opacity(0.7))
-            } else if events.isEmpty && reminders.isEmpty && !briefing {
+            } else if events.isEmpty && due.isEmpty && !briefing {
                 Text("Nothing else on your calendar today.")
                     .foregroundStyle(.white.opacity(0.7))
             }
-            let joining = agenda.cue(now: now)?.event
+            let joining = agenda.cue(now: now, tasks: tasks)?.event
             ForEach(events) { event in
                 HStack(spacing: 8) {
                     Text(event.start, format: .dateTime.hour().minute())
@@ -426,8 +435,13 @@ struct GlanceView: View {
                     }
                 }
             }
-            ForEach(reminders) { reminder in
-                Label(reminder.title, systemImage: "circle").lineLimit(1)
+            ForEach(due) { item in
+                HStack(spacing: 8) {
+                    Text(item.due, format: .dateTime.hour().minute())
+                        .monospacedDigit()
+                        .foregroundStyle(item.due < now ? .orange : .mint)
+                    Label(item.title, systemImage: "circle").lineLimit(1)
+                }
             }
         }
         .font(.callout)
