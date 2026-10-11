@@ -54,5 +54,18 @@ Gates (ARCHITECTURE §29, §36.7):
 - [ ] VoiceOver: menu bar entry and announcements added, not yet confirmed by ear.
 - [ ] State matrix (§9.8) not formally covered; offline, signed-out, permission-denied and empty states exist.
 
+## Phase 2 status (Mac session, 2026-10-12)
+Built: Mac window (Today, Calendar, Notes, Tasks & Habits, Waiting, Activity), notes with Groq text edits, tasks with due dates and bulk actions, Apple Reminders edit/complete/delete, habits with forgiving streaks, evening check-in that asks before planning tomorrow, chat in the notch (⌃⌥Space) with Ask-First proposals. Extras on request: Pomodoro and timers in the notch ears, clipboard history (⌃⌥V, local only, drag out).
+
+Still to build for the Phase 2 gate (ARCHITECTURE §29):
+- [ ] Today timeline (one time axis for meetings, tasks and reminders) — this is the "schedule checker" the evening check-in fills.
+- [ ] Done ∩∩ with an Undo chip in the notch and the window (no Undo for task or bulk actions yet).
+- [ ] Segments, Project template first: migration + RLS tests, attach tasks and notes.
+- [ ] Blink panel on every window screen (context-aware inspector: Ask-First + chat for that screen).
+- [ ] Settings: wake and evening times, hotkeys, model, cost meter from `model_usage`.
+- [ ] Tasks grouped Overdue / Today / Upcoming / Someday; reminders beyond today visible.
+
+Gates still open: VoiceOver by ear (carried from Phase 1), state matrix (§9.8), `/ponytail-audit` + `/ponytail-debt` at the end of the phase, 0 fps at rest re-checked with timers and clipboard.
+
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
