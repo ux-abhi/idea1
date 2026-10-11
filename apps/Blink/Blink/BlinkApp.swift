@@ -29,14 +29,15 @@ struct BlinkApp: App {
 
         #if os(macOS)
         Settings {
-            SettingsRoot().environment(model)
+            SettingsRoot().environment(model).environment(appDelegate.clipboard)
         }
         #endif
 
         #if os(macOS)
         // VoiceOver can't reach the floating notch panel; the menu bar icon is its entry point (§36.2).
         MenuBarExtra("Blink", systemImage: "eyes", isInserted: .constant(restStyle != .hidden)) {
-            MenuBarContent(showNotch: { appDelegate.showNotch() }, ask: { appDelegate.askBlink() })
+            MenuBarContent(showNotch: { appDelegate.showNotch() }, ask: { appDelegate.askBlink() },
+                           clipboard: { appDelegate.showClipboard() })
                 .environment(model)
         }
         #endif
@@ -46,12 +47,15 @@ struct BlinkApp: App {
 #if os(macOS)
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notch: NotchController?
+    let clipboard = ClipboardStore()
+
     func startNotch(_ app: AppModel) {
-        if notch == nil { notch = NotchController(app: app) }
+        if notch == nil { notch = NotchController(app: app, clipboard: clipboard) }
     }
 
     func showNotch() { notch?.open() }
     func askBlink() { notch?.toggleChat() }
+    func showClipboard() { notch?.toggleClipboard() }
 }
 
 /// The menu bar menu: the notch's status and actions, reachable by VoiceOver and the keyboard.
@@ -59,6 +63,7 @@ struct MenuBarContent: View {
     @Environment(AppModel.self) private var model
     let showNotch: () -> Void
     let ask: () -> Void
+    let clipboard: () -> Void
 
     var body: some View {
         Text(model.agenda.statusLine(now: .now, tasks: model.dueTasks))
@@ -70,6 +75,7 @@ struct MenuBarContent: View {
         }
         Divider()
         Button("Ask Blink…", action: ask)
+        Button("Clipboard…", action: clipboard)
         Button("Start Focus (25 min)") { model.startFocus() }
         Menu("Timer") {
             ForEach([5, 10, 15, 30, 60], id: \.self) { m in Button("\(m) min") { model.startTimer(minutes: Double(m)) } }

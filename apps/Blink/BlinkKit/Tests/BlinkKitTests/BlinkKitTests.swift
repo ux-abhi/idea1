@@ -439,3 +439,26 @@ extension Tokens {
         #expect(FocusTimer.clock(1122) == "18:42" && FocusTimer.clock(3725) == "1:02:05")
     }
 }
+
+@Suite struct ClipboardTests {
+    @Test func newestFirstRepeatsMoveUpAndTheListStaysCapped() {
+        var history = ClipboardHistory()
+        history.add(.text("a"))
+        history.add(.text("b"))
+        history.add(.text("a"))
+        #expect(history.items.map(\.text) == ["a", "b"])
+        history.add(.text("   "))
+        #expect(history.items.count == 2) // blank copies are ignored
+        for i in 0..<60 { history.add(.text("item \(i)")) }
+        #expect(history.items.count == ClipboardHistory.limit && history.items.first?.text == "item 59")
+        #expect(history.search("ITEM 5").map(\.text).first == "item 59")
+    }
+
+    @Test func linksAreRecognisedAndSecretsAreNeverRecorded() {
+        #expect(ClipItem.text("https://blink.app/x").kind == .link)
+        #expect(ClipItem.text("see https://blink.app").kind == .text)
+        #expect(ClipboardHistory.shouldRecord(types: ["public.utf8-plain-text"]))
+        #expect(!ClipboardHistory.shouldRecord(types: ["public.utf8-plain-text", "org.nspasteboard.ConcealedType"]))
+        #expect(!ClipboardHistory.shouldRecord(types: ["org.nspasteboard.TransientType"]))
+    }
+}

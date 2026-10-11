@@ -211,6 +211,8 @@ struct NotchSettings: View {
 
 struct PrivacySettings: View {
     @AppStorage("lockAfter") private var lockAfter = AppLock.defaultRelockAfter
+    @AppStorage(ClipboardStore.pausedKey) private var clipboardPaused = false
+    @Environment(ClipboardStore.self) private var clipboard
 
     var body: some View {
         Form {
@@ -219,6 +221,15 @@ struct PrivacySettings: View {
                 Text("5 minutes away").tag(300.0)
                 Text("15 minutes away").tag(900.0)
                 Text("1 hour away").tag(3600.0)
+            }
+            Section {
+                Toggle("Keep clipboard history", isOn: Binding(get: { !clipboardPaused }, set: { clipboardPaused = !$0 }))
+                Button("Clear Clipboard History (\(clipboard.history.items.count))", role: .destructive) { clipboard.clear() }
+                    .disabled(clipboard.history.items.isEmpty)
+            } header: {
+                Text("Clipboard (⌃⌥V)")
+            } footer: {
+                Text("The last 50 things you copy, kept on this Mac only. Passwords copied from password managers are never kept.")
             }
             Section("What leaves this Mac") {
                 Label("Your next 7 days of meetings: title, time, place and link", systemImage: "calendar")

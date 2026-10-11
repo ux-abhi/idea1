@@ -1,6 +1,7 @@
 // © Pexilim
 #if os(macOS)
 import AppKit
+import Carbon.HIToolbox
 import BlinkKit
 import SwiftUI
 
@@ -30,6 +31,8 @@ final class NotchModel {
     var chatting = false
     /// The evening nudge is showing ("Plan tomorrow?").
     var evening = false
+    /// The open notch shows the clipboard history (⌃⌥V).
+    var clipboarding = false
     /// After the evening check-in the eyes stay Sleepy until the owner's wake time.
     var sleepyUntil: Date?
 
@@ -67,6 +70,7 @@ final class NotchHostingView: NSHostingView<NotchView> {
 final class NotchController {
     private let model = NotchModel()
     private let app: AppModel
+    private let clipboard: ClipboardStore
     private var panel: NotchPanel?
     private var monitors: [Any] = []
     private var hoverTask: Task<Void, Never>?
@@ -78,12 +82,13 @@ final class NotchController {
     private var autoClose: Task<Void, Never>?
     private var autoPeeking = false
     private var autoOpened = false
-    private var hotkey: GlobalHotkey?
+    private var hotkeys: [GlobalHotkey] = []
     private var eveningShown: String? // habit day the evening nudge last appeared
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
-    init(app: AppModel) {
+    init(app: AppModel, clipboard: ClipboardStore) {
         self.app = app
+        self.clipboard = clipboard
         place()
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
@@ -117,7 +122,10 @@ final class NotchController {
             // Calendar, reminders and tasks all feed the cues.
             for await _ in Observations({ (app.agenda, app.items) }) { self?.scheduleCues() }
         }
-        hotkey = GlobalHotkey { [weak self] in self?.toggleChat() }
+        hotkeys = [
+            GlobalHotkey(id: 1, keyCode: kVK_Space) { [weak self] in self?.toggleChat() },
+            GlobalHotkey(id: 2, keyCode: kVK_ANSI_V) { [weak self] in self?.toggleClipboard() },
+        ]
 
         // Thinking while Claude works, then Done for 2 s (§7).
         Task { [weak self] in
@@ -316,7 +324,7 @@ final class NotchController {
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
         panel.sharingType = .none // hidden from screen capture and sharing (§36.1)
-        panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app,
+        panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app, clipboard: clipboard,
                                                                       open: { [weak self] in self?.open() },
                                                                       plan: { [weak self] in self?.planTomorrow() },
                                                                       close: { [weak self] in self?.close() }))
@@ -365,8 +373,22 @@ final class NotchController {
     }
 
     /// ⌃⌥Space or "Ask Blink…": opens the chat with the keyboard in it; again closes it.
+    /// ⌃⌥V or "Clipboard…": the history with the keyboard in its search field; again closes it.
+    func toggleClipboard() {
+        if model.level == .open && model.clipboarding { close(); return }
+        model.chatting = false
+        model.clipboarding = true
+        if model.level == .open, let panel {
+            panel.allowsKey = true
+            panel.makeKey()
+        } else {
+            open()
+        }
+    }
+
     func toggleChat() {
         if model.level == .open && model.chatting { close(); return }
+        model.clipboarding = false
         model.chatting = true
         if model.level == .open, let panel {
             panel.allowsKey = true
@@ -397,6 +419,7 @@ final class NotchController {
         autoClose?.cancel()
         set(.rest)
         model.chatting = false
+        model.clipboarding = false
         model.evening = false
         panel.allowsKey = false
         // Hand the keyboard back to the app that had it (§36.2).
@@ -428,6 +451,7 @@ final class NotchController {
 struct NotchView: View {
     let model: NotchModel
     let app: AppModel
+    let clipboard: ClipboardStore
     let open: () -> Void
     let plan: () -> Void
     let close: () -> Void
@@ -454,6 +478,8 @@ struct NotchView: View {
     private func glance(statusLine: String, now: Date) -> some View {
         if model.chatting {
             ChatPanel(app: app)
+        } else if model.clipboarding {
+            ClipboardPanel(store: clipboard, done: close)
         } else if app.timer != nil || app.finishedTimer != nil {
             TimerCard(app: app)
         } else if model.evening || app.eveningDue {
@@ -818,6 +844,84 @@ struct ThinkingGlow: View {
         .animation(.easeInOut(duration: 0.35), value: active)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Clipboard history in the notch: search, recent copies, click to copy back (then ⌘V where you want it).
+struct ClipboardPanel: View {
+    let store: ClipboardStore
+    let done: () -> Void
+    @State private var query = ""
+    @FocusState private var focused: Bool
+    @AppStorage(ClipboardStore.pausedKey) private var paused = false
+
+    var body: some View {
+        let items = Array(store.history.search(query).prefix(30))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.white.opacity(0.5))
+                TextField("Search clipboard", text: $query)
+                    .textFieldStyle(.plain)
+                    .focused($focused)
+                    .onSubmit { if let first = items.first { pick(first) } }
+                if paused { Text("Paused").font(.caption).foregroundStyle(.orange) }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(.white.opacity(0.08), in: .rect(cornerRadius: 10, style: .continuous))
+
+            if items.isEmpty {
+                Text(store.history.items.isEmpty ? "Things you copy appear here. Passwords from password managers are never kept."
+                                                 : "Nothing matches.")
+                    .foregroundStyle(.white.opacity(0.55))
+            } else {
+                ScrollView {
+                    VStack(spacing: 2) {
+                        ForEach(items) { item in row(item) }
+                    }
+                }
+                .frame(maxHeight: 190)
+            }
+            HStack {
+                Text("Kept on this Mac only").font(.caption).foregroundStyle(.white.opacity(0.4))
+                Spacer()
+                Button(paused ? "Resume" : "Pause") { paused.toggle() }.buttonStyle(.plain).font(.caption)
+                Button("Clear") { store.clear() }.buttonStyle(.plain).font(.caption).foregroundStyle(.orange)
+            }
+        }
+        .font(.callout)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 20)
+        .onAppear { focused = true }
+    }
+
+    private func row(_ item: ClipItem) -> some View {
+        Button { pick(item) } label: {
+            HStack(spacing: 10) {
+                if item.kind == .image, let data = item.image, let image = NSImage(data: data) {
+                    Image(nsImage: image).resizable().scaledToFill()
+                        .frame(width: 34, height: 24).clipShape(.rect(cornerRadius: 4))
+                } else {
+                    Image(systemName: item.kind == .link ? "link" : "doc.plaintext")
+                        .foregroundStyle(.white.opacity(0.5)).frame(width: 34)
+                }
+                Text(item.kind == .image ? "Image" : item.text.replacingOccurrences(of: "\n", with: " "))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(item.copiedAt, format: .relative(presentation: .numeric))
+                    .font(.caption).foregroundStyle(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .contextMenu { Button("Remove", role: .destructive) { store.remove(item) } }
+        .accessibilityLabel(item.kind == .image ? "Image" : item.text)
+        .accessibilityHint("Copies it back to the clipboard")
+    }
+
+    private func pick(_ item: ClipItem) {
+        store.copy(item)
+        done() // focus goes back to the app you were in; press ⌘V there
     }
 }
 
