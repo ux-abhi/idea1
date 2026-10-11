@@ -296,6 +296,34 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    // MARK: Text helpers (Groq)
+
+    public enum TextTask: String, CaseIterable, Sendable {
+        case fix, shorter, clearer, summarize
+
+        public var title: String {
+            switch self {
+            case .fix: "Fix Spelling & Grammar"
+            case .shorter: "Make Shorter"
+            case .clearer: "Make Clearer"
+            case .summarize: "Summarise"
+            }
+        }
+    }
+
+    /// Returns the edited text; nothing is changed until the owner accepts the preview.
+    public func edit(_ text: String, task: TextTask) async throws -> String {
+        struct Body: Encodable { let task: String; let text: String }
+        struct Reply: Decodable { let text: String }
+        do {
+            let reply: Reply = try await client.functions.invoke("text", options: .init(body: Body(task: task.rawValue, text: text)))
+            return reply.text
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't edit that.")
+        }
+    }
+
     // MARK: Devices
 
     public struct DeviceInfo: Decodable, Identifiable, Sendable {

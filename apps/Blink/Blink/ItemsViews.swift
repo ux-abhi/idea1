@@ -408,12 +408,43 @@ struct NoteEditor: View {
     let note: BlinkItem
     @State private var title = ""
     @State private var text = ""
+    /// Improve: a preview the owner accepts or cancels; Undo puts the previous text back.
+    @State private var working: BlinkServer.TextTask?
+    @State private var preview: (task: BlinkServer.TextTask, text: String)?
+    @State private var undoText: String?
+    @State private var problem: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("Title", text: $title)
-                .font(.title2.weight(.semibold))
-                .textFieldStyle(.plain)
+            HStack {
+                TextField("Title", text: $title)
+                    .font(.title2.weight(.semibold))
+                    .textFieldStyle(.plain)
+                Spacer()
+                if let undoText {
+                    Button("Undo") {
+                        text = undoText
+                        self.undoText = nil
+                    }
+                }
+                if working != nil {
+                    ProgressView().controlSize(.small)
+                }
+                Menu {
+                    ForEach(BlinkServer.TextTask.allCases, id: \.self) { task in
+                        Button(task.title) { improve(task) }
+                    }
+                } label: {
+                    Label("Improve", systemImage: "wand.and.stars")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(working != nil || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("Fix, shorten, clarify or summarise this note")
+            }
+            if let problem {
+                Text(problem).font(.caption).foregroundStyle(.orange)
+            }
             TextEditor(text: $text)
                 .font(.body)
                 .scrollContentBackground(.hidden)
@@ -431,6 +462,59 @@ struct NoteEditor: View {
             guard !Task.isCancelled else { return }
             await model.saveIfNeeded(note.id)
         }
+        .sheet(isPresented: Binding(get: { preview != nil }, set: { if !$0 { preview = nil } })) {
+            if let preview { previewSheet(preview.task, preview.text) }
+        }
+    }
+
+    private func previewSheet(_ task: BlinkServer.TextTask, _ result: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(task.title).font(.headline)
+            ScrollView {
+                Text(result)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(minHeight: 120, maxHeight: 320)
+            .padding(12)
+            .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 12, style: .continuous))
+            HStack {
+                Button("Cancel", role: .cancel) { preview = nil }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                if task == .summarize {
+                    Button("Add Below") { accept(text + "\n\nSummary\n" + result) }
+                }
+                Button("Replace") { accept(result) }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
+    }
+
+    private func improve(_ task: BlinkServer.TextTask) {
+        guard let server = model.server else { return }
+        working = task
+        problem = nil
+        let current = text
+        Task {
+            defer { working = nil }
+            do {
+                preview = (task, try await server.edit(current, task: task))
+            } catch let error as BlinkServer.ChatProblem {
+                problem = error.message
+            } catch {
+                problem = "Couldn't reach your server. Try again in a moment."
+            }
+        }
+    }
+
+    private func accept(_ new: String) {
+        undoText = text
+        text = new
+        preview = nil
     }
 
     private func apply() {

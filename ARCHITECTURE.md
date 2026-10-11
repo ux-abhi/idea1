@@ -391,7 +391,7 @@ flowchart TB
 | Security | **LocalAuthentication** (Face ID / Touch ID), **Keychain** with biometry-bound access control | "Only me" |
 | Backend | **Supabase**: Postgres, **pgvector**, Edge Functions (Deno/TypeScript), **pg_cron**, **Vault**, Realtime, Auth | One managed service, free tier to start |
 | Embeddings | Supabase built-in embedding model (gte-small) in Edge Functions + Postgres full-text search | Semantic search without adding another AI provider; Claude stays the only "brain" |
-| AI | **Claude API**: Messages + tool use, structured outputs, Batches, web search tool, prompt caching, Agent Skills (code execution) | See §19 |
+| AI | **Claude API**: Messages + tool use, structured outputs, Batches, web search tool, prompt caching, Agent Skills (code execution). **Groq** for quick text edits only (§31) | See §19 |
 | Claude app access | **Remote MCP server** (Edge Function) with OAuth | Custom connector |
 | Push | **Web Push** straight from your server (encrypted by standard); **APNs via an encrypted relay** for the native iPhone app | §33 |
 | Mail | **IMAP + SMTP** worker | Works with any account behind Apple Mail |
@@ -687,7 +687,7 @@ The design is the same in every stage; stage C only switches on server push.
 | Apps | Native SwiftUI (no Electron/web) | Look, battery, Apple APIs |
 | Backend | Supabase, **run by each user** (cloud project or self-hosted Docker) | Open source; same stack either way; data stays with the user |
 | Privacy | Your server, your keys; Pexilim holds no data; encrypted push relay only | Privacy even from Pexilim |
-| AI provider | Claude only, Auto router | One brain; right model per job |
+| AI provider | Claude for chat, planning and every action; Groq (`openai/gpt-oss-20b`) only for quick text edits (fix, shorter, clearer, summarise) that return text the owner previews (decided 2026-10-12, replaces "Claude only") | Fast and cheap for plain text work; Ask-First stays with one model |
 | Embeddings | Supabase built-in model + full-text | No second AI provider for the "thinking" |
 | Notes | Own system (no Apple Notes) | Full control, linking, search |
 | Reminders | Blink-first, shown in notch/Island; Apple Reminders mirror optional | Your request |
