@@ -6,13 +6,15 @@ import SwiftUI
 /// The Mac window: sidebar · content (ARCHITECTURE §5). Settings live in their own window (⌘,).
 struct MainWindow: View {
     enum Section: String, CaseIterable, Identifiable {
-        case today, calendar, waiting, activity
+        case today, calendar, notes, tasks, waiting, activity
         var id: Self { self }
 
         var title: String {
             switch self {
             case .today: "Today"
             case .calendar: "Calendar"
+            case .notes: "Notes"
+            case .tasks: "Tasks"
             case .waiting: "Waiting for you"
             case .activity: "Activity"
             }
@@ -22,6 +24,8 @@ struct MainWindow: View {
             switch self {
             case .today: "sun.max"
             case .calendar: "calendar"
+            case .notes: "note.text"
+            case .tasks: "checklist"
             case .waiting: "tray"
             case .activity: "clock.arrow.circlepath"
             }
@@ -37,6 +41,8 @@ struct MainWindow: View {
                 SwiftUI.Section {
                     row(.today)
                     row(.calendar)
+                    row(.notes)
+                    row(.tasks)
                 }
                 SwiftUI.Section {
                     row(.waiting)
@@ -48,6 +54,8 @@ struct MainWindow: View {
             switch section ?? .today {
             case .today: TodayView(showWaiting: { section = .waiting })
             case .calendar: CalendarListView()
+            case .notes: NotesView()
+            case .tasks: TasksView()
             case .waiting: WaitingView()
             case .activity: ActivityView()
             }
@@ -114,6 +122,13 @@ struct TodayView: View {
                         Text("No more meetings today.").foregroundStyle(.secondary)
                     }
                     ForEach(model.agenda.today(now: now)) { EventRow(event: $0, now: now) }
+                }
+
+                let dueTasks = model.openTasks.filter { $0.isDue(by: now) }
+                if !dueTasks.isEmpty {
+                    SwiftUI.Section("Tasks due") {
+                        ForEach(dueTasks) { TaskRow(task: $0) }
+                    }
                 }
 
                 if !model.agenda.reminders.isEmpty {

@@ -244,3 +244,48 @@ extension Tokens {
         #expect(action.risk == .amber && action.payload.verb == "Add reminder" && action.payload.due != nil)
     }
 }
+
+@Suite struct ItemTests {
+    @Test func refreshNeverOverwritesUnsavedWriting() {
+        let server = [BlinkItem(id: "a", type: .note, title: "A", body: "old"), BlinkItem(id: "b", type: .note, title: "B")]
+        let local = [BlinkItem(id: "a", type: .note, title: "A", body: "typed but not saved"),
+                     BlinkItem(id: "c", type: .task, title: "new, not saved")]
+        let merged = BlinkItem.merge(server: server, local: local, unsaved: ["a", "c"])
+        #expect(merged.first { $0.id == "a" }?.body == "typed but not saved")
+        #expect(merged.contains { $0.id == "b" })
+        #expect(merged.contains { $0.id == "c" })
+        // Saved items follow the server.
+        #expect(BlinkItem.merge(server: server, local: local, unsaved: []).first { $0.id == "a" }?.body == "old")
+    }
+
+    @Test func dueTodayIncludesOverdueButNotTomorrowOrDone() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+        let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 10))!
+        func task(_ hours: Double, _ status: BlinkItem.Status = .open) -> BlinkItem {
+            BlinkItem(id: "\(hours)", type: .task, title: "t", status: status, dueAt: now.addingTimeInterval(hours * 3600))
+        }
+        #expect(task(5).isDue(by: now, calendar: cal))       // later today
+        #expect(task(-30).isDue(by: now, calendar: cal))     // overdue
+        #expect(!task(15).isDue(by: now, calendar: cal))     // tomorrow 01:00
+        #expect(!task(1, .done).isDue(by: now, calendar: cal))
+        #expect(!BlinkItem(id: "n", type: .note, title: "n", dueAt: now).isDue(by: now, calendar: cal))
+    }
+}
+
+@Suite struct TaskInputTests {
+    @Test func readsTheDateAndKeepsTheTitle() throws {
+        let cal = Calendar.current
+        let parsed = TaskInput.parse("Send invoice tomorrow at 10am")
+        #expect(parsed.title == "Send invoice")
+        let due = try #require(parsed.due)
+        #expect(cal.isDate(due, inSameDayAs: cal.date(byAdding: .day, value: 1, to: .now)!))
+        #expect(cal.component(.hour, from: due) == 10)
+    }
+
+    @Test func plainTextHasNoDate() {
+        #expect(TaskInput.parse("  Buy milk ") == ("Buy milk", nil))
+        let lastYear = TaskInput.parse("Notes from 3 March 2020")
+        #expect(lastYear.title == "Notes from 3 March 2020" && lastYear.due == nil)
+    }
+}

@@ -29,6 +29,12 @@ final class AppModel {
     /// Decided actions, newest first (Activity).
     private(set) var activity: [BlinkAction] = []
 
+    /// Notes and tasks. Edits apply here at once; `unsaved` holds ids whose latest edit hasn't reached the server.
+    private(set) var items: [BlinkItem] = []
+    private var unsaved: Set<String> = []
+    private var onServer: Set<String> = []
+    private(set) var saveProblem: String?
+
     private(set) var agenda = Agenda.empty
     private(set) var calendarAccess = CalendarReader.access
     private let calendarReader = CalendarReader()
@@ -106,6 +112,7 @@ final class AppModel {
             try? await server.enrollApprovalKeyIfNeeded()
             await reloadAgenda()
             await loadActions()
+            await loadItems()
         } catch {
             switch ServerProblem(error) {
             case .signedOut:
@@ -191,6 +198,80 @@ final class AppModel {
             }
         default:
             break
+        }
+    }
+
+    // MARK: Notes and tasks
+    // shortcut: online only, no local cache; add SwiftData + delta sync by rev (§17, §36.1) when offline capture or the iPhone app needs it.
+
+    var notes: [BlinkItem] { items.filter { $0.type == .note }.sorted { $0.updatedAt > $1.updatedAt } }
+    var openTasks: [BlinkItem] { items.filter { $0.type == .task && $0.status == .open } }
+    var doneTasks: [BlinkItem] { items.filter { $0.type == .task && $0.status == .done } }
+
+    func loadItems() async {
+        guard let server, email != nil else { return }
+        for id in unsaved { await save(id) } // retry anything a failed save left behind
+        guard let fresh = try? await server.items() else { return }
+        onServer = Set(fresh.map(\.id))
+        items = BlinkItem.merge(server: fresh, local: items, unsaved: unsaved)
+    }
+
+    @discardableResult
+    func create(_ type: BlinkItem.Kind, title: String, due: Date? = nil) -> BlinkItem {
+        let item = BlinkItem(id: UUID().uuidString.lowercased(), type: type, title: title, dueAt: due)
+        items.insert(item, at: 0)
+        unsaved.insert(item.id)
+        Task { await save(item.id) }
+        return item
+    }
+
+    /// Applies an edit locally; call `save` to send it (the note editor waits for a pause in typing).
+    func edit(_ item: BlinkItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        var changed = item
+        changed.updatedAt = .now
+        items[index] = changed
+        unsaved.insert(item.id)
+    }
+
+    func save(_ id: String) async {
+        guard let server, let item = items.first(where: { $0.id == id }) else { return }
+        do {
+            if onServer.contains(id) {
+                try await server.save(item)
+            } else {
+                try await server.save(new: item)
+                onServer.insert(id)
+            }
+            // Only clear if nothing was typed while saving.
+            if items.first(where: { $0.id == id }) == item { unsaved.remove(id) }
+            if unsaved.isEmpty { saveProblem = nil }
+        } catch {
+            saveProblem = "Not saved yet. Blink will try again on your next change."
+        }
+    }
+
+    func saveIfNeeded(_ id: String) async {
+        if unsaved.contains(id) { await save(id) }
+    }
+
+    func toggle(_ task: BlinkItem) async {
+        var changed = task
+        changed.status = task.status == .done ? .open : .done
+        edit(changed)
+        await save(task.id)
+    }
+
+    func delete(_ item: BlinkItem) async {
+        guard let server, let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items.remove(at: index)
+        guard onServer.contains(item.id) else { unsaved.remove(item.id); return }
+        do {
+            try await server.delete(item)
+            onServer.remove(item.id)
+        } catch {
+            items.insert(item, at: min(index, items.count)) // put it back rather than lose it silently
+            saveProblem = "Couldn't delete. Check your connection and try again."
         }
     }
 

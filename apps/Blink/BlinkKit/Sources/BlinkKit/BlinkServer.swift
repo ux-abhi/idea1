@@ -154,6 +154,57 @@ public final class BlinkServer: Sendable {
         ]))
     }
 
+    // MARK: Notes and tasks
+
+    public func items() async throws -> [BlinkItem] {
+        try await client.from("item")
+            .select("id, type, title, body, status, due_at, updated_at")
+            .in("type", values: ["note", "task"])
+            .is("deleted_at", value: nil)
+            .neq("status", value: "archived")
+            .order("updated_at", ascending: false)
+            .execute().value
+    }
+
+    /// Inserts with the client's id, so the item can show at once and be saved later.
+    public func save(new item: BlinkItem) async throws {
+        try await client.from("item").insert(ItemRow(item)).execute()
+    }
+
+    public func save(_ item: BlinkItem) async throws {
+        try await client.from("item").update(ItemRow(item)).eq("id", value: item.id).execute()
+    }
+
+    /// Soft delete, so a sync can tell other devices it's gone.
+    public func delete(_ item: BlinkItem) async throws {
+        try await client.from("item").update(["deleted_at": Date.now]).eq("id", value: item.id).execute()
+    }
+
+    private struct ItemRow: Encodable {
+        let id: String, type: String, title: String, body: String, status: String
+        let due_at: Date?
+        init(_ item: BlinkItem) {
+            id = item.id
+            type = item.type.rawValue
+            title = item.title
+            body = item.body
+            status = item.status.rawValue
+            due_at = item.dueAt
+        }
+
+        // Send due_at as null when cleared, rather than leaving the old date.
+        func encode(to encoder: any Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(id, forKey: .id)
+            try c.encode(type, forKey: .type)
+            try c.encode(title, forKey: .title)
+            try c.encode(body, forKey: .body)
+            try c.encode(status, forKey: .status)
+            try c.encode(due_at, forKey: .due_at)
+        }
+        enum CodingKeys: String, CodingKey { case id, type, title, body, status, due_at }
+    }
+
     // MARK: Devices
 
     public struct DeviceInfo: Decodable, Identifiable, Sendable {
