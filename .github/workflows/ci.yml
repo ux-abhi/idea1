@@ -29,3 +29,11 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  swift:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: BlinkKit tests
+        working-directory: apps/Blink/BlinkKit
+        run: swift test

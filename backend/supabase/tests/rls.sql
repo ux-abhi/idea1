@@ -30,6 +30,13 @@ do $$ begin
   exception when raise_exception then
     if sqlerrm not like 'red actions%' then raise; end if;
   end;
+  begin
+    insert into public.action (kind, risk, payload, payload_hash, proposed_by, status)
+      values ('send_email', 'red', '{"to":"x"}', '\x03', 'blink', 'approved');
+    raise exception 'pre-approved red insert should have failed';
+  exception when raise_exception then
+    if sqlerrm not like 'red actions%' then raise; end if;
+  end;
   update public.action set status = 'approved' where risk = 'green';
   begin
     update public.action set payload = '{"to":"evil"}' where risk = 'green';

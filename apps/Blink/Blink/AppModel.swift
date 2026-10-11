@@ -44,7 +44,7 @@ final class AppModel {
 
     func connect(url: String, key: String) async throws(ServerConfig.Problem) {
         let config = try ServerConfig.validate(url: url, key: key)
-        // shortcut: a failed Keychain write only means the next launch asks for the server again; surface it if it ever happens.
+        // shortcut: a failed Keychain write only means the next launch asks for the server again; handle it when QR pairing (§36.5) replaces this screen.
         try? await BlinkServer.save(config, keychain: keychain)
         server = BlinkServer(config: config, keychain: keychain)
         signInNotice = nil
