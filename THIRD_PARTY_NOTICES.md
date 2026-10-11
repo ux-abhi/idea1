@@ -22,6 +22,7 @@ Pinned in `apps/Blink/BlinkKit/Package.resolved`.
 | Component | Version | License | Source |
 |---|---|---|---|
 | supabase-js | 2.49.4 | MIT | https://github.com/supabase/supabase-js |
+| Anthropic TypeScript SDK (`@anthropic-ai/sdk`) | 0.128.0 | MIT | https://github.com/anthropics/anthropic-sdk-typescript |
 
 ## Planned runtime dependencies
 

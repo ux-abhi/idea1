@@ -47,6 +47,11 @@ public enum Tokens {
         public static let ambientFPS = 30.0
     }
 
+    public enum Hold {
+        public static let done = 2.0
+        public static let celebrate = 3.0
+    }
+
     public enum Radius {
         public static let notchRest = 12.0
         public static let notchOpen = 28.0

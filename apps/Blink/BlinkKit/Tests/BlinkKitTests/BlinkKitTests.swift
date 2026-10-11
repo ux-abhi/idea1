@@ -116,6 +116,9 @@ import Testing
 
         let fps = try #require(motion["fps"] as? [String: Any])
         #expect((fps["ambient"] as? [String: Any])?["preferred"] as? Double == m.ambientFPS)
+        let hold = try #require(motion["hold"] as? [String: Any])
+        #expect(hold["done"] as? Double == Tokens.Hold.done)
+        #expect(hold["celebrate"] as? Double == Tokens.Hold.celebrate)
         let radius = try #require((Tokens.json["shape"] as? [String: Any])?["radius"] as? [String: Any])
         #expect(radius["notchRest"] as? Double == Tokens.Radius.notchRest)
         #expect(radius["notchOpen"] as? Double == Tokens.Radius.notchOpen)

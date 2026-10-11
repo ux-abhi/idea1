@@ -251,6 +251,47 @@ public final class BlinkServer: Sendable {
 
     private struct HabitRow: Encodable { let id: String, name: String, weekdays: [Int] }
 
+    // MARK: Chat
+
+    public struct ChatTurn: Codable, Equatable, Sendable, Identifiable {
+        public enum Role: String, Codable, Sendable { case user, assistant }
+        public let id: UUID
+        public let role: Role
+        public let text: String
+        public init(role: Role, text: String) {
+            id = UUID()
+            self.role = role
+            self.text = text
+        }
+        enum CodingKeys: String, CodingKey { case role, text }
+        public init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = UUID()
+            role = try c.decode(Role.self, forKey: .role)
+            text = try c.decode(String.self, forKey: .text)
+        }
+    }
+
+    public struct ChatReply: Decodable, Sendable {
+        public let reply: String
+        public let proposed: Int
+    }
+
+    public struct ChatProblem: Error, Sendable { public let message: String }
+
+    /// Asks Blink on the owner's server; Claude's proposals arrive as Ask-First cards.
+    public func chat(_ message: String, history: [ChatTurn], timeZone: String) async throws -> ChatReply {
+        struct Body: Encodable { let message: String; let history: [ChatTurn]; let timeZone: String }
+        do {
+            return try await client.functions.invoke(
+                "chat", options: .init(body: Body(message: message, history: Array(history.suffix(20)), timeZone: timeZone)))
+        } catch let FunctionsError.httpError(_, data) {
+            // The function explains itself in words, e.g. a missing API key.
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't answer.")
+        }
+    }
+
     // MARK: Devices
 
     public struct DeviceInfo: Decodable, Identifiable, Sendable {

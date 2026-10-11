@@ -36,7 +36,7 @@ struct BlinkApp: App {
         #if os(macOS)
         // VoiceOver can't reach the floating notch panel; the menu bar icon is its entry point (§36.2).
         MenuBarExtra("Blink", systemImage: "eyes", isInserted: .constant(restStyle != .hidden)) {
-            MenuBarContent(showNotch: { appDelegate.showNotch() })
+            MenuBarContent(showNotch: { appDelegate.showNotch() }, ask: { appDelegate.askBlink() })
                 .environment(model)
         }
         #endif
@@ -51,12 +51,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showNotch() { notch?.open() }
+    func askBlink() { notch?.toggleChat() }
 }
 
 /// The menu bar menu: the notch's status and actions, reachable by VoiceOver and the keyboard.
 struct MenuBarContent: View {
     @Environment(AppModel.self) private var model
     let showNotch: () -> Void
+    let ask: () -> Void
 
     var body: some View {
         Text(model.agenda.statusLine(now: .now, tasks: model.dueTasks))
@@ -64,6 +66,7 @@ struct MenuBarContent: View {
             Text(model.pending.count == 1 ? "1 waiting for you" : "\(model.pending.count) waiting for you")
         }
         Divider()
+        Button("Ask Blink…", action: ask)
         Button("Show in Notch", action: showNotch)
         Button("Open Blink") {
             NSApp.activate()

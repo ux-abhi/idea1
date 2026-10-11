@@ -20,6 +20,8 @@ final class NotchModel {
     static let maxGlanceHeight: CGFloat = 240
     /// The morning brief is showing.
     var briefing = false
+    /// The open notch shows the chat (⌃⌥Space) instead of the glance.
+    var chatting = false
 
     /// Ears beside the camera stay slim at rest so long app menus are never covered (§36.2).
     static let ear: CGFloat = 24
@@ -62,6 +64,7 @@ final class NotchController {
     private var autoClose: Task<Void, Never>?
     private var autoPeeking = false
     private var autoOpened = false
+    private var hotkey: GlobalHotkey?
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     init(app: AppModel) {
@@ -99,6 +102,23 @@ final class NotchController {
             // Calendar, reminders and tasks all feed the cues.
             for await _ in Observations({ (app.agenda, app.items) }) { self?.scheduleCues() }
         }
+        hotkey = GlobalHotkey { [weak self] in self?.toggleChat() }
+
+        // Thinking while Claude works, then Done for 2 s (§7).
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await thinking in Observations({ app.thinking }) {
+                guard let self else { return }
+                if thinking {
+                    self.model.mood = .thinking
+                } else if self.model.mood == .thinking {
+                    self.model.mood = .done
+                    try? await Task.sleep(for: .seconds(Tokens.Hold.done))
+                    if self.model.mood == .done { self.evaluateCue() }
+                }
+            }
+        }
+
         // 7 / 30 / 100-day habit streaks: Celebrate for 3 s, then back to whatever the cues say (§7).
         Task { [weak self] in
             guard let app = self?.app else { return }
@@ -106,7 +126,7 @@ final class NotchController {
             for await count in Observations({ app.celebrations }) where count != seen {
                 seen = count
                 self?.model.mood = .celebrate
-                try? await Task.sleep(for: .seconds(3))
+                try? await Task.sleep(for: .seconds(Tokens.Hold.celebrate))
                 self?.evaluateCue()
             }
         }
@@ -266,6 +286,18 @@ final class NotchController {
         }
     }
 
+    /// ⌃⌥Space or "Ask Blink…": opens the chat with the keyboard in it; again closes it.
+    func toggleChat() {
+        if model.level == .open && model.chatting { close(); return }
+        model.chatting = true
+        if model.level == .open, let panel {
+            panel.allowsKey = true
+            panel.makeKey()
+        } else {
+            open()
+        }
+    }
+
     func open() {
         guard model.level != .open, let panel else { return }
         previousApp = NSWorkspace.shared.frontmostApplication
@@ -279,6 +311,7 @@ final class NotchController {
         guard let panel else { return }
         autoClose?.cancel()
         set(.rest)
+        model.chatting = false
         panel.allowsKey = false
         // Hand the keyboard back to the app that had it (§36.2).
         if let previousApp, previousApp != NSRunningApplication.current { previousApp.activate() }
@@ -330,10 +363,15 @@ struct NotchView: View {
         }
     }
 
-    private func glance(statusLine: String, now: Date) -> GlanceView {
-        GlanceView(statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
-                   briefing: model.briefing, done: close,
-                   card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) })
+    @ViewBuilder
+    private func glance(statusLine: String, now: Date) -> some View {
+        if model.chatting {
+            ChatPanel(app: app)
+        } else {
+            GlanceView(statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
+                       briefing: model.briefing, done: close,
+                       card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) })
+        }
     }
 
     private func shape(statusLine: String, now: Date) -> some View {
@@ -461,6 +499,59 @@ struct GlanceView: View {
         .padding(.horizontal, 24)
     }
 }
+/// Chat in the notch: the last few turns, a field that has the keyboard, and any card Claude just proposed.
+struct ChatPanel: View {
+    let app: AppModel
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if app.chat.isEmpty {
+                Text("Ask Blink").font(.title3.weight(.semibold))
+                Text("e.g. \"What's left today?\" or \"Remind me to call Sam on Friday at 4\"")
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(app.chat.suffix(6)) { turn in
+                            Text(turn.text)
+                                .foregroundStyle(turn.role == .user ? .white.opacity(0.65) : .white)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                                .id(turn.id)
+                        }
+                        if app.thinking {
+                            Text("Thinking…").foregroundStyle(.indigo).id("thinking")
+                        }
+                    }
+                }
+                .frame(maxHeight: 120)
+                .onChange(of: app.chat.count) { proxy.scrollTo(app.chat.last?.id, anchor: .bottom) }
+            }
+            if let card = app.pending.first {
+                CardView(action: card, count: app.pending.count, problem: app.actionProblem, app: app)
+            }
+            TextField("Ask Blink…", text: $text)
+                .textFieldStyle(.plain)
+                .padding(8)
+                .background(.white.opacity(0.1), in: .rect(cornerRadius: 10, style: .continuous))
+                .focused($focused)
+                .disabled(app.thinking)
+                .onSubmit {
+                    let message = text
+                    text = ""
+                    Task { await app.ask(message) }
+                }
+        }
+        .font(.callout)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 24)
+        .onAppear { focused = true }
+    }
+}
+
 /// One Ask-First card: the question, a preview line, the verb button (⌘⏎) and Dismiss (§6, §36.2).
 struct CardView: View {
     let action: BlinkAction

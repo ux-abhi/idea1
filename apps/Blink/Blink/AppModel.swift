@@ -44,6 +44,10 @@ final class AppModel {
     /// Bumped when an answer reaches a 7 / 30 / 100-day streak; the notch celebrates.
     private(set) var celebrations = 0
 
+    /// This session's chat with Blink (not stored). shortcut: history lives in memory; persist it with Chat history (§36.2).
+    private(set) var chat: [BlinkServer.ChatTurn] = []
+    private(set) var thinking = false
+
     private(set) var agenda = Agenda.empty
     private(set) var calendarAccess = CalendarReader.access
     private let calendarReader = CalendarReader()
@@ -197,6 +201,9 @@ final class AppModel {
     /// Actions this device can carry out after approval. Unknown kinds stay approved for whoever handles them.
     private func execute(_ action: BlinkAction, server: BlinkServer) async throws {
         switch action.kind {
+        case "task.add":
+            let task = create(.task, title: action.payload.reminder ?? action.title, due: action.payload.due)
+            try await server.setStatus("done", for: action, result: ["item_id": task.id])
         case "reminder.add":
             do {
                 let id = try await calendarReader.addReminder(action.payload.reminder ?? action.title, due: action.payload.due)
@@ -353,6 +360,28 @@ final class AppModel {
             saveProblem = "Couldn't save that. Check your connection and try again."
         }
     }
+
+    // MARK: Chat
+
+    func ask(_ text: String) async {
+        let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let server, !message.isEmpty, !thinking else { return }
+        let history = chat
+        chat.append(.init(role: .user, text: message))
+        thinking = true
+        defer { thinking = false }
+        do {
+            let answer = try await server.chat(message, history: history, timeZone: TimeZone.current.identifier)
+            chat.append(.init(role: .assistant, text: answer.reply))
+            if answer.proposed > 0 { await loadActions() }
+        } catch let problem as BlinkServer.ChatProblem {
+            chat.append(.init(role: .assistant, text: problem.message))
+        } catch {
+            chat.append(.init(role: .assistant, text: "Can't reach your server right now. Try again in a moment."))
+        }
+    }
+
+    func clearChat() { chat = [] }
 
     // MARK: Apple Reminders
 
