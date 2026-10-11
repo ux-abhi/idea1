@@ -17,6 +17,10 @@ final class NotchModel {
     var glanceHeight: CGFloat = 60
     static let openWidth: CGFloat = 420
     static let chatWidth: CGFloat = 500
+    /// The chat's input splits off below the notch as its own bubble.
+    static let inputGap: CGFloat = 10
+    static let inputHeight: CGFloat = 46
+    var inputOut: Bool { level == .open && chatting }
     /// The tallest the open shape can get; the panel is sized for it.
     static let maxGlanceHeight: CGFloat = 240
     /// The morning brief is showing.
@@ -224,7 +228,8 @@ final class NotchController {
         let side = (screen.auxiliaryTopLeftArea?.width ?? 0) + (screen.auxiliaryTopRightArea?.width ?? 0)
         model.notchSize = CGSize(width: screen.frame.width - side, height: screen.safeAreaInsets.top)
         let size = CGSize(width: max(model.size(for: .rest).width, NotchModel.chatWidth),
-                          height: model.notchSize.height + 8 + NotchModel.maxGlanceHeight + 20)
+                          height: model.notchSize.height + 8 + NotchModel.maxGlanceHeight + 20
+                              + NotchModel.inputGap + NotchModel.inputHeight + 12)
         let frame = NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
                            width: size.width, height: size.height)
 
@@ -255,7 +260,12 @@ final class NotchController {
     private func shapeRect() -> NSRect {
         guard let frame = panel?.frame else { return .zero }
         let size = model.size(for: model.level)
-        return NSRect(x: frame.midX - size.width / 2, y: frame.maxY - size.height, width: size.width, height: size.height)
+        var rect = NSRect(x: frame.midX - size.width / 2, y: frame.maxY - size.height, width: size.width, height: size.height)
+        if model.inputOut {
+            rect = rect.union(NSRect(x: rect.minX, y: rect.minY - NotchModel.inputGap - NotchModel.inputHeight,
+                                     width: rect.width, height: NotchModel.inputGap + NotchModel.inputHeight))
+        }
+        return rect
     }
 
     /// Clicks pass through everywhere except the shape; hover peeks after 150 ms and closes 350 ms after leaving (§36.2).
@@ -403,6 +413,11 @@ struct NotchView: View {
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .background(.black) // notch.hardware: always pure black
+        .overlay {
+            // Glow stays inside the notch outline (tokens: glow.rule).
+            ThinkingGlow(shape: UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous),
+                         active: app.thinking && model.level == .open)
+        }
         .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous))
         .contentShape(UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous))
         .onTapGesture(perform: open)
@@ -418,6 +433,14 @@ struct NotchView: View {
         .accessibilityValue(app.pending.isEmpty ? statusLine : "\(statusLine). \(app.pending.count) waiting for you")
         .accessibilityAction(named: "Open", open)
         .opacity(model.level == .rest && restStyle != .ears ? 0 : 1)
+        .overlay(alignment: .top) {
+            SplitInput(app: app, progress: model.inputOut ? 1 : 0, notchBottom: size.height,
+                       width: model.size(for: .open).width - 24)
+                // Opening: the shape first, then the bubble pulls free. Closing: the bubble tucks back in first.
+                .animation(reduceMotion ? nil : (model.inputOut
+                    ? .spring(response: 0.55, dampingFraction: 0.7).delay(Tokens.Motion.contentDelay)
+                    : .spring(response: 0.3, dampingFraction: 0.9)), value: model.inputOut)
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
@@ -500,85 +523,133 @@ struct GlanceView: View {
         .padding(.horizontal, 24)
     }
 }
-/// Chat in the notch: your messages in bubbles on the right, Blink's on the left, a padded field with a send
-/// button that has the keyboard, and any card Claude just proposed.
+/// The conversation inside the notch: your question as a quiet line, Blink's answer as clear text, any card it
+/// proposed. Typing happens in the bubble below (SplitInput).
 struct ChatPanel: View {
     let app: AppModel
-    @State private var text = ""
-    @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             if app.chat.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Ask Blink").font(.title3.weight(.semibold))
                     Text("“What's left today?” · “Remind me to call Sam on Friday at 4”")
-                        .font(.callout)
-                        .foregroundStyle(.white.opacity(0.6))
+                        .font(.callout).foregroundStyle(.white.opacity(0.55))
                 }
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(spacing: 8) {
-                            ForEach(app.chat.suffix(8)) { turn in bubble(turn).id(turn.id) }
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(app.chat.suffix(6)) { turn in line(turn).id(turn.id) }
                             if app.thinking {
-                                HStack(spacing: 6) {
-                                    ProgressView().controlSize(.small)
-                                    Text("Thinking…").foregroundStyle(.white.opacity(0.7))
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id("thinking")
+                                Text("Thinking…").font(.callout).foregroundStyle(.white.opacity(0.5)).id("thinking")
                             }
                         }
-                        .padding(.vertical, 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxHeight: 150)
-                    // Fade the top edge so a message scrolled half out of view doesn't look cut off.
-                    .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.12)],
+                    .frame(maxHeight: 160)
+                    .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.1)],
                                          startPoint: .top, endPoint: .bottom))
                     .onChange(of: app.chat.count) {
                         withAnimation { proxy.scrollTo(app.chat.last?.id, anchor: .bottom) }
                     }
                 }
             }
-
             if let card = app.pending.first {
                 CardView(action: card, count: app.pending.count, problem: app.actionProblem, app: app)
                     .padding(12)
                     .background(.white.opacity(0.06), in: .rect(cornerRadius: 14, style: .continuous))
             }
-
-            HStack(spacing: 8) {
-                TextField("Ask Blink…", text: $text)
-                    .textFieldStyle(.plain)
-                    .font(.body)
-                    .focused($focused)
-                    .onSubmit(send)
-                Button(action: send) {
-                    Image(systemName: "arrow.up.circle.fill").font(.title2)
-                        .foregroundStyle(canSend ? Color.accentColor : .white.opacity(0.25))
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
-                .accessibilityLabel("Send")
-            }
-            .padding(.leading, 14)
-            .padding(.trailing, 8)
-            .padding(.vertical, 9)
-            .background(.white.opacity(0.08), in: .rect(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(focused ? 0.3 : 0.12)))
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 20)
-        .padding(.top, 4)
-        .padding(.bottom, 6)
-        .onAppear { focused = true }
+        .padding(.horizontal, 22)
+        .padding(.bottom, 4)
+    }
+
+    @ViewBuilder
+    private func line(_ turn: BlinkServer.ChatTurn) -> some View {
+        if turn.role == .user {
+            Label(turn.text, systemImage: "arrow.turn.down.right")
+                .font(.callout)
+                .foregroundStyle(.white.opacity(0.5))
+                .lineLimit(2)
+        } else {
+            Text(Self.markdown(turn.text))
+                .font(.body)
+                .lineSpacing(2)
+                .textSelection(.enabled)
+        }
     }
 
     /// Claude writes light Markdown (bold, italics, links); show it formatted rather than as ** marks.
     static func markdown(_ text: String) -> AttributedString {
         (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)
+    }
+}
+
+/// The input that splits off the notch: a droplet grows out of the notch's bottom edge, stretches on a thin neck,
+/// then pulls free into its own bubble. `progress` 0 = tucked inside the notch, 1 = a separate bubble below it.
+struct SplitInput: View, Animatable {
+    let app: AppModel
+    var progress: Double
+    let notchBottom: CGFloat
+    let width: CGFloat
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let p = min(max(progress, 0), 1)
+        let eased = 1 - pow(1 - p, 3)
+        let w = 60 + (width - 60) * eased
+        let h = 14 + (NotchModel.inputHeight - 14) * p
+        let top = notchBottom - h * (1 - p) + NotchModel.inputGap * p
+        let neck = 34 * pow(1 - p, 0.6) // the bridge thins to nothing as it pulls free
+
+        ZStack(alignment: .top) {
+            Neck(width: neck, from: notchBottom - 2, to: top + h / 2)
+                .fill(.black)
+            RoundedRectangle(cornerRadius: h / 2, style: .continuous)
+                .fill(.black)
+                .overlay {
+                    ThinkingGlow(shape: RoundedRectangle(cornerRadius: h / 2, style: .continuous), active: app.thinking)
+                        .clipShape(RoundedRectangle(cornerRadius: h / 2, style: .continuous))
+                }
+                .overlay(RoundedRectangle(cornerRadius: h / 2, style: .continuous)
+                    .strokeBorder(.white.opacity(focused ? 0.22 : 0.1)))
+                .overlay { field.opacity(p > 0.75 ? (p - 0.75) * 4 : 0) }
+                .frame(width: w, height: h)
+                .offset(y: top)
+        }
+        .frame(maxWidth: .infinity)
+        .opacity(p > 0.01 ? 1 : 0)
+        .allowsHitTesting(p > 0.9)
+        .onChange(of: p > 0.9) { _, out in if out { focused = true } }
+    }
+
+    private var field: some View {
+        HStack(spacing: 8) {
+            TextField("Ask Blink…", text: $text)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .foregroundStyle(.white)
+                .focused($focused)
+                .onSubmit(send)
+            Button(action: send) {
+                Image(systemName: "arrow.up.circle.fill").font(.title2)
+                    .foregroundStyle(canSend ? Color.accentColor : .white.opacity(0.25))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSend)
+            .accessibilityLabel("Send")
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
     }
 
     private var canSend: Bool { !app.thinking && !text.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -589,23 +660,48 @@ struct ChatPanel: View {
         text = ""
         Task { await app.ask(message) }
     }
+}
 
-    @ViewBuilder
-    private func bubble(_ turn: BlinkServer.ChatTurn) -> some View {
-        if turn.role == .user {
-            Text(turn.text)
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(Color.accentColor.opacity(0.35), in: .rect(cornerRadius: 14, style: .continuous))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.leading, 40)
-        } else {
-            Text(Self.markdown(turn.text))
-                .textSelection(.enabled)
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(.white.opacity(0.08), in: .rect(cornerRadius: 14, style: .continuous))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 40)
+/// The droplet's neck: pinched in the middle like liquid pulling apart.
+private nonisolated struct Neck: Shape {
+    var width: CGFloat
+    let from: CGFloat
+    let to: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard width > 0.5, to > from else { return path }
+        let cx = rect.midX, mid = (from + to) / 2, pinch = width * 0.35
+        path.move(to: CGPoint(x: cx - width / 2, y: from))
+        path.addQuadCurve(to: CGPoint(x: cx - width / 2, y: to), control: CGPoint(x: cx - pinch / 2, y: mid))
+        path.addLine(to: CGPoint(x: cx + width / 2, y: to))
+        path.addQuadCurve(to: CGPoint(x: cx + width / 2, y: from), control: CGPoint(x: cx + pinch / 2, y: mid))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// While Claude thinks: a soft gradient travels around the inside edge, like an edge glow.
+/// 30 fps at most and fully paused otherwise (tokens: fps.ambient); still under Reduce Motion.
+struct ThinkingGlow<S: InsettableShape>: View {
+    let shape: S
+    let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / Tokens.Motion.ambientFPS, paused: !active || reduceMotion)) { context in
+            let turns = context.date.timeIntervalSinceReferenceDate / 3 // one lap every 3 s
+            let gradient = AngularGradient(colors: [.indigo, .purple, .pink, .mint, .indigo], center: .center,
+                                           angle: .degrees(reduceMotion ? 0 : (turns * 360).truncatingRemainder(dividingBy: 360)))
+            ZStack {
+                shape.strokeBorder(gradient, lineWidth: 8).blur(radius: 10)
+                shape.strokeBorder(gradient, lineWidth: 1.5)
+            }
         }
+        .opacity(active ? 1 : 0)
+        .animation(.easeInOut(duration: 0.3), value: active)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
