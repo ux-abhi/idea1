@@ -33,6 +33,13 @@ final class ClipboardStore {
               ClipboardHistory.shouldRecord(types: board.types?.map(\.rawValue) ?? []) else { return }
         let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         let text = board.string(forType: .string)
+        // One image file copied in Finder is kept as the picture (Finder's own image on the clipboard is only the
+        // file's icon). The pasteboard lends Blink read access to the file; unreadable files stay file items.
+        if urls.count == 1, UTType(filenameExtension: urls[0].pathExtension)?.conforms(to: .image) == true,
+           let image = NSImage(contentsOf: urls[0]) {
+            record(image, name: urls[0].deletingPathExtension().lastPathComponent)
+            return
+        }
         switch ClipItem.pick(files: urls.map(\.path), text: text, hasImage: NSImage.canInit(with: board)) {
         case .file:
             history.add(ClipItem(kind: .file, text: urls.map(\.lastPathComponent).joined(separator: ", "), files: urls.map(\.path)))
@@ -40,17 +47,24 @@ final class ClipboardStore {
             let rich = board.data(forType: .rtf).flatMap { $0.count <= Self.maxRich ? $0 : nil }
             history.add(.text(text ?? "", rich: rich))
         case .image:
-            guard let image = NSImage(pasteboard: board), let preview = Self.png(image, maxSide: 480) else { return }
-            let item = ClipItem(kind: .image, text: "Image", image: preview)
-            // The original sits beside the history so pasting or dragging it back keeps full quality.
-            if let full = Self.png(image, maxSide: nil), full.count <= Self.maxImage {
-                try? FileManager.default.createDirectory(at: Self.images, withIntermediateDirectories: true)
-                try? full.write(to: Self.original(item), options: [.atomic, .completeFileProtection])
-            }
-            history.add(item)
+            guard let image = NSImage(pasteboard: board) else { return }
+            record(image, name: "Image")
+            return
         case nil:
             return
         }
+        save()
+    }
+
+    private func record(_ image: NSImage, name: String) {
+        guard let preview = Self.png(image, maxSide: 480) else { return }
+        let item = ClipItem(kind: .image, text: name, image: preview)
+        // The original sits beside the history so pasting or dragging it back keeps full quality.
+        if let full = Self.png(image, maxSide: nil), full.count <= Self.maxImage {
+            try? FileManager.default.createDirectory(at: Self.images, withIntermediateDirectories: true)
+            try? full.write(to: Self.original(item), options: [.atomic, .completeFileProtection])
+        }
+        history.add(item)
         save()
     }
 
@@ -72,7 +86,7 @@ final class ClipboardStore {
             let provider = FileManager.default.fileExists(atPath: Self.original(item).path)
                 ? NSItemProvider(contentsOf: Self.original(item)) ?? NSItemProvider()
                 : image(item).map { NSItemProvider(object: $0) } ?? NSItemProvider()
-            provider.suggestedName = "Image"
+            provider.suggestedName = item.text
             return provider
         case .link:
             let provider = URL(string: item.text.trimmingCharacters(in: .whitespacesAndNewlines))

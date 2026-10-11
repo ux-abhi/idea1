@@ -954,7 +954,7 @@ struct ClipboardPanel: View {
                     Image(systemName: item.kind == .link ? "link" : item.rich != nil ? "doc.richtext" : "doc.plaintext")
                         .foregroundStyle(.white.opacity(0.5)).frame(width: 34)
                 }
-                Text(item.kind == .image ? "Image" : item.text.replacingOccurrences(of: "\n", with: " "))
+                Text(item.text.replacingOccurrences(of: "\n", with: " "))
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Text(item.copiedAt, format: .relative(presentation: .numeric))
@@ -967,7 +967,7 @@ struct ClipboardPanel: View {
         .contextMenu { Button("Remove", role: .destructive) { store.remove(item) } }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(item.kind == .image ? "Image" : item.text)
+        .accessibilityLabel(item.kind == .image ? "Image, \(item.text)" : item.text)
         .accessibilityHint("Copies it back to the clipboard. You can also drag it into any app.")
         .accessibilityAction { pick(item) }
     }
