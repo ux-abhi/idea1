@@ -35,9 +35,13 @@ final class NotchModel {
 
     /// Ears beside the camera stay slim at rest so long app menus are never covered (§36.2).
     static let ear: CGFloat = 24
+    /// While a timer runs the ears widen so the right one can show the countdown.
+    static let timerEar: CGFloat = 58
+    var timerShown = false
+    var earWidth: CGFloat { timerShown ? Self.timerEar : Self.ear }
 
     func size(for level: Level) -> CGSize {
-        let rest = CGSize(width: notchSize.width + 2 * Self.ear, height: notchSize.height)
+        let rest = CGSize(width: notchSize.width + 2 * earWidth, height: notchSize.height)
         switch level {
         case .rest: return rest
         case .peek: return CGSize(width: max(rest.width, 320), height: rest.height + 36)
@@ -127,6 +131,28 @@ final class NotchController {
                     try? await Task.sleep(for: .seconds(Tokens.Hold.done))
                     if self.model.mood == .done { self.evaluateCue() }
                 }
+            }
+        }
+
+        // Timer running: widen the ears for the countdown. Timer ended: open with Done eyes (the chime already played).
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await running in Observations({ app.timer != nil }) {
+                guard let self else { return }
+                withAnimation(self.reduceMotion ? nil : Tokens.Motion.peek.animation) { self.model.timerShown = running }
+            }
+        }
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            var seen = app.timersEnded
+            for await count in Observations({ app.timersEnded }) where count != seen {
+                seen = count
+                guard let self else { return }
+                self.model.mood = .done
+                if self.model.level != .open { self.show(.open, closingAfter: 60) }
+                AccessibilityNotification.Announcement("\(app.finishedTimer?.label ?? "Timer") done").post()
+                try? await Task.sleep(for: .seconds(Tokens.Hold.done))
+                self.evaluateCue()
             }
         }
 
@@ -428,10 +454,12 @@ struct NotchView: View {
     private func glance(statusLine: String, now: Date) -> some View {
         if model.chatting {
             ChatPanel(app: app)
+        } else if app.timer != nil || app.finishedTimer != nil {
+            TimerCard(app: app)
         } else if model.evening || app.eveningDue {
             EveningView(app: app, plan: plan)
         } else {
-            GlanceView(statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
+            GlanceView(app: app, statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
                        briefing: model.briefing, done: close,
                        card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) })
         }
@@ -443,6 +471,20 @@ struct NotchView: View {
         return VStack(spacing: 8) {
             BlinkEyes(mood: model.mood, notchGap: model.notchSize.width)
                 .frame(width: model.size(for: .rest).width, height: model.notchSize.height)
+                .overlay(alignment: .trailing) {
+                    if let timer = app.timer {
+                        // Once a second while a timer runs; nothing ticks otherwise.
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text(FocusTimer.clock(timer.remaining(now: context.date)))
+                                .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(timer.kind == .focus ? Color.mint : .green)
+                                .opacity(timer.isPaused ? 0.5 : 1)
+                        }
+                        .frame(width: NotchModel.timerEar, height: model.notchSize.height)
+                        .background(.black)
+                        .accessibilityLabel("\(timer.label), \(FocusTimer.clock(timer.remaining(now: .now))) left")
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     // Waiting for you: a small dot in the right ear (§4).
                     if !app.pending.isEmpty {
@@ -473,6 +515,12 @@ struct NotchView: View {
         .contentShape(UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous))
         .onTapGesture(perform: open)
         .contextMenu {
+            Button("Start Focus (25 min)") { app.startFocus() }
+            Menu("Timer") {
+                ForEach([5, 10, 15, 30, 60], id: \.self) { m in Button("\(m) min") { app.startTimer(minutes: Double(m)) } }
+            }
+            if app.timer != nil { Button("Stop Timer") { app.stopTimer() } }
+            Divider()
             Button("Open Blink") {
                 NSApp.activate()
                 NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
@@ -510,6 +558,7 @@ struct NotchView: View {
 /// Level 2: the brief or today's remaining events and reminders, with Join for an imminent meeting.
 /// Not gated by the app lock yet; gate it when the Mac lock policy for the notch is decided (§36.5).
 struct GlanceView: View {
+    var app: AppModel?
     let statusLine: String
     let agenda: Agenda
     let tasks: [DueItem]
@@ -568,6 +617,7 @@ struct GlanceView: View {
                     Label(item.title, systemImage: "circle").lineLimit(1)
                 }
             }
+            if let app { TimerQuickStarts(app: app).padding(.top, 2) }
         }
         .font(.callout)
         .foregroundStyle(.white)
@@ -768,6 +818,89 @@ struct ThinkingGlow: View {
         .animation(.easeInOut(duration: 0.35), value: active)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Quick starts at the bottom of the glance: Focus 25 and a few timers.
+struct TimerQuickStarts: View {
+    let app: AppModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "timer").foregroundStyle(.white.opacity(0.5))
+            chip("Focus 25") { app.startFocus() }
+            ForEach([5, 15], id: \.self) { m in chip("\(m) min") { app.startTimer(minutes: Double(m)) } }
+        }
+        .font(.caption)
+    }
+
+    private func chip(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(.white.opacity(0.1), in: .capsule)
+            .foregroundStyle(.white)
+    }
+}
+
+/// The open notch while a timer runs: a big countdown, its progress, and Pause / +5 / Stop.
+/// When one ends: "Focus done. Take 5?" with Start break / Skip.
+struct TimerCard: View {
+    let app: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let timer = app.timer {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let now = context.date
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(timer.label).font(.callout).foregroundStyle(.white.opacity(0.6))
+                            if timer.kind == .focus || timer.kind == .shortBreak || timer.kind == .longBreak {
+                                Text("round \(timer.round % 4 + 1) of 4").font(.caption).foregroundStyle(.white.opacity(0.4))
+                            }
+                            Spacer()
+                            if timer.isPaused { Text("Paused").font(.caption).foregroundStyle(.orange) }
+                        }
+                        Text(FocusTimer.clock(timer.remaining(now: now)))
+                            .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                            .contentTransition(.numericText(countsDown: true))
+                        ProgressView(value: timer.progress(now: now))
+                            .tint(timer.kind == .focus ? .mint : .green)
+                    }
+                }
+                HStack(spacing: 8) {
+                    if timer.isPaused {
+                        Button("Resume") { app.resumeTimer() }.buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Pause") { app.pauseTimer() }.buttonStyle(.borderedProminent)
+                    }
+                    Button("+5 min") { app.addToTimer(minutes: 5) }
+                    Button("Stop", role: .destructive) { app.stopTimer() }
+                }
+                .controlSize(.small)
+            } else if let done = app.finishedTimer {
+                Text(done.kind == .focus ? "Focus done" : done.kind == .timer ? "Time's up" : "Break's over")
+                    .font(.title3.weight(.semibold))
+                Text(done.kind == .focus ? "Nice work. Take \((done.next(now: .now)?.duration ?? 300) / 60, specifier: "%.0f") minutes?"
+                     : done.kind == .timer ? "Your \(Int(done.duration / 60))-minute timer has finished."
+                     : "Ready for another 25 minutes?")
+                    .foregroundStyle(.white.opacity(0.7))
+                HStack(spacing: 8) {
+                    switch done.kind {
+                    case .focus: Button("Start Break") { app.startNextPhase() }.buttonStyle(.borderedProminent)
+                    case .shortBreak, .longBreak: Button("Start Focus") { app.startNextPhase() }.buttonStyle(.borderedProminent)
+                    case .timer: Button("+5 min") { app.startTimer(minutes: 5) }.buttonStyle(.borderedProminent)
+                    }
+                    Button(done.kind == .timer ? "Done" : "Skip") { app.dismissFinishedTimer() }
+                }
+                .controlSize(.small)
+            }
+        }
+        .font(.callout)
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24)
     }
 }
 

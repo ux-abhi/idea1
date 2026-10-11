@@ -410,3 +410,32 @@ extension Tokens {
         #expect(agenda.dayLine(for: at(14, 0), calendar: cal) == "No meetings")
     }
 }
+
+@Suite struct FocusTimerTests {
+    private let t0 = Date(timeIntervalSince1970: 1_000_000)
+
+    @Test func countsDownAndPauses() {
+        var timer = FocusTimer.focus(now: t0)
+        #expect(timer.remaining(now: t0.addingTimeInterval(60)) == 24 * 60)
+        timer.pause(now: t0.addingTimeInterval(300))
+        #expect(timer.remaining(now: t0.addingTimeInterval(9999)) == 20 * 60) // paused: no time passes
+        timer.resume(now: t0.addingTimeInterval(1000))
+        #expect(timer.remaining(now: t0.addingTimeInterval(1060)) == 19 * 60)
+        timer.add(minutes: 5)
+        #expect(timer.remaining(now: t0.addingTimeInterval(1060)) == 24 * 60)
+        #expect(!timer.isFinished(now: t0.addingTimeInterval(1060)))
+        #expect(timer.isFinished(now: t0.addingTimeInterval(1000 + 25 * 60)))
+    }
+
+    @Test func pomodoroCycleAndClock() {
+        var phase = FocusTimer.focus(now: t0)
+        var kinds: [FocusTimer.Kind] = []
+        for _ in 0..<8 {
+            phase = phase.next(now: t0)!
+            kinds.append(phase.kind)
+        }
+        #expect(kinds == [.shortBreak, .focus, .shortBreak, .focus, .shortBreak, .focus, .longBreak, .focus])
+        #expect(FocusTimer.timer(minutes: 5, now: t0).next(now: t0) == nil)
+        #expect(FocusTimer.clock(1122) == "18:42" && FocusTimer.clock(3725) == "1:02:05")
+    }
+}

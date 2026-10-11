@@ -65,8 +65,17 @@ struct MenuBarContent: View {
         if !model.pending.isEmpty {
             Text(model.pending.count == 1 ? "1 waiting for you" : "\(model.pending.count) waiting for you")
         }
+        if let timer = model.timer {
+            Text("\(timer.label): \(FocusTimer.clock(timer.remaining(now: .now))) left\(timer.isPaused ? " (paused)" : "")")
+        }
         Divider()
         Button("Ask Blink…", action: ask)
+        Button("Start Focus (25 min)") { model.startFocus() }
+        Menu("Timer") {
+            ForEach([5, 10, 15, 30, 60], id: \.self) { m in Button("\(m) min") { model.startTimer(minutes: Double(m)) } }
+        }
+        if model.timer != nil { Button("Stop Timer") { model.stopTimer() } }
+        Divider()
         Button("Show in Notch", action: showNotch)
         Button("Open Blink") {
             NSApp.activate()

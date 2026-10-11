@@ -703,6 +703,8 @@ The design is the same in every stage; stage C only switches on server push.
 | Licenses in shipped code | Permissive only (MIT, Apache-2.0, BSD); GPL/AGPL projects are reference-only | Keeps Blink sellable |
 | Data model | `owner_id` + row-level security on every table | Multi-user ready without a rewrite |
 | Dev skills | Development tools only, never shipped in the app | Clean product boundary |
+| Focus timers (2026-10-12) | Pomodoro (25 / 5, long break every 4th) and plain timers in the notch: countdown in the right ear, one chime at the end, survive restarts; sleep until the end instead of ticking | Owner request; stays near 0 CPU |
+| Clipboard history (2026-10-12) | Last 50 copies, on this Mac only (never the server or Claude); items marked concealed or transient by password managers are never recorded; pause and clear | Owner request; privacy first |
 
 ## 32. Sellable, clean codebase
 

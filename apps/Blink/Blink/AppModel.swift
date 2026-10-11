@@ -5,6 +5,8 @@ import Foundation
 import SwiftUI
 #if os(iOS)
 import UIKit
+#else
+import AppKit
 #endif
 
 /// First run → sign in → home, plus the app lock.
@@ -52,6 +54,16 @@ final class AppModel {
     private(set) var chat: [BlinkServer.ChatTurn] = []
     private(set) var thinking = false
 
+    /// The running Pomodoro phase or timer; kept on disk so it survives a restart.
+    private(set) var timer: FocusTimer? = AppModel.savedTimer() {
+        didSet { saveTimer() }
+    }
+    /// A phase that just ended, waiting for "Start break" / "Skip".
+    private(set) var finishedTimer: FocusTimer?
+    /// Bumped when a timer ends; the notch opens.
+    private(set) var timersEnded = 0
+    private var timerWatch: Task<Void, Never>?
+
     private(set) var agenda = Agenda.empty
     private(set) var calendarAccess = CalendarReader.access
     private let calendarReader = CalendarReader()
@@ -78,6 +90,7 @@ final class AppModel {
             screen = .connect
         }
         if calendarAccess == .granted { await startCalendar() }
+        watchTimer() // a timer that ran while Blink was closed ends now or keeps going
     }
 
     func connect(url: String, key: String) async throws(ServerConfig.Problem) {
@@ -414,6 +427,75 @@ final class AppModel {
         } catch {
             habitAnswers[habit.id, default: [:]][day] = before
             saveProblem = "Couldn't save that. Check your connection and try again."
+        }
+    }
+
+    // MARK: Pomodoro and timers
+
+    func startFocus() { begin(.focus()) }
+    func startTimer(minutes: Double) { begin(.timer(minutes: minutes)) }
+
+    func pauseTimer() {
+        timer?.pause(now: .now)
+        timerWatch?.cancel()
+    }
+
+    func resumeTimer() {
+        timer?.resume(now: .now)
+        watchTimer()
+    }
+
+    func addToTimer(minutes: Double) {
+        timer?.add(minutes: minutes)
+        watchTimer()
+    }
+
+    func stopTimer() {
+        timerWatch?.cancel()
+        timer = nil
+        finishedTimer = nil
+    }
+
+    /// After a phase ends: start what follows (break after focus, focus after a break).
+    func startNextPhase() {
+        guard let done = finishedTimer, let next = done.next(now: .now) else { finishedTimer = nil; return }
+        begin(next)
+    }
+
+    func dismissFinishedTimer() { finishedTimer = nil }
+
+    private func begin(_ new: FocusTimer) {
+        finishedTimer = nil
+        timer = new
+        watchTimer()
+    }
+
+    /// Sleeps until the timer's end instead of ticking, so nothing runs in between (idle CPU stays ~0).
+    func watchTimer() {
+        timerWatch?.cancel()
+        guard let timer, !timer.isPaused else { return }
+        let left = timer.remaining(now: .now)
+        timerWatch = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(left))
+            guard !Task.isCancelled, let self, let current = self.timer, current.isFinished(now: .now) else { return }
+            self.finishedTimer = current
+            self.timer = nil
+            self.timersEnded += 1
+            #if os(macOS)
+            NSSound(named: "Glass")?.play() // the alarm: one system chime, never a loop
+            #endif
+        }
+    }
+
+    private static func savedTimer() -> FocusTimer? {
+        UserDefaults.standard.data(forKey: "focusTimer").flatMap { try? JSONDecoder().decode(FocusTimer.self, from: $0) }
+    }
+
+    private func saveTimer() {
+        if let timer, let data = try? JSONEncoder().encode(timer) {
+            UserDefaults.standard.set(data, forKey: "focusTimer")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "focusTimer")
         }
     }
 
