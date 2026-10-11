@@ -1,29 +1,51 @@
 // © Pexilim
 import Foundation
 
-/// One copied thing. Text and links are kept; images keep a small PNG.
+/// One copied thing: text (with its formatting), a link, an image (small preview here, the original beside the
+/// history) or files from Finder (their paths; the files themselves stay where they are).
 public struct ClipItem: Codable, Identifiable, Equatable, Sendable {
-    public enum Kind: String, Codable, Sendable { case text, link, image }
+    public enum Kind: String, Codable, Sendable { case text, link, image, file }
 
     public let id: UUID
     public let kind: Kind
     public let text: String
+    /// Preview PNG for images.
     public let image: Data?
+    /// RTF for formatted text, so pasting keeps bold, links and lists.
+    public let rich: Data?
+    /// File paths for Finder copies.
+    public let files: [String]?
     public let copiedAt: Date
 
-    public init(kind: Kind, text: String, image: Data? = nil, copiedAt: Date = .now) {
+    public init(kind: Kind, text: String, image: Data? = nil, rich: Data? = nil, files: [String]? = nil, copiedAt: Date = .now) {
         id = UUID()
         self.kind = kind
         self.text = text
         self.image = image
+        self.rich = rich
+        self.files = files
         self.copiedAt = copiedAt
     }
 
     /// Text that is a single web address counts as a link.
-    public static func text(_ string: String, at date: Date = .now) -> ClipItem {
+    public static func text(_ string: String, rich: Data? = nil, at date: Date = .now) -> ClipItem {
+        ClipItem(kind: isLink(string) ? .link : .text, text: string, rich: rich, copiedAt: date)
+    }
+
+    static func isLink(_ string: String) -> Bool {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isLink = !trimmed.contains(" ") && (URL(string: trimmed)?.scheme.map { ["http", "https"].contains($0) } ?? false)
-        return ClipItem(kind: isLink ? .link : .text, text: string, copiedAt: date)
+        return !trimmed.contains(" ") && (URL(string: trimmed)?.scheme.map { ["http", "https"].contains($0) } ?? false)
+    }
+
+    /// What a copy holds when several kinds are on the clipboard. Files win; then words you selected (documents
+    /// also put a picture of the selection on the clipboard, so text beats image); an image copied from a web
+    /// page comes with its address, so an image with only a link counts as the image.
+    public static func pick(files: [String], text: String?, hasImage: Bool) -> Kind? {
+        if !files.isEmpty { return .file }
+        if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !(hasImage && isLink(text)) {
+            return isLink(text) ? .link : .text
+        }
+        return hasImage ? .image : nil
     }
 }
 
@@ -38,7 +60,7 @@ public struct ClipboardHistory: Codable, Equatable, Sendable {
 
     public mutating func add(_ item: ClipItem) {
         guard item.kind == .image || !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        items.removeAll { $0.kind != .image && $0.text == item.text }
+        items.removeAll { $0.kind != .image && $0.kind == item.kind && $0.text == item.text && $0.files == item.files }
         items.insert(item, at: 0)
         if items.count > Self.limit { items.removeLast(items.count - Self.limit) }
     }

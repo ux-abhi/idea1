@@ -930,7 +930,7 @@ struct ClipboardPanel: View {
                 .frame(maxHeight: 190)
             }
             HStack {
-                Text("Kept on this Mac only").font(.caption).foregroundStyle(.white.opacity(0.4))
+                Text("Click to copy, or drag into any app").font(.caption).foregroundStyle(.white.opacity(0.4))
                 Spacer()
                 Button(paused ? "Resume" : "Pause") { paused.toggle() }.buttonStyle(.plain).font(.caption)
                 Button("Clear") { store.clear() }.buttonStyle(.plain).font(.caption).foregroundStyle(.orange)
@@ -943,13 +943,15 @@ struct ClipboardPanel: View {
     }
 
     private func row(_ item: ClipItem) -> some View {
-        Button { pick(item) } label: {
-            HStack(spacing: 10) {
+        // Not a Button: a button swallows the mouse-down, so the row could never be dragged out.
+        HStack(spacing: 10) {
                 if item.kind == .image, let data = item.image, let image = NSImage(data: data) {
                     Image(nsImage: image).resizable().scaledToFill()
                         .frame(width: 34, height: 24).clipShape(.rect(cornerRadius: 4))
+                } else if item.kind == .file, let path = item.files?.first {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: path)).resizable().scaledToFit().frame(width: 34, height: 24)
                 } else {
-                    Image(systemName: item.kind == .link ? "link" : "doc.plaintext")
+                    Image(systemName: item.kind == .link ? "link" : item.rich != nil ? "doc.richtext" : "doc.plaintext")
                         .foregroundStyle(.white.opacity(0.5)).frame(width: 34)
                 }
                 Text(item.kind == .image ? "Image" : item.text.replacingOccurrences(of: "\n", with: " "))
@@ -960,11 +962,14 @@ struct ClipboardPanel: View {
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
+        .onTapGesture { pick(item) }
+        .onDrag { store.dragItem(item) }
         .contextMenu { Button("Remove", role: .destructive) { store.remove(item) } }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(item.kind == .image ? "Image" : item.text)
-        .accessibilityHint("Copies it back to the clipboard")
+        .accessibilityHint("Copies it back to the clipboard. You can also drag it into any app.")
+        .accessibilityAction { pick(item) }
     }
 
     private func pick(_ item: ClipItem) {

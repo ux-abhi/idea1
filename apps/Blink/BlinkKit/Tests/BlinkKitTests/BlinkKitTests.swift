@@ -460,6 +460,12 @@ extension Tokens {
         #expect(ClipboardHistory.shouldRecord(types: ["public.utf8-plain-text"]))
         #expect(!ClipboardHistory.shouldRecord(types: ["public.utf8-plain-text", "org.nspasteboard.ConcealedType"]))
         #expect(!ClipboardHistory.shouldRecord(types: ["org.nspasteboard.TransientType"]))
+        // Files beat their names; selected words beat the picture of them; a web image beats its address.
+        #expect(ClipItem.pick(files: ["/a.pdf"], text: "a.pdf", hasImage: false) == .file)
+        #expect(ClipItem.pick(files: [], text: "Hello", hasImage: true) == .text)
+        #expect(ClipItem.pick(files: [], text: "https://x.com/cat.png", hasImage: true) == .image)
+        #expect(ClipItem.pick(files: [], text: "https://x.com", hasImage: false) == .link)
+        #expect(ClipItem.pick(files: [], text: nil, hasImage: false) == nil)
     }
 }
 
