@@ -189,6 +189,37 @@ extension Tokens {
         #expect(Agenda.empty.statusLine(now: at(9, 0), calendar: cal) == "All clear")
     }
 
+    @Test func meetingCuesFollowTheClock() {
+        let review = event("Review", at(15, 0))
+        let agenda = Agenda(events: [review], reminders: [])
+        #expect(agenda.cue(now: at(14, 49)) == nil)
+        #expect(agenda.cue(now: at(14, 50)) == .headsUp(review))
+        #expect(agenda.cue(now: at(14, 56)) == .headsUp(review))
+        #expect(agenda.cue(now: at(14, 57)) == .imminent(review)) // T−3 is P0
+        #expect(agenda.cue(now: at(15, 4)) == .imminent(review))
+        #expect(agenda.cue(now: at(15, 5)) == nil)
+        #expect(agenda.nextCueChange(after: at(14, 0)) == at(14, 50))
+        #expect(agenda.nextCueChange(after: at(14, 50)) == at(14, 57))
+        #expect(agenda.nextCueChange(after: at(15, 5)) == nil)
+    }
+
+    @Test func aLongMeetingDoesNotHideTheNextOne() {
+        let long = event("Workshop", at(13, 0), minutes: 180)
+        let next = event("Call", at(14, 0))
+        #expect(Agenda(events: [long, next], reminders: []).cue(now: at(13, 55)) == .headsUp(next))
+    }
+
+    @Test func briefLineAndJoinLinks() {
+        let agenda = Agenda(events: [event("A", at(10, 0)), event("B", at(16, 0)), event("C", at(9, 0, day: 12))],
+                            reminders: [AgendaReminder(id: "1", title: "x", due: nil), AgendaReminder(id: "2", title: "y", due: nil)])
+        #expect(agenda.briefLine(now: at(7, 0), calendar: cal).hasPrefix("2 meetings · first at "))
+        #expect(agenda.briefLine(now: at(7, 0), calendar: cal).hasSuffix(" · 2 reminders"))
+        #expect(Agenda.empty.briefLine(now: at(7, 0), calendar: cal) == "No meetings today")
+        let zoom = AgendaEvent(extID: "z", title: "Z", start: at(9, 0), end: at(10, 0), location: " https://zoom.us/j/1 ")
+        #expect(zoom.joinURL?.host() == "zoom.us")
+        #expect(AgendaEvent(extID: "r", title: "R", start: at(9, 0), end: at(10, 0), location: "Room 4").joinURL == nil)
+    }
+
     @Test func eventsAreSortedAndOngoingCountsAsNext() {
         let agenda = Agenda(events: [event("B", at(11, 0)), event("A", at(10, 0), minutes: 90)], reminders: [])
         #expect(agenda.events.map(\.title) == ["A", "B"])

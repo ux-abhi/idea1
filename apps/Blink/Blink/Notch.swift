@@ -13,20 +13,25 @@ final class NotchModel {
     var mood = Mood.idle
     /// The hardware notch, measured from the screen.
     var notchSize = CGSize(width: 200, height: 32)
-    /// Rows in the glance (events + reminders, at most 4); sets the open height.
-    var glanceRows = 0
-    static let maxGlanceRows = 4
+    /// The glance content's measured height; the open shape fits it.
+    var glanceHeight: CGFloat = 60
+    static let openWidth: CGFloat = 420
+    /// The tallest the open shape can get; the panel is sized for it.
+    static let maxGlanceHeight: CGFloat = 240
+    /// The morning brief is showing.
+    var briefing = false
 
     /// Ears beside the camera stay slim at rest so long app menus are never covered (§36.2).
     static let ear: CGFloat = 24
 
-    func size(for level: Level, rows: Int? = nil) -> CGSize {
+    func size(for level: Level) -> CGSize {
         let rest = CGSize(width: notchSize.width + 2 * Self.ear, height: notchSize.height)
         switch level {
         case .rest: return rest
         case .peek: return CGSize(width: max(rest.width, 320), height: rest.height + 36)
-        // Title plus one 22 pt line per row; an empty glance shows a two-line message.
-        case .open: return CGSize(width: max(rest.width, 420), height: rest.height + 56 + CGFloat(max(rows ?? glanceRows, 2)) * 22)
+        // Eyes row, 8 pt gap, the measured content, 20 pt to breathe at the bottom.
+        case .open: return CGSize(width: max(rest.width, Self.openWidth),
+                                  height: rest.height + 8 + min(glanceHeight, Self.maxGlanceHeight) + 20)
         }
     }
 }
@@ -51,6 +56,12 @@ final class NotchController {
     private var hoverTask: Task<Void, Never>?
     private var leaveTask: Task<Void, Never>?
     private var previousApp: NSRunningApplication?
+    /// Each cue speaks once per event (§7: one reaction per event, never nags).
+    private var spoken: [AgendaEvent.ID: Set<String>] = [:]
+    private var cueWake: Task<Void, Never>?
+    private var autoClose: Task<Void, Never>?
+    private var autoPeeking = false
+    private var autoOpened = false
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     init(app: AppModel) {
@@ -73,6 +84,85 @@ final class NotchController {
                 return nil
             },
         ].compactMap { $0 }
+
+        // Re-plan the cues whenever the agenda changes; sleep until the next cue in between.
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await _ in Observations({ app.agenda }) { self?.scheduleCues() }
+        }
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"),
+                                                            object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.morningBriefIfFirstToday() }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
+                                                          object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                _ = Task { await self?.app.reloadAgenda(); self?.scheduleCues() }
+            }
+        }
+    }
+
+    // MARK: Speaking first
+
+    private func scheduleCues() {
+        cueWake?.cancel()
+        let ids = Set(app.agenda.events.map(\.id))
+        spoken = spoken.filter { ids.contains($0.key) } // forget meetings that are gone
+        evaluateCue()
+        guard let next = app.agenda.nextCueChange(after: .now) else { return }
+        cueWake = Task { [weak self] in
+            // ContinuousClock keeps counting while the Mac sleeps, so an overdue cue fires on wake.
+            try? await Task.sleep(for: .seconds(max(next.timeIntervalSinceNow, 0) + 0.5))
+            guard !Task.isCancelled else { return }
+            self?.scheduleCues()
+        }
+    }
+
+    /// T−10 peeks once with mint eyes; T−3 opens the card once without taking focus (§9.3, §36.2).
+    /// shortcut: ignores screen sharing and full-screen apps (§8 asks to hold pop-outs); add with display contexts.
+    private func evaluateCue() {
+        let cue = app.agenda.cue(now: .now)
+        if !model.briefing { model.mood = cue == nil ? .idle : .headsUp }
+        guard let cue else {
+            if autoOpened && model.level == .open { close() }
+            return
+        }
+        let kind = if case .imminent = cue { "imminent" } else { "headsUp" }
+        guard spoken[cue.event.id, default: []].insert(kind).inserted else { return }
+        switch cue {
+        case .headsUp: if model.level == .rest { show(.peek, closingAfter: 8) }
+        case .imminent: if model.level != .open { show(.open, closingAfter: nil) } // closes at T+5 or on a click elsewhere
+        }
+    }
+
+    /// First unlock of the day: Good morning eyes and today's brief (§9.2).
+    /// shortcut: fires on screen unlock only, not when Blink launches at login; add once Blink is a login item (SMAppService).
+    private func morningBriefIfFirstToday() {
+        guard app.calendarAccess == .granted else { return }
+        let today = Calendar.current.startOfDay(for: .now)
+        if let last = UserDefaults.standard.object(forKey: "lastBrief") as? Date, last >= today { return }
+        UserDefaults.standard.set(Date.now, forKey: "lastBrief")
+        Task {
+            await app.reloadAgenda()
+            model.briefing = true
+            model.mood = .morning
+            show(.open, closingAfter: 60)
+        }
+    }
+
+    /// Opens a level by itself: never key, so typing stays in the user's app.
+    private func show(_ level: NotchModel.Level, closingAfter seconds: Double?) {
+        set(level)
+        autoPeeking = level == .peek
+        autoOpened = level == .open
+        autoClose?.cancel()
+        guard let seconds else { return }
+        autoClose = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard let self, !Task.isCancelled, self.model.level == level,
+                  !self.shapeRect().contains(NSEvent.mouseLocation) else { return }
+            self.close()
+        }
     }
 
     /// Puts the panel over the built-in display's notch, sized for the largest level.
@@ -84,7 +174,8 @@ final class NotchController {
         }
         let side = (screen.auxiliaryTopLeftArea?.width ?? 0) + (screen.auxiliaryTopRightArea?.width ?? 0)
         model.notchSize = CGSize(width: screen.frame.width - side, height: screen.safeAreaInsets.top)
-        let size = model.size(for: .open, rows: NotchModel.maxGlanceRows)
+        let size = CGSize(width: max(model.size(for: .rest).width, NotchModel.openWidth),
+                          height: model.notchSize.height + 8 + NotchModel.maxGlanceHeight + 20)
         let frame = NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
                            width: size.width, height: size.height)
 
@@ -105,7 +196,9 @@ final class NotchController {
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
         panel.sharingType = .none // hidden from screen capture and sharing (§36.1)
-        panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app, open: { [weak self] in self?.open() }))
+        panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app,
+                                                                      open: { [weak self] in self?.open() },
+                                                                      close: { [weak self] in self?.close() }))
         return panel
     }
 
@@ -133,7 +226,7 @@ final class NotchController {
         } else {
             hoverTask?.cancel()
             hoverTask = nil
-            guard model.level == .peek, leaveTask == nil else { return }
+            guard model.level == .peek, !autoPeeking, leaveTask == nil else { return }
             leaveTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(Tokens.Motion.hoverGraceOut))
                 guard let self, !Task.isCancelled else { return }
@@ -153,6 +246,7 @@ final class NotchController {
 
     func close() {
         guard let panel else { return }
+        autoClose?.cancel()
         set(.rest)
         panel.allowsKey = false
         // Hand the keyboard back to the app that had it (§36.2).
@@ -172,6 +266,12 @@ final class NotchController {
         withAnimation(reduceMotion ? nil : spring.animation) {
             model.level = level
         }
+        if level != .peek { autoPeeking = false }
+        if level != .open { autoOpened = false }
+        if level == .rest && model.briefing {
+            model.briefing = false // brief seen: Morning → Idle (§7)
+            evaluateCue()
+        }
     }
 }
 
@@ -179,16 +279,28 @@ struct NotchView: View {
     let model: NotchModel
     let app: AppModel
     let open: () -> Void
+    let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // Once a minute, never per frame: keeps the countdown current at ~0 CPU.
         TimelineView(.everyMinute) { context in
-            shape(statusLine: app.agenda.statusLine(now: context.date), now: context.date)
-                .onChange(of: GlanceView.rows(agenda: app.agenda, now: context.date), initial: true) { _, rows in
-                    model.glanceRows = rows
+            let statusLine = app.agenda.statusLine(now: context.date)
+            shape(statusLine: statusLine, now: context.date)
+                // A hidden copy keeps the glance's real height current, so the shape opens straight to the right size.
+                .background(alignment: .top) {
+                    glance(statusLine: statusLine, now: context.date)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: max(model.size(for: .rest).width, NotchModel.openWidth))
+                        .hidden()
+                        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { model.glanceHeight = $0 }
                 }
         }
+    }
+
+    private func glance(statusLine: String, now: Date) -> GlanceView {
+        GlanceView(statusLine: statusLine, agenda: app.agenda, access: app.calendarAccess, now: now,
+                   briefing: model.briefing, done: close)
     }
 
     private func shape(statusLine: String, now: Date) -> some View {
@@ -207,7 +319,7 @@ struct NotchView: View {
                     .foregroundStyle(.white)
                     .transition(contentTransition)
             case .open:
-                GlanceView(statusLine: statusLine, agenda: app.agenda, access: app.calendarAccess, now: now)
+                glance(statusLine: statusLine, now: now)
                     .transition(contentTransition)
             }
         }
@@ -241,37 +353,48 @@ struct NotchView: View {
     }
 }
 
-/// Level 2: today's remaining events and reminders.
+/// Level 2: the brief or today's remaining events and reminders, with Join for an imminent meeting.
 /// Not gated by the app lock yet; gate it when the Mac lock policy for the notch is decided (§36.5).
 struct GlanceView: View {
     let statusLine: String
     let agenda: Agenda
     let access: CalendarReader.Access
     let now: Date
-
-    static func rows(agenda: Agenda, now: Date) -> Int {
-        min(min(agenda.today(now: now).count, 3) + agenda.reminders.count, NotchModel.maxGlanceRows)
-    }
+    let briefing: Bool
+    let done: () -> Void
 
     var body: some View {
         let events = Array(agenda.today(now: now).prefix(3))
-        let reminders = Array(agenda.reminders.prefix(max(0, NotchModel.maxGlanceRows - events.count)))
-        VStack(alignment: .leading, spacing: 6) {
-            Text(statusLine)
+        let reminders = Array(agenda.reminders.prefix(max(0, 4 - events.count)))
+        VStack(alignment: .leading, spacing: 8) {
+            Text(briefing ? "Good morning" : statusLine)
                 .font(.title3.weight(.semibold))
+            if briefing {
+                Text(agenda.briefLine(now: now)).foregroundStyle(.white.opacity(0.7))
+            }
             if access != .granted {
                 Text("Your next meeting and today's reminders show here once Calendar is connected.")
                     .foregroundStyle(.white.opacity(0.7))
-            } else if events.isEmpty && reminders.isEmpty {
+            } else if events.isEmpty && reminders.isEmpty && !briefing {
                 Text("Nothing else on your calendar today.")
                     .foregroundStyle(.white.opacity(0.7))
             }
+            let joining = agenda.cue(now: now)?.event
             ForEach(events) { event in
                 HStack(spacing: 8) {
                     Text(event.start, format: .dateTime.hour().minute())
                         .monospacedDigit()
                         .foregroundStyle(.mint) // mood.headsUp: time
                     Text(event.title).lineLimit(1)
+                    if event == joining, let url = event.joinURL {
+                        Spacer(minLength: 8)
+                        Button("Join") {
+                            NSWorkspace.shared.open(url)
+                            done()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
                 }
             }
             ForEach(reminders) { reminder in

@@ -79,6 +79,68 @@ public struct Agenda: Sendable, Equatable {
     }
 }
 
+/// When the notch speaks first about a meeting (ARCHITECTURE §9.3, §8).
+public enum MeetingCue: Equatable, Sendable {
+    /// T−10 to T−3: peek once, eyes Heads-up.
+    case headsUp(AgendaEvent)
+    /// T−3 to T+5: P0, open the meeting card once.
+    case imminent(AgendaEvent)
+
+    public var event: AgendaEvent {
+        switch self { case .headsUp(let e), .imminent(let e): e }
+    }
+
+    static let headsUpLead: TimeInterval = 10 * 60
+    static let imminentLead: TimeInterval = 3 * 60
+    static let lingerAfterStart: TimeInterval = 5 * 60
+}
+
+extension Agenda {
+    /// The first event with something to say right now.
+    public func cue(now: Date) -> MeetingCue? {
+        for event in events where event.end > now {
+            let toStart = event.start.timeIntervalSince(now)
+            if toStart > MeetingCue.headsUpLead { return nil } // sorted: nothing later is closer
+            if toStart > MeetingCue.imminentLead { return .headsUp(event) }
+            if toStart > -MeetingCue.lingerAfterStart { return .imminent(event) }
+        }
+        return nil
+    }
+
+    /// The next moment `cue(now:)` can change, so the notch can sleep until then instead of polling.
+    public func nextCueChange(after now: Date) -> Date? {
+        events.flatMap { e in
+            [e.start - MeetingCue.headsUpLead, e.start - MeetingCue.imminentLead, e.start + MeetingCue.lingerAfterStart]
+        }
+        .filter { $0 > now }
+        .min()
+    }
+
+    /// The morning brief's summary line, numbers first.
+    public func briefLine(now: Date, calendar: Calendar = .current) -> String {
+        let todays = events.filter { calendar.isDate($0.start, inSameDayAs: now) }
+        var parts: [String] = []
+        if let first = todays.first {
+            parts.append(todays.count == 1 ? "1 meeting" : "\(todays.count) meetings")
+            parts.append("first at \(first.start.formatted(date: .omitted, time: .shortened))")
+        } else {
+            parts.append("No meetings today")
+        }
+        if !reminders.isEmpty { parts.append(reminders.count == 1 ? "1 reminder" : "\(reminders.count) reminders") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+extension AgendaEvent {
+    /// A meeting link from the event's URL, or a location that is a web address.
+    public var joinURL: URL? {
+        if let url, url.scheme?.hasPrefix("http") == true { return url }
+        guard let location, let url = URL(string: location.trimmingCharacters(in: .whitespaces)),
+              url.scheme == "https" || url.scheme == "http" else { return nil }
+        return url
+    }
+}
+
 /// Reads the device's calendars and reminders. An actor so EventKit stays off the main actor (§36.1).
 public actor CalendarReader {
     public enum Access: Sendable, Equatable { case notAsked, granted, denied }
