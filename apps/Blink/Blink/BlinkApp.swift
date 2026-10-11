@@ -5,6 +5,9 @@ import SwiftUI
 struct BlinkApp: App {
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
+    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +21,13 @@ struct BlinkApp: App {
         #endif
     }
 }
+
+#if os(macOS)
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var notch: NotchController?
+    func applicationDidFinishLaunching(_ notification: Notification) { notch = NotchController() }
+}
+#endif
 
 struct RootView: View {
     @Environment(AppModel.self) private var model

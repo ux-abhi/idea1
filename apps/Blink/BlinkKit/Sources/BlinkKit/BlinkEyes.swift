@@ -7,6 +7,8 @@ public struct BlinkEyes: View {
     public let mood: Mood
     /// Change to make Blink blink once (the preview's tap).
     public var blinkTrigger: Int
+    /// Notch layout: the camera gap between the ears. The hardware is the patch, so no patches are drawn.
+    public var notchGap: CGFloat?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pose: EyePose
@@ -16,9 +18,10 @@ public struct BlinkEyes: View {
     @State private var thinkingFrozen = false
     @State private var burstStart: Date?
 
-    public init(mood: Mood, blinkTrigger: Int = 0) {
+    public init(mood: Mood, blinkTrigger: Int = 0, notchGap: CGFloat? = nil) {
         self.mood = mood
         self.blinkTrigger = blinkTrigger
+        self.notchGap = notchGap
         _pose = State(initialValue: mood.pose)
     }
 
@@ -30,11 +33,20 @@ public struct BlinkEyes: View {
         TimelineView(.animation(minimumInterval: 1 / Tokens.Motion.ambientFPS, paused: !ambient)) { context in
             let t = context.date.timeIntervalSince(moodStart)
             GeometryReader { geo in
-                let w = geo.size.width
+                let w = geo.size.width, h = geo.size.height
                 ZStack {
-                    HStack(spacing: w * 0.2) {
-                        eye(width: w, t: t, mirrored: false)
-                        eye(width: w, t: t, mirrored: true)
+                    if let notchGap {
+                        // One eye centred in each ear beside the camera.
+                        let ear = max((w - notchGap) / 2, 0)
+                        HStack(spacing: notchGap) {
+                            eye(eyeW: h * 0.3, eyeH: h * 0.5, slot: CGSize(width: ear, height: h), t: t, mirrored: false, patch: false)
+                            eye(eyeW: h * 0.3, eyeH: h * 0.5, slot: CGSize(width: ear, height: h), t: t, mirrored: true, patch: false)
+                        }
+                    } else {
+                        HStack(spacing: w * 0.2) {
+                            eye(eyeW: w * 0.15, eyeH: w * 0.25, slot: CGSize(width: w * 0.34, height: w * 0.42), t: t, mirrored: false, patch: true)
+                            eye(eyeW: w * 0.15, eyeH: w * 0.25, slot: CGSize(width: w * 0.34, height: w * 0.42), t: t, mirrored: true, patch: true)
+                        }
                     }
                     if let burstStart, !reduceMotion {
                         CelebrateBurst(progress: context.date.timeIntervalSince(burstStart) / Tokens.Motion.celebrateBurst.dur)
@@ -56,20 +68,21 @@ public struct BlinkEyes: View {
         .accessibilityValue(mood == .thinking && thinkingFrozen ? "Still working" : mood.word)
     }
 
-    private func eye(width w: CGFloat, t: TimeInterval, mirrored: Bool) -> some View {
+    private func eye(eyeW: CGFloat, eyeH: CGFloat, slot: CGSize, t: TimeInterval, mirrored: Bool, patch: Bool) -> some View {
         let side: CGFloat = mirrored ? 1 : -1
-        let eyeW = w * 0.15, eyeH = w * 0.25
         var shown = pose
         if blinking { shown.openness = EyePose.closed.openness; shown.bite = 0 }
         if mirrored { shown.lidTilt = -shown.lidTilt }
         let motion = ambientMotion(t)
 
         return ZStack {
-            // Panda patch: dark glass teardrop tilted outward.
-            Ellipse()
-                .fill(LinearGradient(colors: [.gray.opacity(0.45), .black], startPoint: .top, endPoint: .bottom))
-                .frame(width: w * 0.32, height: w * 0.4)
-                .rotationEffect(.degrees(Double(side) * 16))
+            if patch {
+                // Panda patch: dark glass teardrop tilted outward.
+                Ellipse()
+                    .fill(LinearGradient(colors: [.gray.opacity(0.45), .black], startPoint: .top, endPoint: .bottom))
+                    .frame(width: slot.width * 0.94, height: slot.height * 0.95)
+                    .rotationEffect(.degrees(Double(side) * 16))
+            }
             EyeShape(pose: shown)
                 .fill(mood.tint.color)
                 .animation(.easeInOut(duration: Tokens.Motion.moodTint.dur), value: mood.tint)
@@ -81,7 +94,7 @@ public struct BlinkEyes: View {
                 .scaleEffect(scale * motion.breath)
                 .offset(x: motion.dx * eyeW, y: (shown.lookY + motion.dy) * eyeH)
         }
-        .frame(width: w * 0.34, height: w * 0.42)
+        .frame(width: slot.width, height: slot.height)
     }
 
     /// Thinking drifts its gaze in a 1.6 s cycle, slows at 10 s, freezes at 30 s; Listening breathes.
