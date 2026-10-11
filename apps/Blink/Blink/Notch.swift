@@ -28,6 +28,10 @@ final class NotchModel {
     var briefing = false
     /// The open notch shows the chat (⌃⌥Space) instead of the glance.
     var chatting = false
+    /// The evening nudge is showing ("Plan tomorrow?").
+    var evening = false
+    /// After the evening check-in the eyes stay Sleepy until the owner's wake time.
+    var sleepyUntil: Date?
 
     /// Ears beside the camera stay slim at rest so long app menus are never covered (§36.2).
     static let ear: CGFloat = 24
@@ -71,6 +75,7 @@ final class NotchController {
     private var autoPeeking = false
     private var autoOpened = false
     private var hotkey: GlobalHotkey?
+    private var eveningShown: String? // habit day the evening nudge last appeared
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     init(app: AppModel) {
@@ -125,6 +130,22 @@ final class NotchController {
             }
         }
 
+        // Evening check-in finished: Sleepy until the wake time that ends this habit day (§7, §9.4).
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            var seen = app.eveningsDone
+            for await count in Observations({ app.eveningsDone }) where count != seen {
+                seen = count
+                guard let self else { return }
+                let cal = Calendar.current
+                let nextDay = cal.date(byAdding: .day, value: 1, to: app.habitToday) ?? .now
+                self.model.sleepyUntil = cal.date(bySettingHour: app.wake.hour, minute: app.wake.minute, second: 0, of: nextDay)
+                self.model.evening = false
+                if self.model.level != .rest { self.close() }
+                self.scheduleCues()
+            }
+        }
+
         // 7 / 30 / 100-day habit streaks: Celebrate for 3 s, then back to whatever the cues say (§7).
         Task { [weak self] in
             guard let app = self?.app else { return }
@@ -155,7 +176,10 @@ final class NotchController {
         let ids = Set(app.agenda.events.map(\.id) + app.agenda.dueItems(adding: app.dueTasks).map(\.id))
         spoken = spoken.filter { ids.contains($0.key) } // forget meetings that are gone
         evaluateCue()
-        guard let next = app.agenda.nextCueChange(after: .now, tasks: app.dueTasks) else { return }
+        let eveningOpens = EveningCheck.opens(now: .now, evening: app.evening, wake: app.wake)
+        let candidates = [app.agenda.nextCueChange(after: .now, tasks: app.dueTasks),
+                          eveningOpens > .now ? eveningOpens : nil, model.sleepyUntil].compactMap { $0 }
+        guard let next = candidates.min() else { return }
         cueWake = Task { [weak self] in
             // ContinuousClock keeps counting while the Mac sleeps, so an overdue cue fires on wake.
             try? await Task.sleep(for: .seconds(max(next.timeIntervalSinceNow, 0) + 0.5))
@@ -168,7 +192,21 @@ final class NotchController {
     /// shortcut: ignores screen sharing and full-screen apps (§8 asks to hold pop-outs); add with display contexts.
     private func evaluateCue() {
         let cue = app.agenda.cue(now: .now, tasks: app.dueTasks)
-        if !model.briefing { model.mood = cue == nil ? .idle : .headsUp }
+        if let until = model.sleepyUntil, Date.now >= until { model.sleepyUntil = nil }
+        if !model.briefing {
+            model.mood = cue != nil ? .headsUp
+                : model.sleepyUntil != nil ? .sleepy
+                : app.eveningDue ? .evening
+                : .idle
+        }
+        // 21:30: one evening nudge per day (§9.4), only when nothing else is speaking.
+        let day = HabitDay.key(app.habitToday)
+        if cue == nil, app.eveningDue, eveningShown != day, model.level == .rest {
+            eveningShown = day
+            model.evening = true
+            show(.peek, closingAfter: 10)
+            AccessibilityNotification.Announcement("Plan tomorrow?").post()
+        }
         guard let cue else {
             if autoOpened && model.level == .open { close() }
             return
@@ -197,6 +235,7 @@ final class NotchController {
         UserDefaults.standard.set(Date.now, forKey: "lastBrief")
         Task {
             await app.reloadAgenda()
+            model.sleepyUntil = nil
             model.briefing = true
             model.mood = .morning
             show(.open, closingAfter: 60)
@@ -253,6 +292,7 @@ final class NotchController {
         panel.sharingType = .none // hidden from screen capture and sharing (§36.1)
         panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app,
                                                                       open: { [weak self] in self?.open() },
+                                                                      plan: { [weak self] in self?.planTomorrow() },
                                                                       close: { [weak self] in self?.close() }))
         return panel
     }
@@ -319,11 +359,19 @@ final class NotchController {
         panel.makeKey() // for Esc; the panel never activates Blink
     }
 
+    /// Evening card's "Plan with Blink": switch the open notch to the chat and ask Claude for tomorrow's plan.
+    func planTomorrow() {
+        model.evening = false
+        if !(model.level == .open && model.chatting) { toggleChat() }
+        Task { await app.planTomorrow() }
+    }
+
     func close() {
         guard let panel else { return }
         autoClose?.cancel()
         set(.rest)
         model.chatting = false
+        model.evening = false
         panel.allowsKey = false
         // Hand the keyboard back to the app that had it (§36.2).
         if let previousApp, previousApp != NSRunningApplication.current { previousApp.activate() }
@@ -355,6 +403,7 @@ struct NotchView: View {
     let model: NotchModel
     let app: AppModel
     let open: () -> Void
+    let plan: () -> Void
     let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(RestStyle.key) private var restStyle = RestStyle.ears
@@ -379,6 +428,8 @@ struct NotchView: View {
     private func glance(statusLine: String, now: Date) -> some View {
         if model.chatting {
             ChatPanel(app: app)
+        } else if model.evening || app.eveningDue {
+            EveningView(app: app, plan: plan)
         } else {
             GlanceView(statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
                        briefing: model.briefing, done: close,
@@ -403,7 +454,7 @@ struct NotchView: View {
             case .rest:
                 EmptyView()
             case .peek:
-                Text(statusLine)
+                Text(model.evening ? "Plan tomorrow?" : statusLine)
                     .font(.callout.weight(.medium))
                     .foregroundStyle(.white)
                     .transition(contentTransition)
@@ -706,6 +757,50 @@ struct ThinkingGlow: View {
         .animation(.easeInOut(duration: 0.35), value: active)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// The evening check-in (§9.4): tomorrow at a glance, today's unanswered habits, unscheduled tasks,
+/// then Plan with Blink or All set.
+struct EveningView: View {
+    let app: AppModel
+    let plan: () -> Void
+
+    var body: some View {
+        let habits = app.habits.filter { app.isScheduledToday($0) && app.answerToday($0) == nil }
+        let unscheduled = Array(app.openTasks.filter { $0.dueAt == nil }.prefix(3))
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Tomorrow, \(app.tomorrow.formatted(.dateTime.weekday(.wide).day().month()))")
+                    .font(.title3.weight(.semibold))
+                Text(app.agenda.dayLine(for: app.tomorrow)).foregroundStyle(.white.opacity(0.6))
+            }
+            ForEach(habits) { habit in
+                HStack {
+                    Text(habit.name).lineLimit(1)
+                    Spacer()
+                    Button("Done") { Task { await app.answer(habit, .done) } }.buttonStyle(.borderedProminent)
+                    Button("Skip") { Task { await app.answer(habit, .skipped) } }
+                }
+                .controlSize(.small)
+            }
+            if !unscheduled.isEmpty {
+                Text("No time yet: " + unscheduled.map(\.title).joined(separator: ", "))
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(2)
+            }
+            HStack {
+                Button(action: plan) { Label("Plan with Blink", systemImage: "moon.stars") }
+                    .buttonStyle(.borderedProminent)
+                Button("All set") { app.finishEvening() }
+            }
+            .controlSize(.small)
+        }
+        .font(.callout)
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24)
     }
 }
 

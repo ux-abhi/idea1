@@ -382,3 +382,31 @@ extension Tokens {
         #expect(HabitDay.key(HabitDay.day(for: later, wakeHour: 7, wakeMinute: 0, calendar: cal), calendar: cal) == "2026-10-13")
     }
 }
+
+@Suite struct EveningTests {
+    private let cal: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+        return c
+    }()
+    private func at(_ day: Int, _ h: Int, _ m: Int = 0) -> Date {
+        cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: h, minute: m))!
+    }
+    private let evening = (hour: 21, minute: 30), wake = (hour: 7, minute: 0)
+
+    @Test func dueFromEveningUntilWakeOncePerDay() {
+        #expect(!EveningCheck.isDue(now: at(12, 21, 29), evening: evening, wake: wake, lastDone: nil, calendar: cal))
+        #expect(EveningCheck.isDue(now: at(12, 21, 30), evening: evening, wake: wake, lastDone: nil, calendar: cal))
+        #expect(EveningCheck.isDue(now: at(13, 1, 0), evening: evening, wake: wake, lastDone: nil, calendar: cal)) // after midnight, before wake
+        #expect(!EveningCheck.isDue(now: at(13, 8, 0), evening: evening, wake: wake, lastDone: nil, calendar: cal)) // next day, before evening
+        #expect(!EveningCheck.isDue(now: at(12, 22, 0), evening: evening, wake: wake, lastDone: at(12, 21, 45), calendar: cal))
+        #expect(EveningCheck.isDue(now: at(13, 21, 40), evening: evening, wake: wake, lastDone: at(12, 21, 45), calendar: cal))
+    }
+
+    @Test func tomorrowLine() {
+        let agenda = Agenda(events: [AgendaEvent(extID: "a", title: "A", start: at(13, 10), end: at(13, 11)),
+                                     AgendaEvent(extID: "b", title: "B", start: at(13, 15), end: at(13, 16))], reminders: [])
+        #expect(agenda.dayLine(for: at(13, 0), calendar: cal).hasPrefix("2 meetings · first at "))
+        #expect(agenda.dayLine(for: at(14, 0), calendar: cal) == "No meetings")
+    }
+}

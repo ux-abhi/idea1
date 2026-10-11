@@ -40,7 +40,11 @@ final class AppModel {
     private(set) var habits: [Habit] = []
     /// habit id → habit day ("yyyy-MM-dd") → answer.
     private(set) var habitAnswers: [String: [String: HabitAnswer]] = [:]
-    private var wake = (hour: 7, minute: 0)
+    private(set) var wake = (hour: 7, minute: 0)
+    private(set) var evening = (hour: 21, minute: 30)
+    private(set) var lastEvening: Date? = UserDefaults.standard.object(forKey: "lastEvening") as? Date
+    /// Bumped when the owner finishes the evening check-in; the notch goes Sleepy.
+    private(set) var eveningsDone = 0
     /// Bumped when an answer reaches a 7 / 30 / 100-day streak; the notch celebrates.
     private(set) var celebrations = 0
 
@@ -208,6 +212,20 @@ final class AppModel {
             }
             if action.kind == "task.delete" { await delete(task) } else if task.status != .done { await toggle(task) }
             try await server.setStatus("done", for: action, result: ["item_id": id])
+        case "task.reschedule":
+            guard let id = action.payload.targetID, var task = items.first(where: { $0.id == id }) else {
+                try await server.setStatus("failed", for: action, result: ["error": "That task is gone."])
+                return
+            }
+            task.dueAt = action.payload.due
+            edit(task)
+            await save(id)
+            try await server.setStatus("done", for: action, result: ["item_id": id])
+        case "reminder.reschedule":
+            guard let id = action.payload.targetID else { return }
+            try await calendarReader.setReminderDue(id: id, due: action.payload.due)
+            try await server.setStatus("done", for: action, result: ["reminder_id": id])
+            await reloadAgenda()
         case "reminder.complete", "reminder.delete":
             guard let id = action.payload.targetID else { return }
             do {
@@ -332,7 +350,10 @@ final class AppModel {
 
     func loadHabits() async {
         guard let server, email != nil else { return }
-        if let wakeTime = try? await server.wakeTime() { wake = wakeTime }
+        if let times = try? await server.dayTimes() {
+            wake = times.wake
+            evening = times.evening
+        }
         // 120 days covers a long streak's rules and "kept N of 7".
         let since = HabitDay.key(Calendar.current.date(byAdding: .day, value: -120, to: habitToday) ?? habitToday)
         guard let list = try? await server.habits(), let logs = try? await server.habitLogs(since: since) else { return }
@@ -380,6 +401,23 @@ final class AppModel {
             habitAnswers[habit.id, default: [:]][day] = before
             saveProblem = "Couldn't save that. Check your connection and try again."
         }
+    }
+
+    // MARK: Evening check-in (§9.4)
+
+    var eveningDue: Bool { EveningCheck.isDue(now: .now, evening: evening, wake: wake, lastDone: lastEvening) }
+    var tomorrow: Date { Calendar.current.date(byAdding: .day, value: 1, to: habitToday) ?? habitToday }
+
+    func finishEvening() {
+        lastEvening = .now
+        UserDefaults.standard.set(lastEvening, forKey: "lastEvening")
+        eveningsDone += 1
+    }
+
+    /// "Plan with Blink": Claude fits open tasks around tomorrow's calendar and proposes them as cards.
+    func planTomorrow() async {
+        let day = tomorrow.formatted(.dateTime.weekday(.wide).day().month())
+        await ask("Evening check-in: plan my tomorrow, \(day). Fit my open tasks around tomorrow's calendar with realistic times and propose them. At most three short lines.")
     }
 
     // MARK: Chat

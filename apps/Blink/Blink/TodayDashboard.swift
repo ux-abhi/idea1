@@ -36,6 +36,25 @@ struct TodayView: View {
     private func main(now: Date) -> some View {
         VStack(spacing: 16) {
             HeroCard(now: now, showNotes: showNotes, showWaiting: showWaiting)
+            if model.eveningDue {
+                DashCard("Evening check-in") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Tomorrow, \(model.tomorrow.formatted(.dateTime.weekday(.wide).day().month())): \(model.agenda.dayLine(for: model.tomorrow))")
+                            .foregroundStyle(.secondary)
+                        if let answer = model.chat.last(where: { $0.role == .assistant }), !model.chat.isEmpty {
+                            Text(ChatPanel.markdown(answer.text))
+                        }
+                        HStack {
+                            Button { Task { await model.planTomorrow() } } label: {
+                                if model.thinking { ProgressView().controlSize(.small) } else { Label("Plan with Blink", systemImage: "moon.stars") }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(model.thinking)
+                            Button("All set") { model.finishEvening() }
+                        }
+                    }
+                }
+            }
             if let next = model.agenda.today(now: now).first {
                 NextMeetingCard(event: next, now: now)
             }

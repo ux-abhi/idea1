@@ -68,6 +68,15 @@ export function parseChange(input: unknown, known: Map<string, string>):
   return title === undefined ? null : { kind, id, title };
 }
 
+/** A proposed new due time for an existing task or reminder Blink showed Claude. */
+export function parseReschedule(input: unknown, known: Map<string, string>):
+  { kind: "task" | "reminder"; id: string; title: string; due: string } | null {
+  const change = parseChange(input, known);
+  const { due_at } = (input ?? {}) as Record<string, unknown>;
+  if (!change || typeof due_at !== "string" || Number.isNaN(Date.parse(due_at))) return null;
+  return { ...change, due: new Date(due_at).toISOString() };
+}
+
 /** Claude Opus 5.5 list prices per million tokens, for the model_usage cost meter. */
 export function costUSD(inputTokens: number, outputTokens: number): number {
   return (inputTokens * 4 + outputTokens * 20) / 1_000_000;

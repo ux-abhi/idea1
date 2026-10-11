@@ -1,5 +1,5 @@
 // © Pexilim
-import { costUSD, parseChange, parseChatRequest, parseProposal } from "./input.ts";
+import { costUSD, parseChange, parseChatRequest, parseProposal, parseReschedule } from "./input.ts";
 
 Deno.test("chat requests are checked at the boundary", () => {
   const ok = parseChatRequest({ message: " hi ", history: [{ role: "user", text: "a" }], timeZone: "Asia/Kolkata" });
@@ -36,4 +36,12 @@ Deno.test("reminders from the Mac are checked, and changes only touch items Clau
   if (parseChange({ kind: "reminder", id: "x1" }, known)?.title !== "Visit doc") throw new Error("known reminder rejected");
   if (parseChange({ kind: "reminder", id: "t1" }, known) !== null) throw new Error("task id accepted as a reminder");
   if (parseChange({ kind: "task", id: "made-up" }, known) !== null) throw new Error("unknown id accepted");
+});
+
+Deno.test("reschedules need a known id and a real date", () => {
+  const known = new Map([["task:t1", "Pay rent"]]);
+  const ok = parseReschedule({ kind: "task", id: "t1", due_at: "2026-10-13T10:00:00+05:30" }, known);
+  if (!ok || ok.due !== "2026-10-13T04:30:00.000Z") throw new Error("valid reschedule rejected");
+  if (parseReschedule({ kind: "task", id: "t1", due_at: "soon" }, known) !== null) throw new Error("bad date accepted");
+  if (parseReschedule({ kind: "task", id: "x", due_at: "2026-10-13T10:00:00Z" }, known) !== null) throw new Error("unknown id accepted");
 });

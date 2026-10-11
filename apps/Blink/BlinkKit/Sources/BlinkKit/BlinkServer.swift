@@ -241,12 +241,15 @@ public final class BlinkServer: Sendable {
         try await client.from("habit_log").delete().eq("habit_id", value: habit.id).eq("day", value: day).execute()
     }
 
-    /// The owner's wake time from the profile, "HH:mm:ss" (habit days end then).
-    public func wakeTime() async throws -> (hour: Int, minute: Int) {
-        struct Row: Decodable { let wake_time: String }
-        let row: Row = try await client.from("profile").select("wake_time").single().execute().value
-        let parts = row.wake_time.split(separator: ":").compactMap { Int($0) }
-        return (parts.first ?? 7, parts.dropFirst().first ?? 0)
+    /// The owner's wake and evening times from the profile ("HH:mm:ss"): habit days end at wake; the check-in opens at evening.
+    public func dayTimes() async throws -> (wake: (hour: Int, minute: Int), evening: (hour: Int, minute: Int)) {
+        struct Row: Decodable { let wake_time: String; let evening_time: String }
+        let row: Row = try await client.from("profile").select("wake_time, evening_time").single().execute().value
+        func parse(_ s: String, _ fallback: (Int, Int)) -> (hour: Int, minute: Int) {
+            let parts = s.split(separator: ":").compactMap { Int($0) }
+            return (parts.first ?? fallback.0, parts.dropFirst().first ?? fallback.1)
+        }
+        return (parse(row.wake_time, (7, 0)), parse(row.evening_time, (21, 30)))
     }
 
     private struct HabitRow: Encodable { let id: String, name: String, weekdays: [Int] }
