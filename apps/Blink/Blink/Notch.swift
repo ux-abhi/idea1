@@ -141,6 +141,8 @@ final class NotchController {
         case .headsUp: if model.level == .rest { show(.peek, closingAfter: 8) }
         case .imminent: if model.level != .open { show(.open, closingAfter: nil) } // closes at T+5 or on a click elsewhere
         }
+        // Only P0/P1 speak (§36.2); the notch itself is out of VoiceOver's reach.
+        AccessibilityNotification.Announcement(app.agenda.statusLine(now: .now)).post()
     }
 
     /// First unlock of the day: Good morning eyes and today's brief (§9.2).
@@ -155,6 +157,7 @@ final class NotchController {
             model.briefing = true
             model.mood = .morning
             show(.open, closingAfter: 60)
+            AccessibilityNotification.Announcement("Good morning. \(app.agenda.briefLine(now: .now))").post()
         }
     }
 

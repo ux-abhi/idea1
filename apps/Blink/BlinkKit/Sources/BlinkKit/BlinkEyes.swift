@@ -79,12 +79,18 @@ public struct BlinkEyes: View {
             if patch {
                 // Panda patch: dark glass teardrop tilted outward.
                 Ellipse()
-                    .fill(LinearGradient(colors: [.gray.opacity(0.45), .black], startPoint: .top, endPoint: .bottom))
+                    .fill(LinearGradient(colors: [.gray.opacity(0.8), .gray.opacity(0.3)], startPoint: .top, endPoint: .bottom))
                     .frame(width: slot.width * 0.94, height: slot.height * 0.95)
                     .rotationEffect(.degrees(Double(side) * 16))
             }
             EyeShape(pose: shown)
                 .fill(mood.tint.color)
+                // Soft-glow rim hugging the eye, so it reads against black even at notch size.
+                .overlay {
+                    EyeShape(pose: shown)
+                        .stroke(mood.tint.color.opacity(Tokens.Glow.alpha), lineWidth: max(eyeW * 0.18, 1.5))
+                        .blur(radius: max(eyeW * 0.12, 1))
+                }
                 .animation(.easeInOut(duration: Tokens.Motion.moodTint.dur), value: mood.tint)
                 .shadow(color: mood.tint.color.opacity(Tokens.Glow.alpha), radius: Tokens.Glow.blur)
                 .frame(width: eyeW, height: eyeH)

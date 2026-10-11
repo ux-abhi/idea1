@@ -67,9 +67,9 @@ public enum MoodTint: String, CaseIterable, Sendable {
         case .thinking: .indigo
         case .done: .green
         case .attention: .orange
-        case .evening: .orange.opacity(0.7) // "low" intensity
+        case .evening: .orange.opacity(0.85) // "low" intensity, still clear on black
         case .celebrate: .yellow
-        case .dimmed: .white.opacity(0.35)
+        case .dimmed: .white.opacity(0.55) // dim, but readable against the black notch
         }
     }
 

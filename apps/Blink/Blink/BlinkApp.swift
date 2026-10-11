@@ -1,4 +1,5 @@
 // © Pexilim
+import BlinkKit
 import SwiftUI
 
 @main
@@ -24,6 +25,14 @@ struct BlinkApp: App {
         #if os(macOS)
         .defaultSize(width: 480, height: 640)
         #endif
+
+        #if os(macOS)
+        // VoiceOver can't reach the floating notch panel; the menu bar icon is its entry point (§36.2).
+        MenuBarExtra("Blink", systemImage: "eyes") {
+            MenuBarContent(showNotch: { appDelegate.showNotch() })
+                .environment(model)
+        }
+        #endif
     }
 }
 
@@ -32,6 +41,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notch: NotchController?
     func startNotch(_ app: AppModel) {
         if notch == nil { notch = NotchController(app: app) }
+    }
+
+    func showNotch() { notch?.open() }
+}
+
+/// The menu bar menu: the notch's status and actions, reachable by VoiceOver and the keyboard.
+struct MenuBarContent: View {
+    @Environment(AppModel.self) private var model
+    let showNotch: () -> Void
+
+    var body: some View {
+        Text(model.agenda.statusLine(now: .now))
+        if !model.pending.isEmpty {
+            Text(model.pending.count == 1 ? "1 waiting for you" : "\(model.pending.count) waiting for you")
+        }
+        Divider()
+        Button("Show in Notch", action: showNotch)
+        Button("Open Blink") {
+            NSApp.activate()
+            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+        }
+        Divider()
+        Button("Quit Blink") { NSApp.terminate(nil) }
+            .keyboardShortcut("q")
     }
 }
 #endif
