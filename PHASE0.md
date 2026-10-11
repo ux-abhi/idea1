@@ -38,7 +38,7 @@ run the app and check it yourself before moving on. Ask me only for things you c
 - [x] Steps 1–7 built: project, supabase-swift, first run, app lock, home, eyes preview, tests.
 - [x] Builds for My Mac and the iPhone simulator; tests pass; iPhone app lock checked; a wrong account can't sign in; `/ponytail-review` must-fix fixed.
 - [x] Eyes approved as a first pass; refine the look later.
-- [ ] Turn off "Allow new users to sign up" in Supabase (still on).
+- [x] Sign-ups turned off in Supabase (checked: `disable_signup = true`).
 - [x] Mac signing (free team) and Mac app lock checked; Mac and iPhone each registered once.
 
 ## After Phase 0
