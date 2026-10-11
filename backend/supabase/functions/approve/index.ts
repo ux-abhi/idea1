@@ -1,24 +1,8 @@
 // © Pexilim
 // Approves a red action only with a fresh signature from the owner's enrolled Secure Enclave key (ARCHITECTURE §36.5).
-// The device signs "blink-approve:v1\n<action id>\n<payload hash hex>\n<expiry unix>" after Touch ID / Face ID.
+// The device signs approvalMessage() (verify.ts) after Touch ID / Face ID.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
-
-const MAX_TTL_SECONDS = 300;
-
-export function approvalMessage(actionID: string, payloadHashHex: string, expires: number): Uint8Array {
-  return new TextEncoder().encode(`blink-approve:v1\n${actionID}\n${payloadHashHex}\n${expires}`);
-}
-
-/** PostgREST returns bytea as "\x<hex>". */
-function hex(value: string): string {
-  const h = value.startsWith("\\x") ? value.slice(2) : value;
-  if (!/^(?:[0-9a-f]{2})+$/i.test(h)) throw new Error("bad hex");
-  return h.toLowerCase();
-}
-
-function bytes(hexString: string): Uint8Array {
-  return Uint8Array.from(hexString.match(/../g)!, (b) => parseInt(b, 16));
-}
+import { MAX_TTL_SECONDS, verifyApproval } from "./verify.ts";
 
 function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -55,16 +39,7 @@ Deno.serve(async (req) => {
     .eq("id", device_id).eq("owner_id", user.id).maybeSingle();
   if (!device || device.revoked_at || !device.approval_key) return json(403, { error: "device can't approve" });
 
-  let valid = false;
-  try {
-    const key = await crypto.subtle.importKey("raw", bytes(hex(device.approval_key)),
-      { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
-    const sig = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
-    valid = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, sig,
-      approvalMessage(action.id, hex(action.payload_hash), expires));
-  } catch {
-    valid = false;
-  }
+  const valid = await verifyApproval(device.approval_key, action.id, action.payload_hash, expires, signature);
   if (!valid) return json(403, { error: "signature doesn't match" });
 
   // Conditional on still pending, so a replayed signature can't approve twice.

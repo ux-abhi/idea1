@@ -117,6 +117,7 @@ public final class BlinkServer: Sendable {
         try await client.from("action")
             .select("id, kind, risk, payload, payload_hash")
             .eq("status", value: "pending")
+            .or("expires_at.is.null,expires_at.gt.\(Date.now.ISO8601Format())") // expired cards can't be approved
             .order("created_at")
             .execute().value
     }
@@ -147,14 +148,10 @@ public final class BlinkServer: Sendable {
         try keychain.data(for: Self.deviceIDKey).flatMap { String(data: $0, encoding: .utf8) }
     }
 
-    /// Marks this device revoked, then ends the session. Local state is cleared even when offline.
-    /// shortcut: an offline sign-out leaves the server row un-revoked; retry it when Phase 1 puts approval keys on device rows.
+    /// Ends the session on this device. The device row and its approval key stay, so signing back in reuses them
+    /// (a new row would never be allowed a key). Revoking a lost device happens from another device with pairing (§36.5).
     public func signOut() async {
-        if let saved = try? keychain.data(for: Self.deviceIDKey), let id = String(data: saved, encoding: .utf8) {
-            _ = try? await client.from("device").update(["revoked_at": Date.now]).eq("id", value: id).execute()
-        }
         try? await client.auth.signOut(scope: .local)
-        try? keychain.remove(Self.deviceIDKey)
     }
 
     private struct DeviceRow: Decodable { let id: UUID }

@@ -31,6 +31,8 @@ final class AppModel {
     private(set) var calendarAccess = CalendarReader.access
     private let calendarReader = CalendarReader()
     private var watchingCalendar = false
+    private var reloading = false
+    private var reloadAgain = false
 
     private(set) var locked = true
     private var awaySince: Date?
@@ -206,11 +208,19 @@ final class AppModel {
     /// shortcut: reloads on launch, sign-in, check-in, calendar changes, wake and unlock; no midnight reload for a Mac left awake overnight; add one if reminders show stale.
     func reloadAgenda() async {
         guard calendarAccess == .granted else { return }
-        let window = CalendarReader.window(from: .now)
-        agenda = await calendarReader.agenda(in: window)
-        guard let server, email != nil else { return }
-        // The device is the source of truth; a failed upload is simply retried by the next reload.
-        try? await server.uploadCalendar(agenda.events, window: window)
+        // One at a time: overlapping uploads could land out of order and bring back a deleted event.
+        // Changes that arrive meanwhile get exactly one more pass.
+        guard !reloading else { reloadAgain = true; return }
+        reloading = true
+        defer { reloading = false }
+        repeat {
+            reloadAgain = false
+            let window = CalendarReader.window(from: .now)
+            agenda = await calendarReader.agenda(in: window)
+            guard let server, email != nil else { continue }
+            // The device is the source of truth; a failed upload is simply retried by the next reload.
+            try? await server.uploadCalendar(agenda.events, window: window)
+        } while reloadAgain
     }
 
     // MARK: App lock

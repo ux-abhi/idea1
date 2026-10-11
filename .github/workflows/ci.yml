@@ -37,3 +37,13 @@ jobs:
       - name: BlinkKit tests
         working-directory: apps/Blink/BlinkKit
         run: swift test
+
+  functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.1.4
+      - name: Edge Function tests
+        run: deno test backend/supabase/functions/
