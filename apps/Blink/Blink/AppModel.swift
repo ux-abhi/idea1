@@ -34,6 +34,15 @@ final class AppModel {
     private var unsaved: Set<String> = []
     private var onServer: Set<String> = []
     private(set) var saveProblem: String?
+    /// A note to open when the Notes screen appears (from Today's Note button).
+    var focusNoteID: String?
+
+    private(set) var habits: [Habit] = []
+    /// habit id → habit day ("yyyy-MM-dd") → answer.
+    private(set) var habitAnswers: [String: [String: HabitAnswer]] = [:]
+    private var wake = (hour: 7, minute: 0)
+    /// Bumped when an answer reaches a 7 / 30 / 100-day streak; the notch celebrates.
+    private(set) var celebrations = 0
 
     private(set) var agenda = Agenda.empty
     private(set) var calendarAccess = CalendarReader.access
@@ -113,6 +122,7 @@ final class AppModel {
             await reloadAgenda()
             await loadActions()
             await loadItems()
+            await loadHabits()
         } catch {
             switch ServerProblem(error) {
             case .signedOut:
@@ -274,6 +284,73 @@ final class AppModel {
         } catch {
             items.insert(item, at: min(index, items.count)) // put it back rather than lose it silently
             saveProblem = "Couldn't delete. Check your connection and try again."
+        }
+    }
+
+    // MARK: Habits (§36.2)
+
+    /// Today's habit day: it ends at your wake time.
+    var habitToday: Date { HabitDay.day(for: .now, wakeHour: wake.hour, wakeMinute: wake.minute) }
+
+    func isScheduledToday(_ habit: Habit) -> Bool {
+        habit.weekdays.contains(Calendar.current.component(.weekday, from: habitToday))
+    }
+
+    func answerToday(_ habit: Habit) -> HabitAnswer? { habitAnswers[habit.id]?[HabitDay.key(habitToday)] }
+
+    func progress(_ habit: Habit) -> HabitProgress {
+        habit.progress(answers: habitAnswers[habit.id] ?? [:], today: habitToday)
+    }
+
+    func loadHabits() async {
+        guard let server, email != nil else { return }
+        if let wakeTime = try? await server.wakeTime() { wake = wakeTime }
+        // 120 days covers a long streak's rules and "kept N of 7".
+        let since = HabitDay.key(Calendar.current.date(byAdding: .day, value: -120, to: habitToday) ?? habitToday)
+        guard let list = try? await server.habits(), let logs = try? await server.habitLogs(since: since) else { return }
+        habits = list
+        habitAnswers = Dictionary(grouping: logs, by: \.habitID).mapValues { Dictionary($0.map { ($0.day, $0.status) }) { $1 } }
+    }
+
+    func addHabit(_ name: String, weekdays: [Int] = Array(1...7)) async {
+        let habit = Habit(id: UUID().uuidString.lowercased(), name: name, weekdays: weekdays)
+        habits.append(habit)
+        do { try await server?.save(new: habit) } catch {
+            habits.removeAll { $0.id == habit.id }
+            saveProblem = "Couldn't add that habit. Check your connection and try again."
+        }
+    }
+
+    func setWeekdays(_ habit: Habit, to weekdays: [Int]) async {
+        guard let index = habits.firstIndex(where: { $0.id == habit.id }) else { return }
+        habits[index].weekdays = weekdays
+        do { try await server?.save(habits[index]) } catch {
+            habits[index].weekdays = habit.weekdays
+            saveProblem = "Couldn't change that habit. Check your connection and try again."
+        }
+    }
+
+    func archive(_ habit: Habit) async {
+        habits.removeAll { $0.id == habit.id }
+        do { try await server?.archive(habit) } catch {
+            habits.append(habit)
+            saveProblem = "Couldn't remove that habit. Check your connection and try again."
+        }
+    }
+
+    /// Done / Not today / Skip for today, or nil to clear (answering again undoes it).
+    func answer(_ habit: Habit, _ answer: HabitAnswer?) async {
+        guard let server else { return }
+        let day = HabitDay.key(habitToday)
+        let before = habitAnswers[habit.id]?[day]
+        habitAnswers[habit.id, default: [:]][day] = answer
+        do {
+            if let answer { try await server.answer(habit, day: day, with: answer) }
+            else { try await server.clearAnswer(habit, day: day) }
+            if answer == .done && progress(habit).isMilestone { celebrations += 1 }
+        } catch {
+            habitAnswers[habit.id, default: [:]][day] = before
+            saveProblem = "Couldn't save that. Check your connection and try again."
         }
     }
 

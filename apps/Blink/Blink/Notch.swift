@@ -99,6 +99,17 @@ final class NotchController {
             // Calendar, reminders and tasks all feed the cues.
             for await _ in Observations({ (app.agenda, app.items) }) { self?.scheduleCues() }
         }
+        // 7 / 30 / 100-day habit streaks: Celebrate for 3 s, then back to whatever the cues say (§7).
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            var seen = app.celebrations
+            for await count in Observations({ app.celebrations }) where count != seen {
+                seen = count
+                self?.model.mood = .celebrate
+                try? await Task.sleep(for: .seconds(3))
+                self?.evaluateCue()
+            }
+        }
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"),
                                                             object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.morningBriefIfFirstToday() }

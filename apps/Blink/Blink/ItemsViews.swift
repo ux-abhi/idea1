@@ -8,14 +8,30 @@ import SwiftUI
 struct TasksView: View {
     @Environment(AppModel.self) private var model
     @State private var newTitle = ""
+    @State private var newHabit = ""
     @State private var showDone = false
 
     var body: some View {
-        List {
-            Section {
-                TextField("Add a task, e.g. \"Send invoice tomorrow at 10\"", text: $newTitle)
-                    .onSubmit(add)
-                    .textFieldStyle(.plain)
+        let habitsToday = model.habits.filter { model.isScheduledToday($0) }
+        let doneToday = habitsToday.filter { model.answerToday($0) == .done }.count
+        DashPage("Tasks & Habits", summary: "\(model.openTasks.count) open · \(habitsToday.isEmpty ? "no habits today" : "\(doneToday) of \(habitsToday.count) habits done")") {
+            DashCard("Habits") {
+                if !model.habits.isEmpty {
+                    CardRows(items: model.habits) { HabitRow(habit: $0) }
+                    Divider()
+                }
+                AddField(placeholder: "Add a habit, e.g. \"Read 20 pages\"", text: $newHabit) {
+                    let name = newHabit.trimmingCharacters(in: .whitespaces)
+                    guard !name.isEmpty else { return }
+                    newHabit = ""
+                    Task { await model.addHabit(name) }
+                }
+                Text("Skips and rest days never break a streak, and one missed day a week is forgiven.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            DashCard("Tasks") {
+                AddField(placeholder: "Add a task, e.g. \"Send invoice tomorrow at 10\"", text: $newTitle, action: add)
                 // Shows what Blink understood before Return.
                 if let due = TaskInput.parse(newTitle).due {
                     Label("Due \(due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))",
@@ -23,32 +39,35 @@ struct TasksView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            }
-            Section {
                 if model.openTasks.isEmpty {
-                    Text("No open tasks. Type above and press Return, for example \"Send invoice to Studio K\".")
-                        .foregroundStyle(.secondary)
+                    Text("No open tasks. Type above and press Return.").foregroundStyle(.secondary)
+                } else {
+                    Divider()
+                    CardRows(items: model.openTasks) { TaskRow(task: $0) }
                 }
-                ForEach(model.openTasks) { TaskRow(task: $0) }
             }
+
             if !model.agenda.reminders.isEmpty {
-                Section {
-                    ForEach(model.agenda.reminders) { ReminderRow(reminder: $0) }
-                } header: {
-                    Text("Apple Reminders due today")
+                DashCard("Apple Reminders due today") {
+                    CardRows(items: model.agenda.reminders) { ReminderRow(reminder: $0) }
                 }
             }
+
             if !model.doneTasks.isEmpty {
-                Section(isExpanded: $showDone) {
-                    ForEach(model.doneTasks) { TaskRow(task: $0) }
-                } header: {
-                    Text("Done (\(model.doneTasks.count))")
+                DashCard {
+                    DisclosureGroup(isExpanded: $showDone) {
+                        CardRows(items: model.doneTasks) { TaskRow(task: $0) }.padding(.top, 8)
+                    } label: {
+                        Text("Done (\(model.doneTasks.count))").font(.headline)
+                    }
                 }
             }
         }
-        .navigationTitle("Tasks")
         .safeAreaInset(edge: .bottom) { SaveProblemBar() }
-        .task { await model.loadItems() }
+        .task {
+            await model.loadItems()
+            await model.loadHabits()
+        }
     }
 
     private func add() {
@@ -178,6 +197,99 @@ struct DueMenu: View {
     }
 }
 
+/// One habit: the last 7 days, the streak, and today's Done / Not today / Skip (§36.2: neutral, no guilt).
+struct HabitRow: View {
+    @Environment(AppModel.self) private var model
+    let habit: Habit
+
+    var body: some View {
+        let progress = model.progress(habit)
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(habit.name)
+                HStack(spacing: 6) {
+                    LastSevenDays(habit: habit)
+                    Text(summary(progress)).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if !model.isScheduledToday(habit) {
+                Text("Rest day").font(.caption).foregroundStyle(.secondary)
+            } else if let answer = model.answerToday(habit) {
+                Menu {
+                    Button("Done") { Task { await model.answer(habit, .done) } }
+                    Button("Not today") { Task { await model.answer(habit, .notToday) } }
+                    Button("Skip") { Task { await model.answer(habit, .skipped) } }
+                    Divider()
+                    Button("Clear") { Task { await model.answer(habit, nil) } }
+                } label: {
+                    Label(word(answer), systemImage: symbol(answer))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            } else {
+                HStack(spacing: 6) {
+                    Button("Done") { Task { await model.answer(habit, .done) } }
+                        .buttonStyle(.borderedProminent)
+                    Button("Not today") { Task { await model.answer(habit, .notToday) } }
+                    Button("Skip") { Task { await model.answer(habit, .skipped) } }
+                }
+                .controlSize(.small)
+            }
+        }
+        .contextMenu {
+            Button("Every Day") { Task { await model.setWeekdays(habit, to: Array(1...7)) } }
+            Button("Weekdays") { Task { await model.setWeekdays(habit, to: [2, 3, 4, 5, 6]) } }
+            Button("Weekends") { Task { await model.setWeekdays(habit, to: [1, 7]) } }
+            Divider()
+            Button("Remove Habit", role: .destructive) { Task { await model.archive(habit) } }
+        }
+    }
+
+    private func summary(_ p: HabitProgress) -> String {
+        let run = p.streak == 1 ? "1 day" : "\(p.streak) days"
+        return p.of == 0 ? run : "\(run) · kept \(p.kept) of \(p.of)"
+    }
+
+    private func word(_ a: HabitAnswer) -> String {
+        switch a { case .done: "Done"; case .notToday: "Not today"; case .skipped: "Skipped" }
+    }
+
+    private func symbol(_ a: HabitAnswer) -> String {
+        switch a { case .done: "checkmark.circle.fill"; case .notToday: "circle.dashed"; case .skipped: "forward.end" }
+    }
+}
+
+/// Seven small marks, oldest first: done, skipped, not done (neutral dashed), rest day, today still open.
+struct LastSevenDays: View {
+    @Environment(AppModel.self) private var model
+    let habit: Habit
+
+    var body: some View {
+        let cal = Calendar.current
+        HStack(spacing: 2) {
+            ForEach((0..<7).reversed(), id: \.self) { offset in
+                let day = cal.date(byAdding: .day, value: -offset, to: model.habitToday) ?? model.habitToday
+                let answer = model.habitAnswers[habit.id]?[HabitDay.key(day)]
+                let scheduled = habit.weekdays.contains(cal.component(.weekday, from: day))
+                Image(systemName: mark(answer: answer, scheduled: scheduled, isToday: offset == 0))
+                    .foregroundStyle(answer == .done ? .green : .secondary)
+                    .font(.caption2)
+            }
+        }
+        .accessibilityHidden(true) // the summary text says the same in words
+    }
+
+    private func mark(answer: HabitAnswer?, scheduled: Bool, isToday: Bool) -> String {
+        switch answer {
+        case .done: "checkmark.circle.fill"
+        case .skipped: "forward.end"
+        case .notToday: "circle.dashed"
+        case nil: !scheduled ? "minus" : (isToday ? "circle" : "circle.dashed")
+        }
+    }
+}
+
 /// An Apple Reminder, editable in place: tick off, rename, change the due date.
 struct ReminderRow: View {
     @Environment(AppModel.self) private var model
@@ -219,36 +331,65 @@ struct NotesView: View {
     @State private var selection: String?
 
     var body: some View {
-        HSplitView {
-            List(model.notes, selection: $selection) { note in
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(note.title.isEmpty ? "New note" : note.title).lineLimit(1)
-                    Text(note.body.isEmpty ? note.updatedAt.formatted(.relative(presentation: .named)) : note.body)
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text("Notes").font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                    Text(model.notes.count == 1 ? "1 note" : "\(model.notes.count) notes").foregroundStyle(.secondary)
                 }
-                .tag(note.id)
-                .contextMenu {
-                    Button("Delete", role: .destructive) { Task { await model.delete(note) } }
+                .padding(.horizontal, 4)
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(model.notes) { note in
+                            Button { selection = note.id } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(note.title.isEmpty ? "New note" : note.title).font(.headline).lineLimit(1)
+                                    Text(note.body.isEmpty ? note.updatedAt.formatted(.relative(presentation: .named)) : note.body)
+                                        .font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(selection == note.id ? AnyShapeStyle(Color.accentColor.opacity(0.15)) : AnyShapeStyle(.background),
+                                            in: .rect(cornerRadius: 16, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(selection == note.id ? Color.accentColor : .clear, lineWidth: 1.5))
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Delete", role: .destructive) { Task { await model.delete(note) } }
+                            }
+                        }
+                    }
                 }
             }
-            .frame(minWidth: 200, idealWidth: 240, maxWidth: 320)
+            .frame(width: 260)
 
             Group {
                 if let id = selection, let note = model.notes.first(where: { $0.id == id }) {
                     NoteEditor(note: note).id(note.id)
                 } else {
-                    ContentUnavailableView {
-                        Label(model.notes.isEmpty ? "No notes yet" : "Pick a note", systemImage: "note.text")
-                    } description: {
+                    VStack(spacing: 12) {
+                        Image(systemName: "note.text").font(.largeTitle).foregroundStyle(.secondary)
+                        Text(model.notes.isEmpty ? "No notes yet" : "Pick a note").font(.headline)
                         Text("Notes you write here are kept on your server and searchable later, for example meeting notes or an idea.")
-                    } actions: {
-                        Button("New Note", action: newNote)
+                            .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
+                        Button("New Note", action: newNote).buttonStyle(.borderedProminent)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+            .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
         }
+        .padding(20)
+        .background(BlinkCanvas())
         .navigationTitle("Notes")
+        .onAppear {
+            if let id = model.focusNoteID {
+                selection = id
+                model.focusNoteID = nil
+            }
+        }
         .toolbar {
             Button(action: newNote) { Label("New Note", systemImage: "square.and.pencil") }
                 .keyboardShortcut("n")
@@ -298,6 +439,22 @@ struct NoteEditor: View {
         changed.title = title
         changed.body = text
         model.edit(changed)
+    }
+}
+
+/// A plain add field with a round "+" (the Look v3 pill-and-plus).
+struct AddField: View {
+    let placeholder: String
+    @Binding var text: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus.circle.fill").foregroundStyle(Color.accentColor).imageScale(.large)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+                .onSubmit(action)
+        }
     }
 }
 

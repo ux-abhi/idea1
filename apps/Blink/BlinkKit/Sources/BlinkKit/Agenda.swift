@@ -180,6 +180,24 @@ extension Agenda {
         return (meetingTimes + dueTimes).filter { $0 > now }.min()
     }
 
+    /// Today's hero: one big value and a caption, e.g. ("12 min", "until Design review"), ("3", "due today").
+    public func hero(now: Date, tasks: [DueItem] = [], calendar: Calendar = .current) -> (value: String, caption: String) {
+        if let event = today(now: now, calendar: calendar).first {
+            let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
+            if minutes <= 0 { return ("Now", event.title) }
+            if minutes < 60 { return ("\(minutes) min", "until \(event.title)") }
+            if minutes < 180 {
+                let h = minutes / 60, m = minutes % 60
+                return (m == 0 ? "\(h) h" : "\(h) h \(m) min", "until \(event.title)")
+            }
+            return (event.start.formatted(date: .omitted, time: .shortened), "Next: \(event.title)")
+        }
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+        let due = dueItems(adding: tasks).filter { $0.due < endOfToday }.count
+        if due > 0 { return ("\(due)", "due today") }
+        return ("All clear", "Nothing else on your calendar today")
+    }
+
     /// The morning brief's summary line, numbers first.
     public func briefLine(now: Date, calendar: Calendar = .current) -> String {
         let todays = events.filter { calendar.isDate($0.start, inSameDayAs: now) }

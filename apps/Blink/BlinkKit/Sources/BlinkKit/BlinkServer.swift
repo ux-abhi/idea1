@@ -205,6 +205,52 @@ public final class BlinkServer: Sendable {
         enum CodingKeys: String, CodingKey { case id, type, title, body, status, due_at }
     }
 
+    // MARK: Habits
+
+    public func habits() async throws -> [Habit] {
+        try await client.from("habit").select("id, name, weekdays, created_at")
+            .is("archived_at", value: nil).order("created_at").execute().value
+    }
+
+    /// Answers from `sinceDay` ("yyyy-MM-dd") on.
+    public func habitLogs(since sinceDay: String) async throws -> [HabitLog] {
+        try await client.from("habit_log").select("habit_id, day, status")
+            .gte("day", value: sinceDay).execute().value
+    }
+
+    public func save(new habit: Habit) async throws {
+        try await client.from("habit").insert(HabitRow(id: habit.id, name: habit.name, weekdays: habit.weekdays)).execute()
+    }
+
+    public func save(_ habit: Habit) async throws {
+        try await client.from("habit").update(HabitRow(id: habit.id, name: habit.name, weekdays: habit.weekdays))
+            .eq("id", value: habit.id).execute()
+    }
+
+    public func archive(_ habit: Habit) async throws {
+        try await client.from("habit").update(["archived_at": Date.now]).eq("id", value: habit.id).execute()
+    }
+
+    public func answer(_ habit: Habit, day: String, with answer: HabitAnswer) async throws {
+        try await client.from("habit_log")
+            .upsert(HabitLog(habitID: habit.id, day: day, status: answer), onConflict: "habit_id,day", returning: .minimal)
+            .execute()
+    }
+
+    public func clearAnswer(_ habit: Habit, day: String) async throws {
+        try await client.from("habit_log").delete().eq("habit_id", value: habit.id).eq("day", value: day).execute()
+    }
+
+    /// The owner's wake time from the profile, "HH:mm:ss" (habit days end then).
+    public func wakeTime() async throws -> (hour: Int, minute: Int) {
+        struct Row: Decodable { let wake_time: String }
+        let row: Row = try await client.from("profile").select("wake_time").single().execute().value
+        let parts = row.wake_time.split(separator: ":").compactMap { Int($0) }
+        return (parts.first ?? 7, parts.dropFirst().first ?? 0)
+    }
+
+    private struct HabitRow: Encodable { let id: String, name: String, weekdays: [Int] }
+
     // MARK: Devices
 
     public struct DeviceInfo: Decodable, Identifiable, Sendable {

@@ -238,6 +238,17 @@ extension Tokens {
         #expect(agenda.nextCueChange(after: at(0, 28, day: 12), tasks: [task]) == at(0, 38, day: 12))
     }
 
+    @Test func heroShowsOneBigNumber() {
+        let agenda = Agenda(events: [event("Review", at(15, 0))], reminders: [])
+        #expect(agenda.hero(now: at(14, 48), calendar: cal) == ("12 min", "until Review"))
+        #expect(agenda.hero(now: at(13, 20), calendar: cal) == ("1 h 40 min", "until Review"))
+        #expect(agenda.hero(now: at(15, 2), calendar: cal) == ("Now", "Review"))
+        #expect(agenda.hero(now: at(9, 0), calendar: cal).caption == "Next: Review")
+        let task = DueItem(id: "t", title: "Pay rent", due: at(18, 0))
+        #expect(Agenda.empty.hero(now: at(16, 0), tasks: [task], calendar: cal) == ("1", "due today"))
+        #expect(Agenda.empty.hero(now: at(16, 0), calendar: cal).value == "All clear")
+    }
+
     @Test func onlyRemindersWithADueDateTodayOrEarlierCount() {
         let list = [AgendaReminder(id: "undated", title: "u", due: nil),
                     AgendaReminder(id: "today", title: "t", due: at(18, 0)),

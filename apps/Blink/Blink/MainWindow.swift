@@ -14,7 +14,7 @@ struct MainWindow: View {
             case .today: "Today"
             case .calendar: "Calendar"
             case .notes: "Notes"
-            case .tasks: "Tasks"
+            case .tasks: "Tasks & Habits"
             case .waiting: "Waiting for you"
             case .activity: "Activity"
             }
@@ -52,7 +52,7 @@ struct MainWindow: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 210)
         } detail: {
             switch section ?? .today {
-            case .today: TodayView(showWaiting: { section = .waiting })
+            case .today: TodayView(showWaiting: { section = .waiting }, showNotes: { section = .notes })
             case .calendar: CalendarListView()
             case .notes: NotesView()
             case .tasks: TasksView()
@@ -82,71 +82,6 @@ struct MainWindow: View {
         case .connected:
             guard let lastSync = model.lastSync else { return "Connected to \(host)" }
             return "Connected to \(host) · Synced \(lastSync.formatted(.relative(presentation: .named)))"
-        }
-    }
-}
-
-// MARK: Today
-
-struct TodayView: View {
-    @Environment(AppModel.self) private var model
-    let showWaiting: () -> Void
-
-    var body: some View {
-        TimelineView(.everyMinute) { context in
-            let now = context.date
-            Form {
-                SwiftUI.Section {
-                    Text(model.agenda.statusLine(now: now, tasks: model.dueTasks))
-                        .font(.title2.weight(.semibold))
-                    if model.calendarAccess == .granted {
-                        Text(model.agenda.briefLine(now: now)).foregroundStyle(.secondary)
-                    }
-                }
-
-                if let first = model.pending.first {
-                    SwiftUI.Section {
-                        CardView(action: first, count: model.pending.count, problem: model.actionProblem, app: model)
-                        if model.pending.count > 1 {
-                            Button("See all \(model.pending.count)", action: showWaiting)
-                        }
-                    } header: {
-                        Text("Waiting for you")
-                    }
-                }
-
-                SwiftUI.Section("Meetings") {
-                    if model.calendarAccess != .granted {
-                        ConnectCalendarRow()
-                    } else if model.agenda.today(now: now).isEmpty {
-                        Text("No more meetings today.").foregroundStyle(.secondary)
-                    }
-                    ForEach(model.agenda.today(now: now)) { EventRow(event: $0, now: now) }
-                }
-
-                let dueTasks = model.openTasks.filter { $0.isDue(by: now) }
-                if !dueTasks.isEmpty {
-                    SwiftUI.Section("Tasks due") {
-                        ForEach(dueTasks) { TaskRow(task: $0) }
-                    }
-                }
-
-                if !model.agenda.reminders.isEmpty {
-                    SwiftUI.Section("Reminders") {
-                        ForEach(model.agenda.reminders) { ReminderRow(reminder: $0) }
-                    }
-                }
-            }
-            .formStyle(.grouped)
-        }
-        .navigationTitle(greeting)
-    }
-
-    private var greeting: String {
-        switch Calendar.current.component(.hour, from: .now) {
-        case 5..<12: "Good morning"
-        case 12..<18: "Good afternoon"
-        default: "Good evening"
         }
     }
 }
@@ -202,23 +137,27 @@ struct CalendarListView: View {
 
     var body: some View {
         let days = Dictionary(grouping: model.agenda.events) { Calendar.current.startOfDay(for: $0.start) }
-        Group {
+        let count = model.agenda.events.count
+        DashPage("Calendar", summary: count == 0 ? "Next 7 days" : "\(count == 1 ? "1 meeting" : "\(count) meetings") in the next 7 days") {
             if model.calendarAccess != .granted {
-                Form { ConnectCalendarRow() }.formStyle(.grouped)
+                DashCard { ConnectCalendarRow() }
             } else if days.isEmpty {
-                ContentUnavailableView("No meetings this week", systemImage: "calendar",
-                                       description: Text("Timed events from the calendars on this Mac show here for the next 7 days. All-day events and ones you've declined are left out."))
+                EmptyCard(symbol: "calendar", title: "No meetings this week",
+                          message: "Timed events from the calendars on this Mac show here for the next 7 days. All-day events and ones you've declined are left out.")
             } else {
-                List {
-                    ForEach(days.keys.sorted(), id: \.self) { day in
-                        SwiftUI.Section(day.formatted(.dateTime.weekday(.wide).day().month())) {
-                            ForEach(days[day] ?? []) { EventRow(event: $0, now: .now) }
-                        }
+                ForEach(days.keys.sorted(), id: \.self) { day in
+                    DashCard(dayTitle(day)) {
+                        CardRows(items: days[day] ?? []) { EventRow(event: $0, now: .now) }
                     }
                 }
             }
         }
-        .navigationTitle("Calendar")
+    }
+
+    private func dayTitle(_ day: Date) -> String {
+        if Calendar.current.isDateInToday(day) { return "Today" }
+        if Calendar.current.isDateInTomorrow(day) { return "Tomorrow" }
+        return day.formatted(.dateTime.weekday(.wide).day().month())
     }
 }
 
@@ -228,38 +167,40 @@ struct WaitingView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Group {
+        DashPage("Waiting for you", summary: model.pending.isEmpty ? "Nothing needs you" : "\(model.pending.count) need\(model.pending.count == 1 ? "s" : "") your OK") {
             if model.pending.isEmpty {
-                ContentUnavailableView("Nothing waiting for you", systemImage: "tray",
-                                       description: Text("When Blink prepares something that needs your OK, like adding a reminder, it waits here and in the notch."))
-            } else {
-                List(model.pending) { action in
+                EmptyCard(symbol: "tray", title: "Nothing waiting for you",
+                          message: "When Blink prepares something that needs your OK, like adding a reminder, it waits here and in the notch.")
+            }
+            ForEach(model.pending) { action in
+                DashCard {
                     CardView(action: action, count: 1, problem: action.id == model.pending.first?.id ? model.actionProblem : nil, app: model)
-                        .padding(.vertical, 4)
                 }
             }
         }
-        .navigationTitle("Waiting for you")
         .task { await model.loadActions() }
     }
 }
 
 // MARK: Activity
 
-/// What Blink did, newest first. shortcut: no Undo yet; add it with the first undoable kinds (Phase 2 notes and tasks).
+/// What Blink did, newest first, by day. shortcut: no Undo yet; add it with the first undoable kinds (Phase 2 notes and tasks).
 struct ActivityView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Group {
+        let days = Dictionary(grouping: model.activity) { Calendar.current.startOfDay(for: $0.decidedAt ?? .distantPast) }
+        DashPage("Activity", summary: model.activity.isEmpty ? "What Blink did" : "Last \(model.activity.count) decisions") {
             if model.activity.isEmpty {
-                ContentUnavailableView("No activity yet", systemImage: "clock.arrow.circlepath",
-                                       description: Text("Everything Blink does or you approve is listed here, for example a reminder it added."))
-            } else {
-                List(model.activity) { ActivityRow(action: $0) }
+                EmptyCard(symbol: "clock.arrow.circlepath", title: "No activity yet",
+                          message: "Everything Blink does or you approve is listed here, for example a reminder it added.")
+            }
+            ForEach(days.keys.sorted(by: >), id: \.self) { day in
+                DashCard(Calendar.current.isDateInToday(day) ? "Today" : day.formatted(.dateTime.weekday(.wide).day().month())) {
+                    CardRows(items: days[day] ?? []) { ActivityRow(action: $0) }
+                }
             }
         }
-        .navigationTitle("Activity")
         .task { await model.loadActivity() }
     }
 }
