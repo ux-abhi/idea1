@@ -109,10 +109,10 @@ struct CardRows<Item: Identifiable, Row: View>: View {
     @ViewBuilder let row: (Item) -> Row
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 if index > 0 { Divider() }
-                row(item)
+                row(item).frame(maxWidth: .infinity, alignment: .leading) // rows start at the card's edge
             }
         }
     }

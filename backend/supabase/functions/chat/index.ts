@@ -89,7 +89,9 @@ Deno.serve(async (req) => {
     habits: habits.data ?? [],
   };
 
-  const client = new Anthropic({ apiKey });
+  // Keys made at organisation level need the workspace named on every request.
+  const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
+  const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     ...parsed.history.map((t) => ({ role: t.role, content: t.text })),
     { role: "user", content: `<blink_data>${JSON.stringify(data)}</blink_data>\n\n${parsed.message}` },
@@ -156,6 +158,11 @@ Deno.serve(async (req) => {
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) return json(502, { error: "The Anthropic API key on this server isn't valid." });
     if (error instanceof Anthropic.RateLimitError) return json(429, { error: "Claude is busy right now. Try again in a moment." });
+    if (error instanceof Anthropic.BadRequestError) {
+      // Anthropic's own reason; it never contains the key or the owner's data.
+      console.error("anthropic 400", error.message);
+      return json(502, { error: `Claude rejected the request: ${error.message}` });
+    }
     if (error instanceof Anthropic.APIError) return json(502, { error: `Claude returned an error (${error.status}).` });
     throw error;
   }

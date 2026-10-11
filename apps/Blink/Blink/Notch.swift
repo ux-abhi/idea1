@@ -16,6 +16,7 @@ final class NotchModel {
     /// The glance content's measured height; the open shape fits it.
     var glanceHeight: CGFloat = 60
     static let openWidth: CGFloat = 420
+    static let chatWidth: CGFloat = 500
     /// The tallest the open shape can get; the panel is sized for it.
     static let maxGlanceHeight: CGFloat = 240
     /// The morning brief is showing.
@@ -32,7 +33,7 @@ final class NotchModel {
         case .rest: return rest
         case .peek: return CGSize(width: max(rest.width, 320), height: rest.height + 36)
         // Eyes row, 8 pt gap, the measured content, 20 pt to breathe at the bottom.
-        case .open: return CGSize(width: max(rest.width, Self.openWidth),
+        case .open: return CGSize(width: max(rest.width, chatting ? Self.chatWidth : Self.openWidth),
                                   height: rest.height + 8 + min(glanceHeight, Self.maxGlanceHeight) + 20)
         }
     }
@@ -222,7 +223,7 @@ final class NotchController {
         }
         let side = (screen.auxiliaryTopLeftArea?.width ?? 0) + (screen.auxiliaryTopRightArea?.width ?? 0)
         model.notchSize = CGSize(width: screen.frame.width - side, height: screen.safeAreaInsets.top)
-        let size = CGSize(width: max(model.size(for: .rest).width, NotchModel.openWidth),
+        let size = CGSize(width: max(model.size(for: .rest).width, NotchModel.chatWidth),
                           height: model.notchSize.height + 8 + NotchModel.maxGlanceHeight + 20)
         let frame = NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height,
                            width: size.width, height: size.height)
@@ -356,7 +357,7 @@ struct NotchView: View {
                 .background(alignment: .top) {
                     glance(statusLine: statusLine, now: context.date)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: max(model.size(for: .rest).width, NotchModel.openWidth))
+                        .frame(width: model.size(for: .open).width)
                         .hidden()
                         .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { model.glanceHeight = $0 }
                 }
@@ -499,56 +500,103 @@ struct GlanceView: View {
         .padding(.horizontal, 24)
     }
 }
-/// Chat in the notch: the last few turns, a field that has the keyboard, and any card Claude just proposed.
+/// Chat in the notch: your messages in bubbles on the right, Blink's on the left, a padded field with a send
+/// button that has the keyboard, and any card Claude just proposed.
 struct ChatPanel: View {
     let app: AppModel
     @State private var text = ""
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             if app.chat.isEmpty {
-                Text("Ask Blink").font(.title3.weight(.semibold))
-                Text("e.g. \"What's left today?\" or \"Remind me to call Sam on Friday at 4\"")
-                    .foregroundStyle(.white.opacity(0.7))
-            }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(app.chat.suffix(6)) { turn in
-                            Text(turn.text)
-                                .foregroundStyle(turn.role == .user ? .white.opacity(0.65) : .white)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Ask Blink").font(.title3.weight(.semibold))
+                    Text("“What's left today?” · “Remind me to call Sam on Friday at 4”")
+                        .font(.callout)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 8) {
+                            ForEach(app.chat.suffix(8)) { turn in bubble(turn).id(turn.id) }
+                            if app.thinking {
+                                HStack(spacing: 6) {
+                                    ProgressView().controlSize(.small)
+                                    Text("Thinking…").foregroundStyle(.white.opacity(0.7))
+                                }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .textSelection(.enabled)
-                                .id(turn.id)
+                                .id("thinking")
+                            }
                         }
-                        if app.thinking {
-                            Text("Thinking…").foregroundStyle(.indigo).id("thinking")
-                        }
+                        .padding(.vertical, 2)
+                    }
+                    .frame(maxHeight: 150)
+                    .onChange(of: app.chat.count) {
+                        withAnimation { proxy.scrollTo(app.chat.last?.id, anchor: .bottom) }
                     }
                 }
-                .frame(maxHeight: 120)
-                .onChange(of: app.chat.count) { proxy.scrollTo(app.chat.last?.id, anchor: .bottom) }
             }
+
             if let card = app.pending.first {
                 CardView(action: card, count: app.pending.count, problem: app.actionProblem, app: app)
+                    .padding(12)
+                    .background(.white.opacity(0.06), in: .rect(cornerRadius: 14, style: .continuous))
             }
-            TextField("Ask Blink…", text: $text)
-                .textFieldStyle(.plain)
-                .padding(8)
-                .background(.white.opacity(0.1), in: .rect(cornerRadius: 10, style: .continuous))
-                .focused($focused)
-                .disabled(app.thinking)
-                .onSubmit {
-                    let message = text
-                    text = ""
-                    Task { await app.ask(message) }
+
+            HStack(spacing: 8) {
+                TextField("Ask Blink…", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .focused($focused)
+                    .onSubmit(send)
+                Button(action: send) {
+                    Image(systemName: "arrow.up.circle.fill").font(.title2)
+                        .foregroundStyle(canSend ? Color.accentColor : .white.opacity(0.25))
                 }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .accessibilityLabel("Send")
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 8)
+            .padding(.vertical, 9)
+            .background(.white.opacity(0.08), in: .rect(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(focused ? 0.3 : 0.12)))
         }
-        .font(.callout)
         .foregroundStyle(.white)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .padding(.bottom, 6)
         .onAppear { focused = true }
+    }
+
+    private var canSend: Bool { !app.thinking && !text.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    private func send() {
+        guard canSend else { return }
+        let message = text
+        text = ""
+        Task { await app.ask(message) }
+    }
+
+    @ViewBuilder
+    private func bubble(_ turn: BlinkServer.ChatTurn) -> some View {
+        if turn.role == .user {
+            Text(turn.text)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Color.accentColor.opacity(0.35), in: .rect(cornerRadius: 14, style: .continuous))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.leading, 40)
+        } else {
+            Text(turn.text)
+                .textSelection(.enabled)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(.white.opacity(0.08), in: .rect(cornerRadius: 14, style: .continuous))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 40)
+        }
     }
 }
 

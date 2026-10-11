@@ -455,6 +455,9 @@ struct AddField: View {
                 .textFieldStyle(.plain)
                 .onSubmit(action)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.quaternary.opacity(0.6), in: .rect(cornerRadius: 12, style: .continuous))
     }
 }
 

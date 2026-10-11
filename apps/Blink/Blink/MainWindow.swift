@@ -196,12 +196,18 @@ struct ActivityView: View {
                           message: "Everything Blink does or you approve is listed here, for example a reminder it added.")
             }
             ForEach(days.keys.sorted(by: >), id: \.self) { day in
-                DashCard(Calendar.current.isDateInToday(day) ? "Today" : day.formatted(.dateTime.weekday(.wide).day().month())) {
+                DashCard(activityDayTitle(day)) {
                     CardRows(items: days[day] ?? []) { ActivityRow(action: $0) }
                 }
             }
         }
         .task { await model.loadActivity() }
+    }
+
+    /// Decisions without a time (made outside Blink) go under "Earlier".
+    private func activityDayTitle(_ day: Date) -> String {
+        if day < Date(timeIntervalSince1970: 0) { return "Earlier" }
+        return Calendar.current.isDateInToday(day) ? "Today" : day.formatted(.dateTime.weekday(.wide).day().month())
     }
 }
 
