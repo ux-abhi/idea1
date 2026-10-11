@@ -41,5 +41,18 @@ run the app and check it yourself before moving on. Ask me only for things you c
 - [x] Sign-ups turned off in Supabase (checked: `disable_signup = true`).
 - [x] Mac signing (free team) and Mac app lock checked; Mac and iPhone each registered once.
 
+## Phase 1 status (Mac session, 2026-10-12)
+Built: notch panel (rest, peek, glance), calendar and reminders with server snapshots, T−10 / T−3 meeting cues, morning brief on first unlock, Ask-First cards with server-verified red approvals (Secure Enclave + `approve` Edge Function), menu bar entry.
+
+Gates (ARCHITECTURE §29, §36.7):
+- [x] Meeting card pops out at T−10 (and opens at T−3); morning brief on unlock. Checked on the Mac.
+- [x] Ask-First works: amber reminder done; red approved only via a verified Touch ID signature; 8 bypass attempts refused.
+- [x] Idle CPU ≈ 0 and 0 fps at rest (Instruments: only the designed 0.2 s blink; no timers).
+- [x] `/ponytail-audit` must-fix items fixed; every shortcut has an upgrade trigger.
+- [x] Reduce Motion passes. CI green (database, secrets, Swift, Edge Function tests).
+- [x] First run to the notch in ~85 s on a fresh test copy (target 2 min); no meeting was on the calendar that night, so the notch showed "All clear".
+- [ ] VoiceOver: menu bar entry and announcements added, not yet confirmed by ear.
+- [ ] State matrix (§9.8) not formally covered; offline, signed-out, permission-denied and empty states exist.
+
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
