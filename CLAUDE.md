@@ -8,10 +8,41 @@ Claude-powered personal assistant in the MacBook notch and the iPhone Dynamic Is
 - `PHASE0.md` for what to build right now. Build one phase at a time; each phase has a "done when" in ARCHITECTURE §29 and §36.7.
 
 ## How to work
-- Ponytail mode (full): the smallest change that fully solves the task. Mark deliberate shortcuts with `// shortcut: <limit>, <when to upgrade>`. Never cut validation at trust boundaries, data-loss handling, security or accessibility.
+- **Ponytail is always on (level: full).** Load the `ponytail` skill at the start of every coding task: the smallest change that fully solves it. Mark deliberate shortcuts with `// shortcut: <limit>, <when to upgrade>`. Never cut validation at trust boundaries, data-loss handling, security or accessibility.
+- **Before every commit:** run `/ponytail-review` on the change and fix every must-fix finding.
+- **End of every phase:** run `/ponytail-audit` and `/ponytail-debt`; the phase is not done while the audit has must-fix items or a shortcut has no upgrade trigger.
 - One small test for any new branch, parser, money or security logic.
-- Use the installed skills for their topic (swiftui-*, activitykit, widgetkit, app-intents, eventkit, swift-security, swift-concurrency, swift-testing, ios-accessibility, sf-symbols, motion-design, ponytail-review before each commit).
 - Build and run what you change. On the Mac: build with Xcode or `xcodebuild`, and look at the result before saying it works.
+
+## Skills: load the matching one before writing code for that area
+| Work | Skills |
+|---|---|
+| Any SwiftUI view or state | `swiftui-pro`, `swiftui-expert-skill`, `swiftui-patterns` |
+| Layout, lists, forms, settings | `swiftui-layout-components` |
+| Navigation, tabs, deep links | `swiftui-navigation` |
+| Gestures, hover, drag | `swiftui-gestures` |
+| Animation, the Blink eyes, notch morphs | `swiftui-animation`, `animation-patterns`, `motion-design`, `design-motion-principles` (values from `design/tokens.json` → `motion`) |
+| Glass and materials | `swiftui-liquid-glass` |
+| Icons | `sf-symbols` |
+| Notch panel (NSPanel, AppKit) | `appkit-swiftui-bridge`, `macos-tahoe-apis` |
+| Keychain, Face ID / Touch ID, Secure Enclave, pinning | `swift-security`, `authentication` |
+| async/await, actors, Swift 6 errors | `swift-concurrency` |
+| Local storage | `swiftdata` |
+| Calendar and reminders | `eventkit` |
+| Notifications and push | `push-notifications` |
+| Dynamic Island, Live Activities | `activitykit`, `live-activity-generator` |
+| Widgets, Control Center | `widgetkit` |
+| Siri, Shortcuts, Spotlight | `app-intents` |
+| Background work | `background-processing` |
+| First run, setup | `onboarding-generator` |
+| Habits and streaks | `streak-tracker` (but follow ARCHITECTURE §36.2 habit rules over its defaults) |
+| Words on screen | `ux-writing` |
+| Accessibility | `ios-accessibility` (every new screen) |
+| Reviewing a screen | `swiftui-ux-review`, `ui-review-tahoe`, `ui-ux-pro-max` |
+| Performance, battery | `swiftui-performance`, `debugging-instruments`, `metrickit` |
+| Tests | `swift-testing` |
+| Web app and design pages | `frontend-design`, `webapp-testing`, `gsap-*`, `motion-dev-animations` |
+| Content engine (Phase 3) | `ig-*` |
 
 ## Code rules
 - Swift 6, SwiftUI first, AppKit only for the notch panel. App targets: Approachable Concurrency with MainActor default. `BlinkKit`: no default isolation; sync engine is one actor.
