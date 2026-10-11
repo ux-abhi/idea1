@@ -607,6 +607,17 @@ struct ChatPanel: View {
                     }
                 }
             }
+            if !app.quickReplies.isEmpty && !app.thinking {
+                HStack(spacing: 6) {
+                    ForEach(app.quickReplies, id: \.self) { reply in
+                        Button(reply) { Task { await app.quickReply(reply) } }
+                            .buttonStyle(.plain)
+                            .font(.callout)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(.white.opacity(0.12), in: .capsule)
+                    }
+                }
+            }
             if let card = app.pending.first {
                 CardView(action: card, count: app.pending.count, problem: app.actionProblem, app: app)
                     .padding(12)

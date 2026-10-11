@@ -309,6 +309,20 @@ final class AppModel {
         }
     }
 
+    /// Several at once from Select mode: tasks by id, reminders by id.
+    func completeAll(tasks: [BlinkItem], reminders: [AgendaReminder]) async {
+        for task in tasks where task.status != .done { await toggle(task) }
+        for reminder in reminders { await complete(reminder) }
+    }
+
+    func deleteAll(tasks: [BlinkItem], reminders: [AgendaReminder]) async {
+        for task in tasks { await delete(task) }
+        for reminder in reminders {
+            agenda.reminders.removeAll { $0.id == reminder.id }
+            await writeReminder { try await calendarReader.deleteReminder(id: reminder.id) }
+        }
+    }
+
     func saveIfNeeded(_ id: String) async {
         if unsaved.contains(id) { await save(id) }
     }
@@ -414,10 +428,35 @@ final class AppModel {
         eveningsDone += 1
     }
 
-    /// "Plan with Blink": Claude fits open tasks around tomorrow's calendar and proposes them as cards.
+    /// Quick replies shown under Blink's question during the evening check-in.
+    private(set) var quickReplies: [String] = []
+
+    /// "Plan with Blink": a short conversation first. Blink asks before it proposes anything (owner feedback).
     func planTomorrow() async {
         let day = tomorrow.formatted(.dateTime.weekday(.wide).day().month())
-        await ask("Evening check-in: plan my tomorrow, \(day). Fit my open tasks around tomorrow's calendar with realistic times and propose them. At most three short lines.")
+        quickReplies = []
+        await ask("""
+            Evening check-in for \(day). Before proposing anything, ask me one short question: is there anything to add \
+            for tomorrow, or should I keep my usual day? Mention in a few words what tomorrow already holds. \
+            Propose nothing until I answer.
+            """)
+        quickReplies = ["Keep my usual day", "Add something", "Nothing else, I'm set"]
+    }
+
+    /// A quick reply: "Nothing else" ends the check-in; the others continue the conversation.
+    func quickReply(_ text: String) async {
+        quickReplies = []
+        if text.hasPrefix("Nothing else") {
+            finishEvening()
+            return
+        }
+        if text == "Add something" {
+            chat.append(.init(role: .assistant, text: "What should I add? Type it below, e.g. \"gym at 7, call Sam after lunch\"."))
+            return
+        }
+        await ask(text == "Keep my usual day"
+                  ? "Keep my usual day: plan tomorrow around my calendar and habits, fit my open tasks in with realistic times, and propose them."
+                  : text)
     }
 
     // MARK: Chat
@@ -425,6 +464,7 @@ final class AppModel {
     func ask(_ text: String) async {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let server, !message.isEmpty, !thinking else { return }
+        quickReplies = []
         let history = chat
         chat.append(.init(role: .user, text: message))
         thinking = true
@@ -443,7 +483,10 @@ final class AppModel {
         }
     }
 
-    func clearChat() { chat = [] }
+    func clearChat() {
+        chat = []
+        quickReplies = []
+    }
 
     // MARK: Apple Reminders
 

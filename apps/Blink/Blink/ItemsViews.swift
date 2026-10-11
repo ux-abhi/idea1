@@ -10,6 +10,10 @@ struct TasksView: View {
     @State private var newTitle = ""
     @State private var newHabit = ""
     @State private var showDone = false
+    /// Select mode: tick several tasks and reminders, then finish or delete them together.
+    @State private var selecting = false
+    @State private var selected: Set<String> = []
+    @State private var confirmDelete = false
 
     var body: some View {
         let habitsToday = model.habits.filter { model.isScheduledToday($0) }
@@ -30,7 +34,8 @@ struct TasksView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            DashCard("Tasks") {
+            DashCard("Tasks", trailing: model.openTasks.isEmpty && model.agenda.reminders.isEmpty ? nil : (selecting ? "Done" : "Select"),
+                     action: { selecting.toggle(); selected = [] }) {
                 AddField(placeholder: "Add a task, e.g. \"Send invoice tomorrow at 10\"", text: $newTitle, action: add)
                 // Shows what Blink understood before Return.
                 if let due = TaskInput.parse(newTitle).due {
@@ -43,13 +48,13 @@ struct TasksView: View {
                     Text("No open tasks. Type above and press Return.").foregroundStyle(.secondary)
                 } else {
                     Divider()
-                    CardRows(items: model.openTasks) { TaskRow(task: $0) }
+                    CardRows(items: model.openTasks) { task in selectable(task.id) { TaskRow(task: task) } }
                 }
             }
 
             if !model.agenda.reminders.isEmpty {
                 DashCard("Apple Reminders due today") {
-                    CardRows(items: model.agenda.reminders) { ReminderRow(reminder: $0) }
+                    CardRows(items: model.agenda.reminders) { reminder in selectable(reminder.id) { ReminderRow(reminder: reminder) } }
                 }
             }
 
@@ -63,11 +68,70 @@ struct TasksView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom) { SaveProblemBar() }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                if selecting { selectionBar }
+                SaveProblemBar()
+            }
+        }
+        .confirmationDialog("Delete \(selected.count) item\(selected.count == 1 ? "" : "s")?", isPresented: $confirmDelete) {
+            Button("Delete", role: .destructive) {
+                let (tasks, reminders) = chosen()
+                Task { await model.deleteAll(tasks: tasks, reminders: reminders) }
+                selected = []
+                selecting = false
+            }
+        } message: {
+            Text("Reminders are removed from Apple Reminders too. This can't be undone from Blink yet.")
+        }
         .task {
             await model.loadItems()
             await model.loadHabits()
         }
+    }
+
+    /// A tick box in front of a row while selecting.
+    private func selectable<Row: View>(_ id: String, @ViewBuilder row: () -> Row) -> some View {
+        HStack(spacing: 10) {
+            if selecting {
+                Button {
+                    if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
+                } label: {
+                    Image(systemName: selected.contains(id) ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(selected.contains(id) ? Color.accentColor : .secondary)
+                        .imageScale(.large)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(selected.contains(id) ? "Selected" : "Not selected")
+            }
+            row()
+        }
+    }
+
+    private var selectionBar: some View {
+        HStack(spacing: 10) {
+            Text("\(selected.count) selected").foregroundStyle(.secondary)
+            Button("Select All") {
+                selected = Set(model.openTasks.map(\.id) + model.agenda.reminders.map(\.id))
+            }
+            Spacer()
+            Button("Mark Done") {
+                let (tasks, reminders) = chosen()
+                Task { await model.completeAll(tasks: tasks, reminders: reminders) }
+                selected = []
+                selecting = false
+            }
+            .disabled(selected.isEmpty)
+            Button("Delete…", role: .destructive) { confirmDelete = true }
+                .disabled(selected.isEmpty)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+
+    private func chosen() -> ([BlinkItem], [AgendaReminder]) {
+        (model.openTasks.filter { selected.contains($0.id) }, model.agenda.reminders.filter { selected.contains($0.id) })
     }
 
     private func add() {

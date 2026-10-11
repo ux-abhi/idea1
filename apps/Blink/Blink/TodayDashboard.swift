@@ -44,6 +44,13 @@ struct TodayView: View {
                         if let answer = model.chat.last(where: { $0.role == .assistant }), !model.chat.isEmpty {
                             Text(ChatPanel.markdown(answer.text))
                         }
+                        if !model.quickReplies.isEmpty && !model.thinking {
+                            HStack {
+                                ForEach(model.quickReplies, id: \.self) { reply in
+                                    Button(reply) { Task { await model.quickReply(reply) } }
+                                }
+                            }
+                        }
                         HStack {
                             Button { Task { await model.planTomorrow() } } label: {
                                 if model.thinking { ProgressView().controlSize(.small) } else { Label("Plan with Blink", systemImage: "moon.stars") }
