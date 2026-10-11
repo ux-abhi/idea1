@@ -131,6 +131,8 @@ import Testing
         #expect(!AppLock.shouldRelock(awaySince: nil, now: now))
         #expect(!AppLock.shouldRelock(awaySince: now.addingTimeInterval(-299), now: now))
         #expect(AppLock.shouldRelock(awaySince: now.addingTimeInterval(-300), now: now))
+        #expect(!AppLock.shouldRelock(awaySince: now.addingTimeInterval(-300), now: now, after: 900))
+        #expect(AppLock.shouldRelock(awaySince: now.addingTimeInterval(-60), now: now, after: 60))
     }
 }
 

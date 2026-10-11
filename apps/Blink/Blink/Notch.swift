@@ -223,7 +223,9 @@ final class NotchController {
     /// Clicks pass through everywhere except the shape; hover peeks after 150 ms and closes 350 ms after leaving (§36.2).
     /// shortcut: fast pointer passes aren't filtered (only the 150 ms delay) and this has no test; add both if peeks fire by accident.
     private func pointerMoved() {
-        let inside = shapeRect().contains(NSEvent.mouseLocation)
+        // With a hidden rest style there is nothing to hover at rest.
+        let restVisible = model.level != .rest || RestStyle.current == .ears
+        let inside = restVisible && shapeRect().contains(NSEvent.mouseLocation)
         panel?.ignoresMouseEvents = !inside
         if inside {
             leaveTask?.cancel()
@@ -293,6 +295,7 @@ struct NotchView: View {
     let open: () -> Void
     let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(RestStyle.key) private var restStyle = RestStyle.ears
 
     var body: some View {
         // Once a minute, never per frame: keeps the countdown current at ~0 CPU.
@@ -358,6 +361,7 @@ struct NotchView: View {
         .accessibilityLabel("Blink")
         .accessibilityValue(app.pending.isEmpty ? statusLine : "\(statusLine). \(app.pending.count) waiting for you")
         .accessibilityAction(named: "Open", open)
+        .opacity(model.level == .rest && restStyle != .ears ? 0 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 

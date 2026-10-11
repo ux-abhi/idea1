@@ -236,7 +236,8 @@ final class AppModel {
 
     func scenePhaseChanged(_ phase: ScenePhase) {
         if phase == .active {
-            if AppLock.shouldRelock(awaySince: awaySince) {
+            let after = UserDefaults.standard.object(forKey: "lockAfter") as? Double ?? AppLock.defaultRelockAfter
+            if AppLock.shouldRelock(awaySince: awaySince, after: after) {
                 locked = true
                 promptPending = true
             }

@@ -4,11 +4,12 @@ import LocalAuthentication
 
 /// App lock: Face ID / Touch ID with passcode or password fallback (ARCHITECTURE §36.5). A UX gate, not encryption.
 public enum AppLock {
-    public static let relockAfter: TimeInterval = 5 * 60
+    /// Default 5 minutes (ARCHITECTURE §36.5); the user can change it in Settings › Privacy.
+    public static let defaultRelockAfter: TimeInterval = 5 * 60
 
-    public static func shouldRelock(awaySince: Date?, now: Date = .now) -> Bool {
+    public static func shouldRelock(awaySince: Date?, now: Date = .now, after: TimeInterval = defaultRelockAfter) -> Bool {
         guard let awaySince else { return false }
-        return now.timeIntervalSince(awaySince) >= relockAfter
+        return now.timeIntervalSince(awaySince) >= after
     }
 
     public enum Result: Sendable { case unlocked, cancelled, unavailable }

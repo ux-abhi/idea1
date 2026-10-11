@@ -8,6 +8,7 @@ struct BlinkApp: App {
     @Environment(\.scenePhase) private var scenePhase
     #if os(macOS)
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
+    @AppStorage(RestStyle.key) private var restStyle = RestStyle.ears
     #endif
 
     var body: some Scene {
@@ -34,7 +35,7 @@ struct BlinkApp: App {
 
         #if os(macOS)
         // VoiceOver can't reach the floating notch panel; the menu bar icon is its entry point (§36.2).
-        MenuBarExtra("Blink", systemImage: "eyes") {
+        MenuBarExtra("Blink", systemImage: "eyes", isInserted: .constant(restStyle != .hidden)) {
             MenuBarContent(showNotch: { appDelegate.showNotch() })
                 .environment(model)
         }
@@ -50,26 +51,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showNotch() { notch?.open() }
-}
-
-/// Settings (⌘,), behind the same app lock as the window.
-/// shortcut: one General pane (server, calendar, eyes, sign out); split into the §36.2 sections in Phase 2 step 2.
-struct SettingsRoot: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        Group {
-            if model.locked {
-                LockView()
-            } else if model.screen == .home {
-                NavigationStack { HomeView() }
-            } else {
-                ContentUnavailableView("Connect your server first", systemImage: "server.rack",
-                                       description: Text("Settings appear once Blink is connected to your server and you're signed in."))
-            }
-        }
-        .frame(width: 480, height: 560)
-    }
 }
 
 /// The menu bar menu: the notch's status and actions, reachable by VoiceOver and the keyboard.

@@ -154,6 +154,47 @@ public final class BlinkServer: Sendable {
         ]))
     }
 
+    // MARK: Devices
+
+    public struct DeviceInfo: Decodable, Identifiable, Sendable {
+        public let id: String
+        public let platform: String
+        public let name: String
+        public let lastSeenAt: Date?
+        public let revokedAt: Date?
+        public let hasApprovalKey: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case id, platform, name
+            case lastSeenAt = "last_seen_at", revokedAt = "revoked_at", approvalKey = "approval_key"
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            platform = try c.decode(String.self, forKey: .platform)
+            name = try c.decode(String.self, forKey: .name)
+            lastSeenAt = try c.decodeIfPresent(Date.self, forKey: .lastSeenAt)
+            revokedAt = try c.decodeIfPresent(Date.self, forKey: .revokedAt)
+            hasApprovalKey = try c.decodeIfPresent(String.self, forKey: .approvalKey) != nil
+        }
+    }
+
+    public func devices() async throws -> [DeviceInfo] {
+        try await client.from("device")
+            .select("id, platform, name, last_seen_at, revoked_at, approval_key")
+            .order("created_at")
+            .execute().value
+    }
+
+    /// Revokes a lost device: it can no longer approve red actions.
+    public func revoke(deviceID id: String) async throws {
+        try await client.from("device").update(["revoked_at": Date.now]).eq("id", value: id).execute()
+    }
+
+    /// This device's row id, lowercased to match the server's.
+    public var currentDeviceID: String? { (try? deviceID())?.lowercased() }
+
     private func deviceID() throws -> String? {
         try keychain.data(for: Self.deviceIDKey).flatMap { String(data: $0, encoding: .utf8) }
     }
