@@ -447,7 +447,6 @@ struct NotesView: View {
         }
         .padding(20)
         .background(BlinkCanvas())
-        .navigationTitle("Notes")
         .onAppear {
             if let id = model.focusNoteID {
                 selection = id

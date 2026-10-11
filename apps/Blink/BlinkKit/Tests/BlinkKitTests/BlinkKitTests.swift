@@ -281,6 +281,19 @@ extension Tokens {
         let action = try decoder.decode(BlinkAction.self, from: Data(json.utf8))
         #expect(action.risk == .amber && action.payload.verb == "Add reminder" && action.payload.due != nil)
     }
+
+    @Test func activityStatesWhatHappened() throws {
+        func row(_ title: String, _ status: String) throws -> BlinkAction {
+            var action = try JSONDecoder().decode(BlinkAction.self, from: Data(
+                #"{"id":"a","kind":"reminder.add","risk":"green","payload_hash":"01","payload":{"title":"\#(title)"}}"#.utf8))
+            action.status = status
+            return action
+        }
+        #expect(try row("Add reminder “Call Sam”?", "done").historyTitle == "Added reminder “Call Sam”")
+        #expect(try row("Mark done: task “Pay”?", "done").historyTitle == "Marked done: task “Pay”")
+        #expect(try row("Move reminder “Job” to Mon 17:30?", "declined").historyTitle == "Dismissed: move reminder “Job” to Mon 17:30")
+        #expect(try row("Add task “X”?", "failed").historyTitle == "Didn't work: add task “X”")
+    }
 }
 
 @Suite struct ItemTests {
@@ -472,4 +485,13 @@ extension Tokens {
 @Test func timerTakesTheEarsOnlyInCalmMoods() {
     #expect(Mood.idle.letsTimerShow && Mood.sleepy.letsTimerShow)
     #expect(!Mood.headsUp.letsTimerShow && !Mood.thinking.letsTimerShow && !Mood.done.letsTimerShow)
+}
+
+@Test func habitAddedAfterMidnightCountsForTheRunningHabitDay() {
+    let cal = Calendar(identifier: .gregorian)
+    let sunday = cal.date(from: DateComponents(year: 2026, month: 10, day: 11))!
+    let createdMondayNight = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 1))!
+    let habit = Habit(id: "h", name: "Read", weekdays: Array(1...7), createdAt: createdMondayNight)
+    let progress = habit.progress(answers: [HabitDay.key(sunday, calendar: cal): .done], today: sunday, calendar: cal)
+    #expect(progress.streak == 1)
 }

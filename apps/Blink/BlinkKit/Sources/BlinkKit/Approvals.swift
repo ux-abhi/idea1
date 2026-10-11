@@ -42,6 +42,24 @@ public struct BlinkAction: Decodable, Identifiable, Equatable, Sendable {
     /// The card's question; falls back to the kind.
     public var title: String { payload.title ?? kind }
 
+    /// How a decided action reads in Activity: what happened, not the question the card asked.
+    /// "Add reminder “Call Sam”?" done → "Added reminder “Call Sam”"; dismissed → "Dismissed: add reminder “Call Sam”".
+    public var historyTitle: String {
+        let question = title.hasSuffix("?") ? String(title.dropLast()) : title
+        let lowered = question.prefix(1).lowercased() + question.dropFirst()
+        switch status {
+        case "done", "approved":
+            let past = ["Add ": "Added ", "Move ": "Moved ", "Delete ": "Deleted ", "Mark done: ": "Marked done: "]
+            for (verb, done) in past where question.hasPrefix(verb) { return done + question.dropFirst(verb.count) }
+            return question
+        case "declined": return "Dismissed: " + lowered
+        case "failed": return "Didn't work: " + lowered
+        case "expired": return "Expired: " + lowered
+        case "undone": return "Undone: " + lowered
+        default: return question
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, kind, risk, payload, status
         case payloadHash = "payload_hash"

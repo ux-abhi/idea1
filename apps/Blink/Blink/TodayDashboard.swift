@@ -21,21 +21,20 @@ struct TodayView: View {
                     }
                     VStack(spacing: 16) {
                         main(now: now)
-                        side(now: now)
+                        side(now: now, inRow: true)
                     }
                 }
                 .padding(20)
             }
             .background(BlinkCanvas())
         }
-        .navigationTitle("Today")
     }
 
     // MARK: Columns
 
     private func main(now: Date) -> some View {
         VStack(spacing: 16) {
-            HeroCard(now: now, showNotes: showNotes, showWaiting: showWaiting)
+            HeroCard(now: now, showNotes: showNotes)
             if model.eveningDue {
                 DashCard("Evening check-in") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -92,43 +91,40 @@ struct TodayView: View {
         }
     }
 
-    private func side(now: Date) -> some View {
+    /// The stat cards: a column beside the day, or one row under it when the window is narrow.
+    private func side(now: Date, inRow: Bool = false) -> some View {
         let todays = model.agenda.events.filter { Calendar.current.isDate($0.start, inSameDayAs: now) }
         let ended = todays.filter { $0.end <= now }.count
         let habits = model.habits.filter { model.isScheduledToday($0) }
         let done = habits.filter { model.answerToday($0) == .done }.count
         let due = model.openTasks.filter { $0.isDue(by: now) }
+        let layout = inRow ? AnyLayout(HStackLayout(alignment: .top, spacing: 12)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
         return VStack(alignment: .leading, spacing: 12) {
             Text("At a glance").font(.headline).padding(.horizontal, 4)
+            layout {
             StatCard(title: "Meetings today", value: todays.isEmpty ? "None" : "\(todays.count - ended) left",
                      progress: todays.isEmpty ? nil : Double(ended) / Double(todays.count), tint: .mint)
             StatCard(title: "Habits today", value: habits.isEmpty ? "None yet" : "\(done) of \(habits.count)",
+                     detail: bestStreak(),
                      progress: habits.isEmpty ? nil : Double(done) / Double(habits.count), tint: .green)
-            StatCard(title: "Tasks due", value: due.isEmpty ? "None" : "\(due.count)",
+            StatCard(title: "Tasks due", value: due.isEmpty ? "None" : "\(due.count)", detail: nextDeadline(now),
                      progress: nil, tint: due.contains { ($0.dueAt ?? .distantFuture) < now } ? .orange : .accentColor)
-
-            Text("Properties").font(.headline).padding(.horizontal, 4).padding(.top, 8)
-            VStack(spacing: 10) {
-                PropertyRow(label: "Next deadline", value: nextDeadline(now))
-                PropertyRow(label: "Best streak", value: bestStreak())
-                PropertyRow(label: "Waiting for you", value: "\(model.pending.count)")
             }
-            .padding(14)
-            .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func nextDeadline(_ now: Date) -> String {
+    private func nextDeadline(_ now: Date) -> String? {
         guard let task = model.openTasks.filter({ ($0.dueAt ?? .distantPast) > now }).min(by: { $0.dueAt! < $1.dueAt! }),
-              let due = task.dueAt else { return "None" }
-        return "\(task.title) · \(due.formatted(.dateTime.weekday(.abbreviated).hour().minute()))"
+              let due = task.dueAt else { return nil }
+        return "Next: \(task.title) · \(due.formatted(.dateTime.weekday(.abbreviated).hour().minute()))"
     }
 
-    private func bestStreak() -> String {
+    private func bestStreak() -> String? {
         guard let best = model.habits.map({ ($0, model.progress($0).streak) }).max(by: { $0.1 < $1.1 }), best.1 > 0 else {
-            return "–"
+            return nil
         }
-        return "\(best.0.name) · \(best.1 == 1 ? "1 day" : "\(best.1) days")"
+        return "Best streak: \(best.0.name) · \(best.1 == 1 ? "1 day" : "\(best.1) days")"
     }
 }
 
@@ -139,7 +135,6 @@ private struct HeroCard: View {
     @Environment(AppModel.self) private var model
     let now: Date
     let showNotes: () -> Void
-    let showWaiting: () -> Void
     @State private var adding = false
     @State private var newTask = ""
 
@@ -163,20 +158,9 @@ private struct HeroCard: View {
                     model.focusNoteID = model.create(.note, title: "").id
                     showNotes()
                 }
-                Button { adding = true } label: {
-                    Image(systemName: "plus").font(.title3.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                        .background(.white.opacity(0.12), in: .circle)
-                        .overlay(Circle().strokeBorder(.white.opacity(0.2)))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .accessibilityLabel("New task")
-                .popover(isPresented: $adding, arrowEdge: .bottom) { quickTask }
-                PillButton(title: model.pending.isEmpty ? "Waiting" : "Waiting \(model.pending.count)", symbol: "tray",
-                           action: showWaiting)
+                PillButton(title: "Task", symbol: "plus") { adding = true }
+                    .popover(isPresented: $adding, arrowEdge: .bottom) { quickTask }
             }
-            SyncChip()
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
@@ -227,27 +211,6 @@ private struct PillButton: View {
     }
 }
 
-private struct SyncChip: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let host = model.server?.config.host ?? "your server"
-        let (text, tint): (String, Color) = switch model.status {
-        case .connected: ("Synced · \(host)", .green)
-        case .checking: ("Checking \(host)…", .secondary)
-        case .unreachable: ("Can't reach \(host)", .orange)
-        }
-        HStack(spacing: 6) {
-            Circle().fill(tint).frame(width: 7, height: 7)
-            Text(text).font(.caption)
-        }
-        .foregroundStyle(.white.opacity(0.85))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .overlay(Capsule().strokeBorder(.white.opacity(0.2)))
-    }
-}
-
 /// The one warm, rich card: the next meeting, with Join, and Blink watching it.
 private struct NextMeetingCard: View {
     let event: AgendaEvent
@@ -292,6 +255,7 @@ private struct NextMeetingCard: View {
 private struct StatCard: View {
     let title: String
     let value: String
+    var detail: String?
     let progress: Double?
     let tint: Color
 
@@ -299,6 +263,7 @@ private struct StatCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.caption).foregroundStyle(.secondary)
             Text(value).font(.system(.title2, design: .rounded).weight(.semibold)).monospacedDigit()
+            if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
             if let progress {
                 GeometryReader { geo in
                     Capsule().fill(.quaternary)
@@ -310,23 +275,9 @@ private struct StatCard: View {
             }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading) // equal heights in a row
         .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct PropertyRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack {
-            Text(label).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).fontWeight(.semibold).lineLimit(1)
-        }
-        .font(.callout)
     }
 }
 #endif

@@ -60,6 +60,8 @@ struct MainWindow: View {
             case .activity: ActivityView()
             }
         }
+        // One title per page: the big heading in the page; the toolbar carries the app name and sync state.
+        .navigationTitle("Blink")
         .navigationSubtitle(subtitle)
         .task {
             await model.refresh()
@@ -73,15 +75,14 @@ struct MainWindow: View {
             .tag(s)
     }
 
-    /// "Last synced" in the toolbar (§36.2).
+    /// "Last synced" in the toolbar (§36.2); the server's address only when it can't be reached (it's in Settings).
     private var subtitle: String {
-        let host = model.server?.config.host ?? "your server"
         switch model.status {
-        case .checking: return "Checking \(host)…"
-        case .unreachable: return "Can't reach \(host)"
+        case .checking: return "Syncing…"
+        case .unreachable: return "Can't reach \(model.server?.config.host ?? "your server")"
         case .connected:
-            guard let lastSync = model.lastSync else { return "Connected to \(host)" }
-            return "Connected to \(host) · Synced \(lastSync.formatted(.relative(presentation: .named)))"
+            guard let lastSync = model.lastSync else { return "Synced" }
+            return "Synced \(lastSync.formatted(.relative(presentation: .named)))"
         }
     }
 }
@@ -229,17 +230,12 @@ struct ActivityRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: outcome.symbol).foregroundStyle(outcome.tint)
+                .accessibilityLabel(outcome.word)
             VStack(alignment: .leading, spacing: 2) {
-                Text(action.title).lineLimit(1)
-                HStack(spacing: 4) {
-                    Text(outcome.word)
-                    if let at = action.decidedAt {
-                        Text("·")
-                        Text(at, format: .relative(presentation: .named))
-                    }
+                Text(action.historyTitle).lineLimit(1)
+                if let at = action.decidedAt {
+                    Text(at, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .combine)

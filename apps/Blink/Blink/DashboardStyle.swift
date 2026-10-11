@@ -42,7 +42,6 @@ struct DashPage<Content: View>: View {
             .frame(maxWidth: .infinity)
         }
         .background(BlinkCanvas())
-        .navigationTitle(title)
     }
 }
 

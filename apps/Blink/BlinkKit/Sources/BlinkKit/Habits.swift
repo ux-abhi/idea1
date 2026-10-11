@@ -69,7 +69,8 @@ extension Habit {
     /// Streak rules (§36.2): rest days and skips never break it; one missed day per week is forgiven
     /// automatically; an unanswered today doesn't count against it yet.
     public func progress(answers: [String: HabitAnswer], today: Date, calendar: Calendar = .current) -> HabitProgress {
-        let created = calendar.startOfDay(for: createdAt)
+        // A habit added after midnight but before wake time belongs to the habit day still running (today).
+        let created = min(calendar.startOfDay(for: createdAt), today)
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
         let start = answers[HabitDay.key(today, calendar: calendar)] == nil ? yesterday : today
         let (kept, of) = kept(answers, start, created, calendar)
