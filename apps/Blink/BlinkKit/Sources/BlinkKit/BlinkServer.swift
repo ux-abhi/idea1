@@ -122,6 +122,16 @@ public final class BlinkServer: Sendable {
             .execute().value
     }
 
+    /// The latest decided actions, newest first, for Activity.
+    public func recentActivity(limit: Int = 50) async throws -> [BlinkAction] {
+        try await client.from("action")
+            .select("id, kind, risk, payload, payload_hash, status, decided_at")
+            .neq("status", value: "pending")
+            .order("decided_at", ascending: false, nullsFirst: false)
+            .limit(limit)
+            .execute().value
+    }
+
     /// Green and amber actions are decided by the client directly; the database refuses this for red approvals.
     public func setStatus(_ status: String, for action: BlinkAction, result: [String: String]? = nil) async throws {
         var change: [String: AnyJSON] = ["status": .string(status), "decided_at": .string(Date.now.ISO8601Format())]

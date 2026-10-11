@@ -15,6 +15,9 @@ public struct BlinkAction: Decodable, Identifiable, Equatable, Sendable {
     public let payload: Payload
     /// bytea as PostgREST sends it: "\x<hex>".
     public let payloadHash: String
+    /// Set for decided actions (Activity): approved, done, declined, failed, expired, undone.
+    public var status: String?
+    public var decidedAt: Date?
 
     /// What every proposer puts in the payload so the card can show it; kind-specific fields sit beside these.
     public struct Payload: Decodable, Equatable, Sendable {
@@ -33,8 +36,9 @@ public struct BlinkAction: Decodable, Identifiable, Equatable, Sendable {
     public var title: String { payload.title ?? kind }
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, risk, payload
+        case id, kind, risk, payload, status
         case payloadHash = "payload_hash"
+        case decidedAt = "decided_at"
     }
 
     /// The exact bytes a device signs to approve a red action; mirrors `approvalMessage` in functions/approve.

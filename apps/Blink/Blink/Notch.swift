@@ -454,10 +454,10 @@ struct CardView: View {
                 Image(systemName: symbol).foregroundStyle(.orange) // mood.attention: needs you
                 Text(action.title).font(.headline).lineLimit(2)
                 Spacer(minLength: 4)
-                if count > 1 { Text("1 of \(count)").font(.caption).foregroundStyle(.white.opacity(0.6)) }
+                if count > 1 { Text("1 of \(count)").font(.caption).foregroundStyle(.secondary) }
             }
             if let summary = action.payload.summary {
-                Text(summary).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                Text(summary).foregroundStyle(.secondary).lineLimit(1) // adapts: notch (white) or window
             }
             if let problem {
                 Text(problem).font(.caption).foregroundStyle(.orange)

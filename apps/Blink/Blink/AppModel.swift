@@ -26,6 +26,8 @@ final class AppModel {
     /// Ask-First cards waiting for the user (§6).
     private(set) var pending: [BlinkAction] = []
     private(set) var actionProblem: String?
+    /// Decided actions, newest first (Activity).
+    private(set) var activity: [BlinkAction] = []
 
     private(set) var agenda = Agenda.empty
     private(set) var calendarAccess = CalendarReader.access
@@ -138,6 +140,11 @@ final class AppModel {
         pending = actions
     }
 
+    func loadActivity() async {
+        guard let server, email != nil, let recent = try? await server.recentActivity() else { return }
+        activity = recent
+    }
+
     func approve(_ action: BlinkAction) async {
         guard let server else { return }
         actionProblem = nil
@@ -151,6 +158,7 @@ final class AppModel {
                 try await execute(action, server: server)
             }
             pending.removeAll { $0.id == action.id }
+            await loadActivity()
         } catch ApprovalKey.Problem.cancelled {
             // Cancel keeps the card (§36.5).
         } catch {
@@ -163,6 +171,7 @@ final class AppModel {
         do {
             try await server.setStatus("declined", for: action)
             pending.removeAll { $0.id == action.id }
+            await loadActivity()
         } catch {
             actionProblem = "Couldn't dismiss. Check your connection and try again."
         }
