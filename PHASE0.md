@@ -39,7 +39,7 @@ run the app and check it yourself before moving on. Ask me only for things you c
 - [x] Builds for My Mac and the iPhone simulator; tests pass; iPhone app lock checked; a wrong account can't sign in; `/ponytail-review` must-fix fixed.
 - [x] Eyes approved as a first pass; refine the look later.
 - [ ] Turn off "Allow new users to sign up" in Supabase (still on).
-- [ ] Mac signing: Team ID in `Config/Local.xcconfig`, then check the Mac app lock with Touch ID.
+- [x] Mac signing (free team) and Mac app lock checked; Mac and iPhone each registered once.
 
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
