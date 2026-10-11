@@ -39,6 +39,14 @@ public enum Mood: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Calm moods let a running timer take the ears; anything that needs you brings the eyes back.
+    public var letsTimerShow: Bool {
+        switch self {
+        case .idle, .morning, .focus, .evening, .sleepy: true
+        case .headsUp, .important, .listening, .thinking, .done, .concerned, .celebrate: false
+        }
+    }
+
     public var pose: EyePose {
         switch self {
         case .idle, .morning: .pill

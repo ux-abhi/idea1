@@ -462,3 +462,8 @@ extension Tokens {
         #expect(!ClipboardHistory.shouldRecord(types: ["org.nspasteboard.TransientType"]))
     }
 }
+
+@Test func timerTakesTheEarsOnlyInCalmMoods() {
+    #expect(Mood.idle.letsTimerShow && Mood.sleepy.letsTimerShow)
+    #expect(!Mood.headsUp.letsTimerShow && !Mood.thinking.letsTimerShow && !Mood.done.letsTimerShow)
+}

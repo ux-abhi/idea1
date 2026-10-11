@@ -495,22 +495,20 @@ struct NotchView: View {
         let size = model.size(for: model.level)
         let radius = model.level == .rest ? Tokens.Radius.notchRest : Tokens.Radius.notchOpen
         return VStack(spacing: 8) {
-            BlinkEyes(mood: model.mood, notchGap: model.notchSize.width)
-                .frame(width: model.size(for: .rest).width, height: model.notchSize.height)
-                .overlay(alignment: .trailing) {
-                    if let timer = app.timer {
-                        // Once a second while a timer runs; nothing ticks otherwise.
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            Text(FocusTimer.clock(timer.remaining(now: context.date)))
-                                .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
-                                .foregroundStyle(timer.kind == .focus ? Color.mint : .green)
-                                .opacity(timer.isPaused ? 0.5 : 1)
-                        }
-                        .frame(width: NotchModel.timerEar, height: model.notchSize.height)
-                        .background(.black)
-                        .accessibilityLabel("\(timer.label), \(FocusTimer.clock(timer.remaining(now: .now))) left")
-                    }
+            let timerEars = app.timer != nil && model.level != .open && model.mood.letsTimerShow
+            ZStack {
+                // A running timer takes both ears: the eyes close to a line and fade, then the ring and clock come in.
+                BlinkEyes(mood: model.mood, notchGap: model.notchSize.width)
+                    .scaleEffect(y: timerEars && !reduceMotion ? 0.08 : 1)
+                    .opacity(timerEars ? 0 : 1)
+                    .animation(reduceMotion ? .easeInOut(duration: Tokens.Motion.eyeShapeReduceMotion.dur)
+                                            : Tokens.Motion.eyeShape.animation, value: timerEars)
+                if timerEars, let timer = app.timer {
+                    TimerEars(timer: timer, gap: model.notchSize.width)
+                        .transition(contentTransition)
                 }
+            }
+                .frame(width: model.size(for: .rest).width, height: model.notchSize.height)
                 .overlay(alignment: .bottomTrailing) {
                     // Waiting for you: a small dot in the right ear (§4).
                     if !app.pending.isEmpty {
@@ -555,7 +553,11 @@ struct NotchView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Blink")
-        .accessibilityValue(app.pending.isEmpty ? statusLine : "\(statusLine). \(app.pending.count) waiting for you")
+        .accessibilityValue([
+            app.timer.map { "\($0.label) \($0.isPaused ? "paused, " : "")\(FocusTimer.clock($0.remaining(now: now))) left" },
+            statusLine,
+            app.pending.isEmpty ? nil : "\(app.pending.count) waiting for you",
+        ].compactMap(\.self).joined(separator: ". "))
         .accessibilityAction(named: "Open", open)
         .opacity(model.level == .rest && restStyle != .ears ? 0 : 1)
         // Behind the notch, so the droplet's hidden sliver never covers what the notch shows.
@@ -844,6 +846,52 @@ struct ThinkingGlow: View {
         .animation(.easeInOut(duration: 0.35), value: active)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// The rest notch while a timer runs: the left ear drains a ring, the right ear rolls the clock.
+/// Ticks once a second (digits roll, the ring steps), so nothing animates per frame between ticks.
+struct TimerEars: View {
+    let timer: FocusTimer
+    let gap: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var wound = false
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let remaining = timer.remaining(now: context.date)
+            let left = 1 - timer.progress(now: context.date)
+            // Last minute of a running timer turns orange so the end never surprises you.
+            let tint: Color = remaining <= 60 && !timer.isPaused ? .orange : timer.kind == .focus ? .mint : timer.kind == .timer ? .cyan : .green
+            GeometryReader { geo in
+                let ear = max((geo.size.width - gap) / 2, 0), h = geo.size.height
+                HStack(spacing: gap) {
+                    ZStack {
+                        Circle().stroke(.white.opacity(0.15), lineWidth: 2.5)
+                        Circle()
+                            .trim(from: 0, to: wound ? left : 0)
+                            .stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                        if timer.isPaused {
+                            Image(systemName: "pause.fill").font(.system(size: 6, weight: .bold)).foregroundStyle(.white.opacity(0.7))
+                        }
+                    }
+                    .frame(width: h * 0.44, height: h * 0.44)
+                    .frame(width: ear, height: h)
+
+                    Text(FocusTimer.clock(remaining))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(tint)
+                        .contentTransition(reduceMotion ? .opacity : .numericText(countsDown: true))
+                        .animation(reduceMotion ? nil : Tokens.Motion.content.animation, value: Int(remaining.rounded(.up)))
+                        .frame(width: ear, height: h)
+                }
+                .opacity(timer.isPaused ? 0.5 : 1)
+                .animation(.easeInOut(duration: Tokens.Motion.moodTint.dur), value: tint)
+            }
+        }
+        // The ring winds up once when the timer appears (tokens: ringTrim), then only steps.
+        .onAppear { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.6).delay(Tokens.Motion.contentDelay)) { wound = true } }
     }
 }
 
