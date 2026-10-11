@@ -1,0 +1,325 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B1A000000000000000000001 /* BlinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = B1A000000000000000000020 /* BlinkKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B1A000000000000000000037 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B1A00000000000000000000D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B1A000000000000000000009;
+			remoteInfo = Blink;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		B1A000000000000000000002 /* Blink.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Blink.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1A000000000000000000003 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		B1A000000000000000000014 /* BlinkKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = BlinkKit; sourceTree = "<group>"; };
+		B1A000000000000000000030 /* BlinkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BlinkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B1A000000000000000000004 /* Blink */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Blink;
+			sourceTree = "<group>";
+		};
+		B1A000000000000000000031 /* BlinkTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BlinkTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B1A000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1A000000000000000000001 /* BlinkKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B1A000000000000000000032 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B1A000000000000000000006 = {
+			isa = PBXGroup;
+			children = (
+				B1A000000000000000000004 /* Blink */,
+				B1A000000000000000000031 /* BlinkTests */,
+				B1A000000000000000000014 /* BlinkKit */,
+				B1A000000000000000000007 /* Config */,
+				B1A000000000000000000008 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B1A000000000000000000007 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				B1A000000000000000000003 /* Base.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		B1A000000000000000000008 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B1A000000000000000000002 /* Blink.app */,
+				B1A000000000000000000030 /* BlinkTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B1A000000000000000000009 /* Blink */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B1A00000000000000000000A /* Build configuration list for PBXNativeTarget "Blink" */;
+			buildPhases = (
+				B1A00000000000000000000B /* Sources */,
+				B1A000000000000000000005 /* Frameworks */,
+				B1A00000000000000000000C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B1A000000000000000000004 /* Blink */,
+			);
+			name = Blink;
+			packageProductDependencies = (
+				B1A000000000000000000020 /* BlinkKit */,
+			);
+			productName = Blink;
+			productReference = B1A000000000000000000002 /* Blink.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B1A000000000000000000033 /* BlinkTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B1A000000000000000000034 /* Build configuration list for PBXNativeTarget "BlinkTests" */;
+			buildPhases = (
+				B1A000000000000000000035 /* Sources */,
+				B1A000000000000000000032 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B1A000000000000000000036 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B1A000000000000000000031 /* BlinkTests */,
+			);
+			name = BlinkTests;
+			productName = BlinkTests;
+			productReference = B1A000000000000000000030 /* BlinkTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B1A00000000000000000000D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					B1A000000000000000000033 = {
+						TestTargetID = B1A000000000000000000009;
+					};
+				};
+			};
+			buildConfigurationList = B1A00000000000000000000E /* Build configuration list for PBXProject "Blink" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = B1A000000000000000000006;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B1A000000000000000000021 /* XCLocalSwiftPackageReference "BlinkKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B1A000000000000000000008 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B1A000000000000000000009 /* Blink */,
+				B1A000000000000000000033 /* BlinkTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B1A00000000000000000000C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B1A00000000000000000000B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B1A000000000000000000035 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B1A000000000000000000036 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B1A000000000000000000009 /* Blink */;
+			targetProxy = B1A000000000000000000037 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		B1A000000000000000000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B1A000000000000000000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B1A000000000000000000012 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1A000000000000000000003 /* Base.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		B1A000000000000000000013 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1A000000000000000000003 /* Base.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		B1A000000000000000000038 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1A000000000000000000003 /* Base.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).blink.tests";
+				PRODUCT_NAME = BlinkTests;
+				"TEST_HOST[sdk=iphone*]" = "$(BUILT_PRODUCTS_DIR)/Blink.app/Blink";
+				"TEST_HOST[sdk=macosx*]" = "$(BUILT_PRODUCTS_DIR)/Blink.app/Contents/MacOS/Blink";
+			};
+			name = Debug;
+		};
+		B1A000000000000000000039 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1A000000000000000000003 /* Base.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).blink.tests";
+				PRODUCT_NAME = BlinkTests;
+				"TEST_HOST[sdk=iphone*]" = "$(BUILT_PRODUCTS_DIR)/Blink.app/Blink";
+				"TEST_HOST[sdk=macosx*]" = "$(BUILT_PRODUCTS_DIR)/Blink.app/Contents/MacOS/Blink";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B1A00000000000000000000A /* Build configuration list for PBXNativeTarget "Blink" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1A000000000000000000012 /* Debug */,
+				B1A000000000000000000013 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B1A00000000000000000000E /* Build configuration list for PBXProject "Blink" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1A000000000000000000010 /* Debug */,
+				B1A000000000000000000011 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B1A000000000000000000034 /* Build configuration list for PBXNativeTarget "BlinkTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1A000000000000000000038 /* Debug */,
+				B1A000000000000000000039 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B1A000000000000000000021 /* XCLocalSwiftPackageReference "BlinkKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = BlinkKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B1A000000000000000000020 /* BlinkKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BlinkKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = B1A00000000000000000000D /* Project object */;
+}

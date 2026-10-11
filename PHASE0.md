@@ -34,5 +34,12 @@ run the app and check it yourself before moving on. Ask me only for things you c
 7. **Tests (Swift Testing):** Keychain wrapper round-trip, server URL validation, mood → colour/shape mapping.
 8. **Check:** builds for "My Mac" and for an iPhone simulator; app lock works on the Mac; signing in with any other account fails; `/ponytail-review` has no must-fix items.
 
+## Status (Mac session, 2026-10-11)
+- [x] Steps 1–7 built: project, supabase-swift, first run, app lock, home, eyes preview, tests.
+- [x] Builds for My Mac and the iPhone simulator; tests pass; iPhone app lock checked; a wrong account can't sign in; `/ponytail-review` must-fix fixed.
+- [x] Eyes approved as a first pass; refine the look later.
+- [ ] Turn off "Allow new users to sign up" in Supabase (still on).
+- [ ] Mac signing: Team ID in `Config/Local.xcconfig`, then check the Mac app lock with Touch ID.
+
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
