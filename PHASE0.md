@@ -1,0 +1,38 @@
+# Phase 0: foundation
+
+**Done when** (ARCHITECTURE §29, §36.7): the app opens behind Face ID / Touch ID; your server accepts only your login; Blink's eye states are approved on screen; CI is green.
+
+## Already done (cloud session)
+- [x] Database: `backend/supabase/migrations/20261011000000_core.sql` (Phase 0–1 tables, owner-only security, server revisions, red actions can only be approved by a signed device challenge).
+- [x] Database checks: `backend/supabase/tests/run.sh` (passes).
+- [x] Project rules for Claude Code: `CLAUDE.md`. Build settings template: `apps/Blink/Config/Local.xcconfig.example`.
+- [x] CI: migrations + security checks, secret scanning (`.github/workflows/ci.yml`).
+
+## Your steps (about 15 minutes, in a browser)
+1. **Supabase:** create a free account at supabase.com → New project (name `blink`, strong database password saved in your password manager, region nearest you).
+2. **Database:** open SQL Editor → paste the whole of `backend/supabase/migrations/20261011000000_core.sql` → Run.
+3. **Only you can log in:** Authentication › Sign In / Providers → turn **off** "Allow new users to sign up". Then Authentication › Users › Add user → your email + a strong password.
+4. **Keys for the app:** Project Settings › API → copy the **Project URL** and the **publishable (anon) key**. You type these into Blink on first run; they never go in the code.
+5. **Anthropic:** console.anthropic.com → create an API key and set a monthly spend limit. Keep it for Phase 1 (it goes into your server's Vault, not the app).
+
+## On your MacBook: paste this into Claude Code (in the `idea1` folder)
+
+```
+Read CLAUDE.md, PHASE0.md, ARCHITECTURE.md §13, §14, §22, §36.1, §36.5, §36.9 and design/tokens.json.
+Build Phase 0 "Mac and iPhone app" from PHASE0.md. Work in small steps, build after each step,
+run the app and check it yourself before moving on. Ask me only for things you cannot do
+(Apple ID sign-in in Xcode, Face ID prompts, typing my password).
+```
+
+## Mac and iPhone app (Claude Code on the Mac builds this)
+1. **Project:** `apps/Blink/Blink.xcodeproj`, one multiplatform app target `Blink` (macOS 26 + iOS 26) and a local Swift package `apps/Blink/BlinkKit`. Signing from `Config/Local.xcconfig` (copy the example; your Team ID from Xcode › Settings › Accounts). Swift 6, Approachable Concurrency.
+2. **Dependency:** `supabase-swift` (MIT) via Swift Package Manager; add it to `THIRD_PARTY_NOTICES.md`.
+3. **First run:** "Connect your server" screen (Project URL + publishable key) → "Sign in" (email + password) → session saved in the Keychain (`AfterFirstUnlockThisDeviceOnly`) → this device registered in the `device` table → `profile` row created with the device's time zone.
+4. **App lock:** on launch and after 5 minutes in the background, unlock with Face ID / Touch ID, falling back to the device passcode or Mac password (`deviceOwnerAuthentication`). Cancel keeps the lock screen; never a blank app.
+5. **Home (placeholder):** "Connected to <server host> as <email>", last sync time, and a sign-out button. Server unreachable and signed-out states shown in words, not just an error.
+6. **Blink eyes preview:** SwiftUI-drawn panda duo-tone eyes (no images, no Rive yet) with every mood from ARCHITECTURE §7, colours from `design/tokens.json`, motion from `motion` tokens, Reduce Motion fallback, VoiceOver label per state. A picker to switch states so you can approve them.
+7. **Tests (Swift Testing):** Keychain wrapper round-trip, server URL validation, mood → colour/shape mapping.
+8. **Check:** builds for "My Mac" and for an iPhone simulator; app lock works on the Mac; signing in with any other account fails; `/ponytail-review` has no must-fix items.
+
+## After Phase 0
+Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.

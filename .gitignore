@@ -33,3 +33,6 @@ supabase/.env
 *.pem
 *.key
 GoogleService-Info.plist
+
+# Local build settings (§36.9)
+apps/Blink/Config/Local.xcconfig

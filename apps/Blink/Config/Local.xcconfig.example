@@ -1,0 +1,5 @@
+// Copy to Local.xcconfig (git-ignored) and fill in. Nothing personal lives in source (ARCHITECTURE §36.9).
+// Server address and keys are NOT here: the app asks for them on first run and keeps them in the Keychain.
+DEVELOPMENT_TEAM = YOURTEAMID
+BUNDLE_ID_PREFIX = com.pexilim
+APP_DISPLAY_NAME = Blink

@@ -1,0 +1,12 @@
+# Local Supabase settings. Anything not listed uses the CLI default.
+project_id = "blink"
+
+[db]
+major_version = 17
+
+[auth]
+# One owner per server: nobody can sign up. Create your user in the dashboard (Authentication › Users › Add user).
+enable_signup = false
+
+[auth.email]
+enable_signup = false

@@ -610,7 +610,7 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 
 # Part D: Delivery
 
-## 26. Repo structure (planned, not created yet)
+## 26. Repo structure (being created in Phase 0)
 
 ```
 idea1/
