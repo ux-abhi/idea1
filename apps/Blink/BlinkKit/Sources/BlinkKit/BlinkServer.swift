@@ -282,12 +282,13 @@ public final class BlinkServer: Sendable {
     /// Asks Blink on the owner's server; Claude's proposals arrive as Ask-First cards.
     public func chat(_ message: String, history: [ChatTurn], timeZone: String,
                      reminders: [AgendaReminder] = []) async throws -> ChatReply {
-        struct Reminder: Encodable { let id: String; let title: String; let due: Date? }
+        // ISO 8601 text: the function's default encoder would send dates as seconds since 2001, which the server refuses.
+        struct Reminder: Encodable { let id: String; let title: String; let due: String? }
         struct Body: Encodable { let message: String; let history: [ChatTurn]; let timeZone: String; let reminders: [Reminder] }
         do {
             return try await client.functions.invoke(
                 "chat", options: .init(body: Body(message: message, history: Array(history.suffix(20)), timeZone: timeZone,
-                                                  reminders: reminders.map { Reminder(id: $0.id, title: $0.title, due: $0.due) })))
+                                                  reminders: reminders.map { Reminder(id: $0.id, title: $0.title, due: $0.due?.ISO8601Format()) })))
         } catch let FunctionsError.httpError(_, data) {
             // The function explains itself in words, e.g. a missing API key.
             struct ErrorBody: Decodable { let error: String }

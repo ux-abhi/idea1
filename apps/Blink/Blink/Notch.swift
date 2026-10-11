@@ -433,7 +433,8 @@ struct NotchView: View {
         .accessibilityValue(app.pending.isEmpty ? statusLine : "\(statusLine). \(app.pending.count) waiting for you")
         .accessibilityAction(named: "Open", open)
         .opacity(model.level == .rest && restStyle != .ears ? 0 : 1)
-        .overlay(alignment: .top) {
+        // Behind the notch, so the droplet's hidden sliver never covers what the notch shows.
+        .background(alignment: .top) {
             SplitInput(app: app, progress: model.inputOut ? 1 : 0, notchBottom: size.height,
                        notchWidth: size.width, width: model.size(for: .open).width - 24)
                 // Opening: the shape first, then the bubble pulls free with a little wobble. Closing: it tucks back in first.
