@@ -6,7 +6,7 @@ import SwiftUI
 /// The Mac window: sidebar · content (ARCHITECTURE §5). Settings live in their own window (⌘,).
 struct MainWindow: View {
     enum Section: String, CaseIterable, Identifiable {
-        case today, calendar, notes, tasks, waiting, activity
+        case today, calendar, notes, tasks, content, waiting, activity
         var id: Self { self }
 
         var title: String {
@@ -15,6 +15,7 @@ struct MainWindow: View {
             case .calendar: "Calendar"
             case .notes: "Notes"
             case .tasks: "Tasks & Habits"
+            case .content: "Content"
             case .waiting: "Waiting for you"
             case .activity: "Activity"
             }
@@ -26,6 +27,7 @@ struct MainWindow: View {
             case .calendar: "calendar"
             case .notes: "note.text"
             case .tasks: "checklist"
+            case .content: "megaphone"
             case .waiting: "tray"
             case .activity: "clock.arrow.circlepath"
             }
@@ -65,6 +67,7 @@ struct MainWindow: View {
                     row(.calendar)
                     row(.notes)
                     row(.tasks)
+                    row(.content)
                 }
                 spacesSection
                 SwiftUI.Section {
@@ -104,6 +107,7 @@ struct MainWindow: View {
         case .section(.calendar): CalendarListView()
         case .section(.notes): NotesView()
         case .section(.tasks): TasksView()
+        case .section(.content): ContentView()
         case .section(.waiting): WaitingView()
         case .section(.activity): ActivityView()
         case .space(let id):

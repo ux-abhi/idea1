@@ -652,6 +652,82 @@ final class AppModel {
     /// Every open Apple Reminder (any date, at most 50), refreshed with the agenda.
     private(set) var allReminders: [AgendaReminder] = []
 
+    // MARK: Content (§36.4): drafts per platform, the owner posts them (copy & open)
+
+    private(set) var content: [ContentPiece] = []
+    private(set) var voice = VoiceProfile()
+    private(set) var drafting = false
+    private(set) var contentProblem: String?
+    private var contentUnsaved: Set<String> = []
+
+    func loadContent() async {
+        guard let server, email != nil else { return }
+        for id in contentUnsaved { await saveContent(id) } // retry what a failed save left behind
+        if let list = try? await server.contentPieces() {
+            // Keep local text that hasn't reached the server yet (same data-loss guard as notes).
+            content = list.map { fresh in contentUnsaved.contains(fresh.id) ? content.first { $0.id == fresh.id } ?? fresh : fresh }
+        }
+        if let saved = try? await server.voiceProfile() { voice = saved }
+    }
+
+    /// Asks Claude for one draft per platform; they arrive saved, at the top of the list.
+    func draft(idea: String, platforms: [ContentPiece.Platform]) async -> Bool {
+        guard let server, !drafting else { return false }
+        drafting = true
+        defer { drafting = false }
+        contentProblem = nil
+        do {
+            try await server.draftContent(idea: idea, platforms: platforms)
+            await loadContent()
+            return true
+        } catch let problem as BlinkServer.ChatProblem {
+            contentProblem = problem.message
+        } catch {
+            contentProblem = "Can't reach your server right now. Try again in a moment."
+        }
+        return false
+    }
+
+    /// Applies an edit at once; `saveContent` sends it (the editor waits for a pause in typing).
+    func edit(_ piece: ContentPiece) {
+        guard let index = content.firstIndex(where: { $0.id == piece.id }) else { return }
+        content[index] = piece
+        contentUnsaved.insert(piece.id)
+    }
+
+    func saveContent(_ id: String) async {
+        guard let server, contentUnsaved.contains(id), var piece = content.first(where: { $0.id == id }) else { return }
+        piece.lintScore = ContentLint.check(piece, neverSay: voice.neverSay).score
+        do {
+            try await server.save(piece)
+            // Only clear if nothing was typed while saving.
+            if let now = content.first(where: { $0.id == id }), now.body == piece.body, now.parts == piece.parts,
+               now.status == piece.status { contentUnsaved.remove(id) }
+            contentProblem = nil
+        } catch {
+            contentProblem = "Not saved yet. Blink will try again on your next change."
+        }
+    }
+
+    func setStatus(_ status: ContentPiece.Status, of piece: ContentPiece) async {
+        var changed = content.first { $0.id == piece.id } ?? piece
+        changed.status = status
+        changed.publishedAt = status == .published ? .now : nil
+        edit(changed)
+        await saveContent(piece.id)
+        if status == .archived { content.removeAll { $0.id == piece.id } }
+    }
+
+    func saveVoice(_ new: VoiceProfile) async {
+        guard let server else { return }
+        let before = voice
+        voice = new
+        do { try await server.save(new) } catch {
+            voice = before
+            contentProblem = "Couldn't save your voice. Check your connection and try again."
+        }
+    }
+
     // MARK: Spaces (ARCHITECTURE §35)
 
     private(set) var spaces: [Space] = []

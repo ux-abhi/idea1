@@ -143,6 +143,10 @@ struct BlinkPanel: View {
         case .section(.tasks):
             return [Suggestion("What should I do first?"), Suggestion("Plan my week"),
                     Suggestion("Clean up overdue tasks", "Look at my overdue tasks and reminders and suggest what to move or drop. Ask me first.")]
+        case .section(.content):
+            return [Suggestion("Give me 5 post ideas from my week",
+                               "Give me 5 post ideas from my calendar, tasks and notes this week. One line each, in my words."),
+                    Suggestion("What should I post about today?")]
         case .section(.waiting):
             return [Suggestion("Explain what's waiting for me")]
         case .section(.activity):

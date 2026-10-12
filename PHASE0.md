@@ -75,3 +75,11 @@ Gates:
 
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
+
+## Phase 3 status (Mac session, 2026-10-12): started
+Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no platform APIs yet).
+- [x] content_piece + voice_profile tables (RLS tests, live); `content` Edge Function drafts one native post per platform with structured output.
+- [x] Content page: idea → drafts, writing check (AI-sounding phrases, placeholders, limits, never-say words), edit, approve, copy & open; Voice sheet.
+- [ ] Morning card with posts ready; weekly content plan.
+- [ ] Model router (tiers) and a per-day spend cap.
+- [ ] Playbooks per platform as skills; carousel PNG rendering; metrics import.

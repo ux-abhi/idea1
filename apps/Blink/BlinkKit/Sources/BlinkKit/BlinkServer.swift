@@ -287,6 +287,54 @@ public final class BlinkServer: Sendable {
             .execute()
     }
 
+    // MARK: Content (§36.4)
+
+    /// Claude writes one draft per platform from the idea and saves them; returns how many. Reload with `contentPieces()`.
+    @discardableResult
+    public func draftContent(idea: String, platforms: [ContentPiece.Platform], spaceID: String? = nil) async throws -> Int {
+        struct Body: Encodable { let idea: String; let platforms: [String]; let space_id: String? }
+        struct Reply: Decodable { let saved: Int }
+        do {
+            let reply: Reply = try await client.functions.invoke(
+                "content", options: .init(body: Body(idea: idea, platforms: platforms.map(\.rawValue), space_id: spaceID)))
+            return reply.saved
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't write drafts.")
+        }
+    }
+
+    public func contentPieces() async throws -> [ContentPiece] {
+        try await client.from("content_piece")
+            .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at")
+            .neq("status", value: "archived")
+            .order("created_at", ascending: false)
+            .limit(200)
+            .execute().value
+    }
+
+    public func save(_ piece: ContentPiece) async throws {
+        struct Row: Encodable {
+            let hook: String, body: String, parts: [String], hashtags: [String], status: String
+            let lint_score: Int?, published_at: Date?
+        }
+        try await client.from("content_piece")
+            .update(Row(hook: piece.hook, body: piece.body, parts: piece.parts, hashtags: piece.hashtags,
+                        status: piece.status.rawValue, lint_score: piece.lintScore, published_at: piece.publishedAt))
+            .eq("id", value: piece.id)
+            .execute()
+    }
+
+    public func voiceProfile() async throws -> VoiceProfile {
+        let rows: [VoiceProfile] = try await client.from("voice_profile").select("notes, never_say").execute().value
+        return rows.first ?? VoiceProfile()
+    }
+
+    public func save(_ voice: VoiceProfile) async throws {
+        try await client.from("voice_profile").upsert(voice, onConflict: "owner_id").execute()
+    }
+
+
     // MARK: Usage (cost meter, §24)
 
     public struct Usage: Decodable, Sendable {

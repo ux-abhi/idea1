@@ -545,3 +545,23 @@ extension Tokens {
     let sent = BlinkServer.recent([.init(role: .user, text: "first")] + turns)
     #expect(sent.first?.role == .user && sent.count <= 20)
 }
+
+@Test func contentLintBlocksPlaceholdersAndLongPosts() throws {
+    func piece(_ platform: ContentPiece.Platform, body: String, parts: [String] = [], tags: [String] = []) throws -> ContentPiece {
+        let json = #"{"id":"p","idea":"i","platform":"\#(platform.rawValue)","format":"post","hook":"","body":"","parts":[],"hashtags":[],"status":"drafted","lint_score":null,"published_at":null,"created_at":"2026-10-12T08:00:00Z"}"#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var p = try decoder.decode(ContentPiece.self, from: Data(json.utf8))
+        p.body = body
+        p.parts = parts
+        p.hashtags = tags
+        return p
+    }
+    #expect(ContentLint.check(try piece(.linkedin, body: "Shipped Blink's timeline today. What would you add?")).score == 100)
+    #expect(ContentLint.check(try piece(.linkedin, body: "Thanks [client name] for the help")).issues.contains { $0.blocks })
+    #expect(ContentLint.check(try piece(.x, body: "short", parts: ["ok", String(repeating: "a", count: 281)])).issues
+        .contains { $0.message == "Post 2 is over 280 characters" && $0.blocks })
+    let soft = ContentLint.check(try piece(.instagram, body: "Let's delve into it", tags: ["a", "b", "c", "d", "e", "f"]), neverSay: ["it"])
+    #expect(soft.score == 70 && !soft.issues.contains { $0.blocks })
+    #expect(try piece(.x, body: "first", parts: ["1/", "2/"], tags: []).postText == "1/\n\n2/")
+}
