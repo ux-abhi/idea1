@@ -304,6 +304,20 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    /// Six ideas for the owner's page (optionally around a theme), to pick from. Nothing is saved.
+    public func contentIdeas(theme: String, platforms: [ContentPiece.Platform]) async throws -> [ContentIdea] {
+        struct Body: Encodable { let mode = "ideas"; let idea: String; let platforms: [String] }
+        struct Reply: Decodable { let ideas: [ContentIdea] }
+        do {
+            let reply: Reply = try await client.functions.invoke(
+                "content", options: .init(body: Body(idea: theme, platforms: platforms.map(\.rawValue))))
+            return reply.ideas
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't come up with ideas.")
+        }
+    }
+
     public func contentPieces() async throws -> [ContentPiece] {
         try await client.from("content_piece")
             .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at")
@@ -326,7 +340,7 @@ public final class BlinkServer: Sendable {
     }
 
     public func voiceProfile() async throws -> VoiceProfile {
-        let rows: [VoiceProfile] = try await client.from("voice_profile").select("notes, never_say").execute().value
+        let rows: [VoiceProfile] = try await client.from("voice_profile").select("page, audience, topics, notes, never_say").execute().value
         return rows.first ?? VoiceProfile()
     }
 

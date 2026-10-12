@@ -690,6 +690,27 @@ final class AppModel {
         return false
     }
 
+    private(set) var ideas: [ContentIdea] = []
+    private(set) var thinkingOfIdeas = false
+
+    func suggestIdeas(theme: String, platforms: [ContentPiece.Platform]) async {
+        guard let server, !thinkingOfIdeas else { return }
+        thinkingOfIdeas = true
+        defer { thinkingOfIdeas = false }
+        contentProblem = nil
+        do { ideas = try await server.contentIdeas(theme: theme, platforms: platforms) }
+        catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
+        catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
+    }
+
+    func clearIdeas() async { ideas = [] }
+
+    /// "Write this": one idea becomes drafts for its platform.
+    func write(_ idea: ContentIdea) async {
+        ideas.removeAll { $0.id == idea.id }
+        _ = await draft(idea: "\(idea.title). Hook: \(idea.hook). Format: \(idea.formatName).", platforms: [idea.platform])
+    }
+
     /// Applies an edit at once; `saveContent` sends it (the editor waits for a pause in typing).
     func edit(_ piece: ContentPiece) {
         guard let index = content.firstIndex(where: { $0.id == piece.id }) else { return }

@@ -18,7 +18,7 @@ struct ContentView: View {
         let ready = live.filter { $0.status == .approved }.count
         DashPage("Content", summary: live.isEmpty ? "Ideas into posts" : "\(live.count) drafts · \(ready) ready to post") {
             DashCard("New post") {
-                TextField("What's the idea? e.g. \"What I learned building Blink's timeline this week\"", text: $idea, axis: .vertical)
+                TextField("What's the idea? e.g. \"3 checkout mistakes that lose users\". Or leave it empty and ask for ideas.", text: $idea, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(2...6)
                     .padding(10)
@@ -38,6 +38,12 @@ struct ContentView: View {
                         .menuStyle(.borderlessButton)
                         .controlSize(.small)
                     Button {
+                        Task { await model.suggestIdeas(theme: idea, platforms: platforms) }
+                    } label: {
+                        if model.thinkingOfIdeas { ProgressView().controlSize(.small) } else { Label("Give Me Ideas", systemImage: "lightbulb") }
+                    }
+                    .disabled(platforms.isEmpty || model.thinkingOfIdeas)
+                    Button {
                         Task { if await model.draft(idea: idea, platforms: platforms) { idea = "" } }
                     } label: {
                         if model.drafting { ProgressView().controlSize(.small) } else { Label("Write Drafts", systemImage: "sparkles") }
@@ -48,9 +54,27 @@ struct ContentView: View {
                 }
                 if let problem = model.contentProblem {
                     Text(problem).font(.callout).foregroundStyle(.orange)
-                } else if model.voice.notes.isEmpty {
-                    Button("Tell Blink how you write, so drafts sound like you…") { editingVoice = true }
+                } else if !model.voice.isSetUp {
+                    Button("Tell Blink about your page (e.g. @uxabhi, who it's for, your topics) so posts aren't generic…") { editingVoice = true }
                         .buttonStyle(.link)
+                }
+            }
+
+            if !model.ideas.isEmpty {
+                DashCard("Ideas", trailing: "Clear", action: { Task { await model.clearIdeas() } }) {
+                    CardRows(items: model.ideas) { item in
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(item.platform.name) · \(item.formatName)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                Text(item.title).font(.headline)
+                                Text("“\(item.hook)”").font(.callout)
+                                Text(item.why).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Write This") { Task { await model.write(item) } }
+                                .disabled(model.drafting)
+                        }
+                    }
                 }
             }
 
@@ -265,42 +289,61 @@ private struct ScoreBadge: View {
     }
 }
 
-/// How you write: drafts follow it, and the writing check flags words you never use.
+/// Who you are online and how you write: drafts and ideas follow it, and the writing check flags words you never use.
 private struct VoiceSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @State private var page = ""
+    @State private var audience = ""
+    @State private var topics = ""
     @State private var notes = ""
     @State private var neverSay = ""
 
     var body: some View {
         Form {
             Section {
-                TextField("How you write", text: $notes,
-                          prompt: Text("e.g. Short sentences, a bit dry, no hype. I build apps in Berlin and share what I learn."),
-                          axis: .vertical)
-                    .lineLimit(3...8)
+                TextField("Your page", text: $page, prompt: Text("e.g. @uxabhi on Instagram: UX tips and design breakdowns"))
+                TextField("Who it's for", text: $audience, prompt: Text("e.g. junior designers and devs who want better UX"), axis: .vertical)
+                    .lineLimit(1...3)
+                TextField("Your topics", text: $topics, prompt: Text("e.g. UX mistakes, app teardowns, design tools, building Blink"), axis: .vertical)
+                    .lineLimit(1...3)
+            } header: {
+                Text("Your page")
             } footer: {
-                Text("Who you are, how you sound, what you post about. Blink never invents facts about you.")
+                Text("Ideas and drafts use this to be specific to your field instead of generic.")
             }
             Section {
+                TextField("How you sound", text: $notes,
+                          prompt: Text("e.g. Short sentences, friendly, a bit dry. I show real screens, not theory."),
+                          axis: .vertical)
+                    .lineLimit(2...6)
                 TextField("Words you never say", text: $neverSay, prompt: Text("e.g. hustle, synergy, crushing it"))
+            } header: {
+                Text("Your voice")
             } footer: {
-                Text("Separated by commas. Drafts avoid them and the writing check flags them.")
+                Text("Words separated by commas. Drafts avoid them and the writing check flags them. Blink never invents facts about you.")
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460)
+        .frame(width: 480)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
                     let words = neverSay.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                    Task { await model.saveVoice(VoiceProfile(notes: notes.trimmingCharacters(in: .whitespacesAndNewlines), neverSay: words)) }
+                    let trim: (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    Task {
+                        await model.saveVoice(VoiceProfile(page: trim(page), audience: trim(audience), topics: trim(topics),
+                                                           notes: trim(notes), neverSay: words))
+                    }
                     dismiss()
                 }
             }
         }
         .onAppear {
+            page = model.voice.page
+            audience = model.voice.audience
+            topics = model.voice.topics
             notes = model.voice.notes
             neverSay = model.voice.neverSay.joined(separator: ", ")
         }

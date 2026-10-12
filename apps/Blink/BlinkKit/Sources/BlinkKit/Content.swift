@@ -89,13 +89,54 @@ public enum ContentLint {
     }
 }
 
-/// How the owner writes: notes and words they never use (`voice_profile`).
+/// Who the owner is online and how they write (`voice_profile`): drafts and ideas are made to fit it.
 public struct VoiceProfile: Codable, Equatable, Sendable {
+    /// "@uxabhi on Instagram: UX tips for junior designers"
+    public var page: String
+    public var audience: String
+    public var topics: String
+    /// How they sound.
     public var notes: String
     public var neverSay: [String]
-    enum CodingKeys: String, CodingKey { case notes, neverSay = "never_say" }
-    public init(notes: String = "", neverSay: [String] = []) {
+
+    enum CodingKeys: String, CodingKey { case page, audience, topics, notes, neverSay = "never_say" }
+
+    public init(page: String = "", audience: String = "", topics: String = "", notes: String = "", neverSay: [String] = []) {
+        self.page = page
+        self.audience = audience
+        self.topics = topics
         self.notes = notes
         self.neverSay = neverSay
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        page = try c.decodeIfPresent(String.self, forKey: .page) ?? ""
+        audience = try c.decodeIfPresent(String.self, forKey: .audience) ?? ""
+        topics = try c.decodeIfPresent(String.self, forKey: .topics) ?? ""
+        notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        neverSay = try c.decodeIfPresent([String].self, forKey: .neverSay) ?? []
+    }
+
+    /// Enough for drafts to be specific, rather than generic.
+    public var isSetUp: Bool { !page.isEmpty || !topics.isEmpty }
+}
+
+/// A post idea to pick from (not saved until "Write this" turns it into drafts).
+public struct ContentIdea: Decodable, Identifiable, Hashable, Sendable {
+    public let title: String
+    public let hook: String
+    public let platform: ContentPiece.Platform
+    public let format: String
+    public let why: String
+    public var id: String { title + platform.rawValue }
+
+    public var formatName: String {
+        switch format {
+        case "reel_script": "Reel"
+        case "carousel": "Carousel"
+        case "thread": "Thread"
+        default: "Post"
+        }
     }
 }

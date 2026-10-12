@@ -1,5 +1,5 @@
 // © Pexilim
-import { parseContentRequest, parseDrafts } from "./input.ts";
+import { parseContentRequest, parseDrafts, parseIdeas } from "./input.ts";
 
 Deno.test("content requests are checked at the boundary", () => {
   const ok = parseContentRequest({ idea: " Why I build Blink ", platforms: ["x", "linkedin", "x"] });
@@ -18,4 +18,17 @@ Deno.test("drafts keep only asked-for platforms and clean hashtags", () => {
   ] }, ["x"]);
   if (drafts.length !== 1 || drafts[0].parts.length !== 2 || drafts[0].hashtags[0] !== "buildinpublic") throw new Error(JSON.stringify(drafts));
   if (parseDrafts(null, ["x"]).length !== 0) throw new Error("garbage accepted");
+});
+
+Deno.test("ideas mode needs no idea text and keeps only clean ideas", () => {
+  const ok = parseContentRequest({ mode: "ideas", platforms: ["instagram"] });
+  if (typeof ok === "string" || ok.mode !== "ideas") throw new Error("ideas without text rejected");
+  if (typeof parseContentRequest({ mode: "drafts", idea: " ", platforms: ["x"] }) !== "string") throw new Error("empty draft idea accepted");
+  if (typeof parseContentRequest({ mode: "spam", idea: "a", platforms: ["x"] }) !== "string") throw new Error("bad mode accepted");
+  const ideas = parseIdeas({ ideas: [
+    { title: "3 UX mistakes in checkout", hook: "Your checkout loses 1 in 3", platform: "instagram", format: "reel_script", why: "saves" },
+    { title: "", hook: "h", platform: "instagram", format: "post", why: "w" },
+    { title: "t", hook: "h", platform: "x", format: "post", why: "w" }, // not asked
+  ] }, ["instagram"]);
+  if (ideas.length !== 1 || ideas[0].format !== "reel_script") throw new Error(JSON.stringify(ideas));
 });
