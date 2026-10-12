@@ -35,6 +35,8 @@ final class NotchModel {
     var clipboarding = false
     /// What's typed in the chat bubble; the panel above previews a "/" command from it.
     var input = ""
+    /// A one-line announcement for the peek (e.g. important mail), instead of the day's status line.
+    var peekNote: String?
     /// After the evening check-in the eyes stay Sleepy until the owner's wake time.
     var sleepyUntil: Date?
 
@@ -191,6 +193,26 @@ final class NotchController {
                 self.model.evening = false
                 if self.model.level != .rest { self.close() }
                 self.scheduleCues()
+            }
+        }
+
+        // Important mail (P1, §8): the eyes go Important and the notch peeks with who and why, once per message.
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            var announced = Set(app.importantMail.map(\.id))
+            for await fresh in Observations({ app.importantMail.filter { $0.status == .new }.map(\.id) }) {
+                guard let self else { return }
+                let new = fresh.filter { !announced.contains($0) }
+                announced.formUnion(fresh)
+                guard let first = new.first, let message = app.importantMail.first(where: { $0.id == first }),
+                      self.model.level == .rest else { continue }
+                self.model.mood = .important
+                self.model.peekNote = new.count == 1 ? "✉︎ \(message.sender): \(message.reason.isEmpty ? message.subject : message.reason)"
+                                                     : "✉︎ \(new.count) important emails"
+                self.show(.peek, closingAfter: 8)
+                try? await Task.sleep(for: .seconds(8))
+                self.model.peekNote = nil
+                if self.model.mood == .important { self.evaluateCue() }
             }
         }
 
@@ -534,7 +556,7 @@ struct NotchView: View {
             case .rest:
                 EmptyView()
             case .peek:
-                Text(model.evening ? "Plan tomorrow?" : statusLine)
+                Text(model.peekNote ?? (model.evening ? "Plan tomorrow?" : statusLine))
                     .font(.callout.weight(.medium))
                     .foregroundStyle(.white)
                     .transition(contentTransition)
@@ -625,6 +647,21 @@ struct GlanceView: View {
                 .font(.title3.weight(.semibold))
             if briefing {
                 Text(agenda.briefLine(now: now)).foregroundStyle(.white.opacity(0.7))
+            }
+            if let app {
+                ForEach(app.importantMail.filter { $0.status != .drafted }.prefix(2)) { message in
+                    HStack(spacing: 8) {
+                        Image(systemName: "envelope.badge").foregroundStyle(.red)
+                        Text("\(message.sender): \(message.reason.isEmpty ? message.subject : message.reason)").lineLimit(1)
+                        Spacer(minLength: 8)
+                        Button("Draft") { Task { await app.draftReply(to: message) } }
+                            .buttonStyle(.plain).foregroundStyle(.mint)
+                            .disabled(app.draftingMail.contains(message.id))
+                        if let url = message.mailURL {
+                            Button("Open") { NSWorkspace.shared.open(url); done() }.buttonStyle(.plain).foregroundStyle(.mint)
+                        }
+                    }
+                }
             }
             if let app {
                 // Planned for today but not approved yet: a nudge to review it.

@@ -354,6 +354,50 @@ public final class BlinkServer: Sendable {
         try await client.functions.invoke("connections", options: .init(body: [String: String]()))
     }
 
+    // MARK: Mail (Phase 5)
+
+    /// The last week's triaged mail that isn't done, newest first.
+    public func emails() async throws -> [EmailMessage] {
+        try await client.from("email_msg")
+            .select("id, account, message_id, from_name, from_addr, subject, received_at, triage, reason, summary, needs_reply, status, created_at")
+            .neq("status", value: "done")
+            .gte("created_at", value: Date.now.addingTimeInterval(-7 * 86_400).ISO8601Format())
+            .order("received_at", ascending: false)
+            .limit(150)
+            .execute().value
+    }
+
+    public func mailStates() async throws -> [MailState] {
+        try await client.from("mail_state").select("account, last_checked_at, last_error").execute().value
+    }
+
+    public func setStatus(_ status: EmailMessage.Status, of email: EmailMessage) async throws {
+        try await client.from("email_msg").update(["status": status.rawValue]).eq("id", value: email.id).execute()
+    }
+
+    /// Checks the mailboxes now (the server also does every 5 minutes).
+    public func syncMail() async throws {
+        do {
+            _ = try await client.functions.invoke("mail", options: .init(body: [String: String]()))
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't check mail.")
+        }
+    }
+
+    /// A reply in the owner's voice, saved to that account's Drafts folder (it shows in Apple Mail). Returns the folder.
+    public func draftReply(to email: EmailMessage, note: String) async throws -> String {
+        struct Body: Encodable { let action = "draft"; let id: String; let note: String }
+        struct Reply: Decodable { let mailbox: String }
+        do {
+            let reply: Reply = try await client.functions.invoke("mail", options: .init(body: Body(id: email.id, note: note)))
+            return reply.mailbox
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't write the draft.")
+        }
+    }
+
     public func contentPieces() async throws -> [ContentPiece] {
         try await client.from("content_piece")
             .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for")

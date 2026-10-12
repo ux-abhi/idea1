@@ -10,6 +10,7 @@ struct TodayView: View {
     let showWaiting: () -> Void
     let showNotes: () -> Void
     let showContent: () -> Void
+    var showInbox: () -> Void = {}
     @AppStorage("tourDone") private var tourDone = false
 
     var body: some View {
@@ -76,6 +77,20 @@ struct TodayView: View {
             let habits = model.habits.filter { model.isScheduledToday($0) }
             if !habits.isEmpty {
                 DashCard("Habits") { CardRows(items: habits) { HabitRow(habit: $0) } }
+            }
+            let mail = model.importantMail.filter { $0.status != .drafted }
+            if !mail.isEmpty {
+                DashCard("Important mail", trailing: "Inbox", action: showInbox) {
+                    CardRows(items: Array(mail.prefix(4))) { message in
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("\(message.sender): \(message.subject)").lineLimit(1)
+                                Text(message.reason.isEmpty ? message.summary : message.reason).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                    }
+                }
             }
             let posts = model.readyToPost + model.postsToday.filter { $0.status == .drafted }
             if !posts.isEmpty {

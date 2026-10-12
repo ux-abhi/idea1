@@ -6,12 +6,13 @@ import SwiftUI
 /// The Mac window: sidebar · content (ARCHITECTURE §5). Settings live in their own window (⌘,).
 struct MainWindow: View {
     enum Section: String, CaseIterable, Identifiable {
-        case today, calendar, notes, tasks, content, waiting, activity
+        case today, inbox, calendar, notes, tasks, content, waiting, activity
         var id: Self { self }
 
         var title: String {
             switch self {
             case .today: "Today"
+            case .inbox: "Inbox"
             case .calendar: "Calendar"
             case .notes: "Notes"
             case .tasks: "Tasks & Habits"
@@ -24,6 +25,7 @@ struct MainWindow: View {
         var symbol: String {
             switch self {
             case .today: "sun.max"
+            case .inbox: "envelope"
             case .calendar: "calendar"
             case .notes: "note.text"
             case .tasks: "checklist"
@@ -65,6 +67,7 @@ struct MainWindow: View {
             List(selection: $page) {
                 SwiftUI.Section {
                     row(.today)
+                    row(.inbox)
                     row(.calendar)
                     row(.notes)
                     row(.tasks)
@@ -95,6 +98,7 @@ struct MainWindow: View {
                         Task {
                             await model.refresh()
                             await model.loadActivity()
+                            await model.syncMail()
                         }
                     } label: {
                         if model.status == .checking {
@@ -133,7 +137,8 @@ struct MainWindow: View {
     @ViewBuilder private var detail: some View {
             switch page ?? .section(.today) {
         case .section(.today): TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) },
-                                         showContent: { page = .section(.content) })
+                                         showContent: { page = .section(.content) }, showInbox: { page = .section(.inbox) })
+        case .section(.inbox): InboxView()
         case .section(.calendar): CalendarListView()
         case .section(.notes): NotesView()
         case .section(.tasks): TasksView()
@@ -176,7 +181,7 @@ struct MainWindow: View {
 
     private func row(_ s: Section) -> some View {
         Label(s.title, systemImage: s.symbol)
-            .badge(s == .waiting ? model.pending.count : 0)
+            .badge(s == .waiting ? model.pending.count : s == .inbox ? model.importantMail.filter { $0.status == .new }.count : 0)
             .tag(Page.section(s))
     }
 

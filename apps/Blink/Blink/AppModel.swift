@@ -160,6 +160,7 @@ final class AppModel {
             await loadSpaces()
             await loadModelPrefs()
             await loadContent() // the brief and Today show posts ready
+            await loadMail()
             await loadHabits()
         } catch {
             switch ServerProblem(error) {
@@ -933,6 +934,69 @@ final class AppModel {
         let saved = UserDefaults.standard.string(forKey: "contentPlatforms") ?? "instagram,linkedin,x"
         let list = saved.split(separator: ",").compactMap { ContentPiece.Platform(rawValue: String($0)) }
         return list.isEmpty ? ContentPiece.Platform.allCases : list
+    }
+
+    // MARK: Mail (Phase 5): the server checks every 5 minutes; this reads what it found
+
+    private(set) var emails: [EmailMessage] = []
+    private(set) var mailStates: [MailState] = []
+    private(set) var mailProblem: String?
+    private(set) var syncingMail = false
+    private(set) var draftingMail: Set<String> = []
+    private var mailWatch: Task<Void, Never>?
+
+    var importantMail: [EmailMessage] { emails.filter { $0.triage == .important } }
+
+    func loadMail() async {
+        guard let server, email != nil else { return }
+        if let list = try? await server.emails() { emails = list }
+        if let states = try? await server.mailStates() { mailStates = states }
+        // Pick up the server's 5-minute checks while the app runs (one small query each time).
+        if mailWatch == nil {
+            mailWatch = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(300))
+                    await self?.loadMail()
+                }
+            }
+        }
+    }
+
+    func syncMail() async {
+        guard let server, !syncingMail else { return }
+        syncingMail = true
+        defer { syncingMail = false }
+        mailProblem = nil
+        do { try await server.syncMail() }
+        catch let problem as BlinkServer.ChatProblem { mailProblem = problem.message }
+        catch { mailProblem = "Can't reach your server right now." }
+        await loadMail()
+    }
+
+    func draftReply(to message: EmailMessage, note: String = "") async {
+        guard let server, !draftingMail.contains(message.id) else { return }
+        draftingMail.insert(message.id)
+        defer { draftingMail.remove(message.id) }
+        mailProblem = nil
+        do {
+            let folder = try await server.draftReply(to: message, note: note)
+            if let i = emails.firstIndex(where: { $0.id == message.id }) { emails[i].status = .drafted }
+            offerUndo("Draft saved to \(folder): \(message.subject)") {}
+        } catch let problem as BlinkServer.ChatProblem {
+            mailProblem = problem.message
+        } catch {
+            mailProblem = "Can't reach your server right now."
+        }
+    }
+
+    func setStatus(_ status: EmailMessage.Status, of message: EmailMessage) async {
+        guard let server, let i = emails.firstIndex(where: { $0.id == message.id }) else { return }
+        let before = emails[i]
+        if status == .done { emails.remove(at: i) } else { emails[i].status = status }
+        do { try await server.setStatus(status, of: message) } catch {
+            if status == .done { emails.insert(before, at: min(i, emails.count)) } else if let j = emails.firstIndex(where: { $0.id == message.id }) { emails[j] = before }
+            mailProblem = "Couldn't update that email. Check your connection."
+        }
     }
 
     // MARK: Model choice (Settings, Blink panel, Content page share this)

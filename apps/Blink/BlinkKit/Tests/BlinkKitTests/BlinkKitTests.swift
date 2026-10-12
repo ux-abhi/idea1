@@ -613,3 +613,12 @@ extension Tokens {
     #expect(HabitDay.nextDays(from: now, calendar: cal) == ["2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01",
                                                              "2027-01-02", "2027-01-03", "2027-01-04"])
 }
+
+@Test func mailOpensInAppleMailByMessageID() throws {
+    let json = #"{"id":"e1","account":"gmail","message_id":"<abc@tv.com>","from_name":"","from_addr":"w@tv.com","subject":"Interview","received_at":null,"triage":"important","reason":"Interview invite","summary":"s","needs_reply":true,"status":"new","created_at":"2026-10-12T10:00:00Z"}"#
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let mail = try decoder.decode(EmailMessage.self, from: Data(json.utf8))
+    #expect(mail.sender == "w@tv.com" && mail.triage == .important)
+    #expect(mail.mailURL?.absoluteString == "message://%3Cabc%40tv%2Ecom%3E")
+}

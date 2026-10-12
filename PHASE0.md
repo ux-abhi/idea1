@@ -76,6 +76,16 @@ Gates:
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
 
+## Phase 5 status (Mac session, 2026-10-12): started
+Owner choices: Gmail + iCloud (hello@pexilim.com and hello@uxabhi.com are iCloud+ custom-domain addresses); important = jobs and TeamViewer, uni and official, clients and products, money and bills; checking runs on the server.
+- [x] Server can reach imap.gmail.com/imap.mail.me.com:993 and smtp.gmail.com:465/587, smtp.mail.me.com:587 (probe, then retired).
+- [x] email_msg + mail_state tables (summaries only, apps change status only; RLS tests, live).
+- [x] mail Edge Function: own IMAP client (tested on recorded replies), triage on the free Groq model, reply drafts in the owner's voice appended to the account's Drafts folder (shows in Apple Mail), reply sent from the address the mail went to; mail text fenced as data.
+- [x] Schedule: pg_cron every 5 minutes with a Vault secret (backend/supabase/setup/mail_schedule.sql); ran OK.
+- [x] App: Inbox page (Important / Needs a reply / Everything else / Newsletters), Draft Reply (with a note), Open in Mail, Done; important mail peeks in the notch and shows on Today; Sync Now also checks mail.
+- [ ] Owner adds GMAIL_ADDRESS, GMAIL_APP_PASSWORD, ICLOUD_ADDRESS, ICLOUD_APP_PASSWORD, MAIL_ALIASES; first real check.
+- [ ] Send after Touch ID from Blink (SMTP from the server, red Ask-First card + 10 s Cancel). Until then the owner sends drafts from Apple Mail.
+
 ## Phase 3 status (Mac session, 2026-10-12): started
 Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no platform APIs yet).
 - [x] content_piece + voice_profile tables (RLS tests, live); `content` Edge Function drafts one native post per platform with structured output.

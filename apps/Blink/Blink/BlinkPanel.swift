@@ -134,6 +134,14 @@ struct BlinkPanel: View {
             return [Suggestion("What's left today?"), Suggestion("Plan the rest of my day"),
                     Suggestion("Move what I can't finish today",
                                "Which of today's tasks and reminders should move to tomorrow? Ask me before changing anything.")]
+        case .section(.inbox):
+            // The mail Blink already summarised, as data (the chat never reads mailboxes itself).
+            let mail = model.emails.filter { $0.triage != .newsletter }.prefix(25)
+                .map { "- \($0.sender): \($0.subject) — \($0.summary)\($0.needsReply ? " [needs reply]" : "")\($0.triage == .important ? " [important: \($0.reason)]" : "")" }
+                .joined(separator: "\n")
+            let context = "Recent email (sender: subject — summary):\n\(mail.isEmpty ? "none" : String(mail.prefix(3800)))"
+            return [Suggestion("What needs my answer today?", "Which of these emails need my answer today, and what should I say? Keep it short.", context: context),
+                    Suggestion("Anything urgent in my mail?", "Is anything in this mail urgent? One line each.", context: context)]
         case .section(.calendar):
             return [Suggestion("When am I free this week?"), Suggestion("Get me ready for my next meeting")]
         case .section(.notes):
