@@ -228,6 +228,7 @@ struct DaySettings: View {
                 LabeledContent("Quick actions in the notch", value: "/task  /remind  /note  /timer")
                 LabeledContent("Clipboard history", value: "⌃⌥V")
                 LabeledContent("Search everything", value: "⌘K")
+                LabeledContent("Sync now", value: "⌘R")
                 LabeledContent("Blink panel", value: "⌥⌘B")
                 LabeledContent("Approve a card", value: "⌘⏎")
                 LabeledContent("Undo the last done", value: "⌘Z")

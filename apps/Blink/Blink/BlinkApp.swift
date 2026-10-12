@@ -84,6 +84,8 @@ struct MenuBarContent: View {
         }
         if model.timer != nil { Button("Stop Timer") { model.stopTimer() } }
         Divider()
+        Button("Sync Now") { Task { await model.refresh() } }
+            .disabled(model.status == .checking)
         Button("Show in Notch", action: showNotch)
         Button("Open Blink") {
             NSApp.activate()

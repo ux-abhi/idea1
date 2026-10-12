@@ -90,6 +90,22 @@ struct MainWindow: View {
             detail
                 .inspector(isPresented: $showPanel) { BlinkPanel(page: page ?? .section(.today)) }
                 .toolbar {
+                    // Sync now: check in, then reload calendar, cards, notes, tasks, spaces, habits and posts.
+                    Button {
+                        Task {
+                            await model.refresh()
+                            await model.loadActivity()
+                        }
+                    } label: {
+                        if model.status == .checking {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Sync Now", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .keyboardShortcut("r")
+                    .disabled(model.status == .checking)
+                    .help("Sync now (⌘R)")
                     Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
                         .keyboardShortcut("k")
                         .help("Search notes, tasks, posts and spaces (⌘K)")
