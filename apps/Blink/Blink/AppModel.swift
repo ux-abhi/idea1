@@ -161,6 +161,7 @@ final class AppModel {
             await loadModelPrefs()
             await loadContent() // the brief and Today show posts ready
             await loadMail()
+            await loadMoney()
             await loadHabits()
         } catch {
             switch ServerProblem(error) {
@@ -941,6 +942,100 @@ final class AppModel {
         case .ideas(let theme):
             await suggestIdeas(theme: theme, platforms: contentPlatforms)
             if let problem = contentProblem { chat.append(.init(role: .assistant, text: problem)) }
+        case .spent(let text):
+            // Typed on purpose in the notch: sorted and saved at once, with Undo (the Money page lets you check first).
+            let drafts = await sortSpends(text)
+            if !drafts.isEmpty, let saved = await addSpends(drafts) {
+                let total = saved.reduce(Decimal.zero) { $0 + $1.amount }
+                offerUndo("Added \(saved.count == 1 ? saved[0].note : "\(saved.count) spends") · \(total.formatted(.currency(code: "EUR")))") { [weak self] in
+                    for spend in saved { await self?.deleteSpend(spend) }
+                }
+            } else if let problem = moneyProblem {
+                chat.append(.init(role: .assistant, text: problem))
+            }
+        }
+    }
+
+    // MARK: Money (Phase 7, first slice): spends typed in, sorted by the AI, monthly limits per category
+
+    private(set) var spends: [Spend] = []
+    private(set) var budgets: [Budget] = []
+    private(set) var moneyProblem: String?
+    private(set) var sortingSpends = false
+
+    /// This month and last, so the page can compare.
+    func loadMoney() async {
+        guard let server, email != nil else { return }
+        let start = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
+        let since = MoneyMath.month(of: HabitDay.key(start)) + "-01"
+        do {
+            async let spent = server.spends(since: since)
+            async let limits = server.budgets()
+            (spends, budgets) = try await (spent, limits)
+        } catch {
+            // Never show €0 as if nothing was spent.
+            moneyProblem = "Can't load your spending right now. Check your connection."
+        }
+    }
+
+    /// The AI's reading of what was typed; empty (with a problem) when it found nothing.
+    func sortSpends(_ text: String) async -> [SpendDraft] {
+        guard let server else { return [] }
+        sortingSpends = true
+        defer { sortingSpends = false }
+        moneyProblem = nil
+        do { return try await server.sortSpends(text, today: HabitDay.key(.now)) }
+        catch let problem as BlinkServer.ChatProblem { moneyProblem = problem.message }
+        catch { moneyProblem = "Can't reach your server right now." }
+        return []
+    }
+
+    @discardableResult
+    func addSpends(_ drafts: [SpendDraft]) async -> [Spend]? {
+        guard let server else { return nil }
+        moneyProblem = nil
+        do {
+            let saved = try await server.add(drafts)
+            spends = (saved + spends).sorted { $0.spentOn > $1.spentOn }
+            return saved
+        } catch {
+            moneyProblem = "Couldn't save. Check your connection and try again."
+            return nil
+        }
+    }
+
+    func saveSpend(_ spend: Spend) async {
+        guard let server, let i = spends.firstIndex(where: { $0.id == spend.id }) else { return }
+        moneyProblem = nil
+        let before = spends[i]
+        spends[i] = spend
+        do { try await server.save(spend) } catch {
+            if let j = spends.firstIndex(where: { $0.id == spend.id }) { spends[j] = before }
+            moneyProblem = "Couldn't save that change. Check your connection."
+        }
+    }
+
+    func deleteSpend(_ spend: Spend) async {
+        guard let server else { return }
+        moneyProblem = nil
+        spends.removeAll { $0.id == spend.id }
+        do { try await server.delete(spend) } catch {
+            spends.append(spend)
+            spends.sort { $0.spentOn > $1.spentOn }
+            moneyProblem = "Couldn't delete that. Check your connection."
+        }
+    }
+
+    /// Sets (or with nil, removes) a category's monthly limit.
+    func setLimit(_ limit: Decimal?, for category: SpendCategory) async {
+        guard let server else { return }
+        moneyProblem = nil
+        do {
+            try await server.setLimit(limit, for: category)
+            budgets.removeAll { $0.category == category }
+            if let limit { budgets.append(Budget(category: category, monthlyLimit: limit)) }
+        } catch {
+            moneyProblem = "Couldn't save the limit. Check your connection."
         }
     }
 

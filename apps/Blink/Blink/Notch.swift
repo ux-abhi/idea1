@@ -951,6 +951,7 @@ struct CommandHint: View {
         case .focus: "Focus: 25 min"
         case .post(let idea): "Post: \(idea)"
         case .ideas(let theme): theme.isEmpty ? "Ideas for your page" : "Ideas: \(theme)"
+        case .spent(let text): "Spent: \(text)"
         }
     }
 
@@ -963,6 +964,7 @@ struct CommandHint: View {
         case .focus: "brain.head.profile"
         case .post: "megaphone"
         case .ideas: "lightbulb"
+        case .spent: "eurosign.circle"
         }
     }
 
@@ -976,6 +978,7 @@ struct CommandHint: View {
         case .focus: return "Then a 5-minute break; a long break after every fourth."
         case .post: return "Drafts for your platforms from Content, saved there to edit and approve."
         case .ideas: return "Six ideas for your page; Write turns one into drafts."
+        case .spent: return "Blink sorts each amount into a category and saves it to Money, with Undo."
         }
     }
 }

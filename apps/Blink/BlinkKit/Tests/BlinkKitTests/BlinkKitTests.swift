@@ -656,3 +656,25 @@ extension Tokens {
     let item = DueItem(id: "t1", title: "Call", due: now)
     #expect(MeetingCue.due(item).id != MeetingCue.due(DueItem(id: "t1", title: "Call", due: now + 1800)).id)
 }
+
+@Test func moneyTotalsAreExactPerCategoryAndMonth() throws {
+    let json = #"[{"id":"1","amount":8.1,"note":"Lunch","category":"food","spent_on":"2026-10-12"},{"id":"2","amount":0.2,"note":"Coffee","category":"food","spent_on":"2026-10-12"},{"id":"3","amount":23.4,"note":"Rewe","category":"groceries","spent_on":"2026-10-01"},{"id":"4","amount":99,"note":"Old","category":"fun","spent_on":"2026-09-30"}]"#
+    let spends = try JSONDecoder().decode([Spend].self, from: Data(json.utf8))
+    let totals = MoneyMath.totals(spends, month: "2026-10")
+    #expect(totals.map(\.category) == [.groceries, .food])
+    #expect(totals.first { $0.category == .food }?.total == Decimal(string: "8.3"))
+    #expect(MoneyMath.total(spends, month: "2026-10") == Decimal(string: "31.7"))
+    #expect(MoneyMath.used(Decimal(250), of: Decimal(200)) == 1.25)
+}
+
+@Test func spentNeedsAnAmount() {
+    #expect(QuickCommand.parse("/spent 8.50 lunch, 3 bus") == .spent("8.50 lunch, 3 bus"))
+    #expect(QuickCommand.parse("/spent lunch") == nil)
+}
+
+@Test func typedAmountsParseWithCommaOrDot() {
+    #expect(MoneyMath.parseAmount("8,50") == Decimal(string: "8.5"))
+    #expect(MoneyMath.parseAmount("€ 12.345") == Decimal(string: "12.35"))
+    #expect(MoneyMath.parseAmount("1.2.3") == nil)
+    #expect(MoneyMath.parseAmount("0") == nil && MoneyMath.parseAmount("") == nil)
+}

@@ -221,6 +221,24 @@ do $$ begin
   end;
 end $$;
 
+-- Money: A keeps their own spends and limits; nonsense amounts and categories are refused.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  insert into public.transaction (amount, note, category) values (8.50, 'Lunch', 'food');
+  insert into public.budget (category, monthly_limit) values ('food', 250);
+  assert (select count(*) from public.transaction) = 1, 'A should see own spend';
+  begin
+    insert into public.transaction (amount, note) values (-5, 'refund?');
+    raise exception 'a negative spend was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.transaction (amount, category) values (5, 'crypto');
+    raise exception 'an unknown category was accepted';
+  exception when check_violation then null;
+  end;
+end $$;
+
 -- User B sees nothing of A's and cannot write rows owned by A.
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
@@ -231,6 +249,8 @@ do $$ begin
   assert (select count(*) from public.social_post) = 0, 'B must not see A''s page posts';
   assert (select count(*) from public.email_msg) = 0, 'B must not see A''s mail';
   assert (select count(*) from public.mail_sender_rule) = 0, 'B must not see A''s sender rules';
+  assert (select count(*) from public.transaction) = 0, 'B must not see A''s spends';
+  assert (select count(*) from public.budget) = 0, 'B must not see A''s budgets';
   update public.voice_profile set notes = 'hacked', page = 'hacked', brief = 'hacked';
   begin
     insert into public.item (type, title, segment_id) values ('task', 'sneak', '00000000-0000-0000-0000-0000000000c1');

@@ -76,6 +76,13 @@ Gates:
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
 
+## Phase 7 status (Mac session, 2026-10-12): first slice
+Owner: "a basic entry, like a budget calculator at max, with AI that sorts it properly"; meals left out for now.
+- [x] `transaction` + `budget` tables (RLS tests); `money` Edge Function sorts free text into spends with categories on the free Groq model (checked amounts, categories, days).
+- [x] Money page: type the day's spending → Sort It → check/edit → Save; this month per category against a monthly limit; latest spends by day (change category, delete).
+- [x] Notch `/spent 8.50 lunch, 3 bus` saves at once with Undo. Blink panel on Money answers "Where is my money going?" from this month's numbers.
+- [ ] Later in Phase 7: 20:45 "Any spends I missed today?" nudge, Apple Pay / bank SMS capture via Shortcuts, limit alerts (P1 at 80/100%), Money on iPhone.
+
 ## Phase 5 status (Mac session, 2026-10-12): started
 Owner choices: Gmail + iCloud (hello@pexilim.com and hello@uxabhi.com are iCloud+ custom-domain addresses); important = jobs and TeamViewer, uni and official, clients and products, money and bills; checking runs on the server.
 - [x] Server can reach imap.gmail.com/imap.mail.me.com:993 and smtp.gmail.com:465/587, smtp.mail.me.com:587 (probe, then retired).

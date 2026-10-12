@@ -158,6 +158,18 @@ struct BlinkPanel: View {
             return [Suggestion("Give me 5 post ideas from my week",
                                "Give me 5 post ideas from my calendar, tasks and notes this week. One line each, in my words."),
                     Suggestion("What should I post about today?")]
+        case .section(.money):
+            // This month's numbers, as data: the chat never reads the table itself.
+            let month = MoneyMath.month(of: HabitDay.key(.now))
+            let totals = MoneyMath.totals(model.spends, month: month).map { row in
+                let limit = model.budgets.first { $0.category == row.category }.map { " (limit \($0.monthlyLimit.formatted(.currency(code: "EUR"))))" } ?? ""
+                return "- \(row.category.title): \(row.total.formatted(.currency(code: "EUR")))\(limit)"
+            }.joined(separator: "\n")
+            let recent = model.spends.filter { MoneyMath.month(of: $0.spentOn) == month }.prefix(40).map { "- \($0.spentOn) \($0.note) \($0.amount.formatted(.currency(code: "EUR"))) [\($0.category.title)]" }
+                .joined(separator: "\n")
+            let context = String("Spending this month by category:\n\(totals.isEmpty ? "none" : totals)\nLatest spends:\n\(recent.isEmpty ? "none" : recent)".prefix(3900))
+            return [Suggestion("Where is my money going?", "Where is my money going this month? Two or three short lines.", context: context),
+                    Suggestion("How can I spend less?", "Based on this month, where could I spend less? Concrete, short.", context: context)]
         case .section(.waiting):
             return [Suggestion("Explain what's waiting for me")]
         case .section(.activity):

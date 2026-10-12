@@ -12,6 +12,8 @@ public enum QuickCommand: Equatable, Sendable {
     case post(idea: String)
     /// Ideas for the owner's page, optionally around a theme.
     case ideas(theme: String)
+    /// Spending in the owner's words ("8.50 lunch, 3 bus"); the AI sorts it into categories.
+    case spent(String)
 
     /// Every command with an example, for the hint list.
     public static let all: [(name: String, example: String, about: String)] = [
@@ -22,6 +24,7 @@ public enum QuickCommand: Equatable, Sendable {
         ("/focus", "/focus", "25-minute focus round"),
         ("/post", "/post 3 checkout mistakes that lose users", "Write drafts for your platforms"),
         ("/ideas", "/ideas video ideas for my page", "Post ideas for your page"),
+        ("/spent", "/spent 8.50 lunch, 3 bus", "Add what you spent; Blink sorts it"),
     ]
 
     /// The command for a finished line, or nil if it isn't one yet (still typing the name, or nothing after it).
@@ -51,6 +54,8 @@ public enum QuickCommand: Equatable, Sendable {
             return rest.isEmpty ? nil : .post(idea: rest)
         case "/ideas":
             return .ideas(theme: rest)
+        case "/spent":
+            return rest.contains(where: \.isNumber) ? .spent(rest) : nil
         default:
             return nil
         }

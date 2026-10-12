@@ -464,6 +464,58 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    // MARK: Money (Phase 7, first slice)
+
+    /// Spends from `since` ("2026-09-01") on, newest first.
+    public func spends(since: String) async throws -> [Spend] {
+        try await client.from("transaction").select("id, amount, note, category, spent_on")
+            .gte("spent_on", value: since)
+            .order("spent_on", ascending: false).order("created_at", ascending: false)
+            .limit(1000)
+            .execute().value
+    }
+
+    public func budgets() async throws -> [Budget] {
+        try await client.from("budget").select("category, monthly_limit").execute().value
+    }
+
+    /// The AI reads what the owner typed into spends with categories; nothing is saved yet.
+    public func sortSpends(_ text: String, today: String) async throws -> [SpendDraft] {
+        struct Reply: Decodable { let entries: [SpendDraft] }
+        do {
+            let reply: Reply = try await client.functions.invoke("money", options: .init(body: ["text": text, "today": today]))
+            return reply.entries
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't sort that.")
+        }
+    }
+
+    public func add(_ drafts: [SpendDraft]) async throws -> [Spend] {
+        try await client.from("transaction").insert(drafts)
+            .select("id, amount, note, category, spent_on").execute().value
+    }
+
+    public func save(_ spend: Spend) async throws {
+        struct Row: Encodable { let amount: Decimal, note: String, category: SpendCategory, spent_on: String }
+        try await client.from("transaction")
+            .update(Row(amount: spend.amount, note: spend.note, category: spend.category, spent_on: spend.spentOn))
+            .eq("id", value: spend.id).execute()
+    }
+
+    public func delete(_ spend: Spend) async throws {
+        try await client.from("transaction").delete().eq("id", value: spend.id).execute()
+    }
+
+    /// Sets a category's monthly limit, or removes it with nil.
+    public func setLimit(_ limit: Decimal?, for category: SpendCategory) async throws {
+        if let limit {
+            try await client.from("budget").upsert(Budget(category: category, monthlyLimit: limit), onConflict: "owner_id,category").execute()
+        } else {
+            try await client.from("budget").delete().eq("category", value: category.rawValue).execute()
+        }
+    }
+
     public func contentPieces() async throws -> [ContentPiece] {
         try await client.from("content_piece")
             .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for")
