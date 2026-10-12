@@ -50,3 +50,13 @@ Claude Code skills in `.claude/skills/` help development and are never part of t
 | kylezantos/design-motion-principles | MIT |
 | greensock/gsap-skills | MIT |
 | dpearson2699/swift-ios-skills | PolyForm Perimeter 1.0.0 (any use except a competing product) |
+| remotion-dev/skills (`remotion-*`) | No licence file (docs-only) |
+
+## Marketing videos (not shipped)
+
+`marketing/intro-video/` makes the Blink intro video. Nothing in it ships with the app or backend.
+
+| Component | License | Source |
+|---|---|---|
+| Remotion | Remotion License: free for companies of up to 3 people; a company licence is needed beyond that | https://www.remotion.pro/license |
+| Inter (font, via @remotion/google-fonts) | SIL Open Font License 1.1 | https://github.com/rsms/inter |
