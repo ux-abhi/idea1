@@ -1,7 +1,7 @@
 import {Eyes, Scene, Sfx, Words} from '../kinetic';
 import {useIn, useUnit} from '../theme';
 
-// 7–9.5s: the name, with the eyes above it.
+// 7.2–9.6s: the name, with the eyes above it.
 export const Meet = () => {
 	const u = useUnit();
 	const eyes = useIn(0);

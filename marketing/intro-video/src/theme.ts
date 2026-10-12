@@ -1,4 +1,5 @@
-// Colours from design/tokens.json (apple.* dark values). Apple-style film: black, white, grey and one blue.
+// Colours from design/tokens.json (apple.* dark values, blink.mood.*). Apple-style film: black, white and grey with
+// Blink's mood colours as accents. No purple or indigo (owner's call); thinking uses blue.
 // Motion springs from tokens → motion.spring.
 import {loadFont} from '@remotion/google-fonts/Inter';
 import {spring, useCurrentFrame, useVideoConfig} from 'remotion';
@@ -13,12 +14,19 @@ export const C = {
 	tile: '#1C1C1E', // systemGray6 dark
 	tileEdge: '#2C2C2E', // systemGray5 dark
 	line: '#3A3A3C', // systemGray4 dark
-	blue: '#0A84FF', // systemBlue dark: the only accent
-	blueSoft: 'rgba(10, 132, 255, 0.22)',
+	blue: '#0A84FF', // systemBlue: accent, and Blink's thinking colour in this film
+	red: '#FF453A', // mood.important
+	mint: '#63E6E2', // mood.headsUp
+	green: '#30D158', // mood.done
+	orange: '#FF9F0A', // mood.attention
+	yellow: '#FFD60A', // mood.celebrate
+	pink: '#FF375F', // money.food
+	cyan: '#64D2FF', // money.transport
+	brown: '#AC8E68', // money.home
 };
 
-// 120 BPM at 60 fps: one beat is 30 frames. Scene lengths and key hits land on beats.
-export const BEAT = 30;
+// The music runs at 100 BPM: at 60 fps one beat is 36 frames, a bar 144. Scene lengths and key hits land on beats.
+export const BEAT = 36;
 
 // Token springs are (response, dampingRatio); Remotion wants stiffness and damping for mass 1.
 const tokenSpring = (response: number, ratio: number) => ({

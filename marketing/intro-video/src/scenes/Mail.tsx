@@ -1,5 +1,5 @@
 import {interpolate, useCurrentFrame} from 'remotion';
-import {Scene, Sfx, Sub, Tile, Words} from '../kinetic';
+import {Eyes, Scene, Sfx, Sub, Tile, Words} from '../kinetic';
 import {C, useUnit} from '../theme';
 
 const MAIL = [
@@ -9,7 +9,7 @@ const MAIL = [
 	{from: 'Weekly Digest', subject: 'This week in design', spam: true},
 ];
 
-// 17–22s: mail triage. The noise steps back; the one that matters comes forward in blue.
+// 16.8–21.6s: mail triage. The noise steps back; the one that matters comes forward in red (mood.important).
 export const Mail = () => {
 	const u = useUnit();
 	const frame = useCurrentFrame();
@@ -26,8 +26,8 @@ export const Mail = () => {
 							display: 'flex',
 							alignItems: 'center',
 							opacity: m.spam ? 1 - sort * 0.65 : 1,
-							outline: m.spam ? undefined : `${2 * u}px solid rgba(10,132,255,${sort})`,
-							boxShadow: m.spam ? undefined : `0 0 ${40 * u * sort}px rgba(10,132,255,${0.45 * sort})`,
+							outline: m.spam ? undefined : `${2 * u}px solid rgba(255,69,58,${sort})`,
+							boxShadow: m.spam ? undefined : `0 0 ${40 * u * sort}px rgba(255,69,58,${0.45 * sort})`,
 							scale: m.spam ? String(1 - sort * 0.02) : String(1 + sort * 0.03),
 						}}
 					>
@@ -35,7 +35,11 @@ export const Mail = () => {
 							<div style={{fontSize: 28 * u, fontWeight: 600}}>{m.from}</div>
 							<div style={{fontSize: 32 * u, color: C.gray}}>{m.subject}</div>
 						</div>
-						<div style={{fontSize: 24 * u, fontWeight: 600, color: m.spam ? C.gray : C.blue, opacity: sort}}>{m.spam ? 'Not important' : 'Important'}</div>
+						{m.spam ? (
+							<div style={{fontSize: 24 * u, fontWeight: 600, color: C.gray, opacity: sort}}>Not important</div>
+						) : (
+							<Eyes mood="important" width={90 * u} style={{opacity: sort}} />
+						)}
 					</Tile>
 				))}
 			</div>

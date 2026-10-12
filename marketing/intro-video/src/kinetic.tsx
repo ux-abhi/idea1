@@ -67,10 +67,10 @@ export const Sub: React.FC<{text: string; delay?: number; size?: number; style?:
 );
 
 /** Blink's real eyes, exported from the app (BlinkEyes at notch size), with a blink at each frame in `blinks`. */
-export const Eyes: React.FC<{width: number; blinks?: number[]; style?: React.CSSProperties}> = ({width, blinks = [], style}) => {
+export const Eyes: React.FC<{mood?: 'idle' | 'important' | 'done' | 'headsup'; width: number; blinks?: number[]; style?: React.CSSProperties}> = ({mood = 'idle', width, blinks = [], style}) => {
 	const frame = useCurrentFrame();
 	const lid = blinks.reduce((open, at) => Math.min(open, interpolate(frame, [at, at + 4, at + 9], [1, 0.08, 1], clamp)), 1);
-	return <Img src={staticFile('eyes-idle.png')} style={{width, height: width / 2, scale: `1 ${lid}`, ...style}} />;
+	return <Img src={staticFile(`eyes-${mood}.png`)} style={{width, height: width / 2, scale: `1 ${lid}`, ...style}} />;
 };
 
 /** Every scene leaves the same way: a quick settle back and fade, so cuts feel like one continuous piece. */
@@ -86,6 +86,7 @@ export const Scene: React.FC<{children: React.ReactNode; style?: React.CSSProper
 				justifyContent: 'center',
 				flexDirection: 'column',
 				opacity: 1 - out,
+				filter: out > 0 ? `blur(${out * 6}px)` : undefined,
 				// The slow camera push of Apple's product films, then a small settle on the way out.
 				scale: String((1 + (frame / durationInFrames) * 0.05) * (1 - out * 0.03)),
 				...style,
@@ -193,7 +194,7 @@ export const Typed: React.FC<{text: string; from: number; every?: number; caret?
 		<>
 			{text.slice(0, frame < from ? 0 : shown)}
 			{caret && <span style={{color: C.blue, opacity: frame % 30 < 16 ? 1 : 0}}>|</span>}
-			{text.split('').map((ch, i) => (ch === ' ' ? null : <Sfx key={i} name="key" at={from + i * every} volume={0.35} />))}
+			{text.split('').map((ch, i) => (ch === ' ' ? null : <Sfx key={i} name={KEYS[i % KEYS.length]} at={from + i * every} volume={0.5} />))}
 		</>
 	);
 };
@@ -212,6 +213,7 @@ export const Tile: React.FC<{delay?: number; children: React.ReactNode; style?: 
 				color: C.text,
 				opacity: Math.min(1, p * 1.5),
 				translate: `0 ${(1 - p) * 30 * u}px`,
+				filter: p < 1 ? `blur(${(1 - Math.min(1, p)) * 6}px)` : undefined,
 				...style,
 			}}
 		>
@@ -220,10 +222,33 @@ export const Tile: React.FC<{delay?: number; children: React.ReactNode; style?: 
 	);
 };
 
-/** One of the soundtrack's interface sounds (public/sfx, made by sound/make_sounds.py). */
-export const Sfx: React.FC<{name: 'tick' | 'key' | 'whoosh' | 'tap' | 'chime' | 'pop' | 'swoosh' | 'rise' | 'roll' | 'drop' | 'sparkle' | 'clunk'; at: number; volume?: number}> = ({name, at, volume = 0.6}) => {
+// Recorded interface sounds from Kenney (CC0, public/sfx/kenney) where they exist; synthesised ones
+// (sound/make_sounds.py) only for air and motion, which Kenney's packs don't cover.
+const SOUNDS = {
+	tick: 'kenney/tick_001',
+	key1: 'kenney/click_002',
+	key2: 'kenney/click_003',
+	key3: 'kenney/click_004',
+	key4: 'kenney/click_005',
+	tap: 'kenney/select_003', // a shortcut pressed, Touch ID touched
+	open: 'kenney/maximize_003', // the notch or a panel opening
+	pop: 'kenney/pluck_002', // a card or row appearing
+	drop: 'kenney/drop_002',
+	chime: 'kenney/confirmation_002', // approved, done
+	sparkle: 'kenney/glass_001', // a highlight
+	clunk: 'kenney/toggle_001', // the lock
+	whoosh: 'whoosh',
+	swoosh: 'swoosh',
+	rise: 'rise',
+	roll: 'roll',
+} as const;
+type SoundName = keyof typeof SOUNDS;
+const KEYS: SoundName[] = ['key1', 'key2', 'key3', 'key4'];
+
+/** One sound effect, starting `at` frames into the current sequence. */
+export const Sfx: React.FC<{name: SoundName; at: number; volume?: number}> = ({name, at, volume = 0.6}) => {
 	const {fps} = useVideoConfig();
-	return <Audio src={staticFile(`sfx/${name}.wav`)} from={at} volume={volume} premountFor={fps} />;
+	return <Audio src={staticFile(`sfx/${SOUNDS[name]}.wav`)} from={at} volume={volume} premountFor={fps} />;
 };
 
 /** Small line icons in the style of SF Symbols. */
@@ -263,4 +288,13 @@ export const Caption: React.FC<{text: string; from: number; to: number; accent?:
 			<Words text={text} size={76} delay={from} accent={accent} />
 		</div>
 	);
+};
+
+/** A full-screen title that hands over to a product demo: it leaves quieter than it came, rising slightly
+ *  and losing focus, so the eye moves on to what replaces it. */
+export const TitleOut: React.FC<{at: number; children: React.ReactNode}> = ({at, children}) => {
+	const frame = useCurrentFrame();
+	const out = interpolate(frame, [at, at + 16], [0, 1], {...clamp, easing: Easing.in(Easing.cubic)});
+	if (out >= 1) return null;
+	return <div style={{position: 'absolute', opacity: 1 - out, translate: `0 ${out * -16}px`, filter: out > 0 ? `blur(${out * 8}px)` : undefined}}>{children}</div>;
 };

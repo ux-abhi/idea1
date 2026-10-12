@@ -1,7 +1,7 @@
 import {Scene, Sfx, Sub, Words} from '../kinetic';
 import {C} from '../theme';
 
-// 9.5–12s: what it is, in one line.
+// 9.6–12s: what it is, in one line.
 export const Tagline = () => (
 	<Scene>
 		<Words text="A personal assistant" size={110} />

@@ -2,18 +2,17 @@ import {interpolate, useCurrentFrame} from 'remotion';
 import {Scene, Sfx, Words} from '../kinetic';
 import {C, fontFamily, SPRING, useIn, useUnit} from '../theme';
 
-// One blue, several strengths: the Apple-film palette.
 const BLOCKS = [
-	{label: 'Standup', start: 9.5, end: 10, alpha: 0.45},
-	{label: 'Deep work', start: 10, end: 12, alpha: 1},
-	{label: 'Lunch', start: 12.5, end: 13.25, alpha: 0.35},
-	{label: 'Thesis', start: 14, end: 16, alpha: 0.8},
-	{label: 'Gym', start: 17.5, end: 18.5, alpha: 0.55},
+	{label: 'Standup', start: 9.5, end: 10, color: C.mint},
+	{label: 'Deep work', start: 10, end: 12, color: C.blue},
+	{label: 'Lunch', start: 12.5, end: 13.25, color: C.orange},
+	{label: 'Thesis', start: 14, end: 16, color: C.yellow},
+	{label: 'Gym', start: 17.5, end: 18.5, color: C.green},
 ];
 const FROM = 9;
 const TO = 19;
 
-// 38.5–41.5s: the day snaps into a timeline; today's rings fill.
+// 41.4–43.8s: the day snaps into a timeline; today's rings fill.
 export const Day = () => {
 	const u = useUnit();
 	const width = 1100 * u;
@@ -31,20 +30,20 @@ export const Day = () => {
 				))}
 			</div>
 			<div style={{display: 'flex', gap: 70 * u, marginTop: 50 * u}}>
-				<DayRing label="Tasks" value="4 of 6" share={4 / 6} delay={60} />
-				<DayRing label="Focus" value="2 h 10 m" share={0.65} delay={66} />
-				<DayRing label="Habits" value="2 of 3" share={2 / 3} delay={72} />
+				<DayRing label="Tasks" value="4 of 6" share={4 / 6} delay={50} color={C.green} />
+				<DayRing label="Focus" value="2 h 10 m" share={0.65} delay={56} color={C.blue} />
+				<DayRing label="Habits" value="2 of 3" share={2 / 3} delay={62} color={C.yellow} />
 			</div>
 			<Sfx name="swoosh" at={0} volume={0.5} />
 			{[0, 1, 2, 3, 4].map((i) => (
 				<Sfx key={i} name="pop" at={20 + i * 6} volume={0.3} />
 			))}
-			<Sfx name="rise" at={60} volume={0.4} />
+			<Sfx name="rise" at={50} volume={0.4} />
 		</Scene>
 	);
 };
 
-const DayRing: React.FC<{label: string; value: string; share: number; delay: number}> = ({label, value, share, delay}) => {
+const DayRing: React.FC<{label: string; value: string; share: number; delay: number; color: string}> = ({label, value, share, delay, color}) => {
 	const u = useUnit();
 	const frame = useCurrentFrame();
 	const t = interpolate(frame, [delay, delay + 50], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
@@ -53,7 +52,7 @@ const DayRing: React.FC<{label: string; value: string; share: number; delay: num
 		<div style={{display: 'flex', alignItems: 'center', gap: 18 * u, fontFamily, opacity: Math.min(1, t * 3)}}>
 			<svg width={96 * u} height={96 * u} viewBox="-50 -50 100 100">
 				<circle r={r} fill="none" stroke={C.line} strokeWidth={10} />
-				<circle r={r} fill="none" stroke={C.blue} strokeWidth={10} strokeLinecap="round" strokeDasharray={2 * Math.PI * r} strokeDashoffset={2 * Math.PI * r * (1 - share * t)} transform="rotate(-90)" />
+				<circle r={r} fill="none" stroke={color} strokeWidth={10} strokeLinecap="round" strokeDasharray={2 * Math.PI * r} strokeDashoffset={2 * Math.PI * r * (1 - share * t)} transform="rotate(-90)" />
 			</svg>
 			<div>
 				<div style={{fontSize: 22 * u, color: C.gray}}>{label}</div>
@@ -63,7 +62,7 @@ const DayRing: React.FC<{label: string; value: string; share: number; delay: num
 	);
 };
 
-const Block: React.FC<{label: string; alpha: number; i: number; left: number; w: number}> = ({label, alpha, i, left, w}) => {
+const Block: React.FC<{label: string; color: string; i: number; left: number; w: number}> = ({label, color, i, left, w}) => {
 	const u = useUnit();
 	const p = useIn(20 + i * 6, SPRING.content);
 	return (
@@ -75,7 +74,7 @@ const Block: React.FC<{label: string; alpha: number; i: number; left: number; w:
 				bottom: 12 * u,
 				width: w - 6 * u,
 				borderRadius: 12 * u,
-				background: `rgba(10,132,255,${alpha})`,
+				background: color,
 				scale: `${p} 1`,
 				transformOrigin: 'left',
 				opacity: Math.min(1, p * 2),
@@ -85,7 +84,7 @@ const Block: React.FC<{label: string; alpha: number; i: number; left: number; w:
 				fontFamily,
 				fontWeight: 600,
 				fontSize: 22 * u,
-				color: C.text,
+				color: '#000',
 				overflow: 'hidden',
 				whiteSpace: 'nowrap',
 			}}

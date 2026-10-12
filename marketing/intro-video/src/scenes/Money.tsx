@@ -9,15 +9,15 @@ const ACCOUNTS = [
 ];
 const DAYS = [32, 18, 45, 12, 60, 28, 22, 38, 15, 52, 26, 30, 19, 41]; // spent per day, last 14 days
 const CATEGORIES = [
-	{name: 'Home', share: 0.42, alpha: 1},
-	{name: 'Food', share: 0.27, alpha: 0.7},
-	{name: 'Transport', share: 0.17, alpha: 0.45},
-	{name: 'Other', share: 0.14, alpha: 0.25},
+	{name: 'Home', share: 0.42, color: C.brown},
+	{name: 'Food', share: 0.27, color: C.pink},
+	{name: 'Transport', share: 0.17, color: C.cyan},
+	{name: 'Other', share: 0.14, color: C.gray},
 ];
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 
-// 41.5–46s: the money dashboard: accounts, daily spending against the budget, and where it went.
+// 43.8–48s: the money dashboard: accounts, daily spending against the budget, and where it went.
 export const Money = () => {
 	const u = useUnit();
 	const vertical = useVertical();
@@ -62,6 +62,7 @@ const Card: React.FC<{title: string; delay: number; children: React.ReactNode}> 
 				color: C.text,
 				opacity: Math.min(1, p * 1.5),
 				translate: `0 ${(1 - p) * 40 * u}px`,
+				filter: p < 1 ? `blur(${(1 - Math.min(1, p)) * 6}px)` : undefined,
 				display: 'flex',
 				flexDirection: 'column',
 			}}
@@ -90,7 +91,7 @@ const Balance = () => {
 							<span>€{a.amount.toLocaleString('de-DE', {minimumFractionDigits: 2})}</span>
 						</div>
 						<div style={{height: 10 * u, borderRadius: 99, background: C.line}}>
-							<div style={{height: '100%', borderRadius: 99, background: C.blue, opacity: 1 - i * 0.25, width: `${(a.amount / total) * 100 * interpolate(frame, [50 + i * 6, 90 + i * 6], [0, 1], clamp)}%`}} />
+							<div style={{height: '100%', borderRadius: 99, background: [C.blue, C.green, C.mint][i], width: `${(a.amount / total) * 100 * interpolate(frame, [50 + i * 6, 90 + i * 6], [0, 1], clamp)}%`}} />
 						</div>
 					</div>
 				))}
@@ -117,8 +118,7 @@ const Bars = () => {
 						style={{
 							flex: 1,
 							borderRadius: 6 * u,
-							background: C.blue,
-							opacity: d > budget ? 1 : 0.45,
+							background: d > budget ? C.orange : C.blue,
 							height: (d / max) * height * interpolate(frame, [46 + i * 2, 70 + i * 2], [0, 1], {...clamp, easing: Easing.out(Easing.cubic)}),
 						}}
 					/>
@@ -143,7 +143,7 @@ const Ring = () => {
 				{CATEGORIES.map((c) => {
 					const len = c.share * circ * t;
 					const el = (
-						<circle key={c.name} r={r} fill="none" stroke={C.blue} strokeOpacity={c.alpha} strokeWidth={26} strokeDasharray={`${Math.max(0, len - 3)} ${circ}`} strokeDashoffset={-start * t} transform="rotate(-90)" />
+						<circle key={c.name} r={r} fill="none" stroke={c.color} strokeWidth={26} strokeDasharray={`${Math.max(0, len - 3)} ${circ}`} strokeDashoffset={-start * t} transform="rotate(-90)" />
 					);
 					start += c.share * circ;
 					return el;
@@ -152,7 +152,7 @@ const Ring = () => {
 			<div style={{display: 'flex', flexDirection: 'column', gap: 10 * u}}>
 				{CATEGORIES.map((c) => (
 					<div key={c.name} style={{display: 'flex', alignItems: 'center', gap: 10 * u, fontSize: 22 * u}}>
-						<span style={{width: 14 * u, height: 14 * u, borderRadius: 99, background: C.blue, opacity: c.alpha}} />
+						<span style={{width: 14 * u, height: 14 * u, borderRadius: 99, background: c.color}} />
 						<span>{c.name}</span>
 						<span style={{color: C.gray}}>{Math.round(c.share * 100)}%</span>
 					</div>

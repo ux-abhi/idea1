@@ -52,6 +52,7 @@ Also installed earlier: 13 Instagram skills (`ig-*`, [Jakeschincariol/instagram-
 | `gsap-performance` | [greensock/gsap-skills](https://github.com/greensock/gsap-skills) | `aed9cfd` | MIT |
 | `gsap-react` | [greensock/gsap-skills](https://github.com/greensock/gsap-skills) | `aed9cfd` | MIT |
 | `remotion-*` (12 skills, pinned in `skills-lock.json`) | [remotion-dev/skills](https://github.com/remotion-dev/skills) | `7ba4dcf` | No licence file in the repo; docs-only, used for marketing videos |
+| `sound-effects` | [elevenlabs/skills](https://github.com/elevenlabs/skills) | pinned in `skills-lock.json` | MIT (needs an ElevenLabs API key) |
 
 ## UI and UX
 

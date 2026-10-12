@@ -1,5 +1,5 @@
 import {interpolate, useCurrentFrame} from 'remotion';
-import {Icon, Keys, Scene, Screen, Sfx, Sub, Typed, Words} from '../kinetic';
+import {Icon, Keys, Scene, Screen, Sfx, Sub, TitleOut, Typed, Words} from '../kinetic';
 import {C, fontFamily, SPRING, useIn, useUnit} from '../theme';
 
 const HITS = [
@@ -9,19 +9,18 @@ const HITS = [
 	{icon: 'space', title: 'Thesis', kind: 'Space'},
 ] as const;
 
-// 34–38.5s: ⌘K finds notes, tasks, reminders, posts and spaces.
+// 26.4–31.2s: ⌘K finds notes, tasks, reminders, posts and spaces.
 export const Search = () => {
 	const u = useUnit();
 	const frame = useCurrentFrame();
-	const title = interpolate(frame, [70, 86], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
 	const sheet = useIn(110, SPRING.cardIn);
 	const selected = frame < 200 ? 0 : frame < 222 ? 1 : 2;
 	return (
 		<Scene>
-			<div style={{opacity: title, position: 'absolute'}}>
+			<TitleOut at={70}>
 				<Words text="Find anything." />
 				<Sub text="Notes, tasks, reminders, posts and spaces." />
-			</div>
+			</TitleOut>
 			{frame >= 80 && (
 				<>
 					<Screen delay={80} />
@@ -37,6 +36,8 @@ export const Search = () => {
 							color: C.text,
 							opacity: sheet,
 							scale: String(0.96 + 0.04 * sheet),
+							transformOrigin: 'top center', // grows from where ⌘K summons it
+							filter: sheet < 1 ? `blur(${(1 - Math.min(1, sheet)) * 8}px)` : undefined,
 							overflow: 'hidden',
 						}}
 					>
@@ -52,7 +53,7 @@ export const Search = () => {
 					</div>
 					<Sfx name="swoosh" at={0} volume={0.5} />
 					<Sfx name="tap" at={106} volume={0.7} />
-					<Sfx name="whoosh" at={108} volume={0.4} />
+					<Sfx name="open" at={108} volume={0.5} />
 					{[0, 1, 2, 3].map((i) => (
 						<Sfx key={i} name="pop" at={160 + i * 5} volume={0.35} />
 					))}
