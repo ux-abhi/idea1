@@ -45,3 +45,12 @@ Deno.test("reschedules need a known id and a real date", () => {
   if (parseReschedule({ kind: "task", id: "t1", due_at: "soon" }, known) !== null) throw new Error("bad date accepted");
   if (parseReschedule({ kind: "task", id: "x", due_at: "2026-10-13T10:00:00Z" }, known) !== null) throw new Error("unknown id accepted");
 });
+
+Deno.test("screen context is optional text with a limit", () => {
+  const ok = parseChatRequest({ message: "turn this into tasks", context: "Note “Plan”:\nbuy milk" });
+  if (typeof ok === "string" || ok.context !== "Note “Plan”:\nbuy milk") throw new Error("valid context rejected");
+  const none = parseChatRequest({ message: "hi" });
+  if (typeof none === "string" || none.context !== null) throw new Error("missing context should be null");
+  if (typeof parseChatRequest({ message: "hi", context: 5 }) !== "string") throw new Error("non-text context accepted");
+  if (typeof parseChatRequest({ message: "hi", context: "x".repeat(4001) }) !== "string") throw new Error("long context accepted");
+});

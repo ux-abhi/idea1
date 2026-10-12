@@ -57,7 +57,8 @@ final class ClipboardStore {
     }
 
     private func record(_ image: NSImage, name: String) {
-        guard let preview = Self.png(image, maxSide: 480) else { return }
+        // The list shows a 34 × 24 thumbnail, so a small preview keeps the history file light.
+        guard let preview = Self.png(image, maxSide: 240) else { return }
         let item = ClipItem(kind: .image, text: name, image: preview)
         // The original sits beside the history so pasting or dragging it back keeps full quality.
         if let full = Self.png(image, maxSide: nil), full.count <= Self.maxImage {
@@ -153,18 +154,28 @@ final class ClipboardStore {
         return history
     }
 
+    @ObservationIgnored private var lastSave: Task<Void, Never>?
+
+    /// Writes off the main thread, one save after another, so copying never stutters and the newest history lands last.
     private func save() {
-        // shortcut: plain JSON in the sandbox container (FileVault protects it at rest); encrypt with a Keychain key if
-        // the history ever leaves this Mac or holds more than 50 items.
-        try? FileManager.default.createDirectory(at: Self.file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? JSONEncoder().encode(history).write(to: Self.file, options: [.atomic, .completeFileProtection])
-        // Originals of images that fell off the end, were removed or cleared go too.
-        let kept = Set(history.items.map { Self.original($0).lastPathComponent })
-        for url in (try? FileManager.default.contentsOfDirectory(at: Self.images, includingPropertiesForKeys: nil)) ?? []
-        where !kept.contains(url.lastPathComponent) {
-            try? FileManager.default.removeItem(at: url)
+        let snapshot = history
+        let file = Self.file, images = Self.images
+        // Full-size originals for the newest few images only; older ones keep their preview (caps disk use).
+        let kept = Set(snapshot.items.filter { $0.kind == .image }.prefix(Self.keptOriginals).map { Self.original($0).lastPathComponent })
+        lastSave = Task.detached { [previous = lastSave] in
+            await previous?.value
+            // shortcut: plain JSON in the sandbox container (FileVault protects it at rest); encrypt with a Keychain key if
+            // the history ever leaves this Mac or holds more than 50 items.
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? JSONEncoder().encode(snapshot).write(to: file, options: [.atomic, .completeFileProtection])
+            for url in (try? FileManager.default.contentsOfDirectory(at: images, includingPropertiesForKeys: nil)) ?? []
+            where !kept.contains(url.lastPathComponent) {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
     }
+
+    static let keptOriginals = 10
 
     /// PNG of the image, shrunk so its longest side is at most `maxSide` points (nil keeps full size).
     private static func png(_ image: NSImage, maxSide: CGFloat?) -> Data? {

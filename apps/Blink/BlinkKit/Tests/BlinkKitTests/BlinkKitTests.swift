@@ -534,6 +534,14 @@ extension Tokens {
     let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 13))!
     #expect(DueGroup.of(nil, now: now, calendar: cal) == .someday)
     #expect(DueGroup.of(now.addingTimeInterval(-60), now: now, calendar: cal) == .overdue)
+    #expect(DueGroup.of(cal.startOfDay(for: now), now: now, calendar: cal) == .today) // all-day reminder
     #expect(DueGroup.of(now.addingTimeInterval(3600 * 10), now: now, calendar: cal) == .today) // 23:00
     #expect(DueGroup.of(now.addingTimeInterval(3600 * 11), now: now, calendar: cal) == .upcoming) // midnight
+}
+
+@Test func chatHistoryStartsWithTheOwner() {
+    let turns: [BlinkServer.ChatTurn] = [.init(role: .assistant, text: "What should I add?")]
+        + (0..<20).map { .init(role: $0.isMultiple(of: 2) ? .user : .assistant, text: "\($0)") }
+    let sent = BlinkServer.recent([.init(role: .user, text: "first")] + turns)
+    #expect(sent.first?.role == .user && sent.count <= 20)
 }

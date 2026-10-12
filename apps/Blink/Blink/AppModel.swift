@@ -329,7 +329,12 @@ final class AppModel {
     func completeAll(tasks: [BlinkItem], reminders: [AgendaReminder]) async {
         let open = tasks.filter { $0.status != .done }
         for task in open { await toggle(task, offeringUndo: false) }
-        for reminder in reminders { await complete(reminder, offeringUndo: false) }
+        for reminder in reminders {
+            agenda.reminders.removeAll { $0.id == reminder.id }
+            allReminders.removeAll { $0.id == reminder.id }
+            await writeReminder(reload: false) { try await calendarReader.updateReminder(id: reminder.id, completed: true) }
+        }
+        if !reminders.isEmpty { await reloadAgenda() } // once, not per reminder
         let count = open.count + reminders.count
         guard count > 0 else { return }
         offerUndo(count == 1 ? "Done: \((open.first?.title ?? reminders.first?.title) ?? "")" : "\(count) done") { [weak self] in
@@ -387,8 +392,9 @@ final class AppModel {
         for reminder in reminders {
             agenda.reminders.removeAll { $0.id == reminder.id }
             allReminders.removeAll { $0.id == reminder.id }
-            await writeReminder { try await calendarReader.deleteReminder(id: reminder.id) }
+            await writeReminder(reload: false) { try await calendarReader.deleteReminder(id: reminder.id) }
         }
+        if !reminders.isEmpty { await reloadAgenda() }
     }
 
     func saveIfNeeded(_ id: String) async {
@@ -615,7 +621,8 @@ final class AppModel {
 
     // MARK: Chat
 
-    func ask(_ text: String) async {
+    /// `context` is what's on screen (an open note, a Space); the server hands it to Claude as data, never as instructions.
+    func ask(_ text: String, context: String? = nil) async {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let server, !message.isEmpty, !thinking else { return }
         quickReplies = []
@@ -627,7 +634,7 @@ final class AppModel {
             // Open reminders go along so Claude can propose finishing or deleting one (they stay on the Mac otherwise).
             let reminders = calendarAccess == .granted ? await calendarReader.openReminders() : []
             let answer = try await server.chat(message, history: history, timeZone: TimeZone.current.identifier,
-                                               reminders: reminders)
+                                               reminders: reminders, context: context)
             chat.append(.init(role: .assistant, text: answer.reply))
             if answer.proposed > 0 { await loadActions() }
         } catch let problem as BlinkServer.ChatProblem {
@@ -716,14 +723,14 @@ final class AppModel {
         await writeReminder { try await calendarReader.setReminderDue(id: reminder.id, due: due) }
     }
 
-    private func writeReminder(_ write: () async throws -> Void) async {
+    private func writeReminder(reload: Bool = true, _ write: () async throws -> Void) async {
         do {
             try await write()
             saveProblem = nil
         } catch {
             saveProblem = "Couldn't change that reminder. It may have been deleted in Reminders."
         }
-        await reloadAgenda() // show what Reminders really holds now
+        if reload { await reloadAgenda() } // show what Reminders really holds now
     }
 
     // MARK: Calendar

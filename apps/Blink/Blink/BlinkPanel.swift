@@ -10,13 +10,15 @@ struct BlinkPanel: View {
     let page: MainWindow.Page
     @State private var text = ""
 
-    /// A chip: the words on it, and what Blink is asked.
+    /// A chip: the words on it, what Blink is asked, and what's on screen (sent as data, not as part of the request).
     private struct Suggestion: Hashable {
         let title: String
         let message: String
-        init(_ title: String, _ message: String? = nil) {
+        let context: String?
+        init(_ title: String, _ message: String? = nil, context: String? = nil) {
             self.title = title
             self.message = message ?? title
+            self.context = context
         }
     }
 
@@ -36,7 +38,7 @@ struct BlinkPanel: View {
                         if model.chat.isEmpty {
                             Text("For this page").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             ForEach(suggestions, id: \.self) { suggestion in
-                                Button { send(suggestion.message) } label: {
+                                Button { send(suggestion.message, context: suggestion.context) } label: {
                                     Label(suggestion.title, systemImage: "sparkle")
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .padding(.horizontal, 12).padding(.vertical, 9)
@@ -114,12 +116,12 @@ struct BlinkPanel: View {
         .padding(12)
     }
 
-    private func send(_ message: String) {
+    private func send(_ message: String, context: String? = nil) {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !model.thinking else { return }
         text = ""
         // The server takes at most 2000 characters (functions/chat input.ts).
-        Task { await model.ask(String(trimmed.prefix(1990))) }
+        Task { await model.ask(String(trimmed.prefix(1990)), context: context) }
     }
 
     /// What Blink can help with on this page. Anything it would change still comes back as an Ask-First card.
@@ -135,9 +137,9 @@ struct BlinkPanel: View {
             guard let id = model.openNoteID, let note = model.notes.first(where: { $0.id == id }), !note.body.isEmpty else {
                 return [Suggestion("Help me start a note", "Help me start a note. Ask me what it's about first.")]
             }
-            let quoted = "\n\nNote “\(note.title)”:\n\(note.body.prefix(1500))"
-            return [Suggestion("Turn this note into tasks", "Turn this note into tasks. Ask me before adding them." + quoted),
-                    Suggestion("What should I do next from this note?", "What should I do next based on this note?" + quoted)]
+            let context = "Open note “\(note.title)”:\n\(note.body.prefix(3500))"
+            return [Suggestion("Turn this note into tasks", "Turn the open note into tasks. Ask me before adding them.", context: context),
+                    Suggestion("What should I do next from this note?", "What should I do next based on the open note?", context: context)]
         case .section(.tasks):
             return [Suggestion("What should I do first?"), Suggestion("Plan my week"),
                     Suggestion("Clean up overdue tasks", "Look at my overdue tasks and reminders and suggest what to move or drop. Ask me first.")]
@@ -148,11 +150,11 @@ struct BlinkPanel: View {
         case .space(let id):
             guard let space = model.spaces.first(where: { $0.id == id }) else { return [] }
             let open = model.openTasks.filter { $0.spaceID == id }.prefix(20).map { "- \($0.title)" }.joined(separator: "\n")
-            let context = "\n\nSpace “\(space.title)”. Goal: \(space.goal.isEmpty ? "not set" : space.goal)."
+            let context = "Space “\(space.title)”. Goal: \(space.goal.isEmpty ? "not set" : space.goal)."
                 + (space.dueAt.map { " Due \($0.formatted(date: .abbreviated, time: .omitted))." } ?? "")
                 + "\nOpen tasks:\n\(open.isEmpty ? "none yet" : open)"
-            return [Suggestion("Plan the next steps", "Plan the next steps for this space. Ask me before adding tasks." + context),
-                    Suggestion("What's at risk?", "What's at risk of slipping in this space, and what should I do about it?" + context)]
+            return [Suggestion("Plan the next steps", "Plan the next steps for this space. Ask me before adding tasks.", context: context),
+                    Suggestion("What's at risk?", "What's at risk of slipping in this space, and what should I do about it?", context: context)]
         }
     }
 }

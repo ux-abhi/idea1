@@ -255,7 +255,7 @@ struct WaitingView: View {
 
 // MARK: Activity
 
-/// What Blink did, newest first, by day. shortcut: no Undo yet; add it with the first undoable kinds (Phase 2 notes and tasks).
+/// What Blink did, newest first, by day. shortcut: no Undo for Blink's own actions here (ticking off has its chip); add it when an executor can reverse, e.g. task.add → delete.
 struct ActivityView: View {
     @Environment(AppModel.self) private var model
 

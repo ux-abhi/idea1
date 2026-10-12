@@ -133,6 +133,7 @@ Deno.serve(async (req) => {
     open_reminders: parsed.reminders,
     recent_notes: (notes.data ?? []).map((n) => ({ ...n, body: String(n.body ?? "").slice(0, 600) })),
     habits: habits.data ?? [],
+    page_context: parsed.context, // the open note or Space the owner is asking about
   };
 
   // Keys made at organisation level need the workspace named on every request.
@@ -140,7 +141,8 @@ Deno.serve(async (req) => {
   const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     ...parsed.history.map((t) => ({ role: t.role, content: t.text })),
-    { role: "user", content: `<blink_data>${JSON.stringify(data)}</blink_data>\n\n${parsed.message}` },
+    // "<" escaped so text inside the data (a note saying "</blink_data>") can't close the block early.
+    { role: "user", content: `<blink_data>${JSON.stringify(data).replaceAll("<", "\\u003c")}</blink_data>\n\n${parsed.message}` },
   ];
 
   // Ids Claude may act on: only what it was shown.

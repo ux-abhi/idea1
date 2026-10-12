@@ -335,19 +335,28 @@ public final class BlinkServer: Sendable {
 
     /// Asks Blink on the owner's server; Claude's proposals arrive as Ask-First cards.
     public func chat(_ message: String, history: [ChatTurn], timeZone: String,
-                     reminders: [AgendaReminder] = []) async throws -> ChatReply {
+                     reminders: [AgendaReminder] = [], context: String? = nil) async throws -> ChatReply {
         // ISO 8601 text: the function's default encoder would send dates as seconds since 2001, which the server refuses.
         struct Reminder: Encodable { let id: String; let title: String; let due: String? }
-        struct Body: Encodable { let message: String; let history: [ChatTurn]; let timeZone: String; let reminders: [Reminder] }
+        struct Body: Encodable {
+            let message: String; let history: [ChatTurn]; let timeZone: String; let reminders: [Reminder]; let context: String?
+        }
         do {
             return try await client.functions.invoke(
-                "chat", options: .init(body: Body(message: message, history: Array(history.suffix(20)), timeZone: timeZone,
-                                                  reminders: reminders.map { Reminder(id: $0.id, title: $0.title, due: $0.due?.ISO8601Format()) })))
+                "chat", options: .init(body: Body(message: message, history: Self.recent(history), timeZone: timeZone,
+                                                  reminders: reminders.map { Reminder(id: $0.id, title: $0.title, due: $0.due?.ISO8601Format()) },
+                                                  context: context.map { String($0.prefix(4000)) })))
         } catch let FunctionsError.httpError(_, data) {
             // The function explains itself in words, e.g. a missing API key.
             struct ErrorBody: Decodable { let error: String }
             throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't answer.")
         }
+    }
+
+    /// The last turns the server accepts (20), starting with one of yours: Claude's API expects the owner to speak first,
+    /// and a local Blink line (e.g. "What should I add?") can shift the order.
+    static func recent(_ history: [ChatTurn]) -> [ChatTurn] {
+        Array(history.suffix(20).drop { $0.role == .assistant })
     }
 
     // MARK: Text helpers (Groq)

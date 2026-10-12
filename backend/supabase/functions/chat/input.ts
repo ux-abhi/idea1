@@ -3,16 +3,17 @@
 
 export type Turn = { role: "user" | "assistant"; text: string };
 export type Reminder = { id: string; title: string; due: string | null };
-export type ChatRequest = { message: string; history: Turn[]; timeZone: string; reminders: Reminder[] };
+export type ChatRequest = { message: string; history: Turn[]; timeZone: string; reminders: Reminder[]; context: string | null };
 
 export const MAX_MESSAGE = 2000;
 export const MAX_TURNS = 20;
 export const MAX_TURN_TEXT = 4000;
+export const MAX_CONTEXT = 4000;
 
 /** Returns the checked request, or a sentence saying what's wrong. */
 export function parseChatRequest(body: unknown): ChatRequest | string {
   if (typeof body !== "object" || body === null) return "Send a JSON body.";
-  const { message, history = [], timeZone = "UTC", reminders = [] } = body as Record<string, unknown>;
+  const { message, history = [], timeZone = "UTC", reminders = [], context = null } = body as Record<string, unknown>;
   if (typeof message !== "string" || message.trim().length === 0) return "message is required.";
   if (message.length > MAX_MESSAGE) return `message is longer than ${MAX_MESSAGE} characters.`;
   if (!Array.isArray(history) || history.length > MAX_TURNS) return `history must be at most ${MAX_TURNS} turns.`;
@@ -36,7 +37,11 @@ export function parseChatRequest(body: unknown): ChatRequest | string {
     }
     checked.push({ id, title, due: typeof due === "string" ? due : null });
   }
-  return { message: message.trim(), history: turns, timeZone, reminders: checked };
+  // What's on the owner's screen (an open note, a Space): it goes inside <blink_data>, so it's read as data, never obeyed.
+  if (context !== null && (typeof context !== "string" || context.length > MAX_CONTEXT)) {
+    return `context must be text of at most ${MAX_CONTEXT} characters.`;
+  }
+  return { message: message.trim(), history: turns, timeZone, reminders: checked, context: context?.trim() || null };
 }
 
 function isTimeZone(tz: string): boolean {
