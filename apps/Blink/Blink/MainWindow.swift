@@ -59,6 +59,7 @@ struct MainWindow: View {
     @Environment(AppModel.self) private var model
     @AppStorage("page") private var savedPage = "today"
     @State private var page: Page?
+    @State private var columns: NavigationSplitViewVisibility = .all
     @State private var newSpace = false
     @AppStorage("blinkPanel") private var showPanel = true
     @State private var searching = false
@@ -69,7 +70,9 @@ struct MainWindow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        NavigationSplitView {
+        // Blink's own sidebar button: the automatic one is re-inserted as a duplicate when this view is rebuilt in the
+        // same window (after onboarding or signing back in), which crashes AppKit's toolbar.
+        NavigationSplitView(columnVisibility: $columns) {
             List(selection: $page) {
                 SwiftUI.Section("Blink", isExpanded: $mainOpen) {
                     row(.today)
@@ -96,6 +99,7 @@ struct MainWindow: View {
                 NewSpaceSheet { page = .space($0) }
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 210)
+            .toolbar(removing: .sidebarToggle)
             // Settings in plain sight, not only behind ⌘,.
             .safeAreaInset(edge: .bottom) {
                 SettingsLink { Label("Settings", systemImage: "gearshape") }
@@ -110,6 +114,14 @@ struct MainWindow: View {
             detail
                 .inspector(isPresented: $showPanel) { BlinkPanel(page: page ?? .section(.today)) }
                 .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button { columns = columns == .detailOnly ? .all : .detailOnly } label: {
+                            Label("Sidebar", systemImage: "sidebar.left")
+                        }
+                        .keyboardShortcut("s", modifiers: [.command, .control])
+                        .help("Show or hide the sidebar (⌃⌘S)")
+                    }
+                    ToolbarItemGroup(placement: .primaryAction) {
                     // Sync now: check in, then reload calendar, cards, notes, tasks, spaces, habits and posts.
                     Button {
                         Task {
@@ -133,6 +145,7 @@ struct MainWindow: View {
                     Button { showPanel.toggle() } label: { Label("Blink", systemImage: "sidebar.right") }
                         .keyboardShortcut("b", modifiers: [.command, .option])
                         .help("Show or hide the Blink panel (⌥⌘B)")
+                    }
                 }
         }
         .overlay(alignment: .bottom) { UndoToast() }

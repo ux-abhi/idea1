@@ -105,6 +105,27 @@ struct FoldingCard<Content: View>: View {
     }
 }
 
+/// A search field inside the page rather than in the window toolbar: toolbar search fields on several pages make
+/// AppKit's toolbar insert the same item twice when pages switch, which crashes the app.
+struct PageSearchField: View {
+    let prompt: String
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+            TextField(prompt, text: $text).textFieldStyle(.plain)
+            if !text.isEmpty {
+                Button("Clear", systemImage: "xmark.circle.fill") { text = "" }
+                    .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(.quaternary.opacity(0.6), in: .capsule)
+        .frame(maxWidth: 280)
+    }
+}
+
 /// An empty card that says what will appear and how (§36.2), with an optional action.
 struct EmptyCard: View {
     let symbol: String

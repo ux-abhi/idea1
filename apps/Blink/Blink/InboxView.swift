@@ -16,14 +16,18 @@ struct InboxView: View {
         let shown = model.emails.filter(matches)
         let important = shown.filter { $0.triage == .important }
         DashPage("Inbox", summary: summary(important: important.count)) {
-            if accounts.count > 1 {
-                Picker("Mailbox", selection: $account) {
-                    Text("All").tag("all")
-                    ForEach(accounts, id: \.self) { Text(EmailMessage.accountName($0)).tag($0) }
+            HStack {
+                if accounts.count > 1 {
+                    Picker("Mailbox", selection: $account) {
+                        Text("All").tag("all")
+                        ForEach(accounts, id: \.self) { Text(EmailMessage.accountName($0)).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
+                Spacer()
+                PageSearchField(prompt: "Search mail", text: $query)
             }
             if let problem = model.mailProblem {
                 Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
@@ -62,7 +66,6 @@ struct InboxView: View {
             section("rest", "Everything else", shown.filter { $0.triage == .normal && !$0.needsReply })
             section("newsletter", "Not important", shown.filter { $0.triage == .newsletter }, openByDefault: false)
         }
-        .searchable(text: $query, prompt: "Search mail")
         .sheet(item: $model.reviewing) { ReplyReviewSheet(review: $0) }
         .toolbar {
             Button { Task { await model.syncMail() } } label: {

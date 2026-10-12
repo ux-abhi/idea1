@@ -27,12 +27,16 @@ struct ContentView: View {
         let ready = live.filter { $0.status == .approved }.count
         let drafts = live.filter { $0.status == .drafted }.count
         DashPage("Content", summary: "\(drafts) draft\(drafts == 1 ? "" : "s") · \(ready) ready to post") {
-            Picker("Section", selection: $tab) {
-                ForEach(Tab.allCases) { Text($0.title).tag($0) }
+            HStack {
+                Picker("Section", selection: $tab) {
+                    ForEach(Tab.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                Spacer()
+                PageSearchField(prompt: "Search posts", text: $query)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
             if let problem = model.contentProblem {
                 Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
             }
@@ -43,7 +47,6 @@ struct ContentView: View {
             case .ideas: ideas
             }
         }
-        .searchable(text: $query, prompt: "Search posts")
         .onChange(of: query) { if !query.isEmpty { tab = .posts } }
         .toolbar {
             Button { composing = true } label: { Label("New Post", systemImage: "square.and.pencil") }
