@@ -161,11 +161,13 @@ end $$;
 reset role;
 insert into public.email_msg (owner_id, account, uidvalidity, uid, subject, triage)
   values ('00000000-0000-0000-0000-00000000000a', 'gmail', 1, 42, 'Interview invite', 'important');
+insert into public.email_msg (owner_id, account, uidvalidity, uid, subject, status)
+  values ('00000000-0000-0000-0000-00000000000a', 'uni', 1, 7, 'Thesis feedback', 'done');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 do $$ begin
-  assert (select count(*) from public.email_msg) = 1, 'A should see own mail';
+  assert (select count(*) from public.email_msg) = 2, 'A should see own mail, uni account included';
   update public.email_msg set status = 'done';
-  assert (select status from public.email_msg) = 'done', 'A can mark mail done';
+  assert (select count(*) from public.email_msg where status = 'done') = 2, 'A can mark mail done';
   begin
     update public.email_msg set subject = 'changed';
     raise exception 'A changed a mail subject';
