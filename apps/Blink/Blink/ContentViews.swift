@@ -3,6 +3,7 @@
 import AppKit
 import BlinkKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Content: one idea → a draft per platform (§36.4). Edit, approve, then copy & open to post it yourself.
 struct ContentView: View {
@@ -518,9 +519,26 @@ private struct VoiceSheet: View {
     @State private var topics = ""
     @State private var notes = ""
     @State private var neverSay = ""
+    @State private var brief = ""
 
     var body: some View {
         Form {
+            Section {
+                TextEditor(text: $brief)
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(height: 140)
+                HStack {
+                    Button("Import File…", action: importBrief)
+                    if !brief.isEmpty { Button("Clear", role: .destructive) { brief = "" } }
+                    Spacer()
+                    Text("\(brief.count.formatted()) of \(VoiceProfile.briefLimit.formatted()) characters")
+                        .font(.caption).foregroundStyle(brief.count > VoiceProfile.briefLimit ? .red : .secondary)
+                }
+            } header: {
+                Text("Creator brief")
+            } footer: {
+                Text("Your story, projects, numbers, content pillars and rules, e.g. a Markdown file. Drafts, ideas and your week plan use only its facts, and its writing rules come first. Kept on your server.")
+            }
             Section {
                 TextField("Your page", text: $page, prompt: Text("e.g. @uxabhi on Instagram: UX tips and design breakdowns"))
                 TextField("Who it's for", text: $audience, prompt: Text("e.g. junior designers and devs who want better UX"), axis: .vertical)
@@ -545,7 +563,7 @@ private struct VoiceSheet: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480)
+        .frame(width: 540, height: 640)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) {
@@ -554,7 +572,7 @@ private struct VoiceSheet: View {
                     let trim: (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     Task {
                         await model.saveVoice(VoiceProfile(page: trim(page), audience: trim(audience), topics: trim(topics),
-                                                           notes: trim(notes), neverSay: words))
+                                                           notes: trim(notes), neverSay: words, brief: trim(brief)))
                     }
                     dismiss()
                 }
@@ -566,7 +584,17 @@ private struct VoiceSheet: View {
             topics = model.voice.topics
             notes = model.voice.notes
             neverSay = model.voice.neverSay.joined(separator: ", ")
+            brief = model.voice.brief
         }
+    }
+
+    /// A Markdown or text file the owner picks (user-selected read access only).
+    private func importBrief() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.plainText, .init(filenameExtension: "md") ?? .plainText]
+        panel.message = "Choose your creator brief (a Markdown or text file)"
+        guard panel.runModal() == .OK, let url = panel.url, let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        brief = String(text.prefix(VoiceProfile.briefLimit))
     }
 }
 #endif

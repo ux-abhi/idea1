@@ -51,6 +51,7 @@ export async function groq(body: Record<string, unknown>): Promise<{
   });
   if (response.status === 401) throw new Error("The Groq API key on this server isn't valid.");
   if (response.status === 429) throw new Error("The free Groq limit is used up for now. Try again later or switch model in Settings.");
+  if (response.status === 413) throw new Error("That's too long for Groq's free tier. Pick Claude for this in Settings, or shorten it.");
   if (!response.ok) {
     console.error("groq", response.status, await response.text().catch(() => ""));
     throw new Error(`Groq returned an error (${response.status}).`);

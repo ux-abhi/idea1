@@ -100,10 +100,16 @@ public struct VoiceProfile: Codable, Equatable, Sendable {
     /// How they sound.
     public var notes: String
     public var neverSay: [String]
+    /// Their creator brief: a content directory (story, projects, pillars, rules), at most 40,000 characters.
+    public var brief: String
 
-    enum CodingKeys: String, CodingKey { case page, audience, topics, notes, neverSay = "never_say" }
+    public static let briefLimit = 40_000
 
-    public init(page: String = "", audience: String = "", topics: String = "", notes: String = "", neverSay: [String] = []) {
+    enum CodingKeys: String, CodingKey { case page, audience, topics, notes, brief, neverSay = "never_say" }
+
+    public init(page: String = "", audience: String = "", topics: String = "", notes: String = "", neverSay: [String] = [],
+                brief: String = "") {
+        self.brief = String(brief.prefix(Self.briefLimit))
         self.page = page
         self.audience = audience
         self.topics = topics
@@ -118,10 +124,11 @@ public struct VoiceProfile: Codable, Equatable, Sendable {
         topics = try c.decodeIfPresent(String.self, forKey: .topics) ?? ""
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
         neverSay = try c.decodeIfPresent([String].self, forKey: .neverSay) ?? []
+        brief = try c.decodeIfPresent(String.self, forKey: .brief) ?? ""
     }
 
     /// Enough for drafts to be specific, rather than generic.
-    public var isSetUp: Bool { !page.isEmpty || !topics.isEmpty }
+    public var isSetUp: Bool { !page.isEmpty || !topics.isEmpty || !brief.isEmpty }
 }
 
 /// A post idea to pick from (not saved until "Write this" turns it into drafts).

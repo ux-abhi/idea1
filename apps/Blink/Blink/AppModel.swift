@@ -754,7 +754,8 @@ final class AppModel {
     /// "Use as my voice": the page read's suggestion fills the Voice profile (never-say words are kept).
     func useReadAsVoice() async {
         guard let v = pageRead?.analysis?.voice else { return }
-        await saveVoice(VoiceProfile(page: v.page, audience: v.audience, topics: v.topics, notes: v.tone, neverSay: voice.neverSay))
+        await saveVoice(VoiceProfile(page: v.page, audience: v.audience, topics: v.topics, notes: v.tone, neverSay: voice.neverSay,
+                                     brief: voice.brief))
     }
 
     func dismissPageRead() { pageRead = nil }

@@ -80,6 +80,11 @@ const WEEK_SCHEMA = {
   },
 };
 
+// Added to every prompt when the owner has a creator brief (their own content directory).
+const BRIEF_RULE = `<brief> is the owner's own creator brief: who they are, their story, projects, numbers, pillars, voice and rules.
+Use only facts from it (or from <voice> and <idea>); never invent beyond it. Its writing and content rules override the defaults above,
+except the rule against inventing facts. Respect what it says not to share or who not to name. If a fact you need isn't there, write around it.`;
+
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -126,7 +131,7 @@ Deno.serve(async (req) => {
   if (typeof parsed === "string") return json(400, { error: parsed });
 
   const [{ data: voice }, { data: profile }, { data: spend }, { data: pagePosts }] = await Promise.all([
-    db.from("voice_profile").select("notes, never_say, page, audience, topics").maybeSingle(),
+    db.from("voice_profile").select("notes, never_say, page, audience, topics, brief").maybeSingle(),
     db.from("profile").select("model_prefs, settings").maybeSingle(),
     db.from("model_usage").select("model, cost_usd").gte("at", lastDay()),
     db.from("social_post").select("kind, caption, likes, comments, views").order("posted_at", { ascending: false }).limit(30),
@@ -143,7 +148,11 @@ Deno.serve(async (req) => {
   }).replaceAll("<", "\\u003c");
   const week = parsed.mode === "week";
   const ideas = parsed.mode === "ideas" || week;
-  const system = week ? WEEK_SYSTEM : ideas ? IDEAS_SYSTEM : SYSTEM;
+  const baseSystem = week ? WEEK_SYSTEM : ideas ? IDEAS_SYSTEM : SYSTEM;
+  const brief = String(voice?.brief ?? "").trim();
+  // The brief is the owner's own file; fenced so it reads as their reference, and stable so it caches.
+  const briefBlock = brief ? `<brief>\n${brief.replaceAll("<", "‹")}\n</brief>` : "";
+  const system = brief ? `${baseSystem}\n${BRIEF_RULE}` : baseSystem;
   const schema = week ? WEEK_SCHEMA : ideas ? IDEAS_SCHEMA : SCHEMA;
   const ideaText = parsed.idea.replaceAll("<", "‹");
 
@@ -163,9 +172,11 @@ Deno.serve(async (req) => {
       const { message, usage } = await groq({
         model: model.id,
         temperature: 0.7,
-        max_completion_tokens: 6000,
+        max_completion_tokens: brief ? 3500 : 6000,
         messages: [
-          { role: "system", content: system },
+          // shortcut: Groq's free tier allows ~8K tokens a minute, so only the brief's opening (identity, story, voice,
+          // rules) goes along; send it whole if the owner moves to a paid Groq tier.
+          { role: "system", content: brief ? `${system}\n\n<brief>\n${brief.slice(0, 7000).replaceAll("<", "‹")}\n</brief>` : system },
           { role: "user", content: strict ? userTurn : `${userTurn}\nReply with JSON only, shaped like: ${JSON.stringify(schema.properties)}.` },
         ],
         response_format: strict
@@ -185,7 +196,10 @@ Deno.serve(async (req) => {
       const response = await client.beta.messages.create({
         model: model.id,
         max_tokens: 16000,
-        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+        system: [
+          { type: "text", text: system, cache_control: { type: "ephemeral" } },
+          ...(briefBlock ? [{ type: "text" as const, text: briefBlock, cache_control: { type: "ephemeral" as const } }] : []),
+        ],
         messages: [{ role: "user", content: userTurn }],
         output_config: { effort: "medium", format: { type: "json_schema", schema } },
         betas: ["server-side-fallback-2026-07-01"],

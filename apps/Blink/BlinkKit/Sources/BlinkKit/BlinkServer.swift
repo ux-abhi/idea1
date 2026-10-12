@@ -375,7 +375,7 @@ public final class BlinkServer: Sendable {
     }
 
     public func voiceProfile() async throws -> VoiceProfile {
-        let rows: [VoiceProfile] = try await client.from("voice_profile").select("page, audience, topics, notes, never_say").execute().value
+        let rows: [VoiceProfile] = try await client.from("voice_profile").select("page, audience, topics, notes, never_say, brief").execute().value
         return rows.first ?? VoiceProfile()
     }
 
