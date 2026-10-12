@@ -84,7 +84,27 @@ public struct BlinkAction: Decodable, Identifiable, Equatable, Sendable {
 public enum ApprovalKey {
     private static let account = "approval.key"
 
-    public enum Problem: Error { case unavailable, cancelled }
+    public enum Problem: Error, Equatable {
+        case unavailable, cancelled, keyInvalid
+
+        /// What the owner sees; empty for a cancel, which keeps the card quietly (§36.5).
+        public var message: String {
+            switch self {
+            case .cancelled: ""
+            case .unavailable: "Touch ID isn't available right now. Open the lid or use a keyboard with Touch ID, then try again."
+            case .keyInvalid: "Touch ID changed on this device, so Blink's approval key stopped working. Sending mail and other Touch ID approvals need this device paired again, which comes with the iPhone app."
+            }
+        }
+
+        /// A cancel stays quiet; a locked-out or missing Touch ID says so.
+        static func from(_ error: Error) -> Problem {
+            guard let la = error as? LAError else { return .unavailable }
+            switch la.code {
+            case .userCancel, .appCancel, .systemCancel, .userFallback: return .cancelled
+            default: return .unavailable
+            }
+        }
+    }
 
     public static var isAvailable: Bool { SecureEnclave.isAvailable }
 
@@ -110,11 +130,18 @@ public enum ApprovalKey {
         guard let stored = try keychain.data(for: account) else { throw Problem.unavailable }
         let context = LAContext()
         context.localizedReason = reason
-        let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: stored, authenticationContext: context)
+        // Touch ID first, so a cancel and a changed finger set are told apart: after a successful check the key
+        // only fails to sign when it was invalidated (§36.5: bound to the current biometric set).
         do {
+            try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)
+        } catch {
+            throw Problem.from(error)
+        }
+        do {
+            let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: stored, authenticationContext: context)
             return try key.signature(for: message).rawRepresentation
         } catch {
-            throw Problem.cancelled
+            throw Problem.keyInvalid
         }
     }
 }

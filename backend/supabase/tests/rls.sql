@@ -77,6 +77,11 @@ do $$ begin
   exception when raise_exception then
     if sqlerrm not like '%cannot be removed%' then raise; end if;
   end;
+  begin
+    delete from public.device where id = '00000000-0000-0000-0000-0000000000d1';
+    raise exception 'deleting the approval device should have failed';
+  exception when insufficient_privilege then null;
+  end;
 end $$;
 
 -- A cannot write usage rows.

@@ -7,7 +7,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.4";
 import { Imap, quote } from "./imap.ts";
-import { buildDraft, parseAddress, parseHeaders, parseSend, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle } from "./message.ts";
+import { buildDraft, uidWindow, parseAddress, parseHeaders, parseSend, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle } from "./message.ts";
 import { sendMail } from "./smtp.ts";
 import { capProblem, compatible, cost, keepsSchema, lastDay, MODELS, type Model, pickModel } from "../_shared/models.ts";
 
@@ -129,15 +129,11 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
   const imap = await open(account);
   try {
     const box = await imap.select("INBOX");
-    let uids: number[];
-    if (!state || Number(state.uidvalidity) !== box.uidValidity) {
-      // First check (or the mailbox was rebuilt): the last two days, at most 15 messages.
-      const since = new Date(Date.now() - 2 * 86_400_000).toUTCString().split(" ").slice(1, 4).join("-");
-      uids = (await imap.uidSearch(`SINCE ${since}`)).slice(-15);
-    } else {
-      const last = Number(state.last_uid);
-      uids = (await imap.uidSearch(`UID ${last + 1}:*`)).filter((u) => u > last).slice(-15);
-    }
+    const fresh = !state || Number(state.uidvalidity) !== box.uidValidity;
+    // First check (or the mailbox was rebuilt): the last two days. Otherwise everything after the last UID handled.
+    const since = new Date(Date.now() - 2 * 86_400_000).toUTCString().split(" ").slice(1, 4).join("-");
+    const found = await imap.uidSearch(fresh ? `SINCE ${since}` : `UID ${Number(state!.last_uid) + 1}:*`);
+    const { take: uids, last: lastUid } = uidWindow(found, fresh ? null : Number(state!.last_uid), box.uidNext);
     const fetched = await imap.fetch(uids, 1500);
     await imap.logout();
 
@@ -182,7 +178,6 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
       };
     });
     if (rows.length) await admin.from("email_msg").upsert(rows, { onConflict: "owner_id,account,uidvalidity,uid", ignoreDuplicates: true });
-    const lastUid = Math.max(Number(state?.uidvalidity) === box.uidValidity ? Number(state?.last_uid ?? 0) : 0, ...uids, box.uidNext - 1);
     await admin.from("mail_state").upsert({ owner_id: owner, account: account.id, uidvalidity: box.uidValidity, last_uid: lastUid,
       last_checked_at: new Date().toISOString(), last_error: null });
     return { found: rows.length, important: rows.filter((r) => r.triage === "important").length };
@@ -297,11 +292,8 @@ async function sendDue(admin: SupabaseClient, owner: string): Promise<{ sent: nu
       if (typeof mail === "string") throw new Error(mail);
       const message = buildDraft({ from: mail.from, to: mail.to, subject: mail.subject, body: mail.body, inReplyTo: mail.in_reply_to, messageId: mail.message_id });
       // A stalled mail server fails the send (and says so) instead of leaving it looking sent.
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      await Promise.race([
-        sendMail(account.smtp, account.smtpPort, { user: account.user, password: account.password, from: mail.from, to: mail.to, message }),
-        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("The mail server didn't answer in time. It may not have been sent; check Sent in Apple Mail.")), 60_000); }),
-      ]).finally(() => clearTimeout(timer));
+      await withTimeout(sendMail(account.smtp, account.smtpPort, { user: account.user, password: account.password, from: mail.from, to: mail.to, message }),
+        60_000, "The mail server didn't answer in time. It may not have been sent; check Sent in Apple Mail.");
       sent++;
       await admin.from("action").update({ result: { sent_at: new Date().toISOString() } }).eq("id", action.id);
       await admin.from("email_msg").update({ status: "done" }).eq("id", mail.email_id).eq("owner_id", owner);
@@ -326,6 +318,28 @@ async function sendDue(admin: SupabaseClient, owner: string): Promise<{ sent: nu
     }
   }
   return { sent, failed };
+}
+
+/** Rejects if `work` takes longer than `ms`, so one stalled server can't use up the whole run. */
+function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); })])
+    .finally(() => clearTimeout(timer));
+}
+
+/** Checks every mailbox at once, each with its own time limit; a failure is recorded on that mailbox only. */
+async function pollAll(admin: SupabaseClient, owner: string, list: Account[], record: boolean): Promise<Record<string, unknown>> {
+  const results: Record<string, unknown> = {};
+  await Promise.all(list.map(async (account) => {
+    try {
+      results[account.id] = await withTimeout(poll(admin, owner, account), 45_000, "The mail server didn't answer in time.");
+    } catch (error) {
+      const text = error instanceof Error ? error.message.slice(0, 300) : "failed";
+      results[account.id] = { error: text };
+      if (record) await admin.from("mail_state").upsert({ owner_id: owner, account: account.id, last_error: text, last_checked_at: new Date().toISOString() });
+    }
+  }));
+  return results;
 }
 
 /** Compares secrets without leaking how much matched through timing. */
@@ -353,17 +367,10 @@ Deno.serve(async (req) => {
     if (typeof secret !== "string" || secret.length < 32 || !timingSafeEqual(sent, secret)) return json(401, { error: "bad schedule secret" });
     const { data: owners } = await admin.from("profile").select("owner_id").limit(2);
     if (owners?.length !== 1) return json(409, { error: "expected exactly one owner on this server" });
-    const results: Record<string, unknown> = {};
-    for (const account of list) {
-      try { results[account.id] = await poll(admin, owners[0].owner_id, account); }
-      catch (error) {
-        const text = error instanceof Error ? error.message.slice(0, 300) : "failed";
-        results[account.id] = { error: text };
-        await admin.from("mail_state").upsert({ owner_id: owners[0].owner_id, account: account.id, last_error: text, last_checked_at: new Date().toISOString() });
-      }
-    }
-    results.outbox = await sendDue(admin, owners[0].owner_id);
-    return json(200, results);
+    // Approved sends first, so a slow mailbox can never hold them back.
+    const outbox = await sendDue(admin, owners[0].owner_id);
+    const results = await pollAll(admin, owners[0].owner_id, list, true);
+    return json(200, { ...results, outbox });
   }
 
   // The owner's app: their own login, checked here.
@@ -385,10 +392,5 @@ Deno.serve(async (req) => {
     }
   }
   // Sync now.
-  const results: Record<string, unknown> = {};
-  for (const account of list) {
-    try { results[account.id] = await poll(admin, user.id, account); }
-    catch (error) { results[account.id] = { error: error instanceof Error ? error.message.slice(0, 300) : "failed" }; }
-  }
-  return json(200, results);
+  return json(200, await pollAll(admin, user.id, list, false));
 });

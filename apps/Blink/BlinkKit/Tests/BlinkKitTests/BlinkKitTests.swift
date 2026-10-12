@@ -1,5 +1,6 @@
 // © Pexilim
 import Foundation
+import LocalAuthentication
 import Supabase
 import Testing
 @testable import BlinkKit
@@ -636,4 +637,22 @@ extension Tokens {
     decoder.dateDecodingStrategy = .iso8601
     let action = try decoder.decode(BlinkAction.self, from: Data(json.utf8))
     #expect(action.payload.sendAt == Date(timeIntervalSince1970: 1_792_047_600) && action.payload.emailID == "e1")
+}
+
+@Test func touchIDCancelStaysQuietButOtherFailuresSaySo() {
+    #expect(ApprovalKey.Problem.from(LAError(.userCancel)) == .cancelled)
+    #expect(ApprovalKey.Problem.from(LAError(.systemCancel)) == .cancelled)
+    #expect(ApprovalKey.Problem.from(LAError(.biometryLockout)) == .unavailable)
+    #expect(ApprovalKey.Problem.cancelled.message.isEmpty && !ApprovalKey.Problem.keyInvalid.message.isEmpty)
+}
+
+@Test func dayOnlyRemindersNeverCueAndLaterCuesAgain() {
+    let cal = Calendar(identifier: .gregorian)
+    let day = AgendaReminder.due(from: DateComponents(year: 2026, month: 10, day: 12), calendar: cal)
+    #expect(day.date != nil && !day.timed)
+    let agenda = Agenda(events: [], reminders: [AgendaReminder(id: "r1", title: "Pay rent", due: day.date, timed: day.timed)])
+    #expect(agenda.dueItems().isEmpty)
+    let now = Date(timeIntervalSince1970: 1_791_800_000)
+    let item = DueItem(id: "t1", title: "Call", due: now)
+    #expect(MeetingCue.due(item).id != MeetingCue.due(DueItem(id: "t1", title: "Call", due: now + 1800)).id)
 }

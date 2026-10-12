@@ -30,11 +30,19 @@ public struct AgendaReminder: Sendable, Equatable, Identifiable {
     public let id: String
     public let title: String
     public let due: Date?
+    /// False for a reminder set for a day without a time: it counts as due today but never cues at midnight.
+    public let timed: Bool
 
-    public init(id: String, title: String, due: Date?) {
+    public init(id: String, title: String, due: Date?, timed: Bool = true) {
         self.id = id
         self.title = title
         self.due = due
+        self.timed = timed
+    }
+
+    /// EventKit's due components: the date, and whether it has a time of day.
+    static func due(from components: DateComponents?, calendar: Calendar) -> (date: Date?, timed: Bool) {
+        (components.flatMap { calendar.date(from: $0) }, components?.hour != nil)
     }
 }
 
@@ -83,7 +91,7 @@ public struct Agenda: Sendable, Equatable {
 
     /// Timed reminders plus the given tasks, soonest first.
     public func dueItems(adding tasks: [DueItem] = []) -> [DueItem] {
-        (reminders.compactMap { r in r.due.map { DueItem(id: r.id, title: r.title, due: $0) } } + tasks)
+        (reminders.compactMap { r in r.timed ? r.due.map { DueItem(id: r.id, title: r.title, due: $0) } : nil } + tasks)
             .sorted { $0.due < $1.due }
     }
 
@@ -130,11 +138,11 @@ public enum MeetingCue: Equatable, Sendable {
         }
     }
 
-    /// Identity for "speak once": the event or the item.
+    /// Identity for "speak once": the event, or the item at its due time, so an item moved with Later cues again.
     public var id: String {
         switch self {
         case .headsUp(let e), .imminent(let e): e.id
-        case .dueSoon(let item), .due(let item): item.id
+        case .dueSoon(let item), .due(let item): "\(item.id)@\(Int(item.due.timeIntervalSince1970))"
         }
     }
 
@@ -266,8 +274,8 @@ public actor CalendarReader {
         return await withCheckedContinuation { continuation in
             store.fetchReminders(matching: predicate) { found in
                 let mapped = (found ?? []).prefix(limit).map {
-                    AgendaReminder(id: $0.calendarItemIdentifier, title: $0.title ?? "Untitled",
-                                   due: $0.dueDateComponents.flatMap { calendar.date(from: $0) })
+                    let due = AgendaReminder.due(from: $0.dueDateComponents, calendar: calendar)
+                    return AgendaReminder(id: $0.calendarItemIdentifier, title: $0.title ?? "Untitled", due: due.date, timed: due.timed)
                 }
                 continuation.resume(returning: Array(mapped))
             }
@@ -317,8 +325,8 @@ public actor CalendarReader {
         let reminders: [AgendaReminder] = await withCheckedContinuation { continuation in
             store.fetchReminders(matching: reminderPredicate) { found in
                 let mapped = (found ?? []).map {
-                    AgendaReminder(id: $0.calendarItemIdentifier, title: $0.title ?? "Untitled",
-                                   due: $0.dueDateComponents.flatMap { calendar.date(from: $0) })
+                    let due = AgendaReminder.due(from: $0.dueDateComponents, calendar: calendar)
+                    return AgendaReminder(id: $0.calendarItemIdentifier, title: $0.title ?? "Untitled", due: due.date, timed: due.timed)
                 }
                 continuation.resume(returning: mapped)
             }

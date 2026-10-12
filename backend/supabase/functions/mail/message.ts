@@ -82,6 +82,16 @@ export function plainText(body: string, headers: Headers, max = 1500): string {
   return text.replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, max);
 }
 
+/** Which new UIDs to read this time, and where to resume next time. The first check (last = null) reads the newest
+ *  `max`; later checks read the OLDEST `max` new ones and resume right after them, so a burst is never skipped. */
+export function uidWindow(found: number[], last: number | null, uidNext: number, max = 15): { take: number[]; last: number } {
+  const sorted = [...found].sort((a, b) => a - b);
+  if (last === null) return { take: sorted.slice(-max), last: Math.max(uidNext - 1, ...sorted) };
+  const pending = sorted.filter((u) => u > last);
+  const take = pending.slice(0, max);
+  return { take, last: take.length < pending.length ? take[take.length - 1] : Math.max(last, uidNext - 1, ...take) };
+}
+
 export type Triage = { uid: number; triage: "important" | "normal" | "newsletter"; reason: string; summary: string; needs_reply: boolean };
 
 /** The model's verdicts, checked: known UIDs only, known labels, short texts. */

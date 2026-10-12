@@ -1,5 +1,5 @@
 // © Pexilim
-import { buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, ruleVerdict, parseSend, settle } from "./message.ts";
+import { buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, ruleVerdict, parseSend, settle, uidWindow } from "./message.ts";
 
 Deno.test("headers unfold and decode encoded words", () => {
   const h = parseHeaders("Subject: =?UTF-8?B?SW50ZXJ2aWV3IOKAkyBUZWFtVmlld2Vy?=\r\nFrom: \"Wolfram\"\r\n <w@teamviewer.com>\r\nTo: hello@pexilim.com\r\n");
@@ -74,4 +74,15 @@ Deno.test("a long non-ASCII subject folds into short lines and reads back whole"
   const head = raw.split("\r\n\r\n")[0];
   if (head.split("\r\n").some((line) => line.length > 100)) throw new Error("a header line is too long");
   if (parseHeaders(head).subject !== `Re: ${subject}`) throw new Error(parseHeaders(head).subject);
+});
+
+Deno.test("a burst of new mail is read oldest first across checks, none skipped", () => {
+  const found = Array.from({ length: 20 }, (_, i) => 101 + i); // UIDs 101–120 arrived since last = 100
+  const first = uidWindow(found, 100, 121);
+  if (first.take[0] !== 101 || first.take.length !== 15 || first.last !== 115) throw new Error(JSON.stringify(first));
+  const second = uidWindow(found.filter((u) => u > first.last), first.last, 121);
+  if (second.take.join() !== "116,117,118,119,120" || second.last !== 120) throw new Error(JSON.stringify(second));
+  const fresh = uidWindow(found, null, 121);
+  if (fresh.take[0] !== 106 || fresh.last !== 120) throw new Error(JSON.stringify(fresh));
+  if (uidWindow([], 100, 130).last !== 129) throw new Error("an empty check should move to uidNext - 1");
 });

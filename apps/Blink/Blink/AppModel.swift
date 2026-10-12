@@ -220,8 +220,9 @@ final class AppModel {
             }
             pending.removeAll { $0.id == action.id }
             await loadActivity()
-        } catch ApprovalKey.Problem.cancelled {
-            // Cancel keeps the card (§36.5).
+        } catch let problem as ApprovalKey.Problem {
+            // Cancel keeps the card quietly (§36.5); anything else says what's wrong.
+            if problem != .cancelled { actionProblem = problem.message }
         } catch {
             actionProblem = "That didn't work. Check your connection and try again."
         }
@@ -1043,7 +1044,7 @@ final class AppModel {
             } catch {
                 // No half-approved sends left behind: the sheet stays open to try again.
                 try? await server.setStatus("declined", for: action)
-                if case ApprovalKey.Problem.cancelled = error { return "" }
+                if let problem = error as? ApprovalKey.Problem { return problem.message }
                 throw error
             }
             reviewing = nil

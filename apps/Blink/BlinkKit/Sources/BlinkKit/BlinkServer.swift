@@ -358,15 +358,22 @@ public final class BlinkServer: Sendable {
 
     // MARK: Mail (Phase 5)
 
-    /// The last week's triaged mail that isn't done, newest first.
+    /// The last week's triaged mail that isn't done, newest first. Newsletters are fetched on their own, smaller list,
+    /// so a busy day of them can't push unhandled important mail off the end.
     public func emails() async throws -> [EmailMessage] {
-        try await client.from("email_msg")
-            .select("id, account, message_id, from_name, from_addr, subject, received_at, triage, reason, summary, needs_reply, status, created_at")
-            .neq("status", value: "done")
-            .gte("created_at", value: Date.now.addingTimeInterval(-7 * 86_400).ISO8601Format())
-            .order("received_at", ascending: false)
-            .limit(150)
-            .execute().value
+        func page(newsletters: Bool, limit: Int) async throws -> [EmailMessage] {
+            let query = client.from("email_msg")
+                .select("id, account, message_id, from_name, from_addr, subject, received_at, triage, reason, summary, needs_reply, status, created_at")
+                .neq("status", value: "done")
+                .gte("created_at", value: Date.now.addingTimeInterval(-7 * 86_400).ISO8601Format())
+            return try await (newsletters ? query.eq("triage", value: "newsletter") : query.neq("triage", value: "newsletter"))
+                .order("received_at", ascending: false)
+                .limit(limit)
+                .execute().value
+        }
+        async let rest = page(newsletters: false, limit: 300)
+        async let newsletters = page(newsletters: true, limit: 60)
+        return try await (rest + newsletters).sorted { ($0.receivedAt ?? $0.createdAt) > ($1.receivedAt ?? $1.createdAt) }
     }
 
     public func mailStates() async throws -> [MailState] {
