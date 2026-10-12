@@ -10,6 +10,7 @@ struct TodayView: View {
     let showWaiting: () -> Void
     let showNotes: () -> Void
     let showContent: () -> Void
+    @AppStorage("tourDone") private var tourDone = false
 
     var body: some View {
         TimelineView(.everyMinute) { context in
@@ -36,6 +37,7 @@ struct TodayView: View {
     private func main(now: Date) -> some View {
         VStack(spacing: 16) {
             HeroCard(now: now, showNotes: showNotes)
+            if !tourDone { TipsCard { tourDone = true } }
             if model.eveningDue {
                 DashCard("Evening check-in") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -250,6 +252,31 @@ private struct NextMeetingCard: View {
             in: .rect(cornerRadius: Tokens.Radius.notchOpen, style: .continuous)
         )
         .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// First days: the few things worth knowing, until "Got it".
+private struct TipsCard: View {
+    let done: () -> Void
+
+    var body: some View {
+        DashCard("Get to know Blink", trailing: "Got it", action: done) {
+            VStack(alignment: .leading, spacing: 8) {
+                tip("⌃⌥Space", "Ask Blink in the notch. Type / for quick actions like “/task Send invoice fri 10am”.")
+                tip("Hover", "Move the pointer to the notch to peek; click to open it.")
+                tip("⌃⌥V", "Your clipboard history, with search. Drag items into any app.")
+                tip("⌘K", "Search notes, tasks, posts and spaces.")
+                tip("⌥⌘B", "The Blink panel on every page, with suggestions for that page.")
+            }
+        }
+    }
+
+    private func tip(_ key: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(key).font(.callout.monospaced().weight(.semibold)).frame(width: 80, alignment: .leading)
+            Text(text).font(.callout).foregroundStyle(.secondary)
+        }
         .accessibilityElement(children: .combine)
     }
 }

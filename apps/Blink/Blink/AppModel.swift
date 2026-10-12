@@ -380,6 +380,27 @@ final class AppModel {
         }
     }
 
+    /// Later: a new due time for a task or reminder by id (from the notch), with Undo.
+    func moveLater(id: String, to date: Date) async {
+        let label = date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        if let task = openTasks.first(where: { $0.id == id }) {
+            let before = task.dueAt
+            var changed = task
+            changed.dueAt = date
+            edit(changed)
+            await save(id)
+            offerUndo("Moved to \(label): \(task.title)") { [weak self] in
+                guard let self, var current = self.items.first(where: { $0.id == id }) else { return }
+                current.dueAt = before
+                self.edit(current)
+                await self.save(id)
+            }
+        } else if let reminder = allReminders.first(where: { $0.id == id }) ?? agenda.reminders.first(where: { $0.id == id }) {
+            await setDue(reminder, to: date)
+            offerUndo("Moved to \(label): \(reminder.title)") { [weak self] in await self?.setDue(reminder, to: reminder.due) }
+        }
+    }
+
     private func reopen(_ taskID: String) async {
         guard let task = items.first(where: { $0.id == taskID }), task.status == .done else { return }
         await toggle(task, offeringUndo: false)

@@ -75,7 +75,9 @@ struct MenuBarContent: View {
         }
         Divider()
         Button("Ask Blink…", action: ask)
+            .keyboardShortcut(.space, modifiers: [.control, .option])
         Button("Clipboard…", action: clipboard)
+            .keyboardShortcut("v", modifiers: [.control, .option])
         Button("Start Focus (25 min)") { model.startFocus() }
         Menu("Timer") {
             ForEach([5, 10, 15, 30, 60], id: \.self) { m in Button("\(m) min") { model.startTimer(minutes: Double(m)) } }

@@ -57,6 +57,7 @@ struct MainWindow: View {
     @State private var page: Page?
     @State private var newSpace = false
     @AppStorage("blinkPanel") private var showPanel = true
+    @State private var searching = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -75,6 +76,12 @@ struct MainWindow: View {
                     row(.activity)
                 }
             }
+            .sheet(isPresented: $searching) {
+                SearchSheet { target, note in
+                    if let note { model.focusNoteID = note }
+                    page = target
+                }
+            }
             .sheet(isPresented: $newSpace) {
                 NewSpaceSheet { page = .space($0) }
             }
@@ -83,6 +90,9 @@ struct MainWindow: View {
             detail
                 .inspector(isPresented: $showPanel) { BlinkPanel(page: page ?? .section(.today)) }
                 .toolbar {
+                    Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
+                        .keyboardShortcut("k")
+                        .help("Search notes, tasks, posts and spaces (⌘K)")
                     Button { showPanel.toggle() } label: { Label("Blink", systemImage: "sidebar.right") }
                         .keyboardShortcut("b", modifiers: [.command, .option])
                         .help("Show or hide the Blink panel (⌥⌘B)")

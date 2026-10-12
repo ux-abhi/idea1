@@ -225,7 +225,10 @@ struct DaySettings: View {
             }
             Section("Keyboard shortcuts") {
                 LabeledContent("Ask Blink", value: "⌃⌥Space")
+                LabeledContent("Quick actions in the notch", value: "/task  /remind  /note  /timer")
                 LabeledContent("Clipboard history", value: "⌃⌥V")
+                LabeledContent("Search everything", value: "⌘K")
+                LabeledContent("Blink panel", value: "⌥⌘B")
                 LabeledContent("Approve a card", value: "⌘⏎")
                 LabeledContent("Undo the last done", value: "⌘Z")
                 LabeledContent("Close the notch", value: "Esc")

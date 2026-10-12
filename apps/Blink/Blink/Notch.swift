@@ -677,6 +677,19 @@ struct GlanceView: View {
                             .accessibilityLabel("Mark \(item.title) as done")
                     }
                     Text(item.title).lineLimit(1)
+                    if let app {
+                        Spacer(minLength: 6)
+                        Menu {
+                            ForEach(Later.choices(now: now), id: \.title) { choice in
+                                Button(choice.title) { Task { await app.moveLater(id: item.id, to: choice.date) } }
+                            }
+                        } label: { Image(systemName: "clock.arrow.circlepath") }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .fixedSize()
+                            .help("Later")
+                            .accessibilityLabel("Later: \(item.title)")
+                    }
                 }
             }
             if let app { UndoChipRow(app: app) }
@@ -1041,18 +1054,24 @@ struct ClipboardPanel: View {
     let store: ClipboardStore
     let done: () -> Void
     @State private var query = ""
+    @State private var selected = 0
     @FocusState private var focused: Bool
     @AppStorage(ClipboardStore.pausedKey) private var paused = false
 
     var body: some View {
         let items = Array(store.history.search(query).prefix(30))
+        let current = min(selected, max(items.count - 1, 0))
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.white.opacity(0.5))
                 TextField("Search clipboard", text: $query)
                     .textFieldStyle(.plain)
                     .focused($focused)
-                    .onSubmit { if let first = items.first { pick(first) } }
+                    .onSubmit { if items.indices.contains(current) { pick(items[current]) } }
+                    // ↑ ↓ move through the list, Return copies the highlighted one.
+                    .onKeyPress(.downArrow) { selected = min(current + 1, items.count - 1); return .handled }
+                    .onKeyPress(.upArrow) { selected = max(current - 1, 0); return .handled }
+                    .onChange(of: query) { selected = 0 }
                 if paused { Text("Paused").font(.caption).foregroundStyle(.orange) }
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
@@ -1063,15 +1082,22 @@ struct ClipboardPanel: View {
                                                  : "Nothing matches.")
                     .foregroundStyle(.white.opacity(0.55))
             } else {
-                ScrollView {
-                    VStack(spacing: 2) {
-                        ForEach(items) { item in row(item) }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 2) {
+                            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                                row(item)
+                                    .background(index == current ? Color.white.opacity(0.12) : .clear, in: .rect(cornerRadius: 8))
+                                    .id(item.id)
+                            }
+                        }
                     }
+                    .frame(maxHeight: 190)
+                    .onChange(of: current) { if items.indices.contains(current) { proxy.scrollTo(items[current].id) } }
                 }
-                .frame(maxHeight: 190)
             }
             HStack {
-                Text("Click to copy, or drag into any app").font(.caption).foregroundStyle(.white.opacity(0.4))
+                Text("↑↓ and Return, click, or drag into any app").font(.caption).foregroundStyle(.white.opacity(0.4))
                 Spacer()
                 Button(paused ? "Resume" : "Pause") { paused.toggle() }.buttonStyle(.plain).font(.caption)
                 Button("Clear") { store.clear() }.buttonStyle(.plain).font(.caption).foregroundStyle(.orange)

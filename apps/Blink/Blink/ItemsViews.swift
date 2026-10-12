@@ -14,6 +14,7 @@ struct TasksView: View {
     @State private var selecting = false
     @State private var selected: Set<String> = []
     @State private var confirmDelete = false
+    @AppStorage("addAsReminder") private var addAsReminder = false
 
     var body: some View {
         let entries = openEntries
@@ -22,7 +23,18 @@ struct TasksView: View {
         DashPage("Tasks & Habits", summary: "\(model.openTasks.count) open · \(habitsToday.isEmpty ? "no habits today" : "\(doneToday) of \(habitsToday.count) habits done")") {
             DashCard("Tasks", trailing: entries.isEmpty ? nil : (selecting ? "Done" : "Select"),
                      action: { selecting.toggle(); selected = [] }) {
-                AddField(placeholder: "Add a task, e.g. \"Send invoice tomorrow at 10\"", text: $newTitle, action: add)
+                HStack(spacing: 8) {
+                    Picker("Add as", selection: $addAsReminder) {
+                        Text("Task").tag(false)
+                        Text("Reminder").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("Reminders go to Apple Reminders on all your devices")
+                    AddField(placeholder: addAsReminder ? "Add a reminder, e.g. \"Call Sam tomorrow 4pm\""
+                                                        : "Add a task, e.g. \"Send invoice tomorrow at 10\"", text: $newTitle, action: add)
+                }
                 // Shows what Blink understood before Return.
                 if let due = TaskInput.parse(newTitle).due {
                     Label("Due \(due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))",
@@ -164,7 +176,11 @@ struct TasksView: View {
     private func add() {
         let parsed = TaskInput.parse(newTitle)
         guard !parsed.title.isEmpty else { return }
-        model.create(.task, title: parsed.title, due: parsed.due)
+        if addAsReminder {
+            Task { await model.run(.remind(title: parsed.title, due: parsed.due)) }
+        } else {
+            model.create(.task, title: parsed.title, due: parsed.due)
+        }
         newTitle = ""
     }
 }
@@ -426,6 +442,7 @@ struct ReminderRow: View {
 struct NotesView: View {
     @Environment(AppModel.self) private var model
     @State private var selection: String?
+    @State private var query = ""
 
     var body: some View {
         HStack(spacing: 16) {
@@ -435,9 +452,12 @@ struct NotesView: View {
                     Text(model.notes.count == 1 ? "1 note" : "\(model.notes.count) notes").foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 4)
+                TextField("Search notes", text: $query)
+                    .textFieldStyle(.roundedBorder)
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(model.notes) { note in
+                        ForEach(model.notes.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
+                                                     || $0.body.localizedCaseInsensitiveContains(query) }) { note in
                             Button { selection = note.id } label: {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(note.title.isEmpty ? "New note" : note.title).font(.headline).lineLimit(1)

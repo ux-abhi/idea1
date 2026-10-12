@@ -595,3 +595,11 @@ extension Tokens {
     #expect(QuickCommand.suggestions(for: "/re").map(\.name) == ["/remind"])
     #expect(QuickCommand.suggestions(for: "/task pay").isEmpty)
 }
+
+@Test func laterOffersSensibleTimes() {
+    let cal = Calendar(identifier: .gregorian)
+    let morning = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 10))! // a Monday
+    #expect(Later.choices(now: morning, calendar: cal).map(\.title) == ["In 1 hour", "This evening, 18:00", "Tomorrow, 9:00", "Next Monday, 9:00"])
+    let late = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 17, minute: 30))!
+    #expect(!Later.choices(now: late, calendar: cal).contains { $0.title.hasPrefix("This evening") })
+}
