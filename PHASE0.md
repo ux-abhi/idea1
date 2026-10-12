@@ -85,7 +85,7 @@ Owner: Blink sets up each person's server (one-click via Supabase, next); distri
 - [x] Notch peeks when ideas, drafts, a week plan or a page read finish (or fail).
 - [x] Storage: nightly cleanup job (setup/cleanup_schedule.sql), clipboard caps 200 KB, post images pruned.
 - [x] One-click server creation: "Sign in with Supabase" through a stateless helper (functions/signin, holds the OAuth client secret, stores nothing), then the app creates the project, runs the bundled migrations, deploys the functions, creates the owner's login, closes sign-ups, runs the schedules; resumable.
-- [ ] Owner: register the "Blink" OAuth app in Supabase and add SUPABASE_OAUTH_CLIENT_ID / SUPABASE_OAUTH_CLIENT_SECRET; then one real end-to-end run.
+- [ ] Owner: register the "Blink" OAuth app in Supabase and add BLINK_OAUTH_CLIENT_ID / BLINK_OAUTH_CLIENT_SECRET; then one real end-to-end run.
 
 ## Content redesign (Mac session, 2026-10-12)
 Owner: Apify only for Instagram; LinkedIn and X numbers typed in (no X account yet); post performance first; tab layout approved.

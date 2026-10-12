@@ -15,7 +15,7 @@ const json = (status: number, body: unknown) =>
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  const id = Deno.env.get("SUPABASE_OAUTH_CLIENT_ID"), secret = Deno.env.get("SUPABASE_OAUTH_CLIENT_SECRET");
+  const id = Deno.env.get("BLINK_OAUTH_CLIENT_ID"), secret = Deno.env.get("BLINK_OAUTH_CLIENT_SECRET");
   if (!id || !secret) return json(503, { error: "Sign in with Supabase isn't set up on this helper yet." });
   // Must match the redirect URL registered on the OAuth app exactly.
   const callback = `${Deno.env.get("SUPABASE_URL")}/functions/v1/signin/callback`;
