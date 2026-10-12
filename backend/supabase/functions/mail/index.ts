@@ -9,7 +9,7 @@ import { Imap } from "./imap.ts";
 import { buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom } from "./message.ts";
 import { capProblem, compatible, cost, keepsSchema, lastDay, MODELS, type Model, pickModel } from "../_shared/models.ts";
 
-type Account = { id: "gmail" | "icloud"; host: string; user: string; password: string };
+type Account = { id: "gmail" | "icloud" | "uni"; host: string; user: string; password: string };
 
 function accounts(): Account[] {
   const list: Account[] = [];
@@ -17,6 +17,9 @@ function accounts(): Account[] {
   if (gmail && gmailPass) list.push({ id: "gmail", host: "imap.gmail.com", user: gmail.trim(), password: gmailPass.replace(/\s+/g, "") });
   const icloud = Deno.env.get("ICLOUD_ADDRESS"), icloudPass = Deno.env.get("ICLOUD_APP_PASSWORD");
   if (icloud && icloudPass) list.push({ id: "icloud", host: "imap.mail.me.com", user: icloud.trim(), password: icloudPass.trim() });
+  // The university mailbox (Universität Siegen: mail.uni-siegen.de; another host via UNI_IMAP_HOST).
+  const uni = Deno.env.get("UNI_ADDRESS"), uniPass = Deno.env.get("UNI_PASSWORD");
+  if (uni && uniPass) list.push({ id: "uni", host: Deno.env.get("UNI_IMAP_HOST")?.trim() || "mail.uni-siegen.de", user: uni.trim(), password: uniPass });
   return list;
 }
 
@@ -167,7 +170,7 @@ async function draft(admin: SupabaseClient, db: SupabaseClient, owner: string, i
   const { data: msg } = await admin.from("email_msg").select("*").eq("id", id).eq("owner_id", owner).maybeSingle();
   if (!msg) throw new Error("That email isn't in Blink anymore.");
   const account = accounts().find((a) => a.id === msg.account);
-  if (!account) throw new Error(`Add the ${msg.account === "gmail" ? "Gmail" : "iCloud"} app password to the server's secrets first.`);
+  if (!account) throw new Error(`Add the ${({ gmail: "Gmail", icloud: "iCloud", uni: "uni" } as Record<string, string>)[msg.account] ?? msg.account} password to the server's secrets first.`);
 
   const [{ data: profile }, { data: voice }, { data: spend }] = await Promise.all([
     db.from("profile").select("model_prefs, settings").maybeSingle(),
@@ -254,7 +257,7 @@ Deno.serve(async (req) => {
   const db = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
-  if (list.length === 0) return json(503, { error: "Add GMAIL_ADDRESS + GMAIL_APP_PASSWORD and/or ICLOUD_ADDRESS + ICLOUD_APP_PASSWORD to the server's secrets." });
+  if (list.length === 0) return json(503, { error: "Add GMAIL_ADDRESS + GMAIL_APP_PASSWORD, ICLOUD_ADDRESS + ICLOUD_APP_PASSWORD and/or UNI_ADDRESS + UNI_PASSWORD to the server's secrets." });
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   if (body.action === "draft") {

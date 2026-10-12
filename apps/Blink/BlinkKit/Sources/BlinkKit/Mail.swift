@@ -28,6 +28,16 @@ public struct EmailMessage: Codable, Identifiable, Equatable, Sendable {
 
     public var sender: String { fromName.isEmpty ? fromAddr : fromName }
 
+    /// "Gmail", "iCloud", "Uni Siegen".
+    public static func accountName(_ account: String) -> String {
+        switch account {
+        case "gmail": "Gmail"
+        case "icloud": "iCloud"
+        case "uni": "Uni Siegen"
+        default: account
+        }
+    }
+
     /// Opens this message in Apple Mail (message:// with the Message-ID).
     public var mailURL: URL? {
         let id = messageID.trimmingCharacters(in: CharacterSet(charactersIn: " <>"))

@@ -19,13 +19,13 @@ struct InboxView: View {
                 Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
             }
             ForEach(model.mailStates.filter { $0.lastError != nil }, id: \.account) { state in
-                Label("\(state.account == "gmail" ? "Gmail" : "iCloud"): \(state.lastError ?? "")", systemImage: "exclamationmark.triangle")
+                Label("\(EmailMessage.accountName(state.account)): \(state.lastError ?? "")", systemImage: "exclamationmark.triangle")
                     .font(.callout).foregroundStyle(.orange)
             }
             if model.emails.isEmpty {
                 EmptyCard(symbol: "envelope", title: model.mailStates.isEmpty ? "Mail isn't connected yet" : "Nothing new",
                           message: model.mailStates.isEmpty
-                            ? "Add your Gmail and iCloud app passwords to your server's secrets (GMAIL_ADDRESS, GMAIL_APP_PASSWORD, ICLOUD_ADDRESS, ICLOUD_APP_PASSWORD), then press Check Now."
+                            ? "Add your mail passwords to your server's secrets (GMAIL_ADDRESS + GMAIL_APP_PASSWORD, ICLOUD_ADDRESS + ICLOUD_APP_PASSWORD, UNI_ADDRESS + UNI_PASSWORD), then press Check Now."
                             : "Blink checks your mail every 5 minutes. Important mail shows here and in the notch.",
                           actionTitle: "Check Now", action: { Task { await model.syncMail() } })
             }
@@ -47,7 +47,7 @@ struct InboxView: View {
                 if model.syncingMail { ProgressView().controlSize(.small) } else { Label("Check Mail", systemImage: "envelope.arrow.triangle.branch") }
             }
             .disabled(model.syncingMail)
-            .help("Check Gmail and iCloud now")
+            .help("Check Gmail, iCloud and uni mail now")
         }
         .task {
             await model.loadMail()
@@ -85,6 +85,10 @@ struct MailRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(message.sender).font(.headline).lineLimit(1)
+                    if message.account == "uni" {
+                        Text("Uni").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                            .padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: .capsule)
+                    }
                     if !message.reason.isEmpty {
                         Text(message.reason).font(.caption.weight(.semibold))
                             .padding(.horizontal, 6).padding(.vertical, 1)
