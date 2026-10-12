@@ -126,11 +126,30 @@ do $$ begin
   end;
 end $$;
 
+-- Content: A drafts a post and sets a voice; a bad platform or status is refused.
+insert into public.content_piece (idea, platform, format, body) values ('Launch week', 'x', 'thread', 'Day 1');
+insert into public.voice_profile (notes, never_say) values ('Plain, short sentences', '{delve}');
+do $$ begin
+  begin
+    insert into public.content_piece (idea, platform, format) values ('x', 'tiktok', 'post');
+    raise exception 'bad platform should have failed';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.content_piece set status = 'viral';
+    raise exception 'bad content status should have failed';
+  exception when check_violation then null;
+  end;
+end $$;
+
 -- User B sees nothing of A's and cannot write rows owned by A.
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
   assert (select count(*) from public.habit) = 0, 'B must not see A''s habits';
   assert (select count(*) from public.segment) = 0, 'B must not see A''s spaces';
+  assert (select count(*) from public.content_piece) = 0, 'B must not see A''s drafts';
+  assert (select count(*) from public.voice_profile) = 0, 'B must not see A''s voice';
+  update public.voice_profile set notes = 'hacked';
   begin
     insert into public.item (type, title, segment_id) values ('task', 'sneak', '00000000-0000-0000-0000-0000000000c1');
     raise exception 'B put an item into A''s space';
@@ -169,6 +188,7 @@ end $$;
 reset role;
 do $$ begin
   assert (select title from public.item) = 'A secret', 'A''s data must survive B''s attempts';
+  assert (select notes from public.voice_profile) = 'Plain, short sentences', 'B must not change A''s voice';
   delete from public.segment;
   assert (select segment_id from public.item) is null, 'deleting a space keeps its items';
 end $$;
