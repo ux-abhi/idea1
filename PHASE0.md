@@ -61,7 +61,7 @@ Still to build for the Phase 2 gate (ARCHITECTURE §29):
 - [x] Today timeline (one time axis for meetings, tasks and reminders) — this is the "schedule checker" the evening check-in fills.
 - [x] Done ∩∩ with an Undo chip in the notch and the window (ticking off; deletes still ask first).
 - [x] Spaces (Segments), Project template first: migration + RLS tests (live), sidebar, Space page, Move to Space for tasks and notes.
-- [ ] Blink panel on every window screen (context-aware inspector: Ask-First + chat for that screen).
+- [x] Blink panel on every window screen (inspector, ⌥⌘B: eyes, Ask-First card, suggestions for the page, the shared chat).
 - [x] Settings: wake and evening times, shortcuts, which AI does what, cost meter from `model_usage` (model choice stays a server setting).
 - [x] Tasks grouped Overdue / Today / Upcoming / Someday, with every open Apple Reminder.
 

@@ -493,6 +493,8 @@ struct NotesView: View {
         }
         .safeAreaInset(edge: .bottom) { SaveProblemBar() }
         .task { await model.loadItems() }
+        .onChange(of: selection, initial: true) { model.openNoteID = selection }
+        .onDisappear { model.openNoteID = nil }
     }
 
     private func newNote() {

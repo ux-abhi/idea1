@@ -54,6 +54,7 @@ struct MainWindow: View {
     @AppStorage("page") private var savedPage = "today"
     @State private var page: Page?
     @State private var newSpace = false
+    @AppStorage("blinkPanel") private var showPanel = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -76,24 +77,13 @@ struct MainWindow: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 210)
         } detail: {
-            switch page ?? .section(.today) {
-            case .section(.today): TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
-            case .section(.calendar): CalendarListView()
-            case .section(.notes): NotesView()
-            case .section(.tasks): TasksView()
-            case .section(.waiting): WaitingView()
-            case .section(.activity): ActivityView()
-            case .space(let id):
-                if let space = model.spaces.first(where: { $0.id == id }) {
-                    SpaceView(space: space, openNote: { note in
-                        model.focusNoteID = note
-                        page = .section(.notes)
-                    })
-                    .id(id)
-                } else {
-                    TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
+            detail
+                .inspector(isPresented: $showPanel) { BlinkPanel(page: page ?? .section(.today)) }
+                .toolbar {
+                    Button { showPanel.toggle() } label: { Label("Blink", systemImage: "sidebar.right") }
+                        .keyboardShortcut("b", modifiers: [.command, .option])
+                        .help("Show or hide the Blink panel (⌥⌘B)")
                 }
-            }
         }
         .overlay(alignment: .bottom) { UndoToast() }
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : Tokens.Motion.content.animation, value: model.undoChip?.id)
@@ -107,6 +97,27 @@ struct MainWindow: View {
             await model.loadActivity()
         }
     }
+
+    @ViewBuilder private var detail: some View {
+            switch page ?? .section(.today) {
+        case .section(.today): TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
+        case .section(.calendar): CalendarListView()
+        case .section(.notes): NotesView()
+        case .section(.tasks): TasksView()
+        case .section(.waiting): WaitingView()
+        case .section(.activity): ActivityView()
+        case .space(let id):
+            if let space = model.spaces.first(where: { $0.id == id }) {
+                SpaceView(space: space, openNote: { note in
+                    model.focusNoteID = note
+                    page = .section(.notes)
+                })
+                .id(id)
+            } else {
+                TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
+            }
+        }
+            }
 
     private var spacesSection: some View {
         SwiftUI.Section("Spaces") {

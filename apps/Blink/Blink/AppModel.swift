@@ -38,6 +38,8 @@ final class AppModel {
     private(set) var saveProblem: String?
     /// A note to open when the Notes screen appears (from Today's Note button).
     var focusNoteID: String?
+    /// The note open on the Notes page, so the Blink panel can offer help with it.
+    var openNoteID: String?
 
     private(set) var habits: [Habit] = []
     /// habit id → habit day ("yyyy-MM-dd") → answer.
