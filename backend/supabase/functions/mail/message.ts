@@ -127,3 +127,15 @@ export function replyFrom(to: string, cc: string, account: string, aliases: stri
   const all = `${to},${cc}`.toLowerCase();
   return mine.find((a) => all.includes(a)) ?? account;
 }
+
+// Job boards' automated alerts (not recruiters writing personally, who use their own company's address).
+const JOB_ALERTS = /(^|[.@])(glassdoor\.com|stepstone\.de|match\.indeed\.com)$|^(jobalerts-noreply|jobs-listings|jobs-noreply)@linkedin\.com$/;
+const NO_REPLY = /^(no-?reply|do-?not-?reply|noreply-[^@]*|no-reply-[^@]*)@/;
+
+/** Rules the model can't be talked out of: job-board alerts are never important, and nobody waits for a reply
+ *  to an address that can't receive one. */
+export function settle(t: Pick<Triage, "triage" | "reason" | "needs_reply">, fromAddr: string): Pick<Triage, "triage" | "reason" | "needs_reply"> {
+  const from = fromAddr.toLowerCase();
+  if (JOB_ALERTS.test(from)) return { triage: "newsletter", reason: "", needs_reply: false };
+  return NO_REPLY.test(from) ? { ...t, needs_reply: false } : t;
+}

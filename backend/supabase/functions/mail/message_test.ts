@@ -1,5 +1,5 @@
 // © Pexilim
-import { buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom } from "./message.ts";
+import { buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, settle } from "./message.ts";
 
 Deno.test("headers unfold and decode encoded words", () => {
   const h = parseHeaders("Subject: =?UTF-8?B?SW50ZXJ2aWV3IOKAkyBUZWFtVmlld2Vy?=\r\nFrom: \"Wolfram\"\r\n <w@teamviewer.com>\r\nTo: hello@pexilim.com\r\n");
@@ -37,4 +37,14 @@ Deno.test("drafts are threaded, from the right address, and can't smuggle header
   }
   if (replyFrom("Hello <hello@uxabhi.com>", "", "me@icloud.com", ["hello@pexilim.com", "hello@uxabhi.com"]) !== "hello@uxabhi.com") throw new Error("alias");
   if (replyFrom("other@x.com", "", "me@icloud.com", []) !== "me@icloud.com") throw new Error("fallback");
+});
+
+Deno.test("job alerts and no-reply senders are settled in code", () => {
+  const hot = { triage: "important" as const, reason: "Job posting", needs_reply: true };
+  if (settle(hot, "noreply@glassdoor.com").triage !== "newsletter") throw new Error("glassdoor");
+  if (settle(hot, "info@jobagent.stepstone.de").triage !== "newsletter") throw new Error("stepstone");
+  if (settle(hot, "jobalerts-noreply@linkedin.com").triage !== "newsletter") throw new Error("linkedin");
+  if (settle(hot, "recruiter@teamviewer.com").triage !== "important") throw new Error("a real recruiter stays important");
+  if (settle(hot, "no-reply@accounts.google.com").needs_reply) throw new Error("no-reply can't need a reply");
+  if (!settle(hot, "paresh@gmail.com").needs_reply) throw new Error("people keep needs_reply");
 });
