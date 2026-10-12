@@ -5,7 +5,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseAnalysis, parseHandle, score, toRows } from "./input.ts";
-import { capProblem, cost, groq, lastDay, pickModel } from "../_shared/models.ts";
+import { capProblem, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
 
 const SYSTEM = `You read the owner's own recent Instagram posts (in <page_posts>, newest first, with likes, comments and views) and sum up:
 - voice.page: what the page is, in one line, starting with the @handle.
@@ -100,9 +100,9 @@ Deno.serve(async (req) => {
   const userTurn = `<page_posts handle="@${handle}">${JSON.stringify(posts).replaceAll("<", "\\u003c")}</page_posts>`;
   let text = "", inputTokens = 0, outputTokens = 0;
   try {
-    if (model.provider === "groq") {
-      const strict = model.id.startsWith("openai/gpt-oss");
-      const { message, usage } = await groq({
+    if (model.provider !== "claude") {
+      const strict = keepsSchema(model);
+      const { message, usage } = await compatible(model.provider, {
         model: model.id, temperature: 0.3, max_completion_tokens: 3000,
         messages: [{ role: "system", content: SYSTEM }, { role: "user", content: strict ? userTurn : `${userTurn}\nReply with JSON only, shaped like: ${JSON.stringify(SCHEMA.properties)}.` }],
         response_format: strict ? { type: "json_schema", json_schema: { name: "page", strict: true, schema: SCHEMA } } : { type: "json_object" },

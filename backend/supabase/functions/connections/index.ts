@@ -30,7 +30,8 @@ Deno.serve(async (req) => {
   if (!user) return json(401, { error: "signed out" });
 
   const account = Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
-  const [anthropic, groq, apify, cloudflare] = await Promise.all([
+  const openrouterKey = Deno.env.get("OPENROUTER_API_KEY");
+  const [anthropic, groq, apify, cloudflare, openrouter, credit] = await Promise.all([
     check(Deno.env.get("ANTHROPIC_API_KEY"), (key) => fetch("https://api.anthropic.com/v1/models?limit=1", {
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01",
                  ...(Deno.env.get("ANTHROPIC_WORKSPACE_ID") ? { "anthropic-workspace-id": Deno.env.get("ANTHROPIC_WORKSPACE_ID")! } : {}) },
@@ -42,6 +43,17 @@ Deno.serve(async (req) => {
           `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/ai/models/search?per_page=1`,
           { headers: { Authorization: `Bearer ${key}` } }))
       : Promise.resolve<Status>("missing"),
+    check(openrouterKey, (key) => fetch("https://openrouter.ai/api/v1/key", { headers: { Authorization: `Bearer ${key}` } })),
+    // What's left of the OpenRouter credit (the key's own limit, if it has one), so the owner sees the $ before picking.
+    (async () => {
+      if (!openrouterKey) return null;
+      try {
+        const r = await fetch("https://openrouter.ai/api/v1/credits", { headers: { Authorization: `Bearer ${openrouterKey}` } });
+        const d = (await r.json())?.data;
+        const left = Number(d?.total_credits) - Number(d?.total_usage);
+        return Number.isFinite(left) ? Math.max(0, Math.round(left * 100) / 100) : null;
+      } catch { return null; }
+    })(),
   ]);
-  return json(200, { anthropic, groq, apify, cloudflare });
+  return json(200, { anthropic, groq, apify, cloudflare, openrouter, openrouter_credit: credit === null ? "" : String(credit) });
 });

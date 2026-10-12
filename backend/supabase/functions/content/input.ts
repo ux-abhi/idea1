@@ -85,3 +85,10 @@ export function parseIdeas(output: unknown, asked: Platform[], days: string[] = 
   if (days.length > 0) clean.sort((a, b) => (a.day ?? "").localeCompare(b.day ?? ""));
   return clean.slice(0, 8);
 }
+
+/** Up to 3 short questions the model wants answered for a stronger post (asking beats inventing). */
+export function parseQuestions(output: unknown): string[] {
+  const questions = (output as { questions?: unknown })?.questions;
+  if (!Array.isArray(questions)) return [];
+  return questions.filter((q): q is string => typeof q === "string" && !!q.trim()).slice(0, 3).map((q) => q.trim().slice(0, 300));
+}

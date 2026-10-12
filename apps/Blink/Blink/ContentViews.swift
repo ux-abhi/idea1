@@ -153,6 +153,10 @@ struct ContentView: View {
             ForEach(ideas(live), id: \.self) { group in
                 DashCard(group) {
                     VStack(alignment: .leading, spacing: 18) {
+                        if let asked = model.questions[group], !asked.isEmpty {
+                            QuestionsBox(idea: group, questions: asked,
+                                         platforms: Array(Set(live.filter { $0.idea == group }.map(\.platform))))
+                        }
                         ForEach(live.filter { $0.idea == group }) { piece in
                             PieceEditor(piece: piece)
                             if piece.id != live.last(where: { $0.idea == group })?.id { Divider() }
@@ -327,6 +331,34 @@ private struct PieceEditor: View {
             changed.parts[index] = text
             model.edit(changed)
         })
+    }
+}
+
+/// What the model asked to know for a stronger post; the owner's answers redraft the idea with those facts.
+private struct QuestionsBox: View {
+    @Environment(AppModel.self) private var model
+    let idea: String
+    let questions: [String]
+    let platforms: [ContentPiece.Platform]
+    @State private var answers = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Blink needs a few facts to make this stronger", systemImage: "questionmark.bubble")
+                .font(.callout.weight(.semibold))
+            ForEach(questions, id: \.self) { Text("• \($0)").font(.callout) }
+            TextField("Your answers, e.g. \"Germanly had 140 users; I paused features in June\"", text: $answers, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(2...5)
+            HStack {
+                Button("Redraft with Answers") { Task { await model.redraft(idea: idea, answers: answers, platforms: platforms) } }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(answers.trimmingCharacters(in: .whitespaces).isEmpty || model.drafting)
+                Button("Keep as Is") { model.dismissQuestions(for: idea) }
+            }
+        }
+        .padding(12)
+        .background(Color.accentColor.opacity(0.08), in: .rect(cornerRadius: 12, style: .continuous))
     }
 }
 

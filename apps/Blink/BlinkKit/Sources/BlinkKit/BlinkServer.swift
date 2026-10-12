@@ -289,17 +289,18 @@ public final class BlinkServer: Sendable {
 
     // MARK: Content (§36.4)
 
-    /// Claude writes one draft per platform from the idea and saves them; returns how many. Reload with `contentPieces()`.
+    /// One draft per platform from the idea, saved on the server; returns the questions the model wants answered for a
+    /// stronger post (it asks rather than invents). Reload with `contentPieces()`.
     @discardableResult
     public func draftContent(idea: String, platforms: [ContentPiece.Platform], spaceID: String? = nil,
-                             plannedFor: String? = nil) async throws -> Int {
+                             plannedFor: String? = nil) async throws -> [String] {
         struct Body: Encodable { let idea: String; let platforms: [String]; let space_id: String?; let planned_for: String? }
-        struct Reply: Decodable { let saved: Int }
+        struct Reply: Decodable { let saved: Int; let questions: [String]? }
         do {
             let reply: Reply = try await client.functions.invoke(
                 "content", options: .init(body: Body(idea: idea, platforms: platforms.map(\.rawValue), space_id: spaceID,
                                                      planned_for: plannedFor)))
-            return reply.saved
+            return reply.questions ?? []
         } catch let FunctionsError.httpError(_, data) {
             struct ErrorBody: Decodable { let error: String }
             throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't write drafts.")

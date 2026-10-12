@@ -1,12 +1,12 @@
 // © Pexilim
 // Blink's chat (ARCHITECTURE §15, §19): answers from the owner's own data and proposes actions as Ask-First cards.
 // Claude never writes anything directly: every proposal becomes a pending `action` the owner approves.
-// The owner picks Claude or a free Groq model in Settings; either way every write is only a proposal.
+// The owner picks Claude, a free Groq model or an OpenRouter pick in Settings; either way every write is only a proposal.
 // shortcut: non-streaming and no rate limit; stream and add a per-owner limit when chat moves past one user (§24).
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseChange, parseChatRequest, parseProposal, parseReschedule } from "./input.ts";
-import { capProblem, cost, groq, lastDay, pickModel } from "../_shared/models.ts";
+import { capProblem, compatible, cost, lastDay, pickModel } from "../_shared/models.ts";
 
 // Fixed, so it caches: the date and the owner's data go in the user turn, not here.
 const SYSTEM = `You are Blink, a personal assistant that lives in the owner's MacBook notch.
@@ -211,8 +211,9 @@ Deno.serve(async (req) => {
   }
 
   let inputTokens = 0, outputTokens = 0, reply = "";
-  if (model.provider === "groq") {
-    // Free models on Groq: the same system prompt, data and tools, in the OpenAI-compatible shape.
+  if (model.provider !== "claude") {
+    // Groq and OpenRouter: the same system prompt, data and tools, in the OpenAI-compatible shape.
+    const provider = model.provider;
     const messages: Record<string, unknown>[] = [
       { role: "system", content: SYSTEM },
       ...parsed.history.map((t) => ({ role: t.role, content: t.text })),
@@ -221,7 +222,7 @@ Deno.serve(async (req) => {
     const tools = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
     try {
       for (let turn = 0; turn < 4; turn++) {
-        const { message, usage } = await groq({ model: model.id, messages, tools, temperature: 0.3, max_completion_tokens: 2000 });
+        const { message, usage } = await compatible(provider, { model: model.id, messages, tools, temperature: 0.3, max_completion_tokens: 2000 });
         inputTokens += usage.prompt_tokens ?? 0;
         outputTokens += usage.completion_tokens ?? 0;
         reply = (message.content ?? "").trim() || reply;
@@ -235,7 +236,7 @@ Deno.serve(async (req) => {
         }
       }
     } catch (error) {
-      return json(502, { error: error instanceof Error ? error.message : "Groq couldn't answer." });
+      return json(502, { error: error instanceof Error ? error.message : "The model couldn't answer." });
     }
   } else {
     // Keys made at organisation level need the workspace named on every request.

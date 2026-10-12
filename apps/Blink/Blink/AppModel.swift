@@ -712,7 +712,7 @@ final class AppModel {
         defer { drafting = false }
         contentProblem = nil
         do {
-            try await server.draftContent(idea: idea, platforms: platforms, plannedFor: plannedFor)
+            questions[idea] = try await server.draftContent(idea: idea, platforms: platforms, plannedFor: plannedFor)
             await loadContent()
             return true
         } catch let problem as BlinkServer.ChatProblem {
@@ -724,6 +724,18 @@ final class AppModel {
     }
 
     private(set) var ideas: [ContentIdea] = []
+    /// Idea → what the model asked to know for a stronger post (shown on the idea's card until answered).
+    private(set) var questions: [String: [String]] = [:]
+
+    /// "Redraft with answers": the same idea again, with the owner's answers as facts it may use.
+    func redraft(idea: String, answers: String, platforms: [ContentPiece.Platform]) async {
+        let trimmed = answers.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        questions[idea] = nil
+        _ = await draft(idea: "\(idea)\n\nFacts from the owner, answering your questions: \(trimmed)", platforms: platforms)
+    }
+
+    func dismissQuestions(for idea: String) { questions[idea] = nil }
     private(set) var thinkingOfIdeas = false
 
     func suggestIdeas(theme: String, platforms: [ContentPiece.Platform]) async {
@@ -904,7 +916,9 @@ final class AppModel {
         case .post(let idea):
             let platforms = contentPlatforms
             if await draft(idea: idea, platforms: platforms) {
-                chat.append(.init(role: .assistant, text: "Wrote drafts for \(platforms.map(\.name).formatted()). Edit and approve them in **Content**."))
+                let asked = questions[idea] ?? []
+                chat.append(.init(role: .assistant, text: "Wrote drafts for \(platforms.map(\.name).formatted()). Edit and approve them in **Content**."
+                    + (asked.isEmpty ? "" : "\nTo make them stronger, answer on the Content page: " + asked.joined(separator: " · "))))
             } else if let problem = contentProblem {
                 chat.append(.init(role: .assistant, text: problem))
             }

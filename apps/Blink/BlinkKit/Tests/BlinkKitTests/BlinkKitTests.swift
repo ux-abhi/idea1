@@ -579,6 +579,7 @@ extension Tokens {
     #expect(names["claude-opus-5-5"] == "Opus 5.5")
     #expect(names["openai/gpt-oss-120b"] == "GPT-OSS 120B")
     #expect(names["minimaxai/minimax-m2.7"] == "MiniMax M2.7")
+    #expect(AIModel.all.first { $0.id == "moonshotai/kimi-k3" }?.group == .best)
 }
 
 @Test func quickCommandsParseInTheNotch() throws {

@@ -12,15 +12,14 @@ struct ModelMenu: View {
     var body: some View {
         let current = model.model(for: feature)
         Menu {
-            Section("Claude") {
-                ForEach(AIModel.all.filter { !$0.isFree }) { option($0, current: current) }
-            }
-            Section("Free (Groq)") {
-                ForEach(AIModel.all.filter(\.isFree)) { option($0, current: current) }
+            ForEach(AIModel.Group.allCases, id: \.self) { group in
+                Section(group.rawValue) {
+                    ForEach(AIModel.all.filter { $0.group == group }) { option($0, current: current) }
+                }
             }
         } label: {
             if compact {
-                Label(current.shortName, systemImage: current.isFree ? "leaf" : "sparkles")
+                Label(current.shortName, systemImage: current.isFree ? "leaf" : current.group == .best ? "star" : "sparkles")
             } else {
                 Text(current.name)
             }

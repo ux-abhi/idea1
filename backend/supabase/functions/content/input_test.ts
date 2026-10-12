@@ -1,5 +1,5 @@
 // © Pexilim
-import { parseContentRequest, parseDrafts, parseIdeas } from "./input.ts";
+import { parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
 
 Deno.test("content requests are checked at the boundary", () => {
   const ok = parseContentRequest({ idea: " Why I build Blink ", platforms: ["x", "linkedin", "x"] });
@@ -45,4 +45,10 @@ Deno.test("the week plan keeps only ideas on the given days, in day order", () =
     { title: "C", hook: "h", platform: "x", format: "post", why: "w", day: "2027-01-01" }, // not this week
   ] }, ["x"], days);
   if (ideas.map((i) => i.title).join() !== "A,B") throw new Error(JSON.stringify(ideas));
+});
+
+Deno.test("questions for the owner are short and at most three", () => {
+  const q = parseQuestions({ questions: ["How many users?", "", 5, "Which city?", "When?", "Extra?"] });
+  if (q.length !== 3 || q[0] !== "How many users?") throw new Error(JSON.stringify(q));
+  if (parseQuestions({}).length !== 0) throw new Error("missing questions should be empty");
 });
