@@ -81,3 +81,20 @@ export function parseReschedule(input: unknown, known: Map<string, string>):
   if (!change || typeof due_at !== "string" || Number.isNaN(Date.parse(due_at))) return null;
   return { ...change, due: new Date(due_at).toISOString() };
 }
+
+/** A proposed reply-and-send for an email Blink showed the model: a known email id, an optional future send time and note. */
+export function parseMailSend(input: unknown, known: Map<string, string>, now = Date.now()):
+  { id: string; subject: string; sendAt: string | null; note: string } | null {
+  const { email_id, send_at, note } = (input ?? {}) as Record<string, unknown>;
+  if (typeof email_id !== "string") return null;
+  const subject = known.get(`mail:${email_id}`);
+  if (subject === undefined) return null;
+  if (note !== undefined && note !== null && (typeof note !== "string" || note.length > 1000)) return null;
+  let sendAt: string | null = null;
+  if (send_at !== null && send_at !== undefined) {
+    if (typeof send_at !== "string" || Number.isNaN(Date.parse(send_at))) return null;
+    const at = Date.parse(send_at);
+    if (at > now + 60_000) sendAt = new Date(at).toISOString(); // a time in the past or right now means "send now"
+  }
+  return { id: email_id, subject, sendAt, note: typeof note === "string" ? note.trim() : "" };
+}

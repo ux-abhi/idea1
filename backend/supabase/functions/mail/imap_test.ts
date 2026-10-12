@@ -62,3 +62,18 @@ Deno.test("append waits for the go-ahead before sending the message", async () =
   await imap.append("Drafts", new TextEncoder().encode("Subject: hi\r\n\r\nbody"));
   if (!sent[0].startsWith('B1 APPEND "Drafts" (\\Draft \\Seen) {') || !sent[1].includes("Subject: hi")) throw new Error(JSON.stringify(sent));
 });
+
+Deno.test("a sent draft is found by its Message-ID, flagged deleted and expunged", async () => {
+  const { transport, sent } = fakeServer({
+    SELECT: "* OK [UIDVALIDITY 7] ok\r\nTAG OK [READ-WRITE] done\r\n",
+    UID: "* SEARCH 31\r\nTAG OK done\r\n",
+    EXPUNGE: "* 3 EXPUNGE\r\nTAG OK done\r\n",
+  });
+  // UID STORE shares the "UID" word with UID SEARCH: the script answers both with the same SEARCH line, which STORE ignores.
+  const removed = await new Imap(transport).deleteByMessageId("Drafts", "<abc@pexilim.com>");
+  const all = sent.join("");
+  if (removed !== 1 || !all.includes('SELECT "Drafts"') || !all.includes('UID SEARCH HEADER Message-ID "<abc@pexilim.com>"') ||
+      !all.includes("UID STORE 31 +FLAGS.SILENT (\\Deleted)") || !all.includes("EXPUNGE")) {
+    throw new Error(JSON.stringify(sent));
+  }
+});

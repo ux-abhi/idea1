@@ -183,6 +183,37 @@ do $$ begin
     raise exception 'bad mail status accepted';
   exception when check_violation then null;
   end;
+  update public.email_msg set triage = 'newsletter' where subject = 'Interview invite';
+  assert (select triage from public.email_msg where subject = 'Interview invite') = 'newsletter', 'A can correct triage';
+  begin
+    update public.email_msg set draft_message_id = 'x';
+    raise exception 'A changed a draft id';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public.mail_sender_rule (sender, verdict, example) values ('@glassdoor.com', 'newsletter', 'Jobs in Delhi');
+  begin
+    insert into public.mail_sender_rule (sender, verdict) values ('Boss@Example.com', 'important');
+    raise exception 'a mixed-case sender was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.action (kind, risk, payload, payload_hash, proposed_by) values ('mail.send', 'amber', '{}', '\x00', 'blink');
+    raise exception 'an amber mail.send was accepted';
+  exception when check_violation then null;
+  end;
+end $$;
+
+-- The same reply can be approved to send only once.
+reset role;
+insert into public.action (owner_id, kind, risk, payload, payload_hash, proposed_by, status)
+  values ('00000000-0000-0000-0000-00000000000a', 'mail.send', 'red', '{"message_id":"<r1@pexilim.com>"}', '\x00', 'blink', 'approved');
+do $$ begin
+  begin
+    insert into public.action (owner_id, kind, risk, payload, payload_hash, proposed_by, status)
+      values ('00000000-0000-0000-0000-00000000000a', 'mail.send', 'red', '{"message_id":"<r1@pexilim.com>"}', '\x00', 'blink', 'approved');
+    raise exception 'the same reply was approved twice';
+  exception when unique_violation then null;
+  end;
 end $$;
 
 -- User B sees nothing of A's and cannot write rows owned by A.
@@ -194,6 +225,7 @@ do $$ begin
   assert (select count(*) from public.voice_profile) = 0, 'B must not see A''s voice';
   assert (select count(*) from public.social_post) = 0, 'B must not see A''s page posts';
   assert (select count(*) from public.email_msg) = 0, 'B must not see A''s mail';
+  assert (select count(*) from public.mail_sender_rule) = 0, 'B must not see A''s sender rules';
   update public.voice_profile set notes = 'hacked', page = 'hacked', brief = 'hacked';
   begin
     insert into public.item (type, title, segment_id) values ('task', 'sneak', '00000000-0000-0000-0000-0000000000c1');

@@ -100,25 +100,41 @@ export function parseTriage(output: unknown, uids: number[]): Triage[] {
   });
 }
 
-/** A reply as RFC 5322 bytes for the Drafts folder: from the owner's address the mail was sent to, threaded. */
-export function buildDraft(p: { from: string; to: string; subject: string; body: string; inReplyTo: string; date?: Date }): Uint8Array {
+/** "Re: subject", without stacking another "Re:". */
+export const replySubject = (subject: string) => {
+  const clean = subject.replace(/[\r\n]+/g, " ").trim();
+  return /^re:/i.test(clean) ? clean : `Re: ${clean}`;
+};
+
+/** A reply as RFC 5322 bytes, for the Drafts folder or for sending: from the owner's address the mail was sent to,
+ *  threaded. The body is base64, so no line is ever too long for a mail server. */
+export function buildDraft(p: { from: string; to: string; subject: string; body: string; inReplyTo: string; messageId?: string; date?: Date }): Uint8Array {
   const clean = (s: string) => s.replace(/[\r\n]+/g, " ").trim(); // no header injection
-  const subject = /^re:/i.test(p.subject.trim()) ? clean(p.subject) : `Re: ${clean(p.subject)}`;
-  const encode = (s: string) => /^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${btoa(String.fromCharCode(...new TextEncoder().encode(s)))}?=`;
+  // Non-ASCII as encoded words of 15 characters each on folded lines, so no header line gets too long.
+  const encode = (s: string) => /^[\x20-\x7e]*$/.test(s) ? s
+    : (Array.from(s).join("").match(/[\s\S]{1,15}/gu) ?? []).map((part) => `=?UTF-8?B?${base64(part)}?=`).join("\r\n ");
   const id = clean(p.inReplyTo);
   const lines = [
     `From: ${clean(p.from)}`,
     `To: ${clean(p.to)}`,
-    `Subject: ${encode(subject)}`,
+    `Subject: ${encode(replySubject(p.subject))}`,
     `Date: ${(p.date ?? new Date()).toUTCString().replace("GMT", "+0000")}`,
+    ...(p.messageId ? [`Message-ID: ${clean(p.messageId)}`] : []),
     ...(id ? [`In-Reply-To: ${id}`, `References: ${id}`] : []),
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=utf-8",
-    "Content-Transfer-Encoding: 8bit",
+    "Content-Transfer-Encoding: base64",
     "",
-    p.body.replace(/\r?\n/g, "\r\n"),
+    ...(base64(p.body.replace(/\r?\n/g, "\r\n")).match(/.{1,76}/g) ?? []),
   ];
   return new TextEncoder().encode(lines.join("\r\n"));
+}
+
+function base64(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(binary);
 }
 
 /** Which of the owner's addresses a message was sent to (so the reply comes from it); the account address otherwise. */
@@ -138,4 +154,37 @@ export function settle(t: Pick<Triage, "triage" | "reason" | "needs_reply">, fro
   const from = fromAddr.toLowerCase();
   if (JOB_ALERTS.test(from)) return { triage: "newsletter", reason: "", needs_reply: false };
   return NO_REPLY.test(from) ? { ...t, needs_reply: false } : t;
+}
+
+export type SenderRule = { sender: string; verdict: "important" | "newsletter" };
+
+/** The owner's own verdict for a sender: an exact address first, then "@domain" (which also covers its subdomains). */
+export function ruleVerdict(rules: SenderRule[], fromAddr: string): SenderRule["verdict"] | null {
+  const from = fromAddr.toLowerCase();
+  const exact = rules.find((r) => r.sender === from);
+  if (exact) return exact.verdict;
+  const domain = from.split("@")[1] ?? "";
+  const match = rules.filter((r) => r.sender.startsWith("@")).find((r) => domain === r.sender.slice(1) || domain.endsWith(`.${r.sender.slice(1)}`));
+  return match?.verdict ?? null;
+}
+
+export type Send = { email_id: string; account: string; from: string; to: string; subject: string; body: string; in_reply_to: string; message_id: string; send_at: string };
+
+const ADDRESS = /^[^\s@<>,;"()]+@[^\s@<>,;"()]+\.[^\s@<>,;"()]+$/;
+
+/** An approved "mail.send" payload, checked again before anything leaves: one plain recipient, a From that is one of
+ *  the owner's own addresses, sane sizes. Returns the reason when it isn't sendable. */
+export function parseSend(payload: unknown, owned: string[]): Send | string {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  const text = (k: string, max: number) => typeof p[k] === "string" && (p[k] as string).length <= max ? (p[k] as string) : null;
+  const [emailId, account, from, to, subject, body, inReplyTo, messageId, sendAt] =
+    [text("email_id", 64), text("account", 20), text("from", 320), text("to", 320), text("subject", 998), text("body", 20000),
+     text("in_reply_to", 998), text("message_id", 998), text("send_at", 40)];
+  if (emailId === null || !["gmail", "icloud", "uni"].includes(account ?? "")) return "Unknown mailbox.";
+  if (!from || !owned.map((a) => a.toLowerCase()).includes(from.toLowerCase())) return "The From address isn't one of yours.";
+  if (!to || !ADDRESS.test(to)) return "The recipient's address doesn't look right.";
+  if (subject === null || !body?.trim()) return "The mail is empty.";
+  if (inReplyTo === null || !messageId || !/^<[^<>\s]+@[^<>\s]+>$/.test(messageId)) return "The mail's ids are missing.";
+  if (!sendAt || Number.isNaN(Date.parse(sendAt))) return "The send time is missing.";
+  return { email_id: emailId, account: account!, from, to, subject, body, in_reply_to: inReplyTo, message_id: messageId, send_at: sendAt };
 }

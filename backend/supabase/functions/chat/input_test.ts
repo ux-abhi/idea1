@@ -1,5 +1,5 @@
 // © Pexilim
-import { parseChange, parseChatRequest, parseProposal, parseReschedule } from "./input.ts";
+import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule } from "./input.ts";
 
 Deno.test("chat requests are checked at the boundary", () => {
   const ok = parseChatRequest({ message: " hi ", history: [{ role: "user", text: "a" }], timeZone: "Asia/Kolkata" });
@@ -52,4 +52,14 @@ Deno.test("screen context is optional text with a limit", () => {
   if (typeof none === "string" || none.context !== null) throw new Error("missing context should be null");
   if (typeof parseChatRequest({ message: "hi", context: 5 }) !== "string") throw new Error("non-text context accepted");
   if (typeof parseChatRequest({ message: "hi", context: "x".repeat(4001) }) !== "string") throw new Error("long context accepted");
+});
+
+Deno.test("a mail send proposal needs an email Blink showed, and a past time means now", () => {
+  const known = new Map([["mail:e1", "Website final changes"]]);
+  const now = Date.parse("2026-10-12T12:00:00Z");
+  const later = parseMailSend({ email_id: "e1", send_at: "2026-10-15T09:00:00+02:00", note: "say yes" }, known, now);
+  if (later?.sendAt !== "2026-10-15T07:00:00.000Z" || later.note !== "say yes" || later.subject !== "Website final changes") throw new Error(JSON.stringify(later));
+  if (parseMailSend({ email_id: "e1", send_at: "2026-10-01T09:00:00Z" }, known, now)?.sendAt !== null) throw new Error("past time kept");
+  if (parseMailSend({ email_id: "e2", send_at: null }, known, now) !== null) throw new Error("unknown email accepted");
+  if (parseMailSend({ email_id: "e1", send_at: "Thursday" }, known, now) !== null) throw new Error("bad date accepted");
 });

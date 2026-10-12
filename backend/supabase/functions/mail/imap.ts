@@ -123,14 +123,28 @@ export class Imap {
     return { uidValidity: find("UIDVALIDITY"), uidNext: find("UIDNEXT") };
   }
 
-  /** The mailbox marked \Drafts (special-use), or "Drafts" if the server marks none. */
-  async draftsMailbox(): Promise<string> {
+  /** The mailbox marked with a special-use flag (\\Drafts, \\Sent), or `fallback` if the server marks none. */
+  async specialMailbox(flag: "\\Drafts" | "\\Sent", fallback: string): Promise<string> {
     const responses = await this.command(`LIST "" "*"`);
     for (const r of responses) {
       const m = r.text.match(/^\* LIST \(([^)]*)\) (?:"[^"]*"|NIL) (.+)$/);
-      if (m && /\\Drafts\b/i.test(m[1])) return unquote(m[2]);
+      if (m && m[1].toLowerCase().split(/\s+/).includes(flag.toLowerCase())) return unquote(m[2]);
     }
-    return "Drafts";
+    return fallback;
+  }
+
+  draftsMailbox() {
+    return this.specialMailbox("\\Drafts", "Drafts");
+  }
+
+  /** Removes the messages with this Message-ID from a mailbox (Blink's own draft, once it's sent). */
+  async deleteByMessageId(mailbox: string, messageId: string): Promise<number> {
+    await this.select(mailbox, false);
+    const uids = await this.uidSearch(`HEADER Message-ID ${quote(messageId)}`);
+    if (uids.length === 0) return 0;
+    await this.command(`UID STORE ${uids.join(",")} +FLAGS.SILENT (\\Deleted)`);
+    await this.command("EXPUNGE");
+    return uids.length;
   }
 
   async uidSearch(criteria: string): Promise<number[]> {
@@ -141,7 +155,7 @@ export class Imap {
   /** Headers (and optionally the first `snippet` bytes of the text) for the given UIDs. */
   async fetch(uids: number[], snippet: number): Promise<{ uid: number; date: string | null; header: string; text: string }[]> {
     if (uids.length === 0) return [];
-    const fields = "FROM TO SUBJECT DATE MESSAGE-ID LIST-UNSUBSCRIBE CONTENT-TYPE CONTENT-TRANSFER-ENCODING";
+    const fields = "FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO LIST-UNSUBSCRIBE CONTENT-TYPE CONTENT-TRANSFER-ENCODING";
     const parts = `UID INTERNALDATE BODY.PEEK[HEADER.FIELDS (${fields})]${snippet ? ` BODY.PEEK[TEXT]<0.${snippet}>` : ""}`;
     const responses = await this.command(`UID FETCH ${uids.join(",")} (${parts})`);
     return responses.filter((r) => /^\* \d+ FETCH/.test(r.text)).map((r) => ({
@@ -152,9 +166,9 @@ export class Imap {
     })).filter((m) => m.uid > 0);
   }
 
-  /** Saves a finished message (RFC 5322 bytes) into a mailbox, flagged as a draft. */
-  append(mailbox: string, message: Uint8Array) {
-    return this.command(`APPEND ${quote(mailbox)} (\\Draft \\Seen)`, message);
+  /** Saves a finished message (RFC 5322 bytes) into a mailbox, flagged as a draft (or only as read, for Sent). */
+  append(mailbox: string, message: Uint8Array, flags = "(\\Draft \\Seen)") {
+    return this.command(`APPEND ${quote(mailbox)} ${flags}`, message);
   }
 
   async logout() {
