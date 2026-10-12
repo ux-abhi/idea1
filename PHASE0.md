@@ -65,7 +65,13 @@ Still to build for the Phase 2 gate (ARCHITECTURE §29):
 - [x] Settings: wake and evening times, shortcuts, which AI does what, cost meter from `model_usage` (model choice stays a server setting).
 - [x] Tasks grouped Overdue / Today / Upcoming / Someday, with every open Apple Reminder.
 
-Gates still open: VoiceOver by ear (carried from Phase 1), state matrix (§9.8), `/ponytail-audit` + `/ponytail-debt` at the end of the phase, 0 fps at rest re-checked with timers and clipboard.
+Gates:
+- [x] `/ponytail-audit` (2026-10-12): 6 findings, all fixed (panel context fenced as data, chat turn order, all-day reminders, clipboard saves and disk cap, bulk reload). CI green.
+- [x] `/ponytail-debt`: 22 shortcuts, every one with an upgrade trigger.
+- [x] Idle at rest: 0.0 % CPU, 58 MB, about one wake-up a second (clipboard check with tolerance), measured with `top`.
+- [ ] VoiceOver by ear (carried from Phase 1).
+- [ ] State matrix (§9.8) for the new screens: Spaces, timeline, Blink panel, Settings.
+- [ ] Evening check-in fills tomorrow on the timeline, checked end to end by the owner.
 
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
