@@ -15,7 +15,10 @@ export const NotchWake = () => {
 					<Eyes width={130 * u} blinks={[140]} style={{opacity: interpolate(frame, [70, 90], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})}} />
 				</div>
 			</Notch>
+			<Sfx name="rise" at={0} volume={0.3} />
 			<Sfx name="tap" at={50} volume={0.7} />
+			<Sfx name="sparkle" at={84} volume={0.35} />
+			<Sfx name="tick" at={140} volume={0.3} />
 		</Scene>
 	);
 };

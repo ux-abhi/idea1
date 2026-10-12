@@ -12,8 +12,9 @@ export const Hook = () => {
 				<Words text="Your Mac has a notch." />
 			</div>
 			<Words text="Now it has a brain." delay={3 * BEAT + 6} stagger={5} accent={{'brain.': C.blue}} />
-			<Sfx name="tick" at={0} volume={0.4} />
-			<Sfx name="tick" at={3 * BEAT + 6} volume={0.4} />
+			<Sfx name="swoosh" at={0} volume={0.5} />
+			<Sfx name="swoosh" at={3 * BEAT + 2} volume={0.5} />
+			<Sfx name="sparkle" at={3 * BEAT + 26} volume={0.3} />
 		</Scene>
 	);
 };

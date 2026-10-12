@@ -9,7 +9,7 @@ const MAIL = [
 	{from: 'Weekly Digest', subject: 'This week in design', spam: true},
 ];
 
-// 18–24s: mail triage. The noise steps back; the one that matters comes forward in blue.
+// 17–22s: mail triage. The noise steps back; the one that matters comes forward in blue.
 export const Mail = () => {
 	const u = useUnit();
 	const frame = useCurrentFrame();
@@ -40,7 +40,13 @@ export const Mail = () => {
 				))}
 			</div>
 			<Sub text="And tells you what matters." delay={170} />
-			<Sfx name="tick" at={120} volume={0.5} />
+			<Sfx name="swoosh" at={0} volume={0.5} />
+			{[0, 1, 2, 3].map((i) => (
+				<Sfx key={i} name="pop" at={30 + i * 6} volume={0.4} />
+			))}
+			<Sfx name="rise" at={112} volume={0.4} />
+			<Sfx name="sparkle" at={124} volume={0.3} />
+			<Sfx name="swoosh" at={168} volume={0.35} />
 		</Scene>
 	);
 };

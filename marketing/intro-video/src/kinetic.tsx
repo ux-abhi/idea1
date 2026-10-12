@@ -221,13 +221,13 @@ export const Tile: React.FC<{delay?: number; children: React.ReactNode; style?: 
 };
 
 /** One of the soundtrack's interface sounds (public/sfx, made by sound/make_sounds.py). */
-export const Sfx: React.FC<{name: 'tick' | 'key' | 'whoosh' | 'tap' | 'chime'; at: number; volume?: number}> = ({name, at, volume = 0.6}) => {
+export const Sfx: React.FC<{name: 'tick' | 'key' | 'whoosh' | 'tap' | 'chime' | 'pop' | 'swoosh' | 'rise' | 'roll' | 'drop' | 'sparkle' | 'clunk'; at: number; volume?: number}> = ({name, at, volume = 0.6}) => {
 	const {fps} = useVideoConfig();
 	return <Audio src={staticFile(`sfx/${name}.wav`)} from={at} volume={volume} premountFor={fps} />;
 };
 
 /** Small line icons in the style of SF Symbols. */
-export const Icon: React.FC<{name: 'doc' | 'link' | 'photo' | 'file' | 'note' | 'check' | 'bell' | 'space' | 'lock' | 'search'; size: number; color?: string}> = ({
+export const Icon: React.FC<{name: 'doc' | 'link' | 'photo' | 'file' | 'note' | 'check' | 'bell' | 'space' | 'lock' | 'search' | 'flame'; size: number; color?: string}> = ({
 	name,
 	size,
 	color = C.blue,
@@ -243,6 +243,7 @@ export const Icon: React.FC<{name: 'doc' | 'link' | 'photo' | 'file' | 'note' | 
 		space: <path d="M4 5h7v6H4z M13 5h7v6h-7z M4 13h7v6H4z M13 13h7v6h-7z" />,
 		lock: <path d="M6 11h12v9H6z M8.5 11V8a3.5 3.5 0 0 1 7 0v3" />,
 		search: <path d="M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13 M15.5 15.5L20 20" />,
+		flame: <path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.6-5.3 3.6-8.3 1.6 1.3 2.4 3 2.4 4.6 1-0.9 1.6-2.2 1.7-3.6 2.4 1.9 3.3 4.5 3.3 7.1 0 3.8-2.6 6.4-4.5 6.4z" />,
 	};
 	return (
 		<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink: 0}}>

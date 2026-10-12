@@ -1,8 +1,8 @@
 import {interpolate, useCurrentFrame} from 'remotion';
-import {Eyes, Scene, Words} from '../kinetic';
+import {Eyes, Scene, Sfx, Words} from '../kinetic';
 import {C, fontFamily, useIn, useUnit} from '../theme';
 
-// 56–60s: the wordmark; one last blink.
+// 57–60s: the wordmark; one last blink.
 export const End = () => {
 	const u = useUnit();
 	const frame = useCurrentFrame();
@@ -12,9 +12,12 @@ export const End = () => {
 		<Scene>
 			<Eyes width={170 * u} blinks={[110]} style={{opacity: p, marginBottom: 16 * u}} />
 			<Words text="Blink" size={200} />
-			<div style={{fontFamily, fontSize: 40 * u, color: C.gray, opacity: sub, marginTop: 14 * u}}>
+			<div style={{fontFamily, fontSize: 20 * u, letterSpacing: '0.08em', color: C.gray, opacity: sub, marginTop: 2 * u}}>by Pexilim</div>
+			<div style={{fontFamily, fontSize: 40 * u, color: C.gray, opacity: sub, marginTop: 26 * u}}>
 				for Mac · <span style={{color: C.blue}}>Coming soon</span>
 			</div>
+			<Sfx name="sparkle" at={36} volume={0.35} />
+			<Sfx name="tick" at={110} volume={0.3} />
 		</Scene>
 	);
 };

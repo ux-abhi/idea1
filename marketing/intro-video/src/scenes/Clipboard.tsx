@@ -10,12 +10,12 @@ const CLIPS = [
 	{icon: 'doc', title: 'Booking ref KX7-224, gate B12', meta: 'Text · Mail', match: false},
 ] as const;
 
-// 29–37s: everything you copy, kept in the notch: search it, drag it anywhere, and it never leaves the Mac.
+// 26.5–34s: everything you copy, kept in the notch: search it, drag it anywhere, and it never leaves the Mac.
 export const Clipboard = () => {
 	const u = useUnit();
 	const frame = useCurrentFrame();
 	const title = interpolate(frame, [80, 96], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
-	const open = useIn(130, SPRING.open);
+	const open = useIn(126, SPRING.open);
 	const filter = interpolate(frame, [240, 262], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
 	const drag = useIn(300, SPRING.smooth);
 	return (
@@ -27,7 +27,7 @@ export const Clipboard = () => {
 			{frame >= 90 && (
 				<>
 					<Screen delay={90} />
-					<Keys keys={['⌃', '⌥', 'V']} delay={96} press={124} style={{position: 'absolute', bottom: 150 * u, opacity: interpolate(frame, [96, 110, 140, 156], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})}} />
+					<Keys keys={['⌃', '⌥', 'V']} delay={92} press={120} style={{position: 'absolute', bottom: 150 * u, opacity: interpolate(frame, [96, 110, 140, 156], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})}} />
 					<Notch open={open} width={820} height={560 - 264 * filter - 88 * drag}>
 						<div style={{display: 'flex', alignItems: 'center', gap: 14 * u}}>
 							<Eyes width={70 * u} />
@@ -48,11 +48,17 @@ export const Clipboard = () => {
 					</div>
 					<Caption text="Search it." from={240} to={300} />
 					<Caption text="Drag it anywhere." from={300} to={380} />
-					<Caption text="Never leaves your Mac." from={380} to={480} accent={{'Mac.': C.blue}} />
-					<Sfx name="tap" at={124} volume={0.7} />
-					<Sfx name="tick" at={240} volume={0.4} />
+					<Caption text="Never leaves your Mac." from={380} to={450} accent={{'Mac.': C.blue}} />
+					<Sfx name="swoosh" at={0} volume={0.5} />
+					<Sfx name="tap" at={120} volume={0.35} />
+					<Sfx name="whoosh" at={122} volume={0.3} />
+					{[0, 1, 2, 3, 4].map((i) => (
+						<Sfx key={i} name="pop" at={150 + i * 5} volume={0.35} />
+					))}
+					<Sfx name="swoosh" at={240} volume={0.4} />
 					<Sfx name="whoosh" at={300} volume={0.4} />
-					<Sfx name="tick" at={380} volume={0.4} />
+					<Sfx name="drop" at={345} volume={0.6} />
+					<Sfx name="sparkle" at={380} volume={0.35} />
 				</>
 			)}
 		</Scene>

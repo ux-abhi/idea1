@@ -9,23 +9,23 @@ const HITS = [
 	{icon: 'space', title: 'Thesis', kind: 'Space'},
 ] as const;
 
-// 37–42s: ⌘K finds notes, tasks, reminders, posts and spaces.
+// 34–38.5s: ⌘K finds notes, tasks, reminders, posts and spaces.
 export const Search = () => {
 	const u = useUnit();
 	const frame = useCurrentFrame();
-	const title = interpolate(frame, [80, 96], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
-	const sheet = useIn(120, SPRING.cardIn);
-	const selected = frame < 230 ? 0 : frame < 252 ? 1 : 2;
+	const title = interpolate(frame, [70, 86], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+	const sheet = useIn(110, SPRING.cardIn);
+	const selected = frame < 200 ? 0 : frame < 222 ? 1 : 2;
 	return (
 		<Scene>
 			<div style={{opacity: title, position: 'absolute'}}>
 				<Words text="Find anything." />
 				<Sub text="Notes, tasks, reminders, posts and spaces." />
 			</div>
-			{frame >= 90 && (
+			{frame >= 80 && (
 				<>
-					<Screen delay={90} />
-					<Keys keys={['⌘', 'K']} delay={96} press={116} style={{position: 'absolute', bottom: 150 * u, opacity: interpolate(frame, [96, 108, 126, 140], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})}} />
+					<Screen delay={80} />
+					<Keys keys={['⌘', 'K']} delay={86} press={106} style={{position: 'absolute', bottom: 150 * u, opacity: interpolate(frame, [86, 98, 116, 130], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})}} />
 					<div
 						style={{
 							width: 900 * u,
@@ -42,7 +42,7 @@ export const Search = () => {
 					>
 						<div style={{display: 'flex', alignItems: 'center', gap: 16 * u, padding: `${24 * u}px ${28 * u}px`, fontSize: 36 * u, borderBottom: `${1.5 * u}px solid ${C.line}`}}>
 							<Icon name="search" size={34 * u} color={C.gray} />
-							<Typed text="thesis" from={134} every={5} caret={frame < 200} />
+							<Typed text="thesis" from={124} every={5} caret={frame < 180} />
 						</div>
 						<div style={{padding: 12 * u}}>
 							{HITS.map((h, i) => (
@@ -50,10 +50,15 @@ export const Search = () => {
 							))}
 						</div>
 					</div>
-					<Sfx name="tap" at={116} volume={0.7} />
-					<Sfx name="tick" at={230} volume={0.35} />
-					<Sfx name="tick" at={252} volume={0.35} />
-					<Sfx name="tap" at={272} volume={0.5} />
+					<Sfx name="swoosh" at={0} volume={0.5} />
+					<Sfx name="tap" at={106} volume={0.7} />
+					<Sfx name="whoosh" at={108} volume={0.4} />
+					{[0, 1, 2, 3].map((i) => (
+						<Sfx key={i} name="pop" at={160 + i * 5} volume={0.35} />
+					))}
+					<Sfx name="tick" at={200} volume={0.35} />
+					<Sfx name="tick" at={222} volume={0.35} />
+					<Sfx name="tap" at={245} volume={0.5} />
 				</>
 			)}
 		</Scene>
@@ -62,7 +67,7 @@ export const Search = () => {
 
 const Hit: React.FC<{icon: 'note' | 'check' | 'bell' | 'space'; title: string; kind: string; i: number; on: boolean}> = ({icon, title, kind, i, on}) => {
 	const u = useUnit();
-	const p = useIn(170 + i * 5, SPRING.content);
+	const p = useIn(160 + i * 5, SPRING.content);
 	return (
 		<div
 			style={{

@@ -3,7 +3,7 @@ import {C, SPRING, useIn, useUnit} from '../theme';
 
 const IDEAS = ['3 tools I use every day', 'Building an app in a week', 'Student budget, honestly'];
 
-// 47.5–50s: idea cards fan out; the notch says it's done without opening anything.
+// 49.5–52s: idea cards fan out; the notch says it's done without opening anything.
 export const Ideas = () => {
 	const u = useUnit();
 	const notch = useIn(80, SPRING.open);
@@ -20,7 +20,12 @@ export const Ideas = () => {
 					<Fan key={idea} i={i} idea={idea} />
 				))}
 			</div>
-			<Sfx name="chime" at={80} volume={0.4} />
+			<Sfx name="swoosh" at={0} volume={0.5} />
+			{[0, 1, 2].map((i) => (
+				<Sfx key={i} name="pop" at={16 + i * 6} volume={0.4} />
+			))}
+			<Sfx name="whoosh" at={76} volume={0.35} />
+			<Sfx name="chime" at={84} volume={0.4} />
 		</Scene>
 	);
 };

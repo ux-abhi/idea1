@@ -1,3 +1,4 @@
+import {interpolate, useCurrentFrame} from 'remotion';
 import {Scene, Sfx, Words} from '../kinetic';
 import {C, fontFamily, SPRING, useIn, useUnit} from '../theme';
 
@@ -12,7 +13,7 @@ const BLOCKS = [
 const FROM = 9;
 const TO = 19;
 
-// 42–45s: the day snaps into a timeline.
+// 38.5–41.5s: the day snaps into a timeline; today's rings fill.
 export const Day = () => {
 	const u = useUnit();
 	const width = 1100 * u;
@@ -29,8 +30,36 @@ export const Day = () => {
 					<span key={h}>{h}:00</span>
 				))}
 			</div>
-			<Sfx name="tick" at={20} volume={0.35} />
+			<div style={{display: 'flex', gap: 70 * u, marginTop: 50 * u}}>
+				<DayRing label="Tasks" value="4 of 6" share={4 / 6} delay={60} />
+				<DayRing label="Focus" value="2 h 10 m" share={0.65} delay={66} />
+				<DayRing label="Habits" value="2 of 3" share={2 / 3} delay={72} />
+			</div>
+			<Sfx name="swoosh" at={0} volume={0.5} />
+			{[0, 1, 2, 3, 4].map((i) => (
+				<Sfx key={i} name="pop" at={20 + i * 6} volume={0.3} />
+			))}
+			<Sfx name="rise" at={60} volume={0.4} />
 		</Scene>
+	);
+};
+
+const DayRing: React.FC<{label: string; value: string; share: number; delay: number}> = ({label, value, share, delay}) => {
+	const u = useUnit();
+	const frame = useCurrentFrame();
+	const t = interpolate(frame, [delay, delay + 50], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+	const r = 40;
+	return (
+		<div style={{display: 'flex', alignItems: 'center', gap: 18 * u, fontFamily, opacity: Math.min(1, t * 3)}}>
+			<svg width={96 * u} height={96 * u} viewBox="-50 -50 100 100">
+				<circle r={r} fill="none" stroke={C.line} strokeWidth={10} />
+				<circle r={r} fill="none" stroke={C.blue} strokeWidth={10} strokeLinecap="round" strokeDasharray={2 * Math.PI * r} strokeDashoffset={2 * Math.PI * r * (1 - share * t)} transform="rotate(-90)" />
+			</svg>
+			<div>
+				<div style={{fontSize: 22 * u, color: C.gray}}>{label}</div>
+				<div style={{fontSize: 32 * u, fontWeight: 600, color: C.text}}>{value}</div>
+			</div>
+		</div>
 	);
 };
 

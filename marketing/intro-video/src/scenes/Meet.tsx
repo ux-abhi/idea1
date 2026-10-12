@@ -9,7 +9,7 @@ export const Meet = () => {
 		<Scene>
 			<Eyes width={200 * u} blinks={[100]} style={{scale: String(0.8 + 0.2 * eyes), opacity: eyes, marginBottom: 24 * u}} />
 			<Words text="Meet Blink." delay={8} size={180} stagger={6} />
-			<Sfx name="whoosh" at={0} volume={0.35} />
+			<Sfx name="tick" at={100} volume={0.35} />
 		</Scene>
 	);
 };

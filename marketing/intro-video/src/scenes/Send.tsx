@@ -2,7 +2,7 @@ import {interpolate, useCurrentFrame} from 'remotion';
 import {Scene, Sfx, Tile, Typed, Words} from '../kinetic';
 import {C, fontFamily, useIn, useUnit} from '../theme';
 
-// 24–29s: the owner says when; Touch ID approves.
+// 22–26.5s: the owner says when; Touch ID approves.
 export const Send = () => {
 	const u = useUnit();
 	const frame = useCurrentFrame();
@@ -28,7 +28,11 @@ export const Send = () => {
 				</svg>
 			</div>
 			<div style={{fontFamily, fontSize: 28 * u, color: C.gray, marginTop: 24 * u, opacity: done}}>Approved with Touch ID. Sends on the 15th.</div>
+			<Sfx name="swoosh" at={0} volume={0.5} />
+			<Sfx name="swoosh" at={48} volume={0.45} />
+			<Sfx name="pop" at={80} volume={0.4} />
 			<Sfx name="tap" at={150} volume={0.6} />
+			<Sfx name="rise" at={150} volume={0.4} />
 			<Sfx name="chime" at={204} volume={0.5} />
 		</Scene>
 	);

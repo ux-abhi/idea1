@@ -2,8 +2,8 @@ import {Sequence, useCurrentFrame} from 'remotion';
 import {Scene, Sfx, Words} from '../kinetic';
 import {C, SPRING, useUnit} from '../theme';
 
-// 50–53s: everything else, one word per half-beat, then all of it at once.
-const MORE = ['Reminders', 'Habits', 'Streaks', 'Focus timer', 'Calendar', 'Post insights', 'Spaces', 'Quick commands'];
+// 52–54.5s: everything else, one word per half-beat, then all of it at once.
+const MORE = ['Reminders', 'Focus timer', 'Calendar', 'Post insights', 'Spaces', 'Quick commands'];
 const EACH = 15;
 
 export const Burst = () => {
