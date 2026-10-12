@@ -106,6 +106,9 @@ struct BlinkPanel: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
+            ModelMenu(feature: "chat", compact: true)
+                .menuStyle(.borderlessButton)
+                .controlSize(.small)
             if !model.chat.isEmpty {
                 Button { model.clearChat() } label: { Image(systemName: "square.and.pencil") }
                     .buttonStyle(.borderless)

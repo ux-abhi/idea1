@@ -34,6 +34,9 @@ struct ContentView: View {
                         .accessibilityAddTraits(on ? .isSelected : [])
                     }
                     Spacer()
+                    ModelMenu(feature: "content", compact: true)
+                        .menuStyle(.borderlessButton)
+                        .controlSize(.small)
                     Button {
                         Task { if await model.draft(idea: idea, platforms: platforms) { idea = "" } }
                     } label: {

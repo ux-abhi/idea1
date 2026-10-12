@@ -573,3 +573,10 @@ extension Tokens {
     let server = try String(contentsOf: url, encoding: .utf8)
     for model in AIModel.all { #expect(server.contains("id: \"\(model.id)\""), "\(model.id) missing on the server") }
 }
+
+@Test func modelShortNamesFitSmallPlaces() {
+    let names = Dictionary(uniqueKeysWithValues: AIModel.all.map { ($0.id, $0.shortName) })
+    #expect(names["claude-opus-5-5"] == "Opus 5.5")
+    #expect(names["openai/gpt-oss-120b"] == "GPT-OSS 120B")
+    #expect(names["minimaxai/minimax-m2.7"] == "MiniMax M2.7")
+}

@@ -20,4 +20,12 @@ public struct AIModel: Identifiable, Hashable, Sendable {
     ]
 
     public static let defaultID = "claude-opus-5-5"
+
+    /// "Opus 5.5", "GPT-OSS 120B": the name without the provider and the note, for small places.
+    public var shortName: String {
+        name.components(separatedBy: " · ").first?
+            .replacingOccurrences(of: "Claude ", with: "")
+            .replacingOccurrences(of: " on Groq", with: "")
+            .replacingOccurrences(of: " (preview)", with: "") ?? name
+    }
 }

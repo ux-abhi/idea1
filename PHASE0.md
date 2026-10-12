@@ -82,5 +82,12 @@ Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no 
 - [x] Content page: idea → drafts, writing check (AI-sounding phrases, placeholders, limits, never-say words), edit, approve, copy & open; Voice sheet.
 - [ ] Morning card with posts ready; weekly content plan.
 - [x] Model choice per feature in Settings: Claude or free Groq models (chat with tools, content drafts); server allowlist.
-- [ ] Per-day spend cap; OpenRouter (more free open models), Ollama on the Mac (local), Cloudflare FLUX images.
+- [x] Quick model switcher in the Blink panel header and on the Content page (same setting as Settings › AI & Usage).
+- [ ] Per-day spend cap.
+
+### Future: more free models (owner, 2026-10-12)
+- **GLM-4.7-Flash / GLM-4.6V-Flash on z.ai**: listed free with no end date, OpenAI-style API with tools and JSON; one request at a time, slow. Needs a free z.ai key as a server secret.
+- **On this Mac (Ollama)**: 16 GB Mac → Qwen 3.5 9B or Qwen 3 8B. Called from the Mac app itself (the server can't reach the Mac), so for text edits, idea lists and summaries, or an offline "this Mac only" mode.
+- **Cloudflare Workers AI FLUX** for free carousel and cover images (10,000 free units a day); needs a free Cloudflare token.
+- Skipped for now: DeepSeek, Kimi, Qwen on Alibaba Cloud (trial credits only), SiliconFlow (needs Chinese ID check), OpenRouter (no free Chinese models in Oct 2026).
 - [ ] Playbooks per platform as skills; carousel PNG rendering; metrics import.

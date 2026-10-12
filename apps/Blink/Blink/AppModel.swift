@@ -146,6 +146,7 @@ final class AppModel {
             await loadActions()
             await loadItems()
             await loadSpaces()
+            await loadModelPrefs()
             await loadHabits()
         } catch {
             switch ServerProblem(error) {
@@ -725,6 +726,34 @@ final class AppModel {
         do { try await server.save(new) } catch {
             voice = before
             contentProblem = "Couldn't save your voice. Check your connection and try again."
+        }
+    }
+
+    // MARK: Model choice (Settings, Blink panel, Content page share this)
+
+    /// Feature ("chat", "content") → model id, from the profile on the server.
+    private(set) var modelPrefs: [String: String] = [:]
+    private(set) var modelProblem: String?
+
+    func loadModelPrefs() async {
+        guard let server, email != nil, let prefs = try? await server.modelPrefs() else { return }
+        modelPrefs = prefs
+    }
+
+    func model(for feature: String) -> AIModel {
+        AIModel.all.first { $0.id == modelPrefs[feature] } ?? AIModel.all.first { $0.id == AIModel.defaultID }!
+    }
+
+    func setModel(_ id: String, for feature: String) async {
+        guard let server else { return }
+        let before = modelPrefs
+        modelPrefs[feature] = id
+        do {
+            try await server.setModelPrefs(modelPrefs)
+            modelProblem = nil
+        } catch {
+            modelPrefs = before
+            modelProblem = "Couldn't change the model. Check your connection and try again."
         }
     }
 
