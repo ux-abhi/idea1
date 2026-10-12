@@ -28,7 +28,7 @@ struct SettingsRoot: View {
                                        description: Text("Settings appear once Blink is connected to your server and you're signed in."))
             }
         }
-        .frame(width: 520, height: 460)
+        .frame(width: 760, height: 520) // wide enough that all eight tabs show, none hidden behind »
     }
 }
 
