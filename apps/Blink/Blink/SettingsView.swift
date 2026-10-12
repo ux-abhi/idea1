@@ -210,9 +210,12 @@ struct NotchSettings: View {
                     .foregroundStyle(.secondary)
             }
             Section("Blink's eyes") {
+                // The notch's own size: the eyes scale with their frame, so a wide box makes them huge.
                 BlinkEyes(mood: mood)
-                    .frame(height: 110)
+                    .frame(width: 200, height: 64)
+                    .padding(.vertical, 23)
                     .frame(maxWidth: .infinity)
+                    .clipped()
                     .background(.black, in: .rect(cornerRadius: 18, style: .continuous))
                 Picker("Mood", selection: $mood) {
                     ForEach(Mood.allCases) { Text($0.word).tag($0) }
