@@ -730,6 +730,45 @@ final class AppModel {
         }
     }
 
+    // MARK: Quick commands (typed in the notch: "/task Pay rent friday 9am")
+
+    /// Carries out a typed command at once, on this device, with Undo. No AI is involved.
+    func run(_ command: QuickCommand) async {
+        let when: (Date?) -> String = { $0.map { " · \($0.formatted(.dateTime.weekday(.abbreviated).day().hour().minute()))" } ?? "" }
+        switch command {
+        case .task(let title, let due):
+            let task = create(.task, title: title, due: due)
+            offerUndo("Task added: \(title)\(when(due))") { [weak self] in
+                guard let self, let current = self.items.first(where: { $0.id == task.id }) else { return }
+                await self.delete(current)
+            }
+        case .remind(let title, let due):
+            guard calendarAccess == .granted else {
+                saveProblem = "Turn on Reminders for Blink in System Settings › Privacy & Security › Reminders."
+                return
+            }
+            do {
+                let id = try await calendarReader.addReminder(title, due: due)
+                await reloadAgenda()
+                offerUndo("Reminder added: \(title)\(when(due))") { [weak self] in
+                    await self?.writeReminder { try await self?.calendarReader.deleteReminder(id: id) }
+                }
+            } catch {
+                saveProblem = "Couldn't add that reminder. Check that Reminders is allowed for Blink."
+            }
+        case .note(let title):
+            let note = create(.note, title: title)
+            offerUndo("Note started: \(title)") { [weak self] in
+                guard let self, let current = self.items.first(where: { $0.id == note.id }) else { return }
+                await self.delete(current)
+            }
+        case .timer(let minutes):
+            startTimer(minutes: minutes)
+        case .focus:
+            startFocus()
+        }
+    }
+
     // MARK: Model choice (Settings, Blink panel, Content page share this)
 
     /// Feature ("chat", "content") → model id, from the profile on the server.

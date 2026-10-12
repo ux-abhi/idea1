@@ -33,6 +33,8 @@ final class NotchModel {
     var evening = false
     /// The open notch shows the clipboard history (⌃⌥V).
     var clipboarding = false
+    /// What's typed in the chat bubble; the panel above previews a "/" command from it.
+    var input = ""
     /// After the evening check-in the eyes stay Sleepy until the owner's wake time.
     var sleepyUntil: Date?
 
@@ -489,7 +491,7 @@ struct NotchView: View {
     @ViewBuilder
     private func glance(statusLine: String, now: Date) -> some View {
         if model.chatting {
-            ChatPanel(app: app)
+            ChatPanel(app: app, input: model.input)
         } else if model.clipboarding {
             ClipboardPanel(store: clipboard, done: close)
         } else if app.timer != nil || app.finishedTimer != nil {
@@ -574,7 +576,7 @@ struct NotchView: View {
         .opacity(model.level == .rest && restStyle != .ears ? 0 : 1)
         // Behind the notch, so the droplet's hidden sliver never covers what the notch shows.
         .background(alignment: .top) {
-            SplitInput(app: app, progress: model.inputOut ? 1 : 0, notchBottom: size.height,
+            SplitInput(app: app, notch: model, progress: model.inputOut ? 1 : 0, notchBottom: size.height,
                        notchWidth: size.width, width: model.size(for: .open).width - 24)
                 // Opening: the shape first, then the bubble pulls free with a little wobble. Closing: it tucks back in first.
                 .animation(reduceMotion ? nil : (model.inputOut
@@ -677,16 +679,7 @@ struct GlanceView: View {
                     Text(item.title).lineLimit(1)
                 }
             }
-            if let chip = app?.undoChip {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    Text(chip.text).lineLimit(1)
-                    Spacer(minLength: 8)
-                    Button("Undo") { Task { await app?.undo() } }.buttonStyle(.plain).foregroundStyle(.mint)
-                }
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(.white.opacity(0.08), in: .capsule)
-            }
+            if let app { UndoChipRow(app: app) }
             if let app { TimerQuickStarts(app: app).padding(.top, 2) }
         }
         .font(.callout)
@@ -699,13 +692,20 @@ struct GlanceView: View {
 /// proposed. Typing happens in the bubble below (SplitInput).
 struct ChatPanel: View {
     let app: AppModel
+    /// What's being typed below; a "/" command shows its preview here instead of the conversation.
+    var input = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if app.chat.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
+            UndoChipRow(app: app)
+            if input.trimmingCharacters(in: .whitespaces).hasPrefix("/") {
+                CommandHint(input: input)
+            } else if app.chat.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("Ask Blink").font(.title3.weight(.semibold))
-                    Text("“What's left today?” · “Remind me to call Sam on Friday at 4”")
+                    Text("“What's left today?” · “Plan my afternoon”")
+                        .font(.callout).foregroundStyle(.white.opacity(0.55))
+                    Text("Quick actions, no AI: **/task** Send invoice fri 10am · **/remind** Call Sam 4pm · **/timer** 10")
                         .font(.callout).foregroundStyle(.white.opacity(0.55))
                 }
             } else {
@@ -771,17 +771,102 @@ struct ChatPanel: View {
     }
 }
 
+/// "✓ Task added: Pay rent · Undo" for a few seconds after something is added or ticked off (tokens: hold.undoChip).
+struct UndoChipRow: View {
+    let app: AppModel
+
+    var body: some View {
+        if let chip = app.undoChip {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Text(chip.text).lineLimit(1)
+                Spacer(minLength: 8)
+                Button("Undo") { Task { await app.undo() } }.buttonStyle(.plain).foregroundStyle(.mint)
+            }
+            .font(.callout)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(.white.opacity(0.08), in: .capsule)
+        }
+    }
+}
+
+/// What a "/" command will do before Return: the parsed title and date, or the commands that match and an example.
+struct CommandHint: View {
+    let input: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let command = QuickCommand.parse(input) {
+                Label(title(command), systemImage: symbol(command))
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(2)
+                Text(detail(command)).font(.callout).foregroundStyle(.white.opacity(0.7))
+                Text("Return to do it now").font(.caption).foregroundStyle(.white.opacity(0.45))
+            } else {
+                let name = input.trimmingCharacters(in: .whitespaces).prefix { !$0.isWhitespace }.lowercased()
+                let matches = QuickCommand.suggestions(for: input)
+                let rows = matches.isEmpty ? QuickCommand.all.filter { $0.name == name } : matches
+                if rows.isEmpty {
+                    Text("No command “\(name)”. Try /task, /remind, /note, /timer or /focus.")
+                        .font(.callout).foregroundStyle(.orange)
+                }
+                ForEach(rows, id: \.name) { row in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(row.name).font(.callout.monospaced().weight(.semibold)).foregroundStyle(.mint)
+                        Text("\(row.about), e.g. \(row.example)").font(.callout).foregroundStyle(.white.opacity(0.6))
+                    }
+                }
+                if !matches.isEmpty { Text("Tab to complete").font(.caption).foregroundStyle(.white.opacity(0.45)) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func title(_ command: QuickCommand) -> String {
+        switch command {
+        case .task(let title, _): "Task: \(title)"
+        case .remind(let title, _): "Reminder: \(title)"
+        case .note(let title): "Note: \(title)"
+        case .timer(let minutes): "Timer: \(minutes.formatted()) min"
+        case .focus: "Focus: 25 min"
+        }
+    }
+
+    private func symbol(_ command: QuickCommand) -> String {
+        switch command {
+        case .task: "checkmark.circle"
+        case .remind: "bell"
+        case .note: "note.text"
+        case .timer: "timer"
+        case .focus: "brain.head.profile"
+        }
+    }
+
+    private func detail(_ command: QuickCommand) -> String {
+        switch command {
+        case .task(_, let due), .remind(_, let due):
+            guard let due else { return "No date. Add one at the end, like “tomorrow 9am” or “fri 4pm”." }
+            return "Due \(due.formatted(.dateTime.weekday(.wide).day().month().hour().minute()))"
+        case .note: return "Starts a note you can finish in Blink › Notes."
+        case .timer: return "Counts down in the notch, with one chime at the end."
+        case .focus: return "Then a 5-minute break; a long break after every fourth."
+        }
+    }
+}
+
 /// The input that splits off the notch like a droplet. A sliver of the notch's bottom and the bubble are drawn
 /// blurred and then cut at an alpha threshold (the "gooey" metaball technique), so while they are close a smooth
 /// liquid neck joins them and it pinches off by itself as the bubble moves away. `progress` 0 = inside the notch,
 /// 1 = its own bubble below.
 struct SplitInput: View, Animatable {
     let app: AppModel
+    let notch: NotchModel
     var progress: Double
     let notchBottom: CGFloat
     let notchWidth: CGFloat
     let width: CGFloat
-    @State private var text = ""
     @FocusState private var focused: Bool
 
     var animatableData: Double {
@@ -839,12 +924,18 @@ struct SplitInput: View, Animatable {
 
     private var field: some View {
         HStack(spacing: 8) {
-            TextField("Ask Blink…", text: $text)
+            TextField("Ask Blink, or type / for quick actions", text: Bindable(notch).input)
                 .textFieldStyle(.plain)
                 .font(.body)
                 .foregroundStyle(.white)
                 .focused($focused)
                 .onSubmit(send)
+                // Tab finishes a command name: "/re" → "/remind ".
+                .onKeyPress(.tab) {
+                    guard let match = QuickCommand.suggestions(for: notch.input).first else { return .ignored }
+                    notch.input = match.name + " "
+                    return .handled
+                }
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill").font(.title2)
                     .foregroundStyle(canSend ? Color.accentColor : .white.opacity(0.25))
@@ -857,13 +948,21 @@ struct SplitInput: View, Animatable {
         .padding(.trailing, 8)
     }
 
-    private var canSend: Bool { !app.thinking && !text.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var canSend: Bool {
+        let text = notch.input.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("/") { return QuickCommand.parse(text) != nil } // the panel says what's still missing
+        return !app.thinking && !text.isEmpty
+    }
 
     private func send() {
         guard canSend else { return }
-        let message = text
-        text = ""
-        Task { await app.ask(message) }
+        let message = notch.input
+        notch.input = ""
+        if let command = QuickCommand.parse(message) {
+            Task { await app.run(command) }
+        } else {
+            Task { await app.ask(message) }
+        }
     }
 }
 

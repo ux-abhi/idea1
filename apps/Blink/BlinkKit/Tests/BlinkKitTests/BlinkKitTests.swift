@@ -580,3 +580,18 @@ extension Tokens {
     #expect(names["openai/gpt-oss-120b"] == "GPT-OSS 120B")
     #expect(names["minimaxai/minimax-m2.7"] == "MiniMax M2.7")
 }
+
+@Test func quickCommandsParseInTheNotch() throws {
+    let cal = Calendar.current
+    let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 10))!
+    guard case .task(let title, let due)? = QuickCommand.parse("/task Send invoice tomorrow at 10", now: now) else {
+        Issue.record("task not parsed"); return
+    }
+    #expect(title == "Send invoice" && due.map { cal.component(.day, from: $0) } == 13)
+    #expect(QuickCommand.parse("/remind Call Sam", now: now) == .remind(title: "Call Sam", due: nil))
+    #expect(QuickCommand.parse("/timer 10m") == .timer(minutes: 10))
+    #expect(QuickCommand.parse("/timer 1.5h") == .timer(minutes: 90))
+    #expect(QuickCommand.parse("/timer 0") == nil && QuickCommand.parse("/task ") == nil && QuickCommand.parse("what's left today?") == nil)
+    #expect(QuickCommand.suggestions(for: "/re").map(\.name) == ["/remind"])
+    #expect(QuickCommand.suggestions(for: "/task pay").isEmpty)
+}
