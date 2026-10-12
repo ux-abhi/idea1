@@ -56,6 +56,7 @@ enum RestStyle: String, CaseIterable, Identifiable {
 struct ServerSettings: View {
     @Environment(AppModel.self) private var model
     @State private var confirmSwitch = false
+    @State private var confirmRestart = false
 
     var body: some View {
         Form {
@@ -71,9 +72,15 @@ struct ServerSettings: View {
             HStack {
                 Button("Sign Out") { Task { await model.signOut() } }
                 Button("Use a Different Server…") { confirmSwitch = true }
+                Button("Restart Setup…") { confirmRestart = true }
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog("Sign out and run setup again?", isPresented: $confirmRestart) {
+            Button("Sign Out and Restart Setup", role: .destructive) { Task { await model.restartSetup() } }
+        } message: {
+            Text("You'll see the welcome steps again. Your data stays on \(model.server?.config.host ?? "your server"); pick \"I already have a server\" to reconnect.")
+        }
         .confirmationDialog("Use a different server?", isPresented: $confirmSwitch) {
             Button("Sign Out and Switch", role: .destructive) {
                 Task {

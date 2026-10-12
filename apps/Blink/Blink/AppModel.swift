@@ -149,6 +149,14 @@ final class AppModel {
 
     func load() async {
         guard screen == .loading else { return }
+        #if DEBUG
+        // Testing the first run: open Blink with `--args -BlinkRestartSetup`.
+        if ProcessInfo.processInfo.arguments.contains("-BlinkRestartSetup") {
+            await BlinkServer.forget(keychain: keychain)
+            for key in ["onboarding.welcomed", "onboarding.calendarSeen", "tourDone"] { UserDefaults.standard.removeObject(forKey: key) }
+            UserDefaults.standard.set(false, forKey: "onboarding.done")
+        }
+        #endif
         if let saved = await BlinkServer.restore(keychain: keychain) {
             server = saved.server
             email = saved.email
@@ -167,6 +175,16 @@ final class AppModel {
         server = BlinkServer(config: config, keychain: keychain)
         signInNotice = nil
         screen = .signIn
+    }
+
+    /// Sign out, forget the server on this device and show the first-run setup again. Nothing on the server changes.
+    func restartSetup() async {
+        await signOut()
+        await useDifferentServer()
+        for key in ["onboarding.done", "onboarding.welcomed", "onboarding.calendarSeen", "tourDone"] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        UserDefaults.standard.set(false, forKey: "onboarding.done") // so the "already synced" migration doesn't skip it
     }
 
     func useDifferentServer() async {
