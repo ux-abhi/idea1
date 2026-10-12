@@ -45,8 +45,3 @@ export function parseDrafts(output: unknown, asked: Platform[]): Draft[] {
   }
   return clean;
 }
-
-/** Claude Opus 5.5 list prices per million tokens, for the model_usage cost meter (same as functions/chat). */
-export function costUSD(inputTokens: number, outputTokens: number): number {
-  return (inputTokens * 4 + outputTokens * 20) / 1_000_000;
-}

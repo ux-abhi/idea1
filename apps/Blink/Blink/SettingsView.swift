@@ -258,12 +258,24 @@ struct UsageSettings: View {
     @Environment(AppModel.self) private var model
     @State private var month: [BlinkServer.Usage]?
     @State private var failed = false
+    @State private var prefs: [String: String]?
+    @State private var saveFailed = false
 
     var body: some View {
         Form {
-            Section("Who does what") {
-                LabeledContent("Chat, planning, every action", value: "Claude")
-                LabeledContent("Quick text edits (fix, shorter, clearer)", value: "Groq")
+            Section {
+                if prefs != nil {
+                    picker("Chat and planning", feature: "chat")
+                    picker("Content drafts", feature: "content")
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+                LabeledContent("Quick text edits", value: "GPT-OSS 20B on Groq")
+                if saveFailed { Text("Couldn't save. Check your connection and try again.").foregroundStyle(.orange) }
+            } header: {
+                Text("Models")
+            } footer: {
+                Text("Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card.")
             }
             Section {
                 if let month {
@@ -283,14 +295,35 @@ struct UsageSettings: View {
             } header: {
                 Text("This month")
             } footer: {
-                Text("Estimated from list prices. Your Anthropic console shows the exact bill. The chat model is set on your server (BLINK_CHAT_MODEL).")
+                Text("Estimated from list prices; Groq's free tier may cost nothing. Your Anthropic and Groq consoles show the exact bill.")
             }
         }
         .formStyle(.grouped)
         .task {
             guard let server = model.server else { return }
+            prefs = (try? await server.modelPrefs()) ?? [:]
             let start = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
             do { month = try await server.usage(since: start) } catch { failed = true }
+        }
+    }
+
+    private func picker(_ title: String, feature: String) -> some View {
+        Picker(title, selection: Binding(
+            get: { prefs?[feature] ?? AIModel.defaultID },
+            set: { id in
+                let before = prefs
+                prefs?[feature] = id
+                Task {
+                    do { try await model.server?.setModelPrefs(prefs ?? [:]); saveFailed = false }
+                    catch { prefs = before; saveFailed = true }
+                }
+            })) {
+            Section("Claude") {
+                ForEach(AIModel.all.filter { !$0.isFree }) { Text($0.name).tag($0.id) }
+            }
+            Section("Free tier (Groq)") {
+                ForEach(AIModel.all.filter(\.isFree)) { Text($0.name).tag($0.id) }
+            }
         }
     }
 }

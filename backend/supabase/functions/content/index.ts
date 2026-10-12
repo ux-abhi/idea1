@@ -1,11 +1,11 @@
 // © Pexilim
 // Content engine, first slice (ARCHITECTURE §36.4): one idea → a native draft per platform, in the owner's voice.
 // It only writes drafts; the owner edits, approves and posts them (copy & open). Nothing is published from here.
+// The model is the owner's pick in Settings (Claude or a free Groq model).
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
-import { costUSD, parseContentRequest, parseDrafts } from "./input.ts";
-
-const MODEL = Deno.env.get("BLINK_CONTENT_MODEL") ?? "claude-opus-5-5";
+import { parseContentRequest, parseDrafts } from "./input.ts";
+import { cost, groq, pickModel } from "../_shared/models.ts";
 
 // Fixed, so it caches. Our own short playbooks (§20); third-party skill text is never pasted here.
 const SYSTEM = `You write social posts for the owner, in their voice, from one idea. You write drafts only; the owner edits and posts.
@@ -48,8 +48,7 @@ function json(status: number, body: Record<string, unknown>): Response {
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "POST only" });
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!apiKey) return json(503, { error: "Add your Anthropic API key to this server's Edge Function secrets first." });
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
   const url = Deno.env.get("SUPABASE_URL")!;
   const auth = req.headers.get("Authorization") ?? "";
@@ -64,50 +63,79 @@ Deno.serve(async (req) => {
   const parsed = parseContentRequest(await req.json().catch(() => null));
   if (typeof parsed === "string") return json(400, { error: parsed });
 
-  const { data: voice } = await db.from("voice_profile").select("notes, never_say").maybeSingle();
+  const [{ data: voice }, { data: profile }] = await Promise.all([
+    db.from("voice_profile").select("notes, never_say").maybeSingle(),
+    db.from("profile").select("model_prefs").maybeSingle(),
+  ]);
+  const model = pickModel(profile?.model_prefs, "content", Deno.env.get("BLINK_CONTENT_MODEL"));
+  if (model.provider === "claude" && !apiKey) {
+    return json(503, { error: "Add your Anthropic API key to this server's Edge Function secrets first, or pick a Groq model in Settings." });
+  }
   const voiceText = JSON.stringify({ notes: voice?.notes ?? "", never_say: voice?.never_say ?? [] }).replaceAll("<", "\\u003c");
   const ideaText = parsed.idea.replaceAll("<", "‹");
 
-  const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
-  const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
-  let response;
-  try {
-    response = await client.beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-      messages: [{
-        role: "user",
-        content: `<voice>${voiceText}</voice>\n<idea>${ideaText}</idea>\nPlatforms: ${parsed.platforms.join(", ")}.`,
-      }],
-      output_config: { effort: "medium", format: { type: "json_schema", schema: SCHEMA } },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-    });
-  } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) return json(502, { error: "The Anthropic API key on this server isn't valid." });
-    if (error instanceof Anthropic.RateLimitError) return json(429, { error: "Claude is busy right now. Try again in a moment." });
-    if (error instanceof Anthropic.APIError) {
-      console.error("anthropic", error.status, error.message);
-      return json(502, { error: `Claude returned an error (${error.status}).` });
+  const userTurn = `<voice>${voiceText}</voice>\n<idea>${ideaText}</idea>\nPlatforms: ${parsed.platforms.join(", ")}.`;
+  let text = "", inputTokens = 0, outputTokens = 0;
+  if (model.provider === "groq") {
+    // GPT-OSS on Groq keeps to a JSON schema; the others get JSON mode plus the shape in words. parseDrafts checks both.
+    const strict = model.id.startsWith("openai/gpt-oss");
+    try {
+      const { message, usage } = await groq({
+        model: model.id,
+        temperature: 0.7,
+        max_completion_tokens: 6000,
+        messages: [
+          { role: "system", content: SYSTEM },
+          { role: "user", content: strict ? userTurn : `${userTurn}\nReply with JSON only: {"drafts":[{"platform","format","hook","body","parts":[],"hashtags":[]}]}.` },
+        ],
+        response_format: strict
+          ? { type: "json_schema", json_schema: { name: "drafts", strict: true, schema: SCHEMA } }
+          : { type: "json_object" },
+      });
+      text = message.content ?? "";
+      inputTokens = usage.prompt_tokens ?? 0;
+      outputTokens = usage.completion_tokens ?? 0;
+    } catch (error) {
+      return json(502, { error: error instanceof Error ? error.message : "Groq couldn't write drafts." });
     }
-    throw error;
+  } else {
+    const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
+    const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
+    try {
+      const response = await client.beta.messages.create({
+        model: model.id,
+        max_tokens: 16000,
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: userTurn }],
+        output_config: { effort: "medium", format: { type: "json_schema", schema: SCHEMA } },
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+      });
+      inputTokens = response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
+      outputTokens = response.usage.output_tokens;
+      if (response.stop_reason === "refusal") return json(422, { error: "Claude won't write that one." });
+      text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
+    } catch (error) {
+      if (error instanceof Anthropic.AuthenticationError) return json(502, { error: "The Anthropic API key on this server isn't valid." });
+      if (error instanceof Anthropic.RateLimitError) return json(429, { error: "Claude is busy right now. Try again in a moment." });
+      if (error instanceof Anthropic.APIError) {
+        console.error("anthropic", error.status, error.message);
+        return json(502, { error: `Claude returned an error (${error.status}).` });
+      }
+      throw error;
+    }
   }
 
   const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  const inputTokens = response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
   await admin.from("model_usage").insert({
-    owner_id: user.id, feature: "content", model: MODEL,
-    input_tokens: inputTokens, output_tokens: response.usage.output_tokens,
-    cost_usd: costUSD(inputTokens, response.usage.output_tokens),
+    owner_id: user.id, feature: "content", model: model.id,
+    input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: cost(model, inputTokens, outputTokens),
   });
 
-  if (response.stop_reason === "refusal") return json(422, { error: "Claude won't write that one." });
-  const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
   let output: unknown = null;
   try { output = JSON.parse(text); } catch { /* handled below */ }
   const drafts = parseDrafts(output, parsed.platforms);
-  if (drafts.length === 0) return json(502, { error: "Claude didn't return usable drafts. Try again." });
+  if (drafts.length === 0) return json(502, { error: "The model didn't return usable drafts. Try again, or pick another model in Settings." });
 
   const { error } = await db.from("content_piece")
     .insert(drafts.map((d) => ({ ...d, idea: parsed.idea, segment_id: parsed.spaceID })));

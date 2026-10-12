@@ -81,8 +81,3 @@ export function parseReschedule(input: unknown, known: Map<string, string>):
   if (!change || typeof due_at !== "string" || Number.isNaN(Date.parse(due_at))) return null;
   return { ...change, due: new Date(due_at).toISOString() };
 }
-
-/** Claude Opus 5.5 list prices per million tokens, for the model_usage cost meter. */
-export function costUSD(inputTokens: number, outputTokens: number): number {
-  return (inputTokens * 4 + outputTokens * 20) / 1_000_000;
-}

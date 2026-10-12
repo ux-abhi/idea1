@@ -703,6 +703,7 @@ The design is the same in every stage; stage C only switches on server push.
 | Licenses in shipped code | Permissive only (MIT, Apache-2.0, BSD); GPL/AGPL projects are reference-only | Keeps Blink sellable |
 | Data model | `owner_id` + row-level security on every table | Multi-user ready without a rewrite |
 | Dev skills | Development tools only, never shipped in the app | Clean product boundary |
+| Model choice (2026-10-12) | The owner picks the model per feature in Settings (chat and planning, content drafts): Claude Opus / Sonnet / Haiku, or free-tier models on Groq (GPT-OSS 120B and 20B, Llama 3.3 70B, Qwen 3.8 27B, MiniMax M2.7). Stored in `profile.model_prefs`; the server only calls models on its allowlist (`functions/_shared/models.ts`). Ask-First and every check stay the same whichever model writes. Replaces "Claude for chat and every action" | Owner request: don't depend on one provider; free models for everyday work. Next: OpenRouter for more open models, Ollama on the Mac for local, Cloudflare FLUX for free images |
 | Focus timers (2026-10-12) | Pomodoro (25 / 5, long break every 4th) and plain timers in the notch: countdown in the right ear, one chime at the end, survive restarts; sleep until the end instead of ticking | Owner request; stays near 0 CPU |
 | Clipboard history (2026-10-12) | Last 50 copies, on this Mac only (never the server or Claude); items marked concealed or transient by password managers are never recorded; pause and clear | Owner request; privacy first |
 

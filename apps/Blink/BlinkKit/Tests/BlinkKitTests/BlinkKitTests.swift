@@ -565,3 +565,11 @@ extension Tokens {
     #expect(soft.score == 70 && !soft.issues.contains { $0.blocks })
     #expect(try piece(.x, body: "first", parts: ["1/", "2/"], tags: []).postText == "1/\n\n2/")
 }
+
+@Test func modelListMatchesTheServer() throws {
+    // The server's allowlist (backend/supabase/functions/_shared/models.ts) must offer every model Settings shows.
+    let url = URL(filePath: #filePath).deletingLastPathComponent()
+        .appending(path: "../../../../../backend/supabase/functions/_shared/models.ts").standardized
+    let server = try String(contentsOf: url, encoding: .utf8)
+    for model in AIModel.all { #expect(server.contains("id: \"\(model.id)\""), "\(model.id) missing on the server") }
+}

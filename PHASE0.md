@@ -81,5 +81,6 @@ Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no 
 - [x] content_piece + voice_profile tables (RLS tests, live); `content` Edge Function drafts one native post per platform with structured output.
 - [x] Content page: idea → drafts, writing check (AI-sounding phrases, placeholders, limits, never-say words), edit, approve, copy & open; Voice sheet.
 - [ ] Morning card with posts ready; weekly content plan.
-- [ ] Model router (tiers) and a per-day spend cap.
+- [x] Model choice per feature in Settings: Claude or free Groq models (chat with tools, content drafts); server allowlist.
+- [ ] Per-day spend cap; OpenRouter (more free open models), Ollama on the Mac (local), Cloudflare FLUX images.
 - [ ] Playbooks per platform as skills; carousel PNG rendering; metrics import.

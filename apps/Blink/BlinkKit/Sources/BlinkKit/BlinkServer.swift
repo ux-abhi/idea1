@@ -335,6 +335,18 @@ public final class BlinkServer: Sendable {
     }
 
 
+    /// Which model each feature uses ("chat", "content"), from profile.model_prefs.
+    public func modelPrefs() async throws -> [String: String] {
+        struct Row: Decodable { let model_prefs: [String: String]? }
+        let rows: [Row] = try await client.from("profile").select("model_prefs").execute().value
+        return rows.first?.model_prefs ?? [:]
+    }
+
+    public func setModelPrefs(_ prefs: [String: String]) async throws {
+        let user = try await client.auth.session.user.id
+        try await client.from("profile").update(["model_prefs": prefs]).eq("owner_id", value: user).execute()
+    }
+
     // MARK: Usage (cost meter, §24)
 
     public struct Usage: Decodable, Sendable {
