@@ -16,11 +16,50 @@ const dec = new TextDecoder();
 
 export class ImapError extends Error {}
 
-export class Imap {
+/** CRLF lines and fixed-size byte runs from a transport; shared by the IMAP and SMTP clients. */
+export class LineReader {
   private buffer = new Uint8Array(0);
+
+  constructor(private transport: Transport, private maxLine = 1_000_000) {}
+
+  private async fill(): Promise<void> {
+    const chunk = await this.transport.read();
+    if (!chunk) throw new Error("The mail server closed the connection.");
+    const next = new Uint8Array(this.buffer.length + chunk.length);
+    next.set(this.buffer);
+    next.set(chunk, this.buffer.length);
+    this.buffer = next;
+  }
+
+  async readLine(): Promise<string> {
+    for (;;) {
+      const at = this.buffer.findIndex((b, i) => b === 13 && this.buffer[i + 1] === 10);
+      if (at >= 0) {
+        const line = dec.decode(this.buffer.subarray(0, at));
+        this.buffer = this.buffer.subarray(at + 2);
+        return line;
+      }
+      if (this.buffer.length > this.maxLine) throw new Error("A line from the mail server was too long.");
+      await this.fill();
+    }
+  }
+
+  async readBytes(n: number): Promise<Uint8Array> {
+    if (n > 5_000_000) throw new Error("A message part was too large.");
+    while (this.buffer.length < n) await this.fill();
+    const data = this.buffer.slice(0, n);
+    this.buffer = this.buffer.subarray(n);
+    return data;
+  }
+}
+
+export class Imap {
+  private lines: LineReader;
   private counter = 0;
 
-  constructor(private transport: Transport) {}
+  constructor(private transport: Transport) {
+    this.lines = new LineReader(transport);
+  }
 
   /** TLS to port 993, then the server's greeting. */
   static async connect(hostname: string): Promise<Imap> {
@@ -42,34 +81,8 @@ export class Imap {
     return imap;
   }
 
-  private async fill(): Promise<void> {
-    const chunk = await this.transport.read();
-    if (!chunk) throw new ImapError("The mail server closed the connection.");
-    const next = new Uint8Array(this.buffer.length + chunk.length);
-    next.set(this.buffer);
-    next.set(chunk, this.buffer.length);
-    this.buffer = next;
-  }
-
-  async readLine(): Promise<string> {
-    for (;;) {
-      const at = this.buffer.findIndex((b, i) => b === 13 && this.buffer[i + 1] === 10);
-      if (at >= 0) {
-        const line = dec.decode(this.buffer.subarray(0, at));
-        this.buffer = this.buffer.subarray(at + 2);
-        return line;
-      }
-      if (this.buffer.length > 1_000_000) throw new ImapError("A line from the mail server was too long.");
-      await this.fill();
-    }
-  }
-
-  private async readBytes(n: number): Promise<Uint8Array> {
-    if (n > 5_000_000) throw new ImapError("A message part was too large.");
-    while (this.buffer.length < n) await this.fill();
-    const data = this.buffer.slice(0, n);
-    this.buffer = this.buffer.subarray(n);
-    return data;
+  readLine(): Promise<string> {
+    return this.lines.readLine();
   }
 
   /** Reads one logical response: a line, plus any literals ({n}) and the lines that continue it. */
@@ -84,7 +97,7 @@ export class Imap {
       text += line;
       // The item the literal belongs to, e.g. "BODY[TEXT]<0>" or "BODY[HEADER.FIELDS (FROM TO)]".
       const key = before.match(/(BODY\[[^\]]*\](?:<\d+>)?)\s*$/)?.[1] ?? "";
-      literals.push({ key, data: await this.readBytes(Number(literal[1])) });
+      literals.push({ key, data: await this.lines.readBytes(Number(literal[1])) });
     }
   }
 

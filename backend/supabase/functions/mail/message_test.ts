@@ -86,3 +86,8 @@ Deno.test("a burst of new mail is read oldest first across checks, none skipped"
   if (fresh.take[0] !== 106 || fresh.last !== 120) throw new Error(JSON.stringify(fresh));
   if (uidWindow([], 100, 130).last !== 129) throw new Error("an empty check should move to uidNext - 1");
 });
+
+Deno.test("the reply comes from the whole address the mail went to, never a lookalike", () => {
+  if (replyFrom("dab@x.com", "", "me@icloud.com", ["ab@x.com"]) !== "me@icloud.com") throw new Error("lookalike matched");
+  if (replyFrom("Other <o@y.com>", "AB <AB@x.com>", "me@icloud.com", ["ab@x.com"]) !== "ab@x.com") throw new Error("cc not matched");
+});

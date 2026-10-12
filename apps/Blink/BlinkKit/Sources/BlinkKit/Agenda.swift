@@ -301,9 +301,9 @@ public actor CalendarReader {
         try store.save(reminder, commit: true)
     }
 
-    /// The span Blink reads and uploads: from now to the end of the 7th day.
+    /// The span Blink reads and uploads: from now to the end of the 14th day (the 14-day snapshot, ARCHITECTURE §15).
     public static func window(from now: Date, calendar: Calendar = .current) -> DateInterval {
-        let end = calendar.date(byAdding: .day, value: 7, to: calendar.startOfDay(for: now)) ?? now
+        let end = calendar.date(byAdding: .day, value: 14, to: calendar.startOfDay(for: now)) ?? now
         return DateInterval(start: now, end: max(end, now))
     }
 

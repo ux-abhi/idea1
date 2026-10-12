@@ -163,7 +163,7 @@ struct CalendarSettings: View {
             switch model.calendarAccess {
             case .granted:
                 LabeledContent("Access", value: "Calendars and reminders")
-                LabeledContent("Next 7 days", value: "\(model.agenda.events.count) meetings")
+                LabeledContent("Next 14 days", value: "\(model.agenda.events.count) meetings")
                 LabeledContent("Due today", value: "\(model.agenda.reminders.count) reminders")
             case .notAsked:
                 Button("Connect Calendar") { Task { await model.connectCalendar() } }
@@ -176,7 +176,7 @@ struct CalendarSettings: View {
                 }
             }
             Section {
-                Text("Blink reads every calendar on this Mac. All-day events and ones you've declined are left out. The next 7 days are copied to your server so your other devices can use them. Reminders stay on this Mac, except their titles and times go along when you ask Blink something.")
+                Text("Blink reads every calendar on this Mac. All-day events and ones you've declined are left out. The next 14 days are copied to your server so your other devices can use them. Reminders stay on this Mac, except their titles and times go along when you ask Blink something.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -274,7 +274,7 @@ struct UsageSettings: View {
                 Picker("Daily limit for paid models", selection: Binding(
                     get: { model.dailyCap ?? 0 },
                     set: { cap in Task { await model.setDailyCap(cap > 0 ? cap : nil) } })) {
-                    Text("No limit").tag(0.0)
+                    Text("Default ($5)").tag(0.0)
                     ForEach([0.5, 1, 2, 5, 10, 20], id: \.self) { Text($0.formatted(.currency(code: "USD").precision(.fractionLength(0...2)))).tag($0) }
                 }
                 if let day {
@@ -285,7 +285,7 @@ struct UsageSettings: View {
             } header: {
                 Text("Models")
             } footer: {
-                Text("Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. Past the daily limit, Claude and OpenRouter models pause until the spend of the last 24 hours drops; free models keep working.")
+                Text("Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. Without a choice here, the server's default of $5 a day applies. Past the daily limit, Claude and OpenRouter models pause until the spend of the last 24 hours drops; free models keep working.")
             }
             Section {
                 if let month {
@@ -427,7 +427,7 @@ struct PrivacySettings: View {
                 Text("The last 50 things you copy, kept on this Mac only. Passwords copied from password managers are never kept.")
             }
             Section("What leaves this Mac") {
-                Label("Your next 7 days of meetings: title, time, place and link", systemImage: "calendar")
+                Label("Your next 14 days of meetings: title, time, place and link", systemImage: "calendar")
                 Label("This Mac's name and your time zone", systemImage: "laptopcomputer")
                 Label("Your decisions on cards, and a signature for red ones", systemImage: "checkmark.seal")
             }

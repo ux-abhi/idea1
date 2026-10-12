@@ -1,5 +1,5 @@
 // © Pexilim
-import { capProblem, cost, pickModel } from "./models.ts";
+import { capProblem, claudeUsageCost, cost, pickModel } from "./models.ts";
 
 Deno.test("only listed models are ever picked", () => {
   if (pickModel({ chat: "openai/gpt-oss-120b" }, "chat").provider !== "groq") throw new Error("valid choice ignored");
@@ -19,5 +19,21 @@ Deno.test("the daily Claude limit stops Claude only", () => {
     throw new Error("OpenRouter spend must count toward the paid limit");
   }
   if (capProblem(groq, { daily_cap_usd: 0.01 }, usage) !== null) throw new Error("free model stopped");
-  if (capProblem(opus, {}, usage) !== null || capProblem(opus, { daily_cap_usd: "x" }, usage) !== null) throw new Error("no cap but stopped");
+  if (capProblem(opus, {}, usage) !== null || capProblem(opus, { daily_cap_usd: "x" }, usage) !== null) throw new Error("under the default cap but stopped");
+});
+
+Deno.test("with no limit set, the server default ($5) applies; the owner's own limit wins; Groq is never capped", () => {
+  const opus = pickModel(null, "chat"), groq = pickModel({ chat: "openai/gpt-oss-120b" }, "chat");
+  const spent = [{ model: "claude-opus-5-5", cost_usd: 6 }];
+  if (capProblem(opus, null, spent, undefined) === null || capProblem(opus, {}, spent, undefined) === null) throw new Error("no setting: default cap not applied");
+  if (capProblem(opus, { daily_cap_usd: 10 }, spent, undefined) !== null) throw new Error("owner's higher limit ignored");
+  if (capProblem(opus, { daily_cap_usd: 1 }, [{ model: "claude-opus-5-5", cost_usd: 2 }], "20") === null) throw new Error("owner's lower limit ignored");
+  if (capProblem(opus, null, spent, "20") !== null) throw new Error("server default ignored");
+  if (capProblem(groq, null, spent, undefined) !== null) throw new Error("Groq capped");
+});
+
+Deno.test("Claude cache writes cost 1.25x and cache reads 0.1x", () => {
+  const opus = pickModel(null, "chat"); // $4 in, $20 out per million
+  const usd = claudeUsageCost(opus, { input_tokens: 1_000_000, cache_creation_input_tokens: 1_000_000, cache_read_input_tokens: 1_000_000, output_tokens: 1_000_000 });
+  if (Math.abs(usd - (4 + 5 + 0.4 + 20)) > 1e-9) throw new Error(`wrong cost ${usd}`);
 });

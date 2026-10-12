@@ -60,6 +60,13 @@ public enum HabitDay {
         let c = calendar.dateComponents([.year, .month, .day], from: day)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
+
+    /// The first day whose answers can count toward a streak: the day before the oldest habit was made (one added
+    /// after midnight can answer for the running habit day), so long streaks are never cut short.
+    public static func answersSince(_ habits: [Habit], today: Date, calendar: Calendar = .current) -> String {
+        let oldest = min(habits.map { calendar.startOfDay(for: $0.createdAt) }.min() ?? today, today)
+        return key(calendar.date(byAdding: .day, value: -1, to: oldest) ?? oldest, calendar: calendar)
+    }
 }
 
 public struct HabitProgress: Equatable, Sendable {

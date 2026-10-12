@@ -53,13 +53,16 @@ public struct ClipItem: Codable, Identifiable, Equatable, Sendable {
 public struct ClipboardHistory: Codable, Equatable, Sendable {
     public private(set) var items: [ClipItem] = []
     public static let limit = 50
+    /// Bigger text (a log, a whole book) is not kept: it would bloat the history file and slow every search.
+    public static let maxText = 1_000_000
 
     public init(items: [ClipItem] = []) {
         self.items = Array(items.prefix(Self.limit))
     }
 
     public mutating func add(_ item: ClipItem) {
-        guard item.kind == .image || !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard item.kind == .image || !item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              item.text.utf8.count <= Self.maxText else { return }
         items.removeAll { $0.kind != .image && $0.kind == item.kind && $0.text == item.text && $0.files == item.files }
         items.insert(item, at: 0)
         if items.count > Self.limit { items.removeLast(items.count - Self.limit) }

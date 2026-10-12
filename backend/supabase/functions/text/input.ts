@@ -21,7 +21,10 @@ export function parseTextRequest(body: unknown): { task: Task; text: string } | 
   return { task: task as Task, text };
 }
 
-/** gpt-oss-20b on Groq, per million tokens, for the model_usage cost meter. */
-export function groqCostUSD(inputTokens: number, outputTokens: number): number {
-  return (inputTokens * 0.075 + outputTokens * 0.3) / 1_000_000;
-}
+
+/** The owner's text as data: "<" escaped so a "</text>" inside it can't close the block early. */
+export const wrapText = (text: string) => `<text>${text.replaceAll("<", "\\u003c")}</text>`;
+/** Puts back any "<" the model echoed in its escaped form, unless the owner's own note already held that text
+ *  (a code note about "\\u003c" stays as written). */
+export const unescapeText = (text: string, original = "") =>
+  original.includes("\\u003c") ? text : text.replaceAll("\\u003c", "<");

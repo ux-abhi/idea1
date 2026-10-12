@@ -233,7 +233,7 @@ struct MailRow: View {
                 .textFieldStyle(.roundedBorder).lineLimit(2...5).frame(width: 320)
             Button("Write Draft") {
                 writingNote = false
-                Task { await model.draftReply(to: message, note: note) }
+                Task { await model.reviewReply(to: message, note: note, reuse: false) }
             }
             .buttonStyle(.borderedProminent)
             .disabled(note.trimmingCharacters(in: .whitespaces).isEmpty)

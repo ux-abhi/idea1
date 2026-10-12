@@ -112,7 +112,7 @@ final class NotchController {
                     return nil
                 }
                 // ⌘⏎ approves; never a bare ⏎ (§36.2).
-                if event.keyCode == 36, event.modifierFlags.contains(.command), let first = self.app.pending.first {
+                if event.keyCode == 36, event.modifierFlags.contains(.command), !self.app.locked, let first = self.app.pending.first {
                     Task { await self.app.approve(first) }
                     return nil
                 }
@@ -125,6 +125,13 @@ final class NotchController {
             guard let app = self?.app else { return }
             // Calendar, reminders and tasks all feed the cues.
             for await _ in Observations({ (app.agenda, app.items) }) { self?.scheduleCues() }
+        }
+        // Locking closes the notch, so nothing shows past "Blink is locked".
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await locked in Observations({ app.locked }) where locked {
+                if self?.model.level == .open { self?.close() }
+            }
         }
         hotkeys = [
             GlobalHotkey(id: 1, keyCode: kVK_Space) { [weak self] in self?.toggleChat() },
@@ -411,6 +418,7 @@ final class NotchController {
     /// ⌃⌥Space or "Ask Blink…": opens the chat with the keyboard in it; again closes it.
     /// ⌃⌥V or "Clipboard…": the history with the keyboard in its search field; again closes it.
     func toggleClipboard() {
+        guard !showLockInstead() else { return }
         if model.level == .open && model.clipboarding { close(); return }
         model.chatting = false
         model.clipboarding = true
@@ -423,6 +431,7 @@ final class NotchController {
     }
 
     func toggleChat() {
+        guard !showLockInstead() else { return }
         if model.level == .open && model.chatting { close(); return }
         model.clipboarding = false
         model.chatting = true
@@ -435,7 +444,7 @@ final class NotchController {
     }
 
     func open() {
-        guard model.level != .open, let panel else { return }
+        guard !showLockInstead(), model.level != .open, let panel else { return }
         previousApp = NSWorkspace.shared.frontmostApplication
         set(.open)
         Task { await app.loadActions() }
@@ -448,6 +457,14 @@ final class NotchController {
         model.evening = false
         if !(model.level == .open && model.chatting) { toggleChat() }
         Task { await app.planTomorrow() }
+    }
+
+    /// While Blink is locked the notch stays shut; the window comes forward with its unlock prompt instead.
+    private func showLockInstead() -> Bool {
+        guard app.locked else { return false }
+        NSApp.activate()
+        NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+        return true
     }
 
     func close() {
@@ -465,6 +482,8 @@ final class NotchController {
     }
 
     private func set(_ level: NotchModel.Level) {
+        // The app lock covers the notch too: cues and the morning brief can't open it over the lock (§36.5).
+        if level == .open && app.locked { return }
         let m = Tokens.Motion.self
         let spring = switch level {
         case .rest: m.close
@@ -654,7 +673,7 @@ struct GlanceView: View {
                         Image(systemName: "envelope.badge").foregroundStyle(.red)
                         Text("\(message.sender): \(message.reason.isEmpty ? message.subject : message.reason)").lineLimit(1)
                         Spacer(minLength: 8)
-                        Button("Draft") { Task { await app.draftReply(to: message) } }
+                        Button("Draft") { Task { await app.reviewReply(to: message, reuse: false) } }
                             .buttonStyle(.plain).foregroundStyle(.mint)
                             .disabled(app.draftingMail.contains(message.id))
                         if let url = message.mailURL {

@@ -6,7 +6,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule } from "./input.ts";
-import { capProblem, compatible, cost, lastDay, pickModel } from "../_shared/models.ts";
+import { capProblem, claudeUsageCost, compatible, cost, lastDay, pickModel } from "../_shared/models.ts";
 
 // Fixed, so it caches: the date and the owner's data go in the user turn, not here.
 const SYSTEM = `You are Blink, a personal assistant that lives in the owner's MacBook notch.
@@ -250,92 +250,100 @@ Deno.serve(async (req) => {
     return { content: "Proposed. It is waiting in the notch for the owner's OK.", isError: false };
   }
 
-  let inputTokens = 0, outputTokens = 0, reply = "";
-  if (model.provider !== "claude") {
-    // Groq and OpenRouter: the same system prompt, data and tools, in the OpenAI-compatible shape.
-    const provider = model.provider;
-    const messages: Record<string, unknown>[] = [
-      { role: "system", content: SYSTEM },
-      ...parsed.history.map((t) => ({ role: t.role, content: t.text })),
-      { role: "user", content: userTurn },
-    ];
-    const tools = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
-    try {
-      for (let turn = 0; turn < 4; turn++) {
-        const { message, usage } = await compatible(provider, { model: model.id, messages, tools, temperature: 0.3, max_completion_tokens: 2000 });
-        inputTokens += usage.prompt_tokens ?? 0;
-        outputTokens += usage.completion_tokens ?? 0;
-        reply = (message.content ?? "").trim() || reply;
-        if (!message.tool_calls?.length) break;
-        messages.push({ role: "assistant", content: message.content ?? "", tool_calls: message.tool_calls });
-        for (const call of message.tool_calls) {
-          let input: unknown = null;
-          try { input = JSON.parse(call.function.arguments); } catch { /* checked by propose */ }
-          const result = await propose(call.function.name, input);
-          messages.push({ role: "tool", tool_call_id: call.id, content: result.content });
+  let inputTokens = 0, outputTokens = 0, usd = 0, calls = 0, reply = "";
+  // Cost meter (§24): clients can't write usage rows, so this uses the service role. Recorded on every exit after a
+  // model call (a later turn failing must not hide what the earlier turns cost).
+  const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  try {
+    if (model.provider !== "claude") {
+      // Groq and OpenRouter: the same system prompt, data and tools, in the OpenAI-compatible shape.
+      const provider = model.provider;
+      const messages: Record<string, unknown>[] = [
+        { role: "system", content: SYSTEM },
+        ...parsed.history.map((t) => ({ role: t.role, content: t.text })),
+        { role: "user", content: userTurn },
+      ];
+      const tools = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+      try {
+        for (let turn = 0; turn < 4; turn++) {
+          const { message, usage } = await compatible(provider, { model: model.id, messages, tools, temperature: 0.3, max_completion_tokens: 2000 });
+          calls++;
+          inputTokens += usage.prompt_tokens ?? 0;
+          outputTokens += usage.completion_tokens ?? 0;
+          usd += cost(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
+          reply = (message.content ?? "").trim() || reply;
+          if (!message.tool_calls?.length) break;
+          messages.push({ role: "assistant", content: message.content ?? "", tool_calls: message.tool_calls });
+          for (const call of message.tool_calls) {
+            let input: unknown = null;
+            try { input = JSON.parse(call.function.arguments); } catch { /* checked by propose */ }
+            const result = await propose(call.function.name, input);
+            messages.push({ role: "tool", tool_call_id: call.id, content: result.content });
+          }
         }
+      } catch (error) {
+        return json(502, { error: error instanceof Error ? error.message : "The model couldn't answer." });
       }
-    } catch (error) {
-      return json(502, { error: error instanceof Error ? error.message : "The model couldn't answer." });
+    } else {
+      // Keys made at organisation level need the workspace named on every request.
+      const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
+      const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
+      const messages: Anthropic.Beta.BetaMessageParam[] = [
+        ...parsed.history.map((t) => ({ role: t.role, content: t.text })),
+        { role: "user", content: userTurn },
+      ];
+      try {
+        for (let turn = 0; turn < 4; turn++) {
+          const response = await client.beta.messages.create({
+            model: model.id,
+            max_tokens: 16000,
+            system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+            tools: TOOLS,
+            messages,
+            output_config: { effort: "low" }, // chat: short, latency-sensitive
+            betas: ["server-side-fallback-2026-07-01"],
+            fallbacks: "default", // a declined request re-runs on Anthropic's recommended fallback
+          });
+          calls++;
+          inputTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0) + (response.usage.cache_read_input_tokens ?? 0);
+          outputTokens += response.usage.output_tokens;
+          usd += claudeUsageCost(model, response.usage);
+
+          if (response.stop_reason === "refusal") {
+            reply = "I can't help with that one.";
+            break;
+          }
+          reply = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim() || reply;
+          if (response.stop_reason !== "tool_use") break;
+
+          messages.push({ role: "assistant", content: response.content });
+          const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+          for (const block of response.content) {
+            if (block.type !== "tool_use") continue;
+            const result = await propose(block.name, block.input);
+            results.push({ type: "tool_result", tool_use_id: block.id, content: result.content, ...(result.isError ? { is_error: true } : {}) });
+          }
+          messages.push({ role: "user", content: results });
+        }
+      } catch (error) {
+        if (error instanceof Anthropic.AuthenticationError) return json(502, { error: "The Anthropic API key on this server isn't valid." });
+        if (error instanceof Anthropic.RateLimitError) return json(429, { error: "Claude is busy right now. Try again in a moment." });
+        if (error instanceof Anthropic.BadRequestError) {
+          // Anthropic's own reason; it never contains the key or the owner's data.
+          console.error("anthropic 400", error.message);
+          return json(502, { error: `Claude rejected the request: ${error.message}` });
+        }
+        if (error instanceof Anthropic.APIError) return json(502, { error: `Claude returned an error (${error.status}).` });
+        throw error;
+      }
     }
-  } else {
-    // Keys made at organisation level need the workspace named on every request.
-    const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
-    const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
-    const messages: Anthropic.Beta.BetaMessageParam[] = [
-      ...parsed.history.map((t) => ({ role: t.role, content: t.text })),
-      { role: "user", content: userTurn },
-    ];
-    try {
-      for (let turn = 0; turn < 4; turn++) {
-        const response = await client.beta.messages.create({
-          model: model.id,
-          max_tokens: 16000,
-          system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-          tools: TOOLS,
-          messages,
-          output_config: { effort: "low" }, // chat: short, latency-sensitive
-          betas: ["server-side-fallback-2026-07-01"],
-          fallbacks: "default", // a declined request re-runs on Anthropic's recommended fallback
-        });
-        inputTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
-        outputTokens += response.usage.output_tokens;
-
-        if (response.stop_reason === "refusal") {
-          reply = "I can't help with that one.";
-          break;
-        }
-        reply = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim() || reply;
-        if (response.stop_reason !== "tool_use") break;
-
-        messages.push({ role: "assistant", content: response.content });
-        const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
-        for (const block of response.content) {
-          if (block.type !== "tool_use") continue;
-          const result = await propose(block.name, block.input);
-          results.push({ type: "tool_result", tool_use_id: block.id, content: result.content, ...(result.isError ? { is_error: true } : {}) });
-        }
-        messages.push({ role: "user", content: results });
-      }
-    } catch (error) {
-      if (error instanceof Anthropic.AuthenticationError) return json(502, { error: "The Anthropic API key on this server isn't valid." });
-      if (error instanceof Anthropic.RateLimitError) return json(429, { error: "Claude is busy right now. Try again in a moment." });
-      if (error instanceof Anthropic.BadRequestError) {
-        // Anthropic's own reason; it never contains the key or the owner's data.
-        console.error("anthropic 400", error.message);
-        return json(502, { error: `Claude rejected the request: ${error.message}` });
-      }
-      if (error instanceof Anthropic.APIError) return json(502, { error: `Claude returned an error (${error.status}).` });
-      throw error;
+  } finally {
+    if (calls > 0) {
+      await admin.from("model_usage").insert({
+        owner_id: user.id, feature: "chat", model: model.id, input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: usd,
+      });
     }
   }
-
-  // Cost meter (§24): clients can't write usage rows, so this uses the service role.
-  const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  await admin.from("model_usage").insert({
-    owner_id: user.id, feature: "chat", model: model.id,
-    input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: cost(model, inputTokens, outputTokens),
-  });
 
   return json(200, { reply: reply || "Done.", proposed });
 });

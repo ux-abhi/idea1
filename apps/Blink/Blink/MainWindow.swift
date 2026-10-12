@@ -257,12 +257,12 @@ struct CalendarListView: View {
     var body: some View {
         let days = Dictionary(grouping: model.agenda.events) { Calendar.current.startOfDay(for: $0.start) }
         let count = model.agenda.events.count
-        DashPage("Calendar", summary: count == 0 ? "Next 7 days" : "\(count == 1 ? "1 meeting" : "\(count) meetings") in the next 7 days") {
+        DashPage("Calendar", summary: count == 0 ? "Next 14 days" : "\(count == 1 ? "1 meeting" : "\(count) meetings") in the next 14 days") {
             if model.calendarAccess != .granted {
                 DashCard { ConnectCalendarRow() }
             } else if days.isEmpty {
                 EmptyCard(symbol: "calendar", title: "No meetings this week",
-                          message: "Timed events from the calendars on this Mac show here for the next 7 days. All-day events and ones you've declined are left out.")
+                          message: "Timed events from the calendars on this Mac show here for the next 14 days. All-day events and ones you've declined are left out.")
             } else {
                 ForEach(days.keys.sorted(), id: \.self) { day in
                     DashCard(dayTitle(day)) {

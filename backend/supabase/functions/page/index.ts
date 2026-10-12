@@ -5,7 +5,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseAnalysis, parseHandle, score, toRows } from "./input.ts";
-import { capProblem, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
+import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
 
 const SYSTEM = `You read the owner's own recent Instagram posts (in <page_posts>, newest first, with likes, comments and views) and sum up:
 - voice.page: what the page is, in one line, starting with the @handle.
@@ -51,20 +51,26 @@ Deno.serve(async (req) => {
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
 
-  const [{ data: voice }, { data: profile }, { data: spend }, { count: recentTries }] = await Promise.all([
+  const [{ data: voice }, { data: profile }, { data: spend }] = await Promise.all([
     db.from("voice_profile").select("page").maybeSingle(),
     db.from("profile").select("model_prefs, settings").maybeSingle(),
     db.from("model_usage").select("model, cost_usd").gte("at", lastDay()),
-    db.from("model_usage").select("id", { count: "exact", head: true })
-      .eq("feature", "page.fetch").gte("at", new Date(Date.now() - 10 * 60_000).toISOString()),
   ]);
   // Only the owner's own page, the handle saved in their Voice; the request can't name another account.
   const handle = parseHandle(voice?.page ?? "");
   if (!handle) return json(400, { error: "Add your Instagram handle, like @uxabhi, in Content › Voice first." });
+  // The daily limit is checked before Apify is paid, not after.
+  const model = pickModel(profile?.model_prefs, "content", Deno.env.get("BLINK_CONTENT_MODEL"));
+  const overCap = capProblem(model, profile?.settings, spend ?? []);
+  if (overCap) return json(429, { error: overCap });
   // One try per 10 minutes, failed ones included, so a double click or a retry can't spend the Apify credit twice.
-  if ((recentTries ?? 0) > 0) return json(429, { error: "Your page was read a few minutes ago. Try again in a little while." });
+  // The try is written first and counted after, so two requests at once both see each other and neither runs.
   const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  await admin.from("model_usage").insert({ owner_id: user.id, feature: "page.fetch", model: "apify/instagram-scraper", cost_usd: 0 });
+  const { error: tryError } = await admin.from("model_usage").insert({ owner_id: user.id, feature: "page.fetch", model: "apify/instagram-scraper", cost_usd: 0 });
+  if (tryError) return json(500, { error: "Couldn't start the read. Try again in a minute." });
+  const { count: recentTries, error: countError } = await admin.from("model_usage").select("id", { count: "exact", head: true })
+    .eq("owner_id", user.id).eq("feature", "page.fetch").gte("at", new Date(Date.now() - 10 * 60_000).toISOString());
+  if (countError || (recentTries ?? 0) > 1) return json(429, { error: "Your page was read a few minutes ago. Try again in a little while." });
 
   // Apify: the owner's latest 20 posts, waiting up to 2 minutes for the run.
   let items: unknown;
@@ -93,12 +99,9 @@ Deno.serve(async (req) => {
   if (saveError) console.error("social_post", saveError.message); // the analysis still helps; the next read saves them
 
   // The read, by the owner's content model.
-  const model = pickModel(profile?.model_prefs, "content", Deno.env.get("BLINK_CONTENT_MODEL"));
-  const overCap = capProblem(model, profile?.settings, spend ?? []);
-  if (overCap) return json(429, { error: overCap });
   const posts = rows.map((r) => ({ kind: r.kind, likes: r.likes, comments: r.comments, views: r.views, posted: r.posted_at?.slice(0, 10), caption: r.caption.slice(0, 600) }));
   const userTurn = `<page_posts handle="@${handle}">${JSON.stringify(posts).replaceAll("<", "\\u003c")}</page_posts>`;
-  let text = "", inputTokens = 0, outputTokens = 0;
+  let text = "", inputTokens = 0, outputTokens = 0, usd = 0;
   try {
     if (model.provider !== "claude") {
       const strict = keepsSchema(model);
@@ -110,6 +113,7 @@ Deno.serve(async (req) => {
       text = message.content ?? "";
       inputTokens = usage.prompt_tokens ?? 0;
       outputTokens = usage.completion_tokens ?? 0;
+      usd = cost(model, inputTokens, outputTokens);
     } else {
       const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
       if (!apiKey) return json(503, { error: "Add your Anthropic API key, or pick a Groq model for content drafts in Settings." });
@@ -122,8 +126,9 @@ Deno.serve(async (req) => {
         output_config: { effort: "medium", format: { type: "json_schema", schema: SCHEMA } },
         betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
       });
-      inputTokens = response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
+      inputTokens = response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0) + (response.usage.cache_read_input_tokens ?? 0);
       outputTokens = response.usage.output_tokens;
+      usd = claudeUsageCost(model, response.usage);
       text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
     }
   } catch (error) {
@@ -133,7 +138,7 @@ Deno.serve(async (req) => {
 
   await admin.from("model_usage").insert({
     owner_id: user.id, feature: "page.read", model: model.id,
-    input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: cost(model, inputTokens, outputTokens),
+    input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: usd,
   });
 
   let output: unknown = null;

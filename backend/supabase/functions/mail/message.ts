@@ -150,8 +150,9 @@ function base64(s: string): string {
 /** Which of the owner's addresses a message was sent to (so the reply comes from it); the account address otherwise. */
 export function replyFrom(to: string, cc: string, account: string, aliases: string[]): string {
   const mine = [account, ...aliases].map((a) => a.trim().toLowerCase()).filter(Boolean);
-  const all = `${to},${cc}`.toLowerCase();
-  return mine.find((a) => all.includes(a)) ?? account;
+  // Whole addresses only: the alias "ab@x.com" must not match "dab@x.com".
+  const recipients = `${to},${cc}`.split(",").map((a) => parseAddress(a).address).filter(Boolean);
+  return mine.find((a) => recipients.includes(a)) ?? account;
 }
 
 // Job boards' automated alerts (not recruiters writing personally, who use their own company's address).

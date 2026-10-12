@@ -42,6 +42,14 @@ export function cost(model: Model, inputTokens: number, outputTokens: number): n
   return (inputTokens * model.inPerM + outputTokens * model.outPerM) / 1_000_000;
 }
 
+/** Claude's usage block priced the way Anthropic bills it: cache writes at 1.25x input, cache reads at 0.1x. */
+export function claudeUsageCost(model: Model, usage: {
+  input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null;
+}): number {
+  const input = usage.input_tokens + 1.25 * (usage.cache_creation_input_tokens ?? 0) + 0.1 * (usage.cache_read_input_tokens ?? 0);
+  return cost(model, input, usage.output_tokens);
+}
+
 const ENDPOINTS = {
   groq: { url: "https://api.groq.com/openai/v1/chat/completions", secret: "GROQ_API_KEY", name: "Groq" },
   openrouter: { url: "https://openrouter.ai/api/v1/chat/completions", secret: "OPENROUTER_API_KEY", name: "OpenRouter" },
@@ -82,16 +90,25 @@ export async function compatible(provider: "groq" | "openrouter", body: Record<s
 }
 
 /** The daily limit for paid models (§19), Claude and OpenRouter together: profile.settings.daily_cap_usd against the
- *  last 24 hours. Free Groq models never count and are never stopped. */
-export function capProblem(model: Model, settings: unknown, usage: { model: string; cost_usd: number | string }[]): string | null {
+ *  last 24 hours, or the server's BLINK_DAILY_CAP_USD (default $5) when the owner hasn't set one, so there is always a
+ *  limit. Free Groq models never count and are never stopped. */
+export function capProblem(model: Model, settings: unknown, usage: { model: string; cost_usd: number | string }[],
+                           serverCap: unknown = envCap()): string | null {
   if (!isPaid(model.id)) return null;
-  const cap = Number((settings as Record<string, unknown> | null)?.daily_cap_usd);
-  if (!Number.isFinite(cap) || cap <= 0) return null;
+  const positive = (value: unknown) => {
+    const n = value === null || value === undefined || value === "" ? NaN : Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const cap = positive((settings as Record<string, unknown> | null)?.daily_cap_usd) ?? positive(serverCap) ?? 5;
   const spent = usage.filter((u) => isPaid(String(u.model)) && !String(u.model).startsWith("@cf/") && !String(u.model).startsWith("apify/"))
     .reduce((sum, u) => sum + Number(u.cost_usd || 0), 0);
   return spent >= cap
     ? `Today's limit for paid models ($${cap}) is used up. Switch to a free model in Settings, or raise the limit there.`
     : null;
+}
+
+function envCap(): string | undefined {
+  try { return Deno.env.get("BLINK_DAILY_CAP_USD"); } catch { return undefined; } // tests run without env access
 }
 
 /** Spend rows for the cap check: everything logged in the last 24 hours (the owner can read their own usage). */

@@ -1,41 +1,25 @@
 // © Pexilim
 // A small SMTP client (RFC 5321) for sending one approved message: TLS (465) or STARTTLS (587), AUTH PLAIN, one
 // recipient. Only what Blink needs; tested against a scripted server.
-import type { Transport } from "./imap.ts";
+import { LineReader, type Transport } from "./imap.ts";
 
 export class SmtpError extends Error {}
 
 const enc = new TextEncoder();
-const dec = new TextDecoder();
+const dec = new TextDecoder(); // for dot-stuffing
 
 export class Smtp {
-  private buffer = new Uint8Array(0);
+  private lines: LineReader;
 
-  constructor(private transport: Transport) {}
-
-  private async readLine(): Promise<string> {
-    for (;;) {
-      const at = this.buffer.findIndex((b, i) => b === 13 && this.buffer[i + 1] === 10);
-      if (at >= 0) {
-        const line = dec.decode(this.buffer.subarray(0, at));
-        this.buffer = this.buffer.subarray(at + 2);
-        return line;
-      }
-      if (this.buffer.length > 100_000) throw new SmtpError("A line from the mail server was too long.");
-      const chunk = await this.transport.read();
-      if (!chunk) throw new SmtpError("The mail server closed the connection.");
-      const next = new Uint8Array(this.buffer.length + chunk.length);
-      next.set(this.buffer);
-      next.set(chunk, this.buffer.length);
-      this.buffer = next;
-    }
+  constructor(private transport: Transport) {
+    this.lines = new LineReader(transport, 100_000);
   }
 
   /** Sends a command (or nothing, for the greeting) and checks the reply code; multi-line replies ("250-") are read whole. */
   async expect(command: string | null, ok: number[]): Promise<void> {
     if (command !== null) await this.transport.write(enc.encode(`${command}\r\n`));
     let line: string;
-    do { line = await this.readLine(); } while (line[3] === "-");
+    do { line = await this.lines.readLine(); } while (line[3] === "-");
     const code = Number(line.slice(0, 3));
     if (!ok.includes(code)) {
       // Never echo the AUTH line: it carries the password.

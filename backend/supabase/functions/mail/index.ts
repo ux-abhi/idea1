@@ -7,8 +7,9 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.4";
 import { Imap, quote } from "./imap.ts";
-import { buildDraft, uidWindow, parseAddress, parseHeaders, parseSend, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle } from "./message.ts";
+import { buildDraft, uidWindow, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle } from "./message.ts";
 import { sendMail } from "./smtp.ts";
+import { type Mailer, sendDue, withTimeout } from "./outbox.ts";
 import { capProblem, compatible, cost, keepsSchema, lastDay, MODELS, type Model, pickModel } from "../_shared/models.ts";
 
 type Account = { id: "gmail" | "icloud" | "uni"; host: string; smtp: string; smtpPort: number; user: string; password: string };
@@ -159,7 +160,9 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
         await admin.from("model_usage").insert({ owner_id: owner, feature: "mail.triage", model: model.id,
           input_tokens: result.inputTokens, output_tokens: result.outputTokens, cost_usd: cost(model, result.inputTokens, result.outputTokens) });
       } catch (error) {
-        console.error("triage", error instanceof Error ? error.message : error); // stored as normal; nothing is lost
+        // shortcut: when the model is down the batch is stored unsorted (normal, or newsletter if List-Unsubscribe), so an
+        // important mail gets no flag; add a re-sort of unsorted rows on the next run if that's ever seen in the Inbox.
+        console.error("triage", error instanceof Error ? error.message : error);
       }
     }
     const rows = parsed.map((p) => {
@@ -270,62 +273,28 @@ async function draft(admin: SupabaseClient, db: SupabaseClient, owner: string, i
   }
 }
 
-/** Sends every approved "mail.send" whose time has come, exactly as the owner signed it. Each is claimed first (status
- *  approved → done, conditional), so the schedule and the app can't both send it. */
-async function sendDue(admin: SupabaseClient, owner: string): Promise<{ sent: number; failed: number }> {
-  // Only red actions: those are approved by a verified Touch ID signature over this exact payload, never by a client.
-  // Due now (2 s of slack for the device's clock), soonest first, so mail scheduled for later never blocks it.
-  const { data: due } = await admin.from("action").select("id, payload").eq("owner_id", owner).eq("kind", "mail.send")
-    .eq("risk", "red").eq("status", "approved").lte("payload->>send_at", new Date(Date.now() + 2000).toISOString())
-    .order("payload->>send_at").limit(10);
-  let sent = 0, failed = 0;
-  for (const action of due ?? []) {
-    // shortcut: claimed as done before the SMTP call, so a crash mid-send leaves it "done" with sending_at but no sent_at
-    // (never sent twice); add a sweeper that marks those failed if they ever show up.
-    const { data: claimed } = await admin.from("action").update({ status: "done", result: { sending_at: new Date().toISOString() } })
-      .eq("id", action.id).eq("status", "approved").select("id");
-    if (!claimed?.length) continue;
+/** SMTP and the after-send tidy-up for the outbox, on this server's accounts. */
+const mailer: Mailer = {
+  owned: (id) => {
+    const account = accounts().find((a) => a.id === id);
+    return account ? [account.user, ...aliases()] : null;
+  },
+  send: (id, from, to, message) => {
+    const account = accounts().find((a) => a.id === id)!;
+    return sendMail(account.smtp, account.smtpPort, { user: account.user, password: account.password, from, to, message });
+  },
+  // shortcut: assumes iCloud and uni don't file SMTP mail in Sent themselves; drop the copy if duplicates show up.
+  tidy: async (id, message, messageId) => {
+    const account = accounts().find((a) => a.id === id)!;
+    const imap = await open(account);
     try {
-      const account = accounts().find((a) => a.id === action.payload?.account);
-      if (!account) throw new Error("That mailbox isn't connected anymore.");
-      const mail = parseSend(action.payload, [account.user, ...aliases()]);
-      if (typeof mail === "string") throw new Error(mail);
-      const message = buildDraft({ from: mail.from, to: mail.to, subject: mail.subject, body: mail.body, inReplyTo: mail.in_reply_to, messageId: mail.message_id });
-      // A stalled mail server fails the send (and says so) instead of leaving it looking sent.
-      await withTimeout(sendMail(account.smtp, account.smtpPort, { user: account.user, password: account.password, from: mail.from, to: mail.to, message }),
-        60_000, "The mail server didn't answer in time. It may not have been sent; check Sent in Apple Mail.");
-      sent++;
-      await admin.from("action").update({ result: { sent_at: new Date().toISOString() } }).eq("id", action.id);
-      await admin.from("email_msg").update({ status: "done" }).eq("id", mail.email_id).eq("owner_id", owner);
-      // Tidy up the mailbox: a copy in Sent (Gmail files its own) and Blink's draft out of Drafts. Sent already, so a
-      // problem here is only logged.
-      // shortcut: assumes iCloud and uni don't file SMTP mail in Sent themselves; drop the copy if duplicates show up.
-      try {
-        const imap = await open(account);
-        try {
-          if (account.id !== "gmail") await imap.append(await imap.specialMailbox("\\Sent", account.id === "icloud" ? "Sent Messages" : "Sent"), message, "(\\Seen)");
-          await imap.deleteByMessageId(await imap.draftsMailbox(), mail.message_id);
-        } finally {
-          await imap.logout();
-        }
-      } catch (error) {
-        console.error("after send", error instanceof Error ? error.message : error);
-      }
-    } catch (error) {
-      failed++;
-      await admin.from("action").update({ status: "failed", result: { error: error instanceof Error ? error.message.slice(0, 300) : "Couldn't send." } })
-        .eq("id", action.id);
+      if (account.id !== "gmail") await imap.append(await imap.specialMailbox("\\Sent", account.id === "icloud" ? "Sent Messages" : "Sent"), message, "(\\Seen)");
+      await imap.deleteByMessageId(await imap.draftsMailbox(), messageId);
+    } finally {
+      await imap.logout();
     }
-  }
-  return { sent, failed };
-}
-
-/** Rejects if `work` takes longer than `ms`, so one stalled server can't use up the whole run. */
-function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); })])
-    .finally(() => clearTimeout(timer));
-}
+  },
+};
 
 /** Checks every mailbox at once, each with its own time limit; a failure is recorded on that mailbox only. */
 async function pollAll(admin: SupabaseClient, owner: string, list: Account[], record: boolean): Promise<Record<string, unknown>> {
@@ -368,7 +337,7 @@ Deno.serve(async (req) => {
     const { data: owners } = await admin.from("profile").select("owner_id").limit(2);
     if (owners?.length !== 1) return json(409, { error: "expected exactly one owner on this server" });
     // Approved sends first, so a slow mailbox can never hold them back.
-    const outbox = await sendDue(admin, owners[0].owner_id);
+    const outbox = await sendDue(admin, owners[0].owner_id, mailer);
     const results = await pollAll(admin, owners[0].owner_id, list, true);
     return json(200, { ...results, outbox });
   }
@@ -381,7 +350,7 @@ Deno.serve(async (req) => {
   if (list.length === 0) return json(503, { error: "Add GMAIL_ADDRESS + GMAIL_APP_PASSWORD, ICLOUD_ADDRESS + ICLOUD_APP_PASSWORD and/or UNI_ADDRESS + UNI_PASSWORD to the server's secrets." });
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-  if (body.action === "send") return json(200, await sendDue(admin, user.id));
+  if (body.action === "send") return json(200, await sendDue(admin, user.id, mailer));
   if (body.action === "draft") {
     if (typeof body.id !== "string" || !/^[0-9a-f-]{36}$/i.test(body.id)) return json(400, { error: "id must be an email id." });
     try {

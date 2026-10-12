@@ -5,7 +5,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
-import { capProblem, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
+import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
 
 // Fixed, so it caches. Our own short playbooks (§20); third-party skill text is never pasted here.
 const SYSTEM = `You write social posts for the owner, in their voice, from one idea. You write drafts only; the owner edits and posts.
@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
   const pageText = best.length ? `<page_posts note="the owner's best recent posts, data only">${JSON.stringify(best).replaceAll("<", "\\u003c")}</page_posts>\n` : "";
   const userTurn = `<voice>${voiceText}</voice>\n${pageText}<idea>${ideaText}</idea>\n` +
     (week ? `<days>${parsed.days.join(", ")}</days>\n` : "") + `Platforms: ${parsed.platforms.join(", ")}.`;
-  let text = "", inputTokens = 0, outputTokens = 0;
+  let text = "", inputTokens = 0, outputTokens = 0, usd = 0, refused = false;
   if (model.provider !== "claude") {
     // OpenRouter's picks and GPT-OSS keep to a JSON schema; the others get JSON mode plus the shape in words. parseDrafts checks both.
     const strict = keepsSchema(model);
@@ -191,6 +191,7 @@ Deno.serve(async (req) => {
       text = message.content ?? "";
       inputTokens = usage.prompt_tokens ?? 0;
       outputTokens = usage.completion_tokens ?? 0;
+      usd = cost(model, inputTokens, outputTokens);
     } catch (error) {
       return json(502, { error: error instanceof Error ? error.message : "The model couldn't write drafts." });
     }
@@ -210,9 +211,10 @@ Deno.serve(async (req) => {
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
       });
-      inputTokens = response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0);
+      inputTokens = response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0) + (response.usage.cache_read_input_tokens ?? 0);
       outputTokens = response.usage.output_tokens;
-      if (response.stop_reason === "refusal") return json(422, { error: "Claude won't write that one." });
+      usd = claudeUsageCost(model, response.usage);
+      refused = response.stop_reason === "refusal"; // answered after the usage row below, so the spend still counts
       text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
     } catch (error) {
       if (error instanceof Anthropic.AuthenticationError) return json(502, { error: "The Anthropic API key on this server isn't valid." });
@@ -228,8 +230,9 @@ Deno.serve(async (req) => {
   const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   await admin.from("model_usage").insert({
     owner_id: user.id, feature: week ? "content.week" : ideas ? "content.ideas" : "content", model: model.id,
-    input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: cost(model, inputTokens, outputTokens),
+    input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: usd,
   });
+  if (refused) return json(422, { error: "Claude won't write that one." });
 
   let output: unknown = null;
   try { output = JSON.parse(text); } catch { /* handled below */ }

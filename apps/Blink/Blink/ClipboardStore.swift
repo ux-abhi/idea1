@@ -17,12 +17,27 @@ final class ClipboardStore {
 
     init() {
         history = Self.load()
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.poll() }
+        syncTimer()
+        // Pause lives in UserDefaults (Settings and the notch both flip it), so follow it from there.
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncTimer() }
         }
-        timer.tolerance = 0.5
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+    }
+
+    /// No polling while history is paused; resuming skips whatever was copied meanwhile.
+    private func syncTimer() {
+        if UserDefaults.standard.bool(forKey: Self.pausedKey) {
+            timer?.invalidate()
+            timer = nil
+        } else if timer == nil {
+            lastChange = NSPasteboard.general.changeCount
+            let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.poll() }
+            }
+            timer.tolerance = 0.5
+            RunLoop.main.add(timer, forMode: .common)
+            self.timer = timer
+        }
     }
 
     private func poll() {
@@ -36,8 +51,9 @@ final class ClipboardStore {
         // One image file copied in Finder is kept as the picture (Finder's own image on the clipboard is only the
         // file's icon). The pasteboard lends Blink read access to the file; unreadable files stay file items.
         if urls.count == 1, UTType(filenameExtension: urls[0].pathExtension)?.conforms(to: .image) == true,
-           let image = NSImage(contentsOf: urls[0]) {
-            record(image, name: urls[0].deletingPathExtension().lastPathComponent)
+           FileManager.default.isReadableFile(atPath: urls[0].path) {
+            let url = urls[0]
+            record(name: url.deletingPathExtension().lastPathComponent) { NSImage(contentsOf: url) }
             return
         }
         switch ClipItem.pick(files: urls.map(\.path), text: text, hasImage: NSImage.canInit(with: board)) {
@@ -47,8 +63,10 @@ final class ClipboardStore {
             let rich = board.data(forType: .rtf).flatMap { $0.count <= Self.maxRich ? $0 : nil }
             history.add(.text(text ?? "", rich: rich))
         case .image:
-            guard let image = NSImage(pasteboard: board) else { return }
-            record(image, name: "Image")
+            // Only the raw bytes are read here; decoding happens off the main thread.
+            guard let type = board.availableType(from: NSImage.imageTypes.map { NSPasteboard.PasteboardType($0) }),
+                  let data = board.data(forType: type) else { return }
+            record(name: "Image") { NSImage(data: data) }
             return
         case nil:
             return
@@ -56,21 +74,23 @@ final class ClipboardStore {
         save()
     }
 
-    private func record(_ image: NSImage, name: String) {
-        // The list shows a 34 × 24 thumbnail, so a small preview keeps the history file light.
-        guard let preview = Self.png(image, maxSide: 240) else { return }
-        let item = ClipItem(kind: .image, text: name, image: preview)
-        // The original sits beside the history so pasting or dragging it back keeps full quality.
-        if let full = Self.png(image, maxSide: nil), full.count <= Self.maxImage {
-            try? FileManager.default.createDirectory(at: Self.images, withIntermediateDirectories: true)
-            try? full.write(to: Self.original(item), options: [.atomic, .completeFileProtection])
+    /// Decoding and PNG encoding a big photo takes long, so it runs off the main thread; the item lands when it's ready.
+    private func record(name: String, load: @escaping @Sendable () -> NSImage?) {
+        Task.detached { [weak self] in
+            // The list shows a 34 × 24 thumbnail, so a small preview keeps the history file light.
+            guard let image = load(), let preview = Self.png(image, maxSide: 240) else { return }
+            let full = Self.png(image, maxSide: nil).flatMap { $0.count <= Self.maxImage ? $0 : nil }
+            await self?.add(ClipItem(kind: .image, text: name, image: preview), original: full)
         }
+    }
+
+    private func add(_ item: ClipItem, original: Data?) {
         history.add(item)
-        save()
+        save(original: original.map { (Self.original(item), $0) })
     }
 
     static let maxRich = 1_000_000
-    static let maxImage = 25_000_000
+    nonisolated static let maxImage = 25_000_000
 
     /// The full-size image if it was kept, else the preview.
     private func image(_ item: ClipItem) -> NSImage? {
@@ -81,7 +101,8 @@ final class ClipboardStore {
     func dragItem(_ item: ClipItem) -> NSItemProvider {
         switch item.kind {
         case .file:
-            // shortcut: drags the first file only (SwiftUI's onDrag takes one provider); copy puts them all back.
+            // shortcut: drags the first file only (SwiftUI's onDrag takes one provider); copy puts them all back. Upgrade
+            // to an AppKit dragging session with one item per file when dragging a multi-file copy out is needed.
             return NSItemProvider(object: URL(filePath: item.files?.first ?? "") as NSURL)
         case .image:
             let provider = FileManager.default.fileExists(atPath: Self.original(item).path)
@@ -157,7 +178,8 @@ final class ClipboardStore {
     @ObservationIgnored private var lastSave: Task<Void, Never>?
 
     /// Writes off the main thread, one save after another, so copying never stutters and the newest history lands last.
-    private func save() {
+    /// `original` is a full-size image to write beside the history, before old ones are pruned.
+    private func save(original: (url: URL, data: Data)? = nil) {
         let snapshot = history
         let file = Self.file, images = Self.images
         // Full-size originals for the newest few images only; older ones keep their preview (caps disk use).
@@ -168,6 +190,11 @@ final class ClipboardStore {
             // the history ever leaves this Mac or holds more than 50 items.
             try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? JSONEncoder().encode(snapshot).write(to: file, options: [.atomic, .completeFileProtection])
+            // The original sits beside the history so pasting or dragging it back keeps full quality.
+            if let original {
+                try? FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+                try? original.data.write(to: original.url, options: [.atomic, .completeFileProtection])
+            }
             for url in (try? FileManager.default.contentsOfDirectory(at: images, includingPropertiesForKeys: nil)) ?? []
             where !kept.contains(url.lastPathComponent) {
                 try? FileManager.default.removeItem(at: url)
@@ -178,7 +205,7 @@ final class ClipboardStore {
     static let keptOriginals = 10
 
     /// PNG of the image, shrunk so its longest side is at most `maxSide` points (nil keeps full size).
-    private static func png(_ image: NSImage, maxSide: CGFloat?) -> Data? {
+    nonisolated private static func png(_ image: NSImage, maxSide: CGFloat?) -> Data? {
         if maxSide == nil, let rep = image.representations.first as? NSBitmapImageRep {
             return rep.representation(using: .png, properties: [:])
         }

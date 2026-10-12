@@ -123,7 +123,8 @@ struct TasksView: View {
                         .imageScale(.large)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(selected.contains(id) ? "Selected" : "Not selected")
+                .accessibilityLabel("Select")
+                .accessibilityAddTraits(selected.contains(id) ? .isSelected : [])
             }
             row()
         }

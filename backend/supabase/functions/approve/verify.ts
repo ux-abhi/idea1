@@ -4,7 +4,7 @@
 export const MAX_TTL_SECONDS = 300;
 
 /** The exact bytes a device signs; mirrors BlinkAction.approvalMessage in BlinkKit. */
-export function approvalMessage(actionID: string, payloadHashHex: string, expires: number): Uint8Array {
+export function approvalMessage(actionID: string, payloadHashHex: string, expires: number) {
   return new TextEncoder().encode(`blink-approve:v1\n${actionID}\n${payloadHashHex}\n${expires}`);
 }
 
@@ -15,7 +15,7 @@ export function hex(value: string): string {
   return h.toLowerCase();
 }
 
-function bytes(hexString: string): Uint8Array {
+function bytes(hexString: string) {
   return Uint8Array.from(hexString.match(/../g)!, (b) => parseInt(b, 16));
 }
 

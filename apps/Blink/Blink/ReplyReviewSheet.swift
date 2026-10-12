@@ -48,7 +48,7 @@ struct ReplyReviewSheet: View {
                 }
             }
             Text(later ? "Touch ID confirms. It goes out at that time; you can cancel it until then in the Inbox."
-                       : "Touch ID confirms. You get 10 seconds to cancel before it goes.")
+                       : "Touch ID confirms. You get about 20 seconds to cancel before it goes.")
                 .font(.callout).foregroundStyle(.secondary)
             if let problem, !problem.isEmpty {
                 Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
