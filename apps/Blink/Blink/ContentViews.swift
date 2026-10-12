@@ -64,6 +64,44 @@ struct ContentView: View {
                 }
             }
 
+            if let read = model.pageRead {
+                DashCard("What works on @\(read.handle)", trailing: "Close", action: { model.dismissPageRead() }) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("From your last \(read.read) posts. Ideas and your week plan now build on your best ones.")
+                            .font(.callout).foregroundStyle(.secondary)
+                        if let analysis = read.analysis {
+                            ForEach(analysis.works, id: \.self) { Label($0, systemImage: "hand.thumbsup").font(.callout) }
+                            ForEach(analysis.avoid, id: \.self) { Label($0, systemImage: "hand.thumbsdown").font(.callout).foregroundStyle(.secondary) }
+                        }
+                        if !read.best.isEmpty {
+                            Text("Your best recent posts").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 4)
+                            ForEach(read.best) { post in
+                                HStack(spacing: 8) {
+                                    Image(systemName: post.kind == "video" ? "play.rectangle" : post.kind == "carousel" ? "square.stack" : "photo")
+                                        .foregroundStyle(.secondary)
+                                    Text(post.caption.isEmpty ? post.url : post.caption).lineLimit(1)
+                                    Spacer()
+                                    Text([post.likes.map { "\($0) likes" }, post.comments.map { "\($0) comments" }, post.views.map { "\($0) views" }]
+                                        .compactMap(\.self).joined(separator: " · "))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    if let link = URL(string: post.url) { Link(destination: link) { Image(systemName: "arrow.up.right.square") } }
+                                }
+                            }
+                        }
+                        if let voice = read.analysis?.voice, !voice.page.isEmpty {
+                            Divider()
+                            Text("Suggested voice").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            Text("\(voice.page)\nFor: \(voice.audience)\nTopics: \(voice.topics)\nTone: \(voice.tone)").font(.callout)
+                            HStack {
+                                Button("Use as My Voice") { Task { await model.useReadAsVoice() } }
+                                    .buttonStyle(.borderedProminent)
+                                Button("Edit Voice…") { editingVoice = true }
+                            }
+                        }
+                    }
+                }
+            }
+
             if !model.weekPlan.isEmpty {
                 DashCard("Your week", trailing: "Clear", action: { model.clearWeekPlan() }) {
                     CardRows(items: model.weekPlan) { item in
@@ -143,6 +181,11 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            Button { Task { await model.readPage() } } label: {
+                if model.readingPage { ProgressView().controlSize(.small) } else { Label("Read My Page", systemImage: "text.viewfinder") }
+            }
+            .disabled(model.readingPage)
+            .help("Read your latest Instagram posts to learn your voice and what works (uses about $0.05 of Apify credit)")
             Button { editingVoice = true } label: { Label("Voice", systemImage: "person.wave.2") }
                 .help("How you write")
         }

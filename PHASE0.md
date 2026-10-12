@@ -92,4 +92,5 @@ Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no 
 - **On this Mac (Ollama)**: 16 GB Mac → Qwen 3.5 9B or Qwen 3 8B. Called from the Mac app itself (the server can't reach the Mac), so for text edits, idea lists and summaries, or an offline "this Mac only" mode.
 - **Cloudflare Workers AI FLUX** for free carousel and cover images (10,000 free units a day); needs a free Cloudflare token.
 - Skipped for now: DeepSeek, Kimi, Qwen on Alibaba Cloud (trial credits only), SiliconFlow (needs Chinese ID check), OpenRouter (no free Chinese models in Oct 2026).
-- [ ] Playbooks per platform as skills; carousel PNG rendering; metrics import.
+- [x] Read My Page (Apify, own public Instagram): suggested voice, what works / avoid, best posts; ideas and the week plan build on the best posts.
+- [ ] Carousel images (Cloudflare FLUX, needs a token); per-post metrics over time; LinkedIn/X playbooks as skills.

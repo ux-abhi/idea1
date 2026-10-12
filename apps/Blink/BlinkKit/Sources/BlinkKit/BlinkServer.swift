@@ -322,6 +322,17 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    /// Reads the owner's own public Instagram page (Apify) and sums it up; posts are kept on the server.
+    public func readPage(handle: String? = nil) async throws -> PageRead {
+        struct Body: Encodable { let handle: String? }
+        do {
+            return try await client.functions.invoke("page", options: .init(body: Body(handle: handle)))
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't read your page.")
+        }
+    }
+
     public func contentPieces() async throws -> [ContentPiece] {
         try await client.from("content_piece")
             .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for")

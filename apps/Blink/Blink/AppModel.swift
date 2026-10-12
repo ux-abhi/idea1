@@ -737,6 +737,28 @@ final class AppModel {
 
     func clearIdeas() async { ideas = [] }
 
+    private(set) var pageRead: PageRead?
+    private(set) var readingPage = false
+
+    /// Reads the owner's Instagram page (handle from Voice) and shows what works; nothing changes until they apply it.
+    func readPage() async {
+        guard let server, !readingPage else { return }
+        readingPage = true
+        defer { readingPage = false }
+        contentProblem = nil
+        do { pageRead = try await server.readPage() }
+        catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
+        catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
+    }
+
+    /// "Use as my voice": the page read's suggestion fills the Voice profile (never-say words are kept).
+    func useReadAsVoice() async {
+        guard let v = pageRead?.analysis?.voice else { return }
+        await saveVoice(VoiceProfile(page: v.page, audience: v.audience, topics: v.topics, notes: v.tone, neverSay: voice.neverSay))
+    }
+
+    func dismissPageRead() { pageRead = nil }
+
     /// The week plan: ideas already placed on the next 7 days.
     private(set) var weekPlan: [ContentIdea] = []
 
