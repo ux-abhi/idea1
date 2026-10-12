@@ -127,7 +127,7 @@ do $$ begin
 end $$;
 
 -- Content: A drafts a post and sets a voice; a bad platform or status is refused.
-insert into public.content_piece (idea, platform, format, body) values ('Launch week', 'x', 'thread', 'Day 1');
+insert into public.content_piece (idea, platform, format, body, planned_for) values ('Launch week', 'x', 'thread', 'Day 1', '2026-10-14');
 insert into public.voice_profile (notes, never_say, page) values ('Plain, short sentences', '{delve}', '@uxabhi on Instagram');
 do $$ begin
   begin
