@@ -624,6 +624,21 @@ struct GlanceView: View {
             if briefing {
                 Text(agenda.briefLine(now: now)).foregroundStyle(.white.opacity(0.7))
             }
+            if let app, !app.readyToPost.isEmpty {
+                // Morning card (§3): approved posts waiting for you to put them out.
+                HStack(spacing: 8) {
+                    Image(systemName: "megaphone.fill").foregroundStyle(.orange)
+                    Text(app.readyToPost.count == 1 ? "1 post ready to go out" : "\(app.readyToPost.count) posts ready to go out")
+                    Spacer(minLength: 8)
+                    Button("Open") {
+                        app.openPage = "content"
+                        NSApp.activate()
+                        NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                        done()
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.mint)
+                }
+            }
             if access != .granted {
                 Text("Your next meeting and today's reminders show here once Calendar is connected.")
                     .foregroundStyle(.white.opacity(0.7))

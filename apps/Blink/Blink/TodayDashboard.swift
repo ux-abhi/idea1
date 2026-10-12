@@ -9,6 +9,7 @@ struct TodayView: View {
     @Environment(AppModel.self) private var model
     let showWaiting: () -> Void
     let showNotes: () -> Void
+    let showContent: () -> Void
 
     var body: some View {
         TimelineView(.everyMinute) { context in
@@ -73,6 +74,16 @@ struct TodayView: View {
             let habits = model.habits.filter { model.isScheduledToday($0) }
             if !habits.isEmpty {
                 DashCard("Habits") { CardRows(items: habits) { HabitRow(habit: $0) } }
+            }
+            if !model.readyToPost.isEmpty {
+                DashCard("Ready to post", trailing: "Open Content", action: showContent) {
+                    CardRows(items: model.readyToPost) { piece in
+                        HStack(spacing: 10) {
+                            Text(piece.platform.name).font(.caption.weight(.semibold)).frame(width: 70, alignment: .leading)
+                            Text(piece.hook.isEmpty ? piece.body : piece.hook).lineLimit(1)
+                        }
+                    }
+                }
             }
             DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks,
                                           reminders: model.agenda.reminders, now: now), now: now)

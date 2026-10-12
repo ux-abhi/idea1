@@ -58,3 +58,17 @@ export async function groq(body: Record<string, unknown>): Promise<{
   const result = await response.json();
   return { message: result?.choices?.[0]?.message ?? {}, usage: result?.usage ?? {} };
 }
+
+/** The daily Claude limit (§19): profile.settings.daily_cap_usd against the last 24 hours. Free Groq models never count. */
+export function capProblem(model: Model, settings: unknown, usage: { model: string; cost_usd: number | string }[]): string | null {
+  if (model.provider !== "claude") return null;
+  const cap = Number((settings as Record<string, unknown> | null)?.daily_cap_usd);
+  if (!Number.isFinite(cap) || cap <= 0) return null;
+  const spent = usage.filter((u) => String(u.model).startsWith("claude")).reduce((sum, u) => sum + Number(u.cost_usd || 0), 0);
+  return spent >= cap
+    ? `Today's Claude limit ($${cap}) is used up. Switch to a free model in Settings, or raise the limit there.`
+    : null;
+}
+
+/** Spend rows for the cap check: everything logged in the last 24 hours (the owner can read their own usage). */
+export const lastDay = () => new Date(Date.now() - 86_400_000).toISOString();

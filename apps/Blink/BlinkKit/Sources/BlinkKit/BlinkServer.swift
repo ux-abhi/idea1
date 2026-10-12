@@ -347,6 +347,21 @@ public final class BlinkServer: Sendable {
         try await client.from("profile").update(["model_prefs": prefs]).eq("owner_id", value: user).execute()
     }
 
+    /// The daily Claude limit in USD (profile.settings.daily_cap_usd); nil means no limit.
+    public func dailyCap() async throws -> Double? {
+        struct Settings: Decodable { let daily_cap_usd: Double? }
+        struct Row: Decodable { let settings: Settings? }
+        let rows: [Row] = try await client.from("profile").select("settings").execute().value
+        return rows.first?.settings?.daily_cap_usd
+    }
+
+    public func setDailyCap(_ cap: Double?) async throws {
+        struct Settings: Encodable { let daily_cap_usd: Double? }
+        struct Row: Encodable { let settings: Settings }
+        let user = try await client.auth.session.user.id
+        try await client.from("profile").update(Row(settings: Settings(daily_cap_usd: cap))).eq("owner_id", value: user).execute()
+    }
+
     // MARK: Usage (cost meter, §24)
 
     public struct Usage: Decodable, Sendable {

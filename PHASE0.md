@@ -80,10 +80,11 @@ Phase 1: the notch panel (rest, peek, glance), calendar and reminders from Event
 Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no platform APIs yet).
 - [x] content_piece + voice_profile tables (RLS tests, live); `content` Edge Function drafts one native post per platform with structured output.
 - [x] Content page: idea → drafts, writing check (AI-sounding phrases, placeholders, limits, never-say words), edit, approve, copy & open; Voice sheet.
-- [ ] Morning card with posts ready; weekly content plan.
+- [x] Morning card: approved posts show in the notch glance ("2 posts ready · Open") and a "Ready to post" card on Today.
+- [ ] Weekly content plan.
 - [x] Model choice per feature in Settings: Claude or free Groq models (chat with tools, content drafts); server allowlist.
 - [x] Quick model switcher in the Blink panel header and on the Content page (same setting as Settings › AI & Usage).
-- [ ] Per-day spend cap.
+- [x] Daily Claude limit in Settings (last 24 hours; free Groq models keep working), enforced by the chat and content functions.
 
 ### Future: more free models (owner, 2026-10-12)
 - **GLM-4.7-Flash / GLM-4.6V-Flash on z.ai**: listed free with no end date, OpenAI-style API with tools and JSON; one request at a time, slow. Needs a free z.ai key as a server secret.

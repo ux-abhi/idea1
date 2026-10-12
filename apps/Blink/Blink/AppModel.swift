@@ -147,6 +147,7 @@ final class AppModel {
             await loadItems()
             await loadSpaces()
             await loadModelPrefs()
+            await loadContent() // the brief and Today show posts ready
             await loadHabits()
         } catch {
             switch ServerProblem(error) {
@@ -735,10 +736,29 @@ final class AppModel {
     private(set) var modelPrefs: [String: String] = [:]
     private(set) var modelProblem: String?
 
+    /// Claude stops for the day at this many dollars (free Groq models keep working); nil = no limit.
+    private(set) var dailyCap: Double?
+
     func loadModelPrefs() async {
         guard let server, email != nil, let prefs = try? await server.modelPrefs() else { return }
         modelPrefs = prefs
+        dailyCap = try? await server.dailyCap()
     }
+
+    func setDailyCap(_ cap: Double?) async {
+        guard let server else { return }
+        let before = dailyCap
+        dailyCap = cap
+        do { try await server.setDailyCap(cap) } catch {
+            dailyCap = before
+            modelProblem = "Couldn't change the limit. Check your connection and try again."
+        }
+    }
+
+    /// A page for the window to show (from the notch's "Open" buttons); MainWindow clears it once shown.
+    var openPage: String?
+
+    var readyToPost: [ContentPiece] { content.filter { $0.status == .approved } }
 
     func model(for feature: String) -> AIModel {
         AIModel.all.first { $0.id == modelPrefs[feature] } ?? AIModel.all.first { $0.id == AIModel.defaultID }!

@@ -5,7 +5,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseContentRequest, parseDrafts } from "./input.ts";
-import { cost, groq, pickModel } from "../_shared/models.ts";
+import { capProblem, cost, groq, lastDay, pickModel } from "../_shared/models.ts";
 
 // Fixed, so it caches. Our own short playbooks (§20); third-party skill text is never pasted here.
 const SYSTEM = `You write social posts for the owner, in their voice, from one idea. You write drafts only; the owner edits and posts.
@@ -63,14 +63,17 @@ Deno.serve(async (req) => {
   const parsed = parseContentRequest(await req.json().catch(() => null));
   if (typeof parsed === "string") return json(400, { error: parsed });
 
-  const [{ data: voice }, { data: profile }] = await Promise.all([
+  const [{ data: voice }, { data: profile }, { data: spend }] = await Promise.all([
     db.from("voice_profile").select("notes, never_say").maybeSingle(),
-    db.from("profile").select("model_prefs").maybeSingle(),
+    db.from("profile").select("model_prefs, settings").maybeSingle(),
+    db.from("model_usage").select("model, cost_usd").gte("at", lastDay()),
   ]);
   const model = pickModel(profile?.model_prefs, "content", Deno.env.get("BLINK_CONTENT_MODEL"));
   if (model.provider === "claude" && !apiKey) {
     return json(503, { error: "Add your Anthropic API key to this server's Edge Function secrets first, or pick a Groq model in Settings." });
   }
+  const overCap = capProblem(model, profile?.settings, spend ?? []);
+  if (overCap) return json(429, { error: overCap });
   const voiceText = JSON.stringify({ notes: voice?.notes ?? "", never_say: voice?.never_say ?? [] }).replaceAll("<", "\\u003c");
   const ideaText = parsed.idea.replaceAll("<", "‹");
 

@@ -257,6 +257,7 @@ struct DaySettings: View {
 struct UsageSettings: View {
     @Environment(AppModel.self) private var model
     @State private var month: [BlinkServer.Usage]?
+    @State private var day: Double?
     @State private var failed = false
 
     var body: some View {
@@ -265,11 +266,21 @@ struct UsageSettings: View {
                 LabeledContent("Chat and planning") { ModelMenu(feature: "chat") }
                 LabeledContent("Content drafts") { ModelMenu(feature: "content") }
                 LabeledContent("Quick text edits", value: "GPT-OSS 20B on Groq")
+                Picker("Daily limit for Claude", selection: Binding(
+                    get: { model.dailyCap ?? 0 },
+                    set: { cap in Task { await model.setDailyCap(cap > 0 ? cap : nil) } })) {
+                    Text("No limit").tag(0.0)
+                    ForEach([0.5, 1, 2, 5, 10, 20], id: \.self) { Text($0.formatted(.currency(code: "USD").precision(.fractionLength(0...2)))).tag($0) }
+                }
+                if let day {
+                    LabeledContent("Claude, last 24 hours", value: day.formatted(.currency(code: "USD").precision(.fractionLength(2))))
+                        .foregroundStyle(model.dailyCap.map { day >= $0 } == true ? .orange : .secondary)
+                }
                 if let problem = model.modelProblem { Text(problem).foregroundStyle(.orange) }
             } header: {
                 Text("Models")
             } footer: {
-                Text("Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. You can also switch from the Blink panel and the Content page.")
+                Text("Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. Past the daily limit, Claude pauses until the spend of the last 24 hours drops; free models keep working.")
             }
             Section {
                 if let month {
@@ -298,6 +309,8 @@ struct UsageSettings: View {
             guard let server = model.server else { return }
             let start = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
             do { month = try await server.usage(since: start) } catch { failed = true }
+            day = (try? await server.usage(since: .now.addingTimeInterval(-86_400)))?
+                .filter { $0.model.hasPrefix("claude") }.reduce(0) { $0 + $1.costUSD }
         }
     }
 }

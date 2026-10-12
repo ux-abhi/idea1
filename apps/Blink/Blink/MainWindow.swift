@@ -93,7 +93,10 @@ struct MainWindow: View {
         // One title per page: the big heading in the page; the toolbar carries the app name and sync state.
         .navigationTitle("Blink")
         .navigationSubtitle(subtitle)
-        .onAppear { page = Page(key: savedPage) }
+        .onAppear { page = Page(key: model.openPage ?? savedPage); model.openPage = nil }
+        .onChange(of: model.openPage) {
+            if let key = model.openPage { page = Page(key: key); model.openPage = nil }
+        }
         .onChange(of: page) { if let page { savedPage = page.key } }
         .task {
             await model.refresh()
@@ -103,7 +106,8 @@ struct MainWindow: View {
 
     @ViewBuilder private var detail: some View {
             switch page ?? .section(.today) {
-        case .section(.today): TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
+        case .section(.today): TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) },
+                                         showContent: { page = .section(.content) })
         case .section(.calendar): CalendarListView()
         case .section(.notes): NotesView()
         case .section(.tasks): TasksView()
@@ -118,7 +122,8 @@ struct MainWindow: View {
                 })
                 .id(id)
             } else {
-                TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
+                TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) },
+                          showContent: { page = .section(.content) })
             }
         }
             }
