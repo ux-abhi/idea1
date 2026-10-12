@@ -255,6 +255,35 @@ do $$ begin
   end;
 end $$;
 
+-- Retention: old handled mail goes, recent and pending things stay; apps can't run the cleanup.
+reset role;
+insert into public.email_msg (owner_id, account, uidvalidity, uid, subject, status, triage, created_at)
+  values ('00000000-0000-0000-0000-00000000000a', 'gmail', 1, 900, 'Old and done', 'done', 'normal', now() - interval '40 days'),
+         ('00000000-0000-0000-0000-00000000000a', 'gmail', 1, 901, 'Old but open', 'new', 'normal', now() - interval '40 days'),
+         ('00000000-0000-0000-0000-00000000000a', 'gmail', 1, 902, 'Old newsletter', 'new', 'newsletter', now() - interval '40 days'),
+         ('00000000-0000-0000-0000-00000000000a', 'gmail', 1, 903, 'Very old open', 'new', 'important', now() - interval '100 days');
+insert into public.action (owner_id, kind, risk, payload, payload_hash, proposed_by, status, created_at)
+  values ('00000000-0000-0000-0000-00000000000a', 'task.add', 'green', '{"title":"old pending"}', '\x00', 'blink', 'pending', now() - interval '200 days'),
+         ('00000000-0000-0000-0000-00000000000a', 'task.add', 'green', '{"title":"old declined"}', '\x00', 'blink', 'declined', now() - interval '200 days'),
+         ('00000000-0000-0000-0000-00000000000a', 'mail.send', 'red', '{"message_id":"<far@future>"}', '\x00', 'blink', 'approved', now() - interval '200 days');
+do $$ begin
+  perform public.remove_old_rows();
+  assert not exists (select 1 from public.email_msg where subject in ('Old and done', 'Old newsletter', 'Very old open')),
+    'handled and newsletter mail after 30 days, any mail after 90 days, should go';
+  assert exists (select 1 from public.email_msg where subject = 'Old but open'), 'open mail under 90 days stays';
+  assert exists (select 1 from public.action where payload->>'title' = 'old pending'), 'pending cards are never removed';
+  assert exists (select 1 from public.action where payload->>'message_id' = '<far@future>'), 'an approved (scheduled) send is never removed';
+  assert not exists (select 1 from public.action where payload->>'title' = 'old declined'), 'finished cards after 180 days go';
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  begin
+    perform public.remove_old_rows();
+    raise exception 'a signed-in app ran the cleanup';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+
 -- User B sees nothing of A's and cannot write rows owned by A.
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin

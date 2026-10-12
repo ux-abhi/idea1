@@ -53,8 +53,9 @@ public struct ClipItem: Codable, Identifiable, Equatable, Sendable {
 public struct ClipboardHistory: Codable, Equatable, Sendable {
     public private(set) var items: [ClipItem] = []
     public static let limit = 50
-    /// Bigger text (a log, a whole book) is not kept: it would bloat the history file and slow every search.
-    public static let maxText = 1_000_000
+    /// Bigger text (a log, a whole file) is not kept: the history stays under ~10 MB however it's used, and the file
+    /// that is rewritten on every copy stays quick to write.
+    public static let maxText = 200_000
 
     public init(items: [ClipItem] = []) {
         self.items = Array(items.prefix(Self.limit))

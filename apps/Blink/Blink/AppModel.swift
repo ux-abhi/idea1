@@ -741,6 +741,11 @@ final class AppModel {
         if let list = try? await server.contentPieces() {
             // Keep local text that hasn't reached the server yet (same data-loss guard as notes).
             content = list.map { fresh in contentUnsaved.contains(fresh.id) ? content.first { $0.id == fresh.id } ?? fresh : fresh }
+            // Only when the whole list loaded (the server sends at most 200): never delete images of drafts not shown.
+            if list.count < 200 {
+                let pieces = content
+                Task.detached(priority: .background) { PostMedia.prune(keeping: pieces) }
+            }
         }
         if let saved = try? await server.voiceProfile() { voice = saved }
     }

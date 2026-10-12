@@ -89,7 +89,7 @@ final class ClipboardStore {
         save(original: original.map { (Self.original(item), $0) })
     }
 
-    static let maxRich = 1_000_000
+    static let maxRich = 200_000
     nonisolated static let maxImage = 25_000_000
 
     /// The full-size image if it was kept, else the preview.
