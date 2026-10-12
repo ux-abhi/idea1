@@ -142,6 +142,21 @@ do $$ begin
   end;
 end $$;
 
+-- Page posts: A stores a post from their page; a non-Instagram URL or a bad handle is refused.
+insert into public.social_post (platform, handle, url, caption, likes) values ('instagram', 'uxabhi', 'https://www.instagram.com/p/abc/', 'Checkout tips', 120);
+do $$ begin
+  begin
+    insert into public.social_post (platform, handle, url) values ('instagram', 'uxabhi', 'https://evil.example/p/1');
+    raise exception 'non-Instagram url should have failed';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.social_post (platform, handle, url) values ('instagram', 'bad handle!', 'https://www.instagram.com/p/x/');
+    raise exception 'bad handle should have failed';
+  exception when check_violation then null;
+  end;
+end $$;
+
 -- User B sees nothing of A's and cannot write rows owned by A.
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
@@ -149,6 +164,7 @@ do $$ begin
   assert (select count(*) from public.segment) = 0, 'B must not see A''s spaces';
   assert (select count(*) from public.content_piece) = 0, 'B must not see A''s drafts';
   assert (select count(*) from public.voice_profile) = 0, 'B must not see A''s voice';
+  assert (select count(*) from public.social_post) = 0, 'B must not see A''s page posts';
   update public.voice_profile set notes = 'hacked', page = 'hacked';
   begin
     insert into public.item (type, title, segment_id) values ('task', 'sneak', '00000000-0000-0000-0000-0000000000c1');
