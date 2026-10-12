@@ -605,3 +605,10 @@ extension Tokens {
     let late = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 17, minute: 30))!
     #expect(!Later.choices(now: late, calendar: cal).contains { $0.title.hasPrefix("This evening") })
 }
+
+@Test func weekPlanDaysAreTheNextSeven() {
+    let cal = Calendar(identifier: .gregorian)
+    let now = cal.date(from: DateComponents(year: 2026, month: 12, day: 29, hour: 23))!
+    #expect(HabitDay.nextDays(from: now, calendar: cal) == ["2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01",
+                                                             "2027-01-02", "2027-01-03", "2027-01-04"])
+}

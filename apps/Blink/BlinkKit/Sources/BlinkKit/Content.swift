@@ -27,10 +27,12 @@ public struct ContentPiece: Codable, Identifiable, Equatable, Sendable {
     public var lintScore: Int?
     public var publishedAt: Date?
     public let createdAt: Date
+    /// The day it's planned for in the weekly plan ("2026-10-14"), if any.
+    public var plannedFor: String?
 
     enum CodingKeys: String, CodingKey {
         case id, idea, platform, format, hook, body, parts, hashtags, status
-        case lintScore = "lint_score", publishedAt = "published_at", createdAt = "created_at"
+        case lintScore = "lint_score", publishedAt = "published_at", createdAt = "created_at", plannedFor = "planned_for"
     }
 
     /// What gets copied to post: a thread or carousel as numbered parts, then the hashtags.
@@ -129,7 +131,9 @@ public struct ContentIdea: Decodable, Identifiable, Hashable, Sendable {
     public let platform: ContentPiece.Platform
     public let format: String
     public let why: String
-    public var id: String { title + platform.rawValue }
+    /// For the week plan: the day it's planned for ("2026-10-14").
+    public let day: String?
+    public var id: String { title + platform.rawValue + (day ?? "") }
 
     public var formatName: String {
         switch format {
@@ -138,5 +142,21 @@ public struct ContentIdea: Decodable, Identifiable, Hashable, Sendable {
         case "thread": "Thread"
         default: "Post"
         }
+    }
+}
+
+public extension HabitDay {
+    /// The next `count` days from today as "2026-10-14" keys (the week plan's days, in the owner's time zone).
+    static func nextDays(_ count: Int = 7, from now: Date = .now, calendar: Calendar = .current) -> [String] {
+        let today = calendar.startOfDay(for: now)
+        return (0..<count).compactMap { calendar.date(byAdding: .day, value: $0, to: today).map { key($0, calendar: calendar) } }
+    }
+
+    /// "Tue 14 Oct" for a "2026-10-14" key.
+    static func label(_ key: String, calendar: Calendar = .current) -> String {
+        guard let date = date(fromKey: key, calendar: calendar) else { return key }
+        if calendar.isDateInToday(date) { return "Today" }
+        if calendar.isDateInTomorrow(date) { return "Tomorrow" }
+        return date.formatted(.dateTime.weekday(.abbreviated).day().month())
     }
 }

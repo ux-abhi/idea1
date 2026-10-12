@@ -32,3 +32,17 @@ Deno.test("ideas mode needs no idea text and keeps only clean ideas", () => {
   ] }, ["instagram"]);
   if (ideas.length !== 1 || ideas[0].format !== "reel_script") throw new Error(JSON.stringify(ideas));
 });
+
+Deno.test("the week plan keeps only ideas on the given days, in day order", () => {
+  const days = ["2026-10-13", "2026-10-14"];
+  const ok = parseContentRequest({ mode: "week", platforms: ["x"], days });
+  if (typeof ok === "string" || ok.days.length !== 2) throw new Error("week request rejected");
+  if (typeof parseContentRequest({ mode: "week", platforms: ["x"] }) !== "string") throw new Error("week without days accepted");
+  if (typeof parseContentRequest({ mode: "drafts", idea: "a", platforms: ["x"], planned_for: "tomorrow" }) !== "string") throw new Error("bad planned_for");
+  const ideas = parseIdeas({ ideas: [
+    { title: "B", hook: "h", platform: "x", format: "post", why: "w", day: "2026-10-14" },
+    { title: "A", hook: "h", platform: "x", format: "post", why: "w", day: "2026-10-13" },
+    { title: "C", hook: "h", platform: "x", format: "post", why: "w", day: "2027-01-01" }, // not this week
+  ] }, ["x"], days);
+  if (ideas.map((i) => i.title).join() !== "A,B") throw new Error(JSON.stringify(ideas));
+});

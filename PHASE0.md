@@ -81,7 +81,8 @@ Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no 
 - [x] content_piece + voice_profile tables (RLS tests, live); `content` Edge Function drafts one native post per platform with structured output.
 - [x] Content page: idea → drafts, writing check (AI-sounding phrases, placeholders, limits, never-say words), edit, approve, copy & open; Voice sheet.
 - [x] Morning card: approved posts show in the notch glance ("2 posts ready · Open") and a "Ready to post" card on Today.
-- [ ] Weekly content plan.
+- [x] Weekly content plan: Plan My Week (4–5 posts on the next 7 days), Write / Write All, planned day on drafts, "Today's post" in the notch and on Today.
+- [x] Notch: /post, /ideas, Copy & Open on ready posts; chat history kept across restarts (last 20 turns, on this Mac).
 - [x] Model choice per feature in Settings: Claude or free Groq models (chat with tools, content drafts); server allowlist.
 - [x] Quick model switcher in the Blink panel header and on the Content page (same setting as Settings › AI & Usage).
 - [x] Daily Claude limit in Settings (last 24 hours; free Groq models keep working), enforced by the chat and content functions.

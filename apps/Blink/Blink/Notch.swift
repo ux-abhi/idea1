@@ -626,6 +626,23 @@ struct GlanceView: View {
             if briefing {
                 Text(agenda.briefLine(now: now)).foregroundStyle(.white.opacity(0.7))
             }
+            if let app {
+                // Planned for today but not approved yet: a nudge to review it.
+                ForEach(app.postsToday.filter { $0.status == .drafted }.prefix(1)) { piece in
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar.badge.clock").foregroundStyle(.orange)
+                        Text("Today's post: \(piece.hook.isEmpty ? piece.idea : piece.hook)").lineLimit(1)
+                        Spacer(minLength: 8)
+                        Button("Review") {
+                            app.openPage = "content"
+                            NSApp.activate()
+                            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                            done()
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.mint)
+                    }
+                }
+            }
             if let app, !app.readyToPost.isEmpty {
                 // Morning card (§3): approved posts waiting for you to put them out, postable from here.
                 ForEach(app.readyToPost.prefix(2)) { piece in

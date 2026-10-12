@@ -38,6 +38,10 @@ struct ContentView: View {
                         .menuStyle(.borderlessButton)
                         .controlSize(.small)
                     Button {
+                        Task { await model.planWeek(theme: idea, platforms: platforms) }
+                    } label: { Label("Plan My Week", systemImage: "calendar") }
+                    .disabled(platforms.isEmpty || model.thinkingOfIdeas)
+                    Button {
                         Task { await model.suggestIdeas(theme: idea, platforms: platforms) }
                     } label: {
                         if model.thinkingOfIdeas { ProgressView().controlSize(.small) } else { Label("Give Me Ideas", systemImage: "lightbulb") }
@@ -57,6 +61,29 @@ struct ContentView: View {
                 } else if !model.voice.isSetUp {
                     Button("Tell Blink about your page (e.g. @uxabhi, who it's for, your topics) so posts aren't generic…") { editingVoice = true }
                         .buttonStyle(.link)
+                }
+            }
+
+            if !model.weekPlan.isEmpty {
+                DashCard("Your week", trailing: "Clear", action: { model.clearWeekPlan() }) {
+                    CardRows(items: model.weekPlan) { item in
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(HabitDay.label(item.day ?? "")).font(.callout.weight(.semibold)).frame(width: 90, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(item.platform.name) · \(item.formatName)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                Text(item.title).font(.headline)
+                                Text("“\(item.hook)”").font(.callout)
+                            }
+                            Spacer()
+                            Button("Write") { Task { await model.write(item) } }
+                                .disabled(model.drafting)
+                        }
+                    }
+                    Button { Task { await model.writeWeek() } } label: {
+                        Label("Write All \(model.weekPlan.count)", systemImage: "square.and.pencil")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.drafting)
                 }
             }
 
@@ -151,6 +178,11 @@ private struct PieceEditor: View {
             HStack(spacing: 8) {
                 Text(piece.platform.name).font(.headline)
                 Text(formatName).font(.caption).foregroundStyle(.secondary)
+                if let day = piece.plannedFor {
+                    Label(HabitDay.label(day), systemImage: "calendar")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(day == HabitDay.key(.now) ? Color.orange : .secondary)
+                }
                 Spacer()
                 ScoreBadge(score: check.score)
                 Menu {

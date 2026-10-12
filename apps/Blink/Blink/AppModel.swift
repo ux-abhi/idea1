@@ -53,7 +53,18 @@ final class AppModel {
     private(set) var celebrations = 0
 
     /// This session's chat with Blink (not stored). shortcut: history lives in memory; persist it with Chat history (§36.2).
-    private(set) var chat: [BlinkServer.ChatTurn] = []
+    private(set) var chat: [BlinkServer.ChatTurn] = AppModel.savedChat() {
+        didSet { Self.saveChat(chat) }
+    }
+
+    /// The last 20 turns stay on this Mac across restarts (never sent anywhere but the chat function).
+    private static func savedChat() -> [BlinkServer.ChatTurn] {
+        UserDefaults.standard.data(forKey: "chat").flatMap { try? JSONDecoder().decode([BlinkServer.ChatTurn].self, from: $0) } ?? []
+    }
+
+    private static func saveChat(_ chat: [BlinkServer.ChatTurn]) {
+        UserDefaults.standard.set(try? JSONEncoder().encode(Array(chat.suffix(20))), forKey: "chat")
+    }
     private(set) var thinking = false
 
     /// The running Pomodoro phase or timer; kept on disk so it survives a restart.
@@ -694,13 +705,13 @@ final class AppModel {
     }
 
     /// Asks Claude for one draft per platform; they arrive saved, at the top of the list.
-    func draft(idea: String, platforms: [ContentPiece.Platform]) async -> Bool {
+    func draft(idea: String, platforms: [ContentPiece.Platform], plannedFor: String? = nil) async -> Bool {
         guard let server, !drafting else { return false }
         drafting = true
         defer { drafting = false }
         contentProblem = nil
         do {
-            try await server.draftContent(idea: idea, platforms: platforms)
+            try await server.draftContent(idea: idea, platforms: platforms, plannedFor: plannedFor)
             await loadContent()
             return true
         } catch let problem as BlinkServer.ChatProblem {
@@ -726,10 +737,38 @@ final class AppModel {
 
     func clearIdeas() async { ideas = [] }
 
+    /// The week plan: ideas already placed on the next 7 days.
+    private(set) var weekPlan: [ContentIdea] = []
+
+    func planWeek(theme: String, platforms: [ContentPiece.Platform]) async {
+        guard let server, !thinkingOfIdeas else { return }
+        thinkingOfIdeas = true
+        defer { thinkingOfIdeas = false }
+        contentProblem = nil
+        do { weekPlan = try await server.contentIdeas(theme: theme, platforms: platforms, days: HabitDay.nextDays()) }
+        catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
+        catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
+    }
+
+    func clearWeekPlan() { weekPlan = [] }
+
+    /// Drafts for every planned day, one after another.
+    func writeWeek() async {
+        for idea in weekPlan { await write(idea) }
+    }
+
+    /// Planned for today and not out yet: the notch and Today show these.
+    var postsToday: [ContentPiece] {
+        let today = HabitDay.key(.now)
+        return content.filter { $0.plannedFor == today && $0.status != .published && $0.status != .archived }
+    }
+
     /// "Write this": one idea becomes drafts for its platform.
     func write(_ idea: ContentIdea) async {
         ideas.removeAll { $0.id == idea.id }
-        _ = await draft(idea: "\(idea.title). Hook: \(idea.hook). Format: \(idea.formatName).", platforms: [idea.platform])
+        weekPlan.removeAll { $0.id == idea.id }
+        _ = await draft(idea: "\(idea.title). Hook: \(idea.hook). Format: \(idea.formatName).", platforms: [idea.platform],
+                        plannedFor: idea.day)
     }
 
     /// Applies an edit at once; `saveContent` sends it (the editor waits for a pause in typing).

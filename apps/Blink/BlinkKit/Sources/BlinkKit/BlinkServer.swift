@@ -291,12 +291,14 @@ public final class BlinkServer: Sendable {
 
     /// Claude writes one draft per platform from the idea and saves them; returns how many. Reload with `contentPieces()`.
     @discardableResult
-    public func draftContent(idea: String, platforms: [ContentPiece.Platform], spaceID: String? = nil) async throws -> Int {
-        struct Body: Encodable { let idea: String; let platforms: [String]; let space_id: String? }
+    public func draftContent(idea: String, platforms: [ContentPiece.Platform], spaceID: String? = nil,
+                             plannedFor: String? = nil) async throws -> Int {
+        struct Body: Encodable { let idea: String; let platforms: [String]; let space_id: String?; let planned_for: String? }
         struct Reply: Decodable { let saved: Int }
         do {
             let reply: Reply = try await client.functions.invoke(
-                "content", options: .init(body: Body(idea: idea, platforms: platforms.map(\.rawValue), space_id: spaceID)))
+                "content", options: .init(body: Body(idea: idea, platforms: platforms.map(\.rawValue), space_id: spaceID,
+                                                     planned_for: plannedFor)))
             return reply.saved
         } catch let FunctionsError.httpError(_, data) {
             struct ErrorBody: Decodable { let error: String }
@@ -305,12 +307,14 @@ public final class BlinkServer: Sendable {
     }
 
     /// Six ideas for the owner's page (optionally around a theme), to pick from. Nothing is saved.
-    public func contentIdeas(theme: String, platforms: [ContentPiece.Platform]) async throws -> [ContentIdea] {
-        struct Body: Encodable { let mode = "ideas"; let idea: String; let platforms: [String] }
+    /// `days` set: the week plan, each idea on one of those days.
+    public func contentIdeas(theme: String, platforms: [ContentPiece.Platform], days: [String] = []) async throws -> [ContentIdea] {
+        struct Body: Encodable { let mode: String; let idea: String; let platforms: [String]; let days: [String] }
         struct Reply: Decodable { let ideas: [ContentIdea] }
         do {
             let reply: Reply = try await client.functions.invoke(
-                "content", options: .init(body: Body(idea: theme, platforms: platforms.map(\.rawValue))))
+                "content", options: .init(body: Body(mode: days.isEmpty ? "ideas" : "week", idea: theme,
+                                                     platforms: platforms.map(\.rawValue), days: days)))
             return reply.ideas
         } catch let FunctionsError.httpError(_, data) {
             struct ErrorBody: Decodable { let error: String }
@@ -320,7 +324,7 @@ public final class BlinkServer: Sendable {
 
     public func contentPieces() async throws -> [ContentPiece] {
         try await client.from("content_piece")
-            .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at")
+            .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for")
             .neq("status", value: "archived")
             .order("created_at", ascending: false)
             .limit(200)

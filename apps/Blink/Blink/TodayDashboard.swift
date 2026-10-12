@@ -77,12 +77,16 @@ struct TodayView: View {
             if !habits.isEmpty {
                 DashCard("Habits") { CardRows(items: habits) { HabitRow(habit: $0) } }
             }
-            if !model.readyToPost.isEmpty {
-                DashCard("Ready to post", trailing: "Open Content", action: showContent) {
-                    CardRows(items: model.readyToPost) { piece in
+            let posts = model.readyToPost + model.postsToday.filter { $0.status == .drafted }
+            if !posts.isEmpty {
+                DashCard("Posts for today", trailing: "Open Content", action: showContent) {
+                    CardRows(items: posts) { piece in
                         HStack(spacing: 10) {
                             Text(piece.platform.name).font(.caption.weight(.semibold)).frame(width: 70, alignment: .leading)
                             Text(piece.hook.isEmpty ? piece.body : piece.hook).lineLimit(1)
+                            Spacer()
+                            Text(piece.status == .approved ? "Ready" : "To review")
+                                .font(.caption).foregroundStyle(piece.status == .approved ? .green : .orange)
                         }
                     }
                 }
