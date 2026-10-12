@@ -52,7 +52,8 @@ final class AppModel {
     /// Bumped when an answer reaches a 7 / 30 / 100-day streak; the notch celebrates.
     private(set) var celebrations = 0
 
-    /// This session's chat with Blink (not stored). shortcut: history lives in memory; persist it with Chat history (§36.2).
+    /// The chat with Blink. shortcut: the last 20 turns are kept in plain form in the app's container on this Mac (FileVault
+    /// protects it at rest); encrypt with a Keychain key, or sync it, when Chat history (§36.2) or the iPhone app needs it.
     private(set) var chat: [BlinkServer.ChatTurn] = AppModel.savedChat() {
         didSet { Self.saveChat(chat) }
     }
@@ -763,6 +764,12 @@ final class AppModel {
     // MARK: Post images (Cloudflare FLUX; kept on this Mac)
 
     private(set) var makingImage: Set<String> = []
+    /// Drafts the owner asked to design (owner rule: no post design until asked). Kept on this Mac.
+    private(set) var designed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "designed") ?? []) {
+        didSet { UserDefaults.standard.set(Array(designed), forKey: "designed") }
+    }
+
+    func design(_ piece: ContentPiece) { designed.insert(piece.id) }
     /// Bumped when an image is saved, so views reload it from disk.
     private(set) var mediaVersion = 0
 
@@ -775,6 +782,7 @@ final class AppModel {
         do {
             let data = try await server.makeImage(subject: piece.hook.isEmpty ? piece.idea : piece.hook, background: piece.format == "carousel")
             try PostMedia.save(data, for: piece.id)
+            designed.insert(piece.id)
             mediaVersion += 1
         } catch let problem as BlinkServer.ChatProblem {
             contentProblem = problem.message

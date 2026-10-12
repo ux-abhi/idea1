@@ -51,19 +51,20 @@ Deno.serve(async (req) => {
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
 
-  const body = await req.json().catch(() => null) as Record<string, unknown> | null;
-  const [{ data: voice }, { data: profile }, { data: spend }, { data: last }] = await Promise.all([
+  const [{ data: voice }, { data: profile }, { data: spend }, { count: recentTries }] = await Promise.all([
     db.from("voice_profile").select("page").maybeSingle(),
     db.from("profile").select("model_prefs, settings").maybeSingle(),
     db.from("model_usage").select("model, cost_usd").gte("at", lastDay()),
-    db.from("social_post").select("fetched_at").order("fetched_at", { ascending: false }).limit(1).maybeSingle(),
+    db.from("model_usage").select("id", { count: "exact", head: true })
+      .eq("feature", "page.fetch").gte("at", new Date(Date.now() - 10 * 60_000).toISOString()),
   ]);
-  const handle = parseHandle(body?.handle ?? voice?.page ?? "");
+  // Only the owner's own page, the handle saved in their Voice; the request can't name another account.
+  const handle = parseHandle(voice?.page ?? "");
   if (!handle) return json(400, { error: "Add your Instagram handle, like @uxabhi, in Content › Voice first." });
-  // One read per 10 minutes, so a double click can't spend the Apify credit twice.
-  if (last?.fetched_at && Date.now() - Date.parse(last.fetched_at) < 10 * 60_000) {
-    return json(429, { error: "Your page was read a few minutes ago. Try again in a little while." });
-  }
+  // One try per 10 minutes, failed ones included, so a double click or a retry can't spend the Apify credit twice.
+  if ((recentTries ?? 0) > 0) return json(429, { error: "Your page was read a few minutes ago. Try again in a little while." });
+  const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  await admin.from("model_usage").insert({ owner_id: user.id, feature: "page.fetch", model: "apify/instagram-scraper", cost_usd: 0 });
 
   // Apify: the owner's latest 20 posts, waiting up to 2 minutes for the run.
   let items: unknown;
@@ -130,7 +131,6 @@ Deno.serve(async (req) => {
     return json(502, { error: error instanceof Error ? error.message : "The model couldn't read the page." });
   }
 
-  const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   await admin.from("model_usage").insert({
     owner_id: user.id, feature: "page.read", model: model.id,
     input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: cost(model, inputTokens, outputTokens),

@@ -354,8 +354,8 @@ extension AppModel {
     }
 }
 
-/// A draft's picture: carousel slides drawn on the Mac (over one FLUX background, if made), or a cover image.
-/// Slides drag into any app; Export… writes PNGs to a folder you pick.
+/// A draft's picture, only once the owner asks for it: carousel slides drawn on the Mac (over one FLUX background, if
+/// made), or a cover image. Slides drag into any app; Export… writes PNGs to a folder you pick.
 private struct PieceMedia: View {
     @Environment(AppModel.self) private var model
     let piece: ContentPiece
@@ -365,8 +365,9 @@ private struct PieceMedia: View {
         let _ = model.mediaVersion // reload after a new image
         let image = PostMedia.exists(for: piece.id) ? NSImage(contentsOf: PostMedia.url(for: piece.id)) : nil
         let carousel = piece.format == "carousel" && !piece.parts.isEmpty
+        let asked = model.designed.contains(piece.id)
         VStack(alignment: .leading, spacing: 8) {
-                if carousel {
+                if carousel && asked {
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
                             ForEach(piece.parts.indices, id: \.self) { index in
@@ -387,6 +388,11 @@ private struct PieceMedia: View {
                         .accessibilityLabel("Cover image")
                 }
                 HStack(spacing: 8) {
+                    if carousel && !asked {
+                        Button { model.design(piece) } label: { Label("Design Slides", systemImage: "square.stack") }
+                            .help("Draw this carousel's slides with your text (free, on your Mac)")
+                    }
+                    if !carousel || asked {
                     Button {
                         Task { await model.makeImage(for: piece) }
                     } label: {
@@ -398,7 +404,8 @@ private struct PieceMedia: View {
                     }
                     .disabled(model.makingImage.contains(piece.id))
                     .help("A free FLUX image from Cloudflare; text is drawn on your Mac")
-                    if carousel || image != nil {
+                    }
+                    if (carousel && asked) || image != nil {
                         Button("Export…") { export(carousel: carousel, background: image) }
                     }
                 }

@@ -96,3 +96,8 @@ Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no 
 - [x] Post images: Cloudflare FLUX (free allowance, 100 a day cap); carousel slides drawn on the Mac over one background, drag or Export…; covers for other posts.
 - [x] Settings › Connections: checks each server key (Anthropic, Groq, Apify, Cloudflare) with a free read-only call.
 - [ ] Per-post metrics over time; LinkedIn/X playbooks as skills.
+
+Phase 3 audit (2026-10-12):
+- [x] `/ponytail-debt`: 24 shortcuts, all with an upgrade trigger (chat-history note updated: kept on this Mac).
+- [x] `/ponytail-audit`: page reader now reads only the handle saved in Voice (the request can't name another account); every Apify try counts toward the 10-minute guard; fixed and deployed.
+- [x] Owner rule: no post design until asked (slides and images only after Design Slides / Make Image).
