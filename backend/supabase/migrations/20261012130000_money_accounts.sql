@@ -37,5 +37,5 @@ create policy account_is_mine on public.transaction as restrictive for all to au
 create view public.money_account_now with (security_invoker = true) as
 select a.id, a.name, a.kind, a.balance, a.balance_at, a.is_default, a.created_at,
        coalesce((select sum(t.amount) from public.transaction t
-                 where t.account_id = a.id and t.created_at > a.balance_at), 0) as spent_since
+                 where t.account_id = a.id and t.created_at >= a.balance_at), 0) as spent_since
 from public.money_account a;
