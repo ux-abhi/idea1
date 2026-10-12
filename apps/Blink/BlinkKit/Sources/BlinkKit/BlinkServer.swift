@@ -158,7 +158,7 @@ public final class BlinkServer: Sendable {
 
     public func items() async throws -> [BlinkItem] {
         try await client.from("item")
-            .select("id, type, title, body, status, due_at, updated_at")
+            .select("id, type, title, body, status, due_at, updated_at, segment_id")
             .in("type", values: ["note", "task"])
             .is("deleted_at", value: nil)
             .neq("status", value: "archived")
@@ -183,7 +183,9 @@ public final class BlinkServer: Sendable {
     private struct ItemRow: Encodable {
         let id: String, type: String, title: String, body: String, status: String
         let due_at: Date?
+        let segment_id: String?
         init(_ item: BlinkItem) {
+            segment_id = item.spaceID
             id = item.id
             type = item.type.rawValue
             title = item.title
@@ -201,8 +203,32 @@ public final class BlinkServer: Sendable {
             try c.encode(body, forKey: .body)
             try c.encode(status, forKey: .status)
             try c.encode(due_at, forKey: .due_at)
+            try c.encode(segment_id, forKey: .segment_id)
         }
-        enum CodingKeys: String, CodingKey { case id, type, title, body, status, due_at }
+        enum CodingKeys: String, CodingKey { case id, type, title, body, status, due_at, segment_id }
+    }
+
+    // MARK: Spaces
+
+    public func spaces() async throws -> [Space] {
+        try await client.from("segment")
+            .select("id, title, goal, status, due_at, color, icon")
+            .neq("status", value: "archived")
+            .order("created_at")
+            .execute().value
+    }
+
+    public func save(new space: Space) async throws {
+        try await client.from("segment").insert(space).execute()
+    }
+
+    public func save(_ space: Space) async throws {
+        try await client.from("segment").update(space).eq("id", value: space.id).execute()
+    }
+
+    /// Deletes the space; its tasks and notes stay, outside any space (the database clears segment_id).
+    public func delete(_ space: Space) async throws {
+        try await client.from("segment").delete().eq("id", value: space.id).execute()
     }
 
     // MARK: Habits

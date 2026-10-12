@@ -13,14 +13,17 @@ public struct BlinkItem: Codable, Identifiable, Equatable, Sendable {
     public var status: Status
     public var dueAt: Date?
     public var updatedAt: Date
+    /// The Space it belongs to, if any.
+    public var spaceID: String?
 
     enum CodingKeys: String, CodingKey {
         case id, type, title, body, status
-        case dueAt = "due_at", updatedAt = "updated_at"
+        case dueAt = "due_at", updatedAt = "updated_at", spaceID = "segment_id"
     }
 
     public init(id: String, type: Kind, title: String, body: String = "", status: Status = .open,
-                dueAt: Date? = nil, updatedAt: Date = .now) {
+                dueAt: Date? = nil, updatedAt: Date = .now, spaceID: String? = nil) {
+        self.spaceID = spaceID
         self.id = id
         self.type = type
         self.title = title

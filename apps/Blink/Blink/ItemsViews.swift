@@ -145,6 +145,8 @@ struct TasksView: View {
 struct TaskRow: View {
     @Environment(AppModel.self) private var model
     let task: BlinkItem
+    /// Off inside a Space's own page, where the chip would only repeat its name.
+    var showsSpace = true
     @State private var title = ""
 
     var body: some View {
@@ -166,6 +168,9 @@ struct TaskRow: View {
                 .onSubmit(commit)
 
             Spacer()
+            if showsSpace, let space = model.spaces.first(where: { $0.id == task.spaceID }) {
+                SpaceChip(space: space)
+            }
             DueMenu(due: task.dueAt, highlight: task.isDue(by: .now)) { date in
                 var changed = task
                 changed.dueAt = date
@@ -176,6 +181,7 @@ struct TaskRow: View {
         .onAppear { title = task.title }
         .onChange(of: task.title) { title = task.title }
         .contextMenu {
+            MoveToSpaceMenu(item: task)
             Button("Delete", role: .destructive) { Task { await model.delete(task) } }
         }
     }
@@ -421,6 +427,7 @@ struct NotesView: View {
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
+                                MoveToSpaceMenu(item: note)
                                 Button("Delete", role: .destructive) { Task { await model.delete(note) } }
                             }
                         }

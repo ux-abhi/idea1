@@ -60,7 +60,7 @@ Built: Mac window (Today, Calendar, Notes, Tasks & Habits, Waiting, Activity), n
 Still to build for the Phase 2 gate (ARCHITECTURE §29):
 - [x] Today timeline (one time axis for meetings, tasks and reminders) — this is the "schedule checker" the evening check-in fills.
 - [x] Done ∩∩ with an Undo chip in the notch and the window (ticking off; deletes still ask first).
-- [ ] Segments, Project template first: migration + RLS tests, attach tasks and notes.
+- [x] Spaces (Segments), Project template first: migration + RLS tests (live), sidebar, Space page, Move to Space for tasks and notes.
 - [ ] Blink panel on every window screen (context-aware inspector: Ask-First + chat for that screen).
 - [ ] Settings: wake and evening times, hotkeys, model, cost meter from `model_usage`.
 - [ ] Tasks grouped Overdue / Today / Upcoming / Someday; reminders beyond today visible.

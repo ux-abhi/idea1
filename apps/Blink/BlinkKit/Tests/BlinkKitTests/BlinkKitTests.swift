@@ -494,6 +494,9 @@ extension Tokens {
     let habit = Habit(id: "h", name: "Read", weekdays: Array(1...7), createdAt: createdMondayNight)
     let progress = habit.progress(answers: [HabitDay.key(sunday, calendar: cal): .done], today: sunday, calendar: cal)
     #expect(progress.streak == 1)
+    // Next habit day, not answered yet: yesterday's done still counts.
+    let monday = cal.date(byAdding: .day, value: 1, to: sunday)!
+    #expect(habit.progress(answers: [HabitDay.key(sunday, calendar: cal): .done], today: monday, calendar: cal).streak == 1)
 }
 
 @Test func dayPlanPutsTodayOnOneAxis() {
@@ -513,4 +516,15 @@ extension Tokens {
     #expect(plan.anytime.map(\.title) == ["Any"])
     #expect(plan.timed.map(\.title) == ["Call", "Standup", "Invoice"])
     #expect(plan.nowIndex == 2) // after the meeting under way, before the 15:00 task
+}
+
+@Test func spaceProgressCountsOnlyItsTasks() throws {
+    let items = [BlinkItem(id: "1", type: .task, title: "a", status: .done, spaceID: "s"),
+                 BlinkItem(id: "2", type: .task, title: "b", spaceID: "s"),
+                 BlinkItem(id: "3", type: .note, title: "n", spaceID: "s"),
+                 BlinkItem(id: "4", type: .task, title: "other", status: .done)]
+    #expect(Space.progress(of: items, in: "s") == (1, 2))
+    // A cleared due date goes to the server as null, so the old date is really removed.
+    let json = String(decoding: try JSONEncoder().encode(Space(id: "s", title: "Web")), as: UTF8.self)
+    #expect(json.contains("\"due_at\":null"))
 }

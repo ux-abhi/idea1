@@ -32,33 +32,67 @@ struct MainWindow: View {
         }
     }
 
+    /// What the sidebar shows: a fixed page or one Space.
+    enum Page: Hashable {
+        case section(Section), space(String)
+
+        /// Stored as "tasks" or "space:<id>" so the window reopens where you left it.
+        var key: String {
+            switch self {
+            case .section(let s): s.rawValue
+            case .space(let id): "space:\(id)"
+            }
+        }
+
+        init(key: String) {
+            if key.hasPrefix("space:") { self = .space(String(key.dropFirst(6))) }
+            else { self = .section(Section(rawValue: key) ?? .today) }
+        }
+    }
+
     @Environment(AppModel.self) private var model
-    @State private var section: Section? = .today
+    @AppStorage("page") private var savedPage = "today"
+    @State private var page: Page?
+    @State private var newSpace = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $section) {
+            List(selection: $page) {
                 SwiftUI.Section {
                     row(.today)
                     row(.calendar)
                     row(.notes)
                     row(.tasks)
                 }
+                spacesSection
                 SwiftUI.Section {
                     row(.waiting)
                     row(.activity)
                 }
             }
+            .sheet(isPresented: $newSpace) {
+                NewSpaceSheet { page = .space($0) }
+            }
             .navigationSplitViewColumnWidth(min: 180, ideal: 210)
         } detail: {
-            switch section ?? .today {
-            case .today: TodayView(showWaiting: { section = .waiting }, showNotes: { section = .notes })
-            case .calendar: CalendarListView()
-            case .notes: NotesView()
-            case .tasks: TasksView()
-            case .waiting: WaitingView()
-            case .activity: ActivityView()
+            switch page ?? .section(.today) {
+            case .section(.today): TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
+            case .section(.calendar): CalendarListView()
+            case .section(.notes): NotesView()
+            case .section(.tasks): TasksView()
+            case .section(.waiting): WaitingView()
+            case .section(.activity): ActivityView()
+            case .space(let id):
+                if let space = model.spaces.first(where: { $0.id == id }) {
+                    SpaceView(space: space, openNote: { note in
+                        model.focusNoteID = note
+                        page = .section(.notes)
+                    })
+                    .id(id)
+                } else {
+                    TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
+                }
             }
         }
         .overlay(alignment: .bottom) { UndoToast() }
@@ -66,16 +100,38 @@ struct MainWindow: View {
         // One title per page: the big heading in the page; the toolbar carries the app name and sync state.
         .navigationTitle("Blink")
         .navigationSubtitle(subtitle)
+        .onAppear { page = Page(key: savedPage) }
+        .onChange(of: page) { if let page { savedPage = page.key } }
         .task {
             await model.refresh()
             await model.loadActivity()
         }
     }
 
+    private var spacesSection: some View {
+        SwiftUI.Section("Spaces") {
+            ForEach(model.spaces) { space in spaceRow(space) }
+            Button { newSpace = true } label: { Label("New Space", systemImage: "plus") }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func spaceRow(_ space: Space) -> some View {
+        let progress = Space.progress(of: model.items, in: space.id)
+        return Label {
+            Text(space.title)
+        } icon: {
+            Image(systemName: space.icon).foregroundStyle(Color.system(space.color))
+        }
+        .badge(progress.total - progress.done)
+        .tag(Page.space(space.id))
+    }
+
     private func row(_ s: Section) -> some View {
         Label(s.title, systemImage: s.symbol)
             .badge(s == .waiting ? model.pending.count : 0)
-            .tag(s)
+            .tag(Page.section(s))
     }
 
     /// "Last synced" in the toolbar (§36.2); the server's address only when it can't be reached (it's in Settings).

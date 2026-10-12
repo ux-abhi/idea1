@@ -143,6 +143,7 @@ final class AppModel {
             await reloadAgenda()
             await loadActions()
             await loadItems()
+            await loadSpaces()
             await loadHabits()
         } catch {
             switch ServerProblem(error) {
@@ -288,8 +289,8 @@ final class AppModel {
     }
 
     @discardableResult
-    func create(_ type: BlinkItem.Kind, title: String, due: Date? = nil) -> BlinkItem {
-        let item = BlinkItem(id: UUID().uuidString.lowercased(), type: type, title: title, dueAt: due)
+    func create(_ type: BlinkItem.Kind, title: String, due: Date? = nil, space: String? = nil) -> BlinkItem {
+        let item = BlinkItem(id: UUID().uuidString.lowercased(), type: type, title: title, dueAt: due, spaceID: space)
         items.insert(item, at: 0)
         unsaved.insert(item.id)
         Task { await save(item.id) }
@@ -622,6 +623,59 @@ final class AppModel {
     func clearChat() {
         chat = []
         quickReplies = []
+    }
+
+    // MARK: Spaces (ARCHITECTURE §35)
+
+    private(set) var spaces: [Space] = []
+
+    func loadSpaces() async {
+        guard let server, email != nil, let list = try? await server.spaces() else { return }
+        spaces = list
+    }
+
+    /// Adds the space at once; takes it back out if the server refuses.
+    func createSpace(_ space: Space) async {
+        guard let server else { return }
+        spaces.append(space)
+        do {
+            try await server.save(new: space)
+        } catch {
+            spaces.removeAll { $0.id == space.id }
+            saveProblem = "Couldn't create the space. Check your connection and try again."
+        }
+    }
+
+    func saveSpace(_ space: Space) async {
+        guard let server, let index = spaces.firstIndex(where: { $0.id == space.id }) else { return }
+        let before = spaces[index]
+        spaces[index] = space
+        do {
+            try await server.save(space)
+        } catch {
+            if let i = spaces.firstIndex(where: { $0.id == space.id }) { spaces[i] = before }
+            saveProblem = "Couldn't save the space. Check your connection and try again."
+        }
+    }
+
+    /// Deletes the space; its tasks and notes stay, outside any space.
+    func deleteSpace(_ space: Space) async {
+        guard let server, let index = spaces.firstIndex(where: { $0.id == space.id }) else { return }
+        spaces.remove(at: index)
+        do {
+            try await server.delete(space)
+            for i in items.indices where items[i].spaceID == space.id { items[i].spaceID = nil }
+        } catch {
+            spaces.insert(space, at: min(index, spaces.count))
+            saveProblem = "Couldn't delete the space. Check your connection and try again."
+        }
+    }
+
+    func move(_ item: BlinkItem, to spaceID: String?) async {
+        var changed = item
+        changed.spaceID = spaceID
+        edit(changed)
+        await save(item.id)
     }
 
     // MARK: Apple Reminders

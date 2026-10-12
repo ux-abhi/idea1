@@ -49,6 +49,13 @@ public enum HabitDay {
         return calendar.startOfDay(for: shifted)
     }
 
+    /// The day a "2026-10-12" key stands for.
+    public static func date(fromKey key: String, calendar: Calendar = .current) -> Date? {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    }
+
     public static func key(_ day: Date, calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: day)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
@@ -69,8 +76,10 @@ extension Habit {
     /// Streak rules (§36.2): rest days and skips never break it; one missed day per week is forgiven
     /// automatically; an unanswered today doesn't count against it yet.
     public func progress(answers: [String: HabitAnswer], today: Date, calendar: Calendar = .current) -> HabitProgress {
-        // A habit added after midnight but before wake time belongs to the habit day still running (today).
-        let created = min(calendar.startOfDay(for: createdAt), today)
+        // Habit days run from wake time to wake time, so a habit added after midnight can already have an answer for
+        // the day before its calendar date: count from whichever is earliest.
+        let firstAnswer = answers.keys.min().flatMap { HabitDay.date(fromKey: $0, calendar: calendar) } ?? .distantFuture
+        let created = min(calendar.startOfDay(for: createdAt), today, firstAnswer)
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
         let start = answers[HabitDay.key(today, calendar: calendar)] == nil ? yesterday : today
         let (kept, of) = kept(answers, start, created, calendar)
