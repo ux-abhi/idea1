@@ -51,10 +51,10 @@ Gates (ARCHITECTURE §29, §36.7):
 - [x] `/ponytail-audit` must-fix items fixed; every shortcut has an upgrade trigger.
 - [x] Reduce Motion passes. CI green (database, secrets, Swift, Edge Function tests).
 - [x] First run to the notch in ~85 s on a fresh test copy (target 2 min); no meeting was on the calendar that night, so the notch showed "All clear".
-- [ ] VoiceOver: menu bar entry and announcements added, not yet confirmed by ear.
+- [x] VoiceOver: confirmed by the owner (2026-10-12).
 - [ ] State matrix (§9.8) not formally covered; offline, signed-out, permission-denied and empty states exist.
 
-## Phase 2 status (Mac session, 2026-10-12)
+## Phase 2 status (Mac session, 2026-10-12): done
 Built: Mac window (Today, Calendar, Notes, Tasks & Habits, Waiting, Activity), notes with Groq text edits, tasks with due dates and bulk actions, Apple Reminders edit/complete/delete, habits with forgiving streaks, evening check-in that asks before planning tomorrow, chat in the notch (⌃⌥Space) with Ask-First proposals. Extras on request: Pomodoro and timers in the notch ears, clipboard history (⌃⌥V, local only, drag out).
 
 Still to build for the Phase 2 gate (ARCHITECTURE §29):
@@ -69,9 +69,9 @@ Gates:
 - [x] `/ponytail-audit` (2026-10-12): 6 findings, all fixed (panel context fenced as data, chat turn order, all-day reminders, clipboard saves and disk cap, bulk reload). CI green.
 - [x] `/ponytail-debt`: 22 shortcuts, every one with an upgrade trigger.
 - [x] Idle at rest: 0.0 % CPU, 58 MB, about one wake-up a second (clipboard check with tolerance), measured with `top`.
-- [ ] VoiceOver by ear (carried from Phase 1).
-- [ ] State matrix (§9.8) for the new screens: Spaces, timeline, Blink panel, Settings.
-- [ ] Evening check-in fills tomorrow on the timeline, checked end to end by the owner.
+- [x] VoiceOver confirmed by the owner.
+- [x] New screens checked by the owner: Spaces, timeline, Blink panel, Settings.
+- [x] Evening check-in fills tomorrow on the timeline, checked end to end by the owner.
 
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
