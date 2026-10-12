@@ -157,6 +157,32 @@ do $$ begin
   end;
 end $$;
 
+-- Mail: the worker (service role) writes messages; A can read them and change only their status.
+reset role;
+insert into public.email_msg (owner_id, account, uidvalidity, uid, subject, triage)
+  values ('00000000-0000-0000-0000-00000000000a', 'gmail', 1, 42, 'Interview invite', 'important');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  assert (select count(*) from public.email_msg) = 1, 'A should see own mail';
+  update public.email_msg set status = 'done';
+  assert (select status from public.email_msg) = 'done', 'A can mark mail done';
+  begin
+    update public.email_msg set subject = 'changed';
+    raise exception 'A changed a mail subject';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.email_msg (account, uidvalidity, uid) values ('gmail', 1, 43);
+    raise exception 'A inserted mail directly';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update public.email_msg set status = 'archived';
+    raise exception 'bad mail status accepted';
+  exception when check_violation then null;
+  end;
+end $$;
+
 -- User B sees nothing of A's and cannot write rows owned by A.
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
@@ -165,6 +191,7 @@ do $$ begin
   assert (select count(*) from public.content_piece) = 0, 'B must not see A''s drafts';
   assert (select count(*) from public.voice_profile) = 0, 'B must not see A''s voice';
   assert (select count(*) from public.social_post) = 0, 'B must not see A''s page posts';
+  assert (select count(*) from public.email_msg) = 0, 'B must not see A''s mail';
   update public.voice_profile set notes = 'hacked', page = 'hacked', brief = 'hacked';
   begin
     insert into public.item (type, title, segment_id) values ('task', 'sneak', '00000000-0000-0000-0000-0000000000c1');
