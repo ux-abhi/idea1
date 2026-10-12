@@ -201,7 +201,7 @@ private struct PieceEditor: View {
                         .disabled(check.issues.contains { $0.blocks })
                         .help(check.issues.contains { $0.blocks } ? "Fix the red items first" : "Mark ready to post")
                 case .approved:
-                    Button { copyAndOpen() } label: { Label("Copy & Open \(piece.platform.name)", systemImage: "arrow.up.forward.app") }
+                    Button { model.copyAndOpen(piece) } label: { Label("Copy & Open \(piece.platform.name)", systemImage: "arrow.up.forward.app") }
                         .buttonStyle(.borderedProminent)
                     Button("Back to Draft") { Task { await model.setStatus(.drafted, of: piece) } }
                 case .published, .archived:
@@ -250,9 +250,11 @@ private struct PieceEditor: View {
             model.edit(changed)
         })
     }
+}
 
+extension AppModel {
     /// Puts the post on the clipboard and opens the platform's composer (pre-filled where it allows), then marks it posted.
-    private func copyAndOpen() {
+    func copyAndOpen(_ piece: ContentPiece) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(piece.postText, forType: .string)
         var url: URL?
@@ -270,7 +272,7 @@ private struct PieceEditor: View {
             url = URL(string: "https://www.instagram.com/") // no web composer: the caption is on the clipboard
         }
         if let url { NSWorkspace.shared.open(url) }
-        Task { await model.setStatus(.published, of: piece) }
+        Task { await setStatus(.published, of: piece) }
     }
 }
 

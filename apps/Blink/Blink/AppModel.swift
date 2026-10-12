@@ -808,7 +808,24 @@ final class AppModel {
             startTimer(minutes: minutes)
         case .focus:
             startFocus()
+        case .post(let idea):
+            let platforms = contentPlatforms
+            if await draft(idea: idea, platforms: platforms) {
+                chat.append(.init(role: .assistant, text: "Wrote drafts for \(platforms.map(\.name).formatted()). Edit and approve them in **Content**."))
+            } else if let problem = contentProblem {
+                chat.append(.init(role: .assistant, text: problem))
+            }
+        case .ideas(let theme):
+            await suggestIdeas(theme: theme, platforms: contentPlatforms)
+            if let problem = contentProblem { chat.append(.init(role: .assistant, text: problem)) }
         }
+    }
+
+    /// The platforms picked on the Content page (all three until changed there).
+    var contentPlatforms: [ContentPiece.Platform] {
+        let saved = UserDefaults.standard.string(forKey: "contentPlatforms") ?? "instagram,linkedin,x"
+        let list = saved.split(separator: ",").compactMap { ContentPiece.Platform(rawValue: String($0)) }
+        return list.isEmpty ? ContentPiece.Platform.allCases : list
     }
 
     // MARK: Model choice (Settings, Blink panel, Content page share this)

@@ -8,6 +8,10 @@ public enum QuickCommand: Equatable, Sendable {
     case note(String)
     case timer(minutes: Double)
     case focus
+    /// Drafts for the owner's usual platforms, saved to Content.
+    case post(idea: String)
+    /// Ideas for the owner's page, optionally around a theme.
+    case ideas(theme: String)
 
     /// Every command with an example, for the hint list.
     public static let all: [(name: String, example: String, about: String)] = [
@@ -16,6 +20,8 @@ public enum QuickCommand: Equatable, Sendable {
         ("/note", "/note Idea for the website header", "Start a note"),
         ("/timer", "/timer 10", "Timer in minutes"),
         ("/focus", "/focus", "25-minute focus round"),
+        ("/post", "/post 3 checkout mistakes that lose users", "Write drafts for your platforms"),
+        ("/ideas", "/ideas video ideas for my page", "Post ideas for your page"),
     ]
 
     /// The command for a finished line, or nil if it isn't one yet (still typing the name, or nothing after it).
@@ -41,6 +47,10 @@ public enum QuickCommand: Equatable, Sendable {
             return (1...480).contains(minutes) ? .timer(minutes: minutes) : nil
         case "/focus":
             return .focus
+        case "/post":
+            return rest.isEmpty ? nil : .post(idea: rest)
+        case "/ideas":
+            return .ideas(theme: rest)
         default:
             return nil
         }

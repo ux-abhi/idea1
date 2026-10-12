@@ -593,6 +593,8 @@ extension Tokens {
     #expect(QuickCommand.parse("/timer 1.5h") == .timer(minutes: 90))
     #expect(QuickCommand.parse("/timer 0") == nil && QuickCommand.parse("/task ") == nil && QuickCommand.parse("what's left today?") == nil)
     #expect(QuickCommand.suggestions(for: "/re").map(\.name) == ["/remind"])
+    #expect(QuickCommand.parse("/post Why onboarding fails") == .post(idea: "Why onboarding fails"))
+    #expect(QuickCommand.parse("/post") == nil && QuickCommand.parse("/ideas") == .ideas(theme: ""))
     #expect(QuickCommand.suggestions(for: "/task pay").isEmpty)
 }
 

@@ -23,7 +23,8 @@ All of these only propose: the owner sees a card and approves it.
 When asked to plan a day, fit the open tasks around the calendar with realistic times and propose them; keep the reply
 to a few short lines.
 After proposing, say in one line what you proposed, e.g. "Proposed: call Sam, Fri 16:00. It's waiting for your OK."
-Never claim something is done before the owner approves it. If you don't know, say so.`;
+Never claim something is done before the owner approves it. If you don't know, say so.
+When asked for social post ideas or drafts, give a short answer and end with: "Type /ideas or /post in the notch to save them to Content."`;
 
 const TOOLS: Anthropic.Tool[] = [
   {

@@ -627,12 +627,21 @@ struct GlanceView: View {
                 Text(agenda.briefLine(now: now)).foregroundStyle(.white.opacity(0.7))
             }
             if let app, !app.readyToPost.isEmpty {
-                // Morning card (§3): approved posts waiting for you to put them out.
-                HStack(spacing: 8) {
-                    Image(systemName: "megaphone.fill").foregroundStyle(.orange)
-                    Text(app.readyToPost.count == 1 ? "1 post ready to go out" : "\(app.readyToPost.count) posts ready to go out")
-                    Spacer(minLength: 8)
-                    Button("Open") {
+                // Morning card (§3): approved posts waiting for you to put them out, postable from here.
+                ForEach(app.readyToPost.prefix(2)) { piece in
+                    HStack(spacing: 8) {
+                        Image(systemName: "megaphone.fill").foregroundStyle(.orange)
+                        Text("\(piece.platform.name): \(piece.hook.isEmpty ? piece.body : piece.hook)").lineLimit(1)
+                        Spacer(minLength: 8)
+                        Button("Copy & Open") {
+                            app.copyAndOpen(piece)
+                            done()
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.mint)
+                    }
+                }
+                if app.readyToPost.count > 2 {
+                    Button("\(app.readyToPost.count - 2) more ready in Content") {
                         app.openPage = "content"
                         NSApp.activate()
                         NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
@@ -711,7 +720,16 @@ struct ChatPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             UndoChipRow(app: app)
-            if input.trimmingCharacters(in: .whitespaces).hasPrefix("/") {
+            if app.drafting || app.thinkingOfIdeas {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(app.drafting ? "Writing drafts…" : "Thinking of ideas…").foregroundStyle(.white.opacity(0.6))
+                }
+                .font(.callout)
+            }
+            if !app.ideas.isEmpty && !input.hasPrefix("/") {
+                NotchIdeas(app: app)
+            } else if input.trimmingCharacters(in: .whitespaces).hasPrefix("/") {
                 CommandHint(input: input)
             } else if app.chat.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -784,6 +802,39 @@ struct ChatPanel: View {
     }
 }
 
+/// /ideas in the notch: each idea with Write, which turns it into drafts in Content.
+struct NotchIdeas: View {
+    let app: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Ideas for your page").font(.callout.weight(.semibold))
+                Spacer()
+                Button("Clear") { Task { await app.clearIdeas() } }.buttonStyle(.plain).foregroundStyle(.white.opacity(0.5))
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(app.ideas) { idea in
+                        HStack(alignment: .top, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("\(idea.platform.name) · \(idea.formatName)").font(.caption).foregroundStyle(.white.opacity(0.5))
+                                Text(idea.title).font(.callout).lineLimit(2)
+                            }
+                            Spacer(minLength: 6)
+                            Button("Write") { Task { await app.write(idea) } }
+                                .buttonStyle(.plain).foregroundStyle(.mint)
+                                .disabled(app.drafting)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 150)
+        }
+        .foregroundStyle(.white)
+    }
+}
+
 /// "✓ Task added: Pay rent · Undo" for a few seconds after something is added or ticked off (tokens: hold.undoChip).
 struct UndoChipRow: View {
     let app: AppModel
@@ -844,6 +895,8 @@ struct CommandHint: View {
         case .note(let title): "Note: \(title)"
         case .timer(let minutes): "Timer: \(minutes.formatted()) min"
         case .focus: "Focus: 25 min"
+        case .post(let idea): "Post: \(idea)"
+        case .ideas(let theme): theme.isEmpty ? "Ideas for your page" : "Ideas: \(theme)"
         }
     }
 
@@ -854,6 +907,8 @@ struct CommandHint: View {
         case .note: "note.text"
         case .timer: "timer"
         case .focus: "brain.head.profile"
+        case .post: "megaphone"
+        case .ideas: "lightbulb"
         }
     }
 
@@ -865,6 +920,8 @@ struct CommandHint: View {
         case .note: return "Starts a note you can finish in Blink › Notes."
         case .timer: return "Counts down in the notch, with one chime at the end."
         case .focus: return "Then a 5-minute break; a long break after every fourth."
+        case .post: return "Drafts for your platforms from Content, saved there to edit and approve."
+        case .ideas: return "Six ideas for your page; Write turns one into drafts."
         }
     }
 }
