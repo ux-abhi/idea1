@@ -128,7 +128,7 @@ end $$;
 
 -- Content: A drafts a post and sets a voice; a bad platform or status is refused.
 insert into public.content_piece (idea, platform, format, body, planned_for) values ('Launch week', 'x', 'thread', 'Day 1', '2026-10-14');
-insert into public.voice_profile (notes, never_say, page) values ('Plain, short sentences', '{delve}', '@uxabhi on Instagram');
+insert into public.voice_profile (notes, never_say, page, brief) values ('Plain, short sentences', '{delve}', '@uxabhi on Instagram', '# Brief');
 do $$ begin
   begin
     insert into public.content_piece (idea, platform, format) values ('x', 'tiktok', 'post');
@@ -165,7 +165,7 @@ do $$ begin
   assert (select count(*) from public.content_piece) = 0, 'B must not see A''s drafts';
   assert (select count(*) from public.voice_profile) = 0, 'B must not see A''s voice';
   assert (select count(*) from public.social_post) = 0, 'B must not see A''s page posts';
-  update public.voice_profile set notes = 'hacked', page = 'hacked';
+  update public.voice_profile set notes = 'hacked', page = 'hacked', brief = 'hacked';
   begin
     insert into public.item (type, title, segment_id) values ('task', 'sneak', '00000000-0000-0000-0000-0000000000c1');
     raise exception 'B put an item into A''s space';
