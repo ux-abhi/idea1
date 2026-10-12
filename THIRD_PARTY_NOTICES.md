@@ -62,4 +62,4 @@ Claude Code skills in `.claude/skills/` help development and are never part of t
 | Remotion | Remotion License: free for companies of up to 3 people; a company licence is needed beyond that | https://www.remotion.pro/license |
 | Inter (font, via @remotion/google-fonts) | SIL Open Font License 1.1 | https://github.com/rsms/inter |
 | Kenney Interface Sounds and Impact Sounds (in `public/sfx/kenney/`, via kapishdima/soundcn) | CC0 1.0 | https://kenney.nl |
-| "Product Launch" by lnplusmusic (`public/music/`, git-ignored, not redistributed) | Pixabay Content License, assuming it came from Pixabay: owner to confirm | https://pixabay.com/users/lnplusmusic/ |
+| "Product Launch" by lnplusmusic (`public/music/`, git-ignored, not redistributed) | Pixabay Content License (owner confirmed the source, 2026-10-13) | https://pixabay.com/users/lnplusmusic/ |
