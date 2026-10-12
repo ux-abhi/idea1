@@ -366,7 +366,7 @@ final class AppModel {
     func complete(id: String) async {
         if let task = openTasks.first(where: { $0.id == id }) {
             await toggle(task)
-        } else if let reminder = agenda.reminders.first(where: { $0.id == id }) {
+        } else if let reminder = allReminders.first(where: { $0.id == id }) ?? agenda.reminders.first(where: { $0.id == id }) {
             await complete(reminder)
         }
     }
@@ -384,6 +384,7 @@ final class AppModel {
         for task in tasks { await delete(task) }
         for reminder in reminders {
             agenda.reminders.removeAll { $0.id == reminder.id }
+            allReminders.removeAll { $0.id == reminder.id }
             await writeReminder { try await calendarReader.deleteReminder(id: reminder.id) }
         }
     }
@@ -428,6 +429,20 @@ final class AppModel {
 
     func progress(_ habit: Habit) -> HabitProgress {
         habit.progress(answers: habitAnswers[habit.id] ?? [:], today: habitToday)
+    }
+
+    /// Wake time ends the habit day; evening time opens the check-in. Kept on the server's profile.
+    func setDayTimes(wake: (hour: Int, minute: Int), evening: (hour: Int, minute: Int)) async {
+        guard let server else { return }
+        let before = (self.wake, self.evening)
+        self.wake = wake
+        self.evening = evening
+        do {
+            try await server.setDayTimes(wake: wake, evening: evening)
+        } catch {
+            (self.wake, self.evening) = before
+            saveProblem = "Couldn't save your times. Check your connection and try again."
+        }
     }
 
     func loadHabits() async {
@@ -625,6 +640,9 @@ final class AppModel {
         quickReplies = []
     }
 
+    /// Every open Apple Reminder (any date, at most 50), refreshed with the agenda.
+    private(set) var allReminders: [AgendaReminder] = []
+
     // MARK: Spaces (ARCHITECTURE §35)
 
     private(set) var spaces: [Space] = []
@@ -683,6 +701,7 @@ final class AppModel {
     /// Ticks off a reminder. It leaves the list at once; the change reaches Apple Reminders straight after.
     func complete(_ reminder: AgendaReminder, offeringUndo: Bool = true) async {
         agenda.reminders.removeAll { $0.id == reminder.id }
+        allReminders.removeAll { $0.id == reminder.id }
         if offeringUndo { offerUndo("Done: \(reminder.title)") { [weak self] in await self?.reopen(reminder) } }
         await writeReminder { try await calendarReader.updateReminder(id: reminder.id, completed: true) }
     }
@@ -737,6 +756,7 @@ final class AppModel {
             reloadAgain = false
             let window = CalendarReader.window(from: .now)
             agenda = await calendarReader.agenda(in: window)
+            allReminders = await calendarReader.openReminders() // the Tasks page shows every open reminder
             guard let server, email != nil else { continue }
             // The device is the source of truth; a failed upload is simply retried by the next reload.
             try? await server.uploadCalendar(agenda.events, window: window)

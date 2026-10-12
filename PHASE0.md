@@ -62,8 +62,8 @@ Still to build for the Phase 2 gate (ARCHITECTURE §29):
 - [x] Done ∩∩ with an Undo chip in the notch and the window (ticking off; deletes still ask first).
 - [x] Spaces (Segments), Project template first: migration + RLS tests (live), sidebar, Space page, Move to Space for tasks and notes.
 - [ ] Blink panel on every window screen (context-aware inspector: Ask-First + chat for that screen).
-- [ ] Settings: wake and evening times, hotkeys, model, cost meter from `model_usage`.
-- [ ] Tasks grouped Overdue / Today / Upcoming / Someday; reminders beyond today visible.
+- [x] Settings: wake and evening times, shortcuts, which AI does what, cost meter from `model_usage` (model choice stays a server setting).
+- [x] Tasks grouped Overdue / Today / Upcoming / Someday, with every open Apple Reminder.
 
 Gates still open: VoiceOver by ear (carried from Phase 1), state matrix (§9.8), `/ponytail-audit` + `/ponytail-debt` at the end of the phase, 0 fps at rest re-checked with timers and clipboard.
 

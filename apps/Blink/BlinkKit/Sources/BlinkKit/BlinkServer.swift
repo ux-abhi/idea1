@@ -278,6 +278,31 @@ public final class BlinkServer: Sendable {
         return (parse(row.wake_time, (7, 0)), parse(row.evening_time, (21, 30)))
     }
 
+    public func setDayTimes(wake: (hour: Int, minute: Int), evening: (hour: Int, minute: Int)) async throws {
+        let user = try await client.auth.session.user.id
+        func text(_ t: (hour: Int, minute: Int)) -> String { String(format: "%02d:%02d:00", t.hour, t.minute) }
+        try await client.from("profile")
+            .update(["wake_time": text(wake), "evening_time": text(evening)])
+            .eq("owner_id", value: user)
+            .execute()
+    }
+
+    // MARK: Usage (cost meter, §24)
+
+    public struct Usage: Decodable, Sendable {
+        public let feature: String
+        public let model: String
+        public let costUSD: Double
+        enum CodingKeys: String, CodingKey { case feature, model, costUSD = "cost_usd" }
+    }
+
+    /// What the server logged for Claude and Groq since `since` (rows are written by the server only).
+    public func usage(since: Date) async throws -> [Usage] {
+        // shortcut: sums on the device; add a server-side sum when a month passes a few thousand requests.
+        try await client.from("model_usage").select("feature, model, cost_usd")
+            .gte("at", value: since.ISO8601Format()).limit(5000).execute().value
+    }
+
     private struct HabitRow: Encodable { let id: String, name: String, weekdays: [Int] }
 
     // MARK: Chat

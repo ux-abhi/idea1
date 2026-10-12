@@ -16,9 +16,42 @@ struct TasksView: View {
     @State private var confirmDelete = false
 
     var body: some View {
+        let entries = openEntries
         let habitsToday = model.habits.filter { model.isScheduledToday($0) }
         let doneToday = habitsToday.filter { model.answerToday($0) == .done }.count
         DashPage("Tasks & Habits", summary: "\(model.openTasks.count) open · \(habitsToday.isEmpty ? "no habits today" : "\(doneToday) of \(habitsToday.count) habits done")") {
+            DashCard("Tasks", trailing: entries.isEmpty ? nil : (selecting ? "Done" : "Select"),
+                     action: { selecting.toggle(); selected = [] }) {
+                AddField(placeholder: "Add a task, e.g. \"Send invoice tomorrow at 10\"", text: $newTitle, action: add)
+                // Shows what Blink understood before Return.
+                if let due = TaskInput.parse(newTitle).due {
+                    Label("Due \(due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))",
+                          systemImage: "calendar")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if entries.isEmpty {
+                    Text("Nothing open. Type above and press Return; Apple Reminders show here too.").foregroundStyle(.secondary)
+                }
+            }
+
+            // Blink tasks and Apple Reminders together, by when they're due.
+            ForEach(DueGroup.allCases, id: \.self) { group in
+                let rows = entries.filter { $0.group == group }
+                if !rows.isEmpty {
+                    DashCard("\(group.rawValue) · \(rows.count)") {
+                        CardRows(items: rows) { entry in
+                            selectable(entry.id) {
+                                switch entry.kind {
+                                case .task(let task): TaskRow(task: task)
+                                case .reminder(let reminder): ReminderRow(reminder: reminder)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             DashCard("Habits") {
                 if !model.habits.isEmpty {
                     CardRows(items: model.habits) { HabitRow(habit: $0) }
@@ -32,30 +65,6 @@ struct TasksView: View {
                 }
                 Text("Skips and rest days never break a streak, and one missed day a week is forgiven.")
                     .font(.caption).foregroundStyle(.secondary)
-            }
-
-            DashCard("Tasks", trailing: model.openTasks.isEmpty && model.agenda.reminders.isEmpty ? nil : (selecting ? "Done" : "Select"),
-                     action: { selecting.toggle(); selected = [] }) {
-                AddField(placeholder: "Add a task, e.g. \"Send invoice tomorrow at 10\"", text: $newTitle, action: add)
-                // Shows what Blink understood before Return.
-                if let due = TaskInput.parse(newTitle).due {
-                    Label("Due \(due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))",
-                          systemImage: "calendar")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if model.openTasks.isEmpty {
-                    Text("No open tasks. Type above and press Return.").foregroundStyle(.secondary)
-                } else {
-                    Divider()
-                    CardRows(items: model.openTasks) { task in selectable(task.id) { TaskRow(task: task) } }
-                }
-            }
-
-            if !model.agenda.reminders.isEmpty {
-                DashCard("Apple Reminders due today") {
-                    CardRows(items: model.agenda.reminders) { reminder in selectable(reminder.id) { ReminderRow(reminder: reminder) } }
-                }
             }
 
             if !model.doneTasks.isEmpty {
@@ -112,7 +121,7 @@ struct TasksView: View {
         HStack(spacing: 10) {
             Text("\(selected.count) selected").foregroundStyle(.secondary)
             Button("Select All") {
-                selected = Set(model.openTasks.map(\.id) + model.agenda.reminders.map(\.id))
+                selected = Set(openEntries.map(\.id))
             }
             Spacer()
             Button("Mark Done") {
@@ -131,7 +140,25 @@ struct TasksView: View {
     }
 
     private func chosen() -> ([BlinkItem], [AgendaReminder]) {
-        (model.openTasks.filter { selected.contains($0.id) }, model.agenda.reminders.filter { selected.contains($0.id) })
+        (model.openTasks.filter { selected.contains($0.id) }, model.allReminders.filter { selected.contains($0.id) })
+    }
+
+    /// One row on the Tasks page: a Blink task or an Apple Reminder.
+    private struct Entry: Identifiable {
+        enum Kind { case task(BlinkItem), reminder(AgendaReminder) }
+        let kind: Kind
+        let id: String
+        let due: Date?
+        let group: DueGroup
+    }
+
+    private var openEntries: [Entry] {
+        let now = Date.now
+        let tasks = model.openTasks.map { Entry(kind: .task($0), id: $0.id, due: $0.dueAt, group: DueGroup.of($0.dueAt, now: now)) }
+        let reminders = model.allReminders.map {
+            Entry(kind: .reminder($0), id: $0.id, due: $0.due, group: DueGroup.of($0.due, now: now))
+        }
+        return (tasks + reminders).sorted { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
     }
 
     private func add() {

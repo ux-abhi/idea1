@@ -528,3 +528,12 @@ extension Tokens {
     let json = String(decoding: try JSONEncoder().encode(Space(id: "s", title: "Web")), as: UTF8.self)
     #expect(json.contains("\"due_at\":null"))
 }
+
+@Test func dueGroupSortsByWhenItIsDue() {
+    let cal = Calendar(identifier: .gregorian)
+    let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 13))!
+    #expect(DueGroup.of(nil, now: now, calendar: cal) == .someday)
+    #expect(DueGroup.of(now.addingTimeInterval(-60), now: now, calendar: cal) == .overdue)
+    #expect(DueGroup.of(now.addingTimeInterval(3600 * 10), now: now, calendar: cal) == .today) // 23:00
+    #expect(DueGroup.of(now.addingTimeInterval(3600 * 11), now: now, calendar: cal) == .upcoming) // midnight
+}

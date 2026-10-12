@@ -17,7 +17,9 @@ struct SettingsRoot: View {
                     Tab("Server", systemImage: "server.rack") { ServerSettings() }
                     Tab("Devices", systemImage: "laptopcomputer.and.iphone") { DevicesSettings() }
                     Tab("Calendar", systemImage: "calendar") { CalendarSettings() }
+                    Tab("Your Day", systemImage: "sun.horizon") { DaySettings() }
                     Tab("Blink & Notch", systemImage: "eyes") { NotchSettings() }
+                    Tab("AI & Usage", systemImage: "sparkles") { UsageSettings() }
                     Tab("Privacy", systemImage: "lock.shield") { PrivacySettings() }
                 }
             } else {
@@ -206,6 +208,90 @@ struct NotchSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Wake and evening times, and the keyboard shortcuts.
+struct DaySettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Form {
+            Section {
+                DatePicker("Wake up", selection: binding(\.wake), displayedComponents: .hourAndMinute)
+                DatePicker("Evening check-in", selection: binding(\.evening), displayedComponents: .hourAndMinute)
+            } footer: {
+                Text("Your habit day ends when you wake up, so a late night still counts for the day before. The evening check-in opens in the notch at the second time.")
+            }
+            Section("Keyboard shortcuts") {
+                LabeledContent("Ask Blink", value: "⌃⌥Space")
+                LabeledContent("Clipboard history", value: "⌃⌥V")
+                LabeledContent("Approve a card", value: "⌘⏎")
+                LabeledContent("Undo the last done", value: "⌘Z")
+                LabeledContent("Close the notch", value: "Esc")
+            }
+            if let problem = model.saveProblem {
+                Text(problem).foregroundStyle(.orange)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    /// A time on today's date for the picker; saving keeps only hour and minute.
+    private func binding(_ key: KeyPath<AppModel, (hour: Int, minute: Int)>) -> Binding<Date> {
+        Binding(
+            get: {
+                let t = model[keyPath: key]
+                return Calendar.current.date(bySettingHour: t.hour, minute: t.minute, second: 0, of: .now) ?? .now
+            },
+            set: { date in
+                let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+                let t = (hour: c.hour ?? 0, minute: c.minute ?? 0)
+                let isWake = key == \AppModel.wake
+                Task { await model.setDayTimes(wake: isWake ? t : model.wake, evening: isWake ? model.evening : t) }
+            })
+    }
+}
+
+/// Which AI does what, and what it cost this month (the server logs every Claude and Groq request).
+struct UsageSettings: View {
+    @Environment(AppModel.self) private var model
+    @State private var month: [BlinkServer.Usage]?
+    @State private var failed = false
+
+    var body: some View {
+        Form {
+            Section("Who does what") {
+                LabeledContent("Chat, planning, every action", value: "Claude")
+                LabeledContent("Quick text edits (fix, shorter, clearer)", value: "Groq")
+            }
+            Section {
+                if let month {
+                    let total = month.reduce(0) { $0 + $1.costUSD }
+                    LabeledContent("Spent so far", value: total.formatted(.currency(code: "USD").precision(.fractionLength(2))))
+                    LabeledContent("Requests", value: "\(month.count)")
+                    ForEach(Set(month.map(\.model)).sorted(), id: \.self) { name in
+                        LabeledContent(name, value: month.filter { $0.model == name }.reduce(0) { $0 + $1.costUSD }
+                            .formatted(.currency(code: "USD").precision(.fractionLength(2))))
+                            .foregroundStyle(.secondary)
+                    }
+                } else if failed {
+                    Text("Couldn't load usage from your server.").foregroundStyle(.secondary)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+            } header: {
+                Text("This month")
+            } footer: {
+                Text("Estimated from list prices. Your Anthropic console shows the exact bill. The chat model is set on your server (BLINK_CHAT_MODEL).")
+            }
+        }
+        .formStyle(.grouped)
+        .task {
+            guard let server = model.server else { return }
+            let start = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
+            do { month = try await server.usage(since: start) } catch { failed = true }
+        }
     }
 }
 
