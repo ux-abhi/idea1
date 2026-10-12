@@ -1,29 +1,23 @@
-// Colours come from design/tokens.json (apple.* dark values, blink.*). Motion springs from tokens → motion.spring.
+// Colours from design/tokens.json (apple.* dark values). Apple-style film: black, white, grey and one blue.
+// Motion springs from tokens → motion.spring.
 import {loadFont} from '@remotion/google-fonts/Inter';
 import {spring, useCurrentFrame, useVideoConfig} from 'remotion';
 
-export const {fontFamily} = loadFont('normal', {weights: ['400', '600', '800'], subsets: ['latin']});
+export const {fontFamily} = loadFont('normal', {weights: ['400', '500', '600', '700'], subsets: ['latin']});
 
 export const C = {
-	notch: '#000000',
 	bg: '#000000',
+	notch: '#000000', // blink.notch.hardware
 	text: '#FFFFFF',
-	dim: '#8E8E93', // systemGray
+	gray: '#8E8E93', // systemGray
 	tile: '#1C1C1E', // systemGray6 dark
 	tileEdge: '#2C2C2E', // systemGray5 dark
-	red: '#FF453A',
-	mint: '#63E6E2',
-	indigo: '#5E5CE6',
-	green: '#30D158',
-	orange: '#FF9F0A',
-	yellow: '#FFD60A',
-	pink: '#FF375F',
-	cyan: '#64D2FF',
-	brown: '#AC8E68',
-	purple: '#BF5AF2',
+	line: '#3A3A3C', // systemGray4 dark
+	blue: '#0A84FF', // systemBlue dark: the only accent
+	blueSoft: 'rgba(10, 132, 255, 0.22)',
 };
 
-// 120 BPM at 60 fps: one beat is 30 frames. Key hits land on beats.
+// 120 BPM at 60 fps: one beat is 30 frames. Scene lengths and key hits land on beats.
 export const BEAT = 30;
 
 // Token springs are (response, dampingRatio); Remotion wants stiffness and damping for mass 1.
@@ -33,16 +27,17 @@ const tokenSpring = (response: number, ratio: number) => ({
 	damping: (4 * Math.PI * ratio) / response,
 });
 export const SPRING = {
+	smooth: tokenSpring(0.5, 1.0), // motion.spring.focus: no overshoot, the Apple-film default
 	content: tokenSpring(0.3, 0.9),
 	open: tokenSpring(0.45, 0.78),
 	cardIn: tokenSpring(0.4, 0.82),
-	close: tokenSpring(0.38, 0.9),
 	// Video-only: the rapid-fire words must be sharp within a few frames.
 	snap: tokenSpring(0.16, 0.95),
 };
+export type Spring = typeof SPRING.smooth;
 
 /** 0→1 spring that starts `delay` frames into the current sequence. */
-export const useIn = (delay = 0, config = SPRING.content) => {
+export const useIn = (delay = 0, config: Spring = SPRING.smooth) => {
 	const frame = useCurrentFrame();
 	const {fps} = useVideoConfig();
 	return spring({frame: frame - delay, fps, config});

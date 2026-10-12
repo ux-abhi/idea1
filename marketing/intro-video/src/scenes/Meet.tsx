@@ -1,14 +1,15 @@
-import {Eyes, Scene, Words} from '../kinetic';
-import {SPRING, useIn, useUnit} from '../theme';
+import {Eyes, Scene, Sfx, Words} from '../kinetic';
+import {useIn, useUnit} from '../theme';
 
-// 6.5–9s: the name, with the eyes above it.
+// 7–9.5s: the name, with the eyes above it.
 export const Meet = () => {
 	const u = useUnit();
-	const eyes = useIn(0, SPRING.open);
+	const eyes = useIn(0);
 	return (
 		<Scene>
-			<Eyes mood="idle" width={420 * u} blinks={[95]} style={{scale: String(0.6 + 0.4 * eyes), opacity: eyes, marginBottom: 10 * u}} />
-			<Words text="Meet Blink." delay={10} size={210} stagger={8} />
+			<Eyes width={200 * u} blinks={[100]} style={{scale: String(0.8 + 0.2 * eyes), opacity: eyes, marginBottom: 24 * u}} />
+			<Words text="Meet Blink." delay={8} size={180} stagger={6} />
+			<Sfx name="whoosh" at={0} volume={0.35} />
 		</Scene>
 	);
 };

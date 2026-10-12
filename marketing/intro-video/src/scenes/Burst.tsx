@@ -1,20 +1,10 @@
 import {Sequence, useCurrentFrame} from 'remotion';
-import {Scene, Words} from '../kinetic';
+import {Scene, Sfx, Words} from '../kinetic';
 import {C, SPRING, useUnit} from '../theme';
 
-// 22.5–25.5s: everything else, one word per half-beat, then all of it at once.
-const MORE = [
-	{word: 'Reminders', color: C.mint},
-	{word: 'Habits', color: C.text},
-	{word: 'Streaks', color: C.yellow},
-	{word: 'Focus timer', color: C.text},
-	{word: 'Clipboard', color: C.cyan},
-	{word: 'Calendar', color: C.text},
-	{word: 'Post insights', color: C.purple},
-	{word: 'Spaces', color: C.text},
-	{word: 'Ask Claude anything', color: C.indigo},
-];
-const EACH = 14;
+// 50–53s: everything else, one word per half-beat, then all of it at once.
+const MORE = ['Reminders', 'Habits', 'Streaks', 'Focus timer', 'Calendar', 'Post insights', 'Spaces', 'Quick commands'];
+const EACH = 15;
 
 export const Burst = () => {
 	const u = useUnit();
@@ -22,15 +12,16 @@ export const Burst = () => {
 	const all = MORE.length * EACH;
 	return (
 		<Scene>
-			{MORE.map((m, i) => (
-				<Sequence key={m.word} from={i * EACH} durationInFrames={EACH} layout="none">
-					<Words text={m.word} size={190} stagger={1} color={m.color} config={SPRING.snap} />
+			{MORE.map((word, i) => (
+				<Sequence key={word} from={i * EACH} durationInFrames={EACH} layout="none">
+					<Words text={word} size={170} stagger={1} config={SPRING.snap} />
+					<Sfx name="tick" at={0} volume={0.3} />
 				</Sequence>
 			))}
 			{frame >= all && (
-				<div style={{display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: `${10 * u}px ${36 * u}px`, width: 1500 * u}}>
-					{MORE.map((m, i) => (
-						<Words key={m.word} text={m.word} size={64} weight={600} color={m.color} delay={all + i} stagger={0} />
+				<div style={{display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: `${8 * u}px ${34 * u}px`, width: 1400 * u}}>
+					{MORE.map((word, i) => (
+						<Words key={word} text={word} size={60} weight={500} color={i % 3 === 1 ? C.blue : C.text} delay={all + i} stagger={0} config={SPRING.content} />
 					))}
 				</div>
 			)}
