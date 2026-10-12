@@ -12,7 +12,9 @@ owner's words (e.g. "Lunch at Mensa", "Rewe"), a category, and days_ago (0 = tod
 Categories: food = eating out, cafés, snacks, delivery; groceries = supermarkets (Rewe, Aldi, Lidl, Edeka, Kaufland, Netto);
 transport = bus, train, Deutsche Bahn, taxi, fuel, bike; housing = rent, Nebenkosten; bills = phone, internet, subscriptions,
 insurance, utilities; shopping = clothes, electronics, Amazon, household things; health = pharmacy, doctor, gym; fun = cinema,
-games, going out, hobbies; travel = flights, hotels, trips; education = uni fees, courses, books; other = anything else.`;
+games, going out, hobbies; travel = flights, hotels, trips; education = uni fees, courses, books; other = anything else.
+account: the name of the account it was paid from, exactly as listed in <accounts>, only if the note names one (e.g.
+"from N26", "cash", "with Sparkasse card"); otherwise "".`;
 
 const SCHEMA = {
   type: "object", additionalProperties: false, required: ["entries"],
@@ -20,10 +22,10 @@ const SCHEMA = {
     entries: {
       type: "array",
       items: {
-        type: "object", additionalProperties: false, required: ["amount", "note", "category", "days_ago"],
+        type: "object", additionalProperties: false, required: ["amount", "note", "category", "days_ago", "account"],
         properties: {
           amount: { type: "number" }, note: { type: "string" },
-          category: { type: "string", enum: [...CATEGORIES] }, days_ago: { type: "integer" },
+          category: { type: "string", enum: [...CATEGORIES] }, days_ago: { type: "integer" }, account: { type: "string" },
         },
       },
     },
@@ -48,14 +50,16 @@ Deno.serve(async (req) => {
   const parsed = parseSortRequest(await req.json().catch(() => null));
   if (typeof parsed === "string") return json(400, { error: parsed });
 
+  const { data: accounts } = await db.from("money_account").select("id, name, kind, is_default");
+  const fence = (s: string) => s.replaceAll("<", "‹");
   try {
-    // "<" escaped so the note can't close the fence.
+    // "<" escaped so the note (and account names) can't close the fences.
     const { message, usage } = await compatible("groq", {
       model: MODEL.id, temperature: 0.1, max_completion_tokens: 2000,
-      messages: [{ role: "system", content: SYSTEM }, { role: "user", content: `<spent>${parsed.text.replaceAll("<", "‹")}</spent>` }],
+      messages: [{ role: "system", content: SYSTEM }, { role: "user", content: `<accounts>${fence(JSON.stringify((accounts ?? []).map((a) => ({ name: a.name, kind: a.kind }))))}</accounts>\n<spent>${fence(parsed.text)}</spent>` }],
       response_format: { type: "json_schema", json_schema: { name: "spends", strict: true, schema: SCHEMA } },
     });
-    const entries = parseEntries(JSON.parse(message.content ?? "{}"), parsed.today);
+    const entries = parseEntries(JSON.parse(message.content ?? "{}"), parsed.today, accounts ?? []);
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
     await admin.from("model_usage").insert({ owner_id: user.id, feature: "money.sort", model: MODEL.id,
       input_tokens: usage.prompt_tokens ?? 0, output_tokens: usage.completion_tokens ?? 0,

@@ -167,8 +167,16 @@ struct BlinkPanel: View {
             }.joined(separator: "\n")
             let recent = model.spends.filter { MoneyMath.month(of: $0.spentOn) == month }.prefix(40).map { "- \($0.spentOn) \($0.note) \($0.amount.formatted(.currency(code: "EUR"))) [\($0.category.title)]" }
                 .joined(separator: "\n")
-            let context = String("Spending this month by category:\n\(totals.isEmpty ? "none" : totals)\nLatest spends:\n\(recent.isEmpty ? "none" : recent)".prefix(3900))
-            return [Suggestion("Where is my money going?", "Where is my money going this month? Two or three short lines.", context: context),
+            let summary = MoneyMath.summary(model.spends, today: HabitDay.key(.now))
+            let balance = MoneyMath.totalBalance(model.accounts)
+            let accounts = model.accounts.map { "- \($0.name) (\($0.kind.title)): \(MoneyMath.balance(of: $0).formatted(.currency(code: "EUR")))" }
+                .joined(separator: "\n")
+            let money = model.accounts.isEmpty ? "Accounts: none added yet.\n"
+                : "Accounts now:\n\(accounts)\nTotal: \(balance.formatted(.currency(code: "EUR"))). Left at month end at this pace: \(MoneyMath.leftAtMonthEnd(total: balance, summary: summary, today: HabitDay.key(.now)).formatted(.currency(code: "EUR"))).\n"
+            let context = String("\(money)Spent this month: \(summary.total.formatted(.currency(code: "EUR"))), \(summary.average.formatted(.currency(code: "EUR"))) a day, last month \(summary.lastMonthTotal.formatted(.currency(code: "EUR"))).\nBy category:\n\(totals.isEmpty ? "none" : totals)\nLatest spends:\n\(recent.isEmpty ? "none" : recent)".prefix(3900))
+            return [Suggestion("How am I doing this month?", "How am I doing with money this month, given my balances and spending? Three short lines.", context: context),
+                    Suggestion("Where is my money going?", "Where is my money going this month? Two or three short lines.", context: context),
+                    Suggestion("Can I afford something?", "I'm thinking of buying something. Ask me what and how much, then tell me if my balances and pace allow it.", context: context),
                     Suggestion("How can I spend less?", "Based on this month, where could I spend less? Concrete, short.", context: context)]
         case .section(.waiting):
             return [Suggestion("Explain what's waiting for me")]

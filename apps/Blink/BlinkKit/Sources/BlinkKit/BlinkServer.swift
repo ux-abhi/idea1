@@ -240,8 +240,15 @@ public final class BlinkServer: Sendable {
 
     /// Answers from `sinceDay` ("yyyy-MM-dd") on.
     public func habitLogs(since sinceDay: String) async throws -> [HabitLog] {
-        try await client.from("habit_log").select("habit_id, day, status")
-            .gte("day", value: sinceDay).execute().value
+        // The server returns at most 1,000 rows per request, and years of answers are more: read page by page.
+        var logs: [HabitLog] = []
+        while true {
+            let page: [HabitLog] = try await client.from("habit_log").select("habit_id, day, status")
+                .gte("day", value: sinceDay).order("day").order("habit_id")
+                .range(from: logs.count, to: logs.count + 999).execute().value
+            logs += page
+            if page.count < 1000 { return logs }
+        }
     }
 
     public func save(new habit: Habit) async throws {
@@ -468,7 +475,7 @@ public final class BlinkServer: Sendable {
 
     /// Spends from `since` ("2026-09-01") on, newest first.
     public func spends(since: String) async throws -> [Spend] {
-        try await client.from("transaction").select("id, amount, note, category, spent_on")
+        try await client.from("transaction").select("id, amount, note, category, spent_on, account_id, created_at")
             .gte("spent_on", value: since)
             .order("spent_on", ascending: false).order("created_at", ascending: false)
             .limit(1000)
@@ -493,18 +500,47 @@ public final class BlinkServer: Sendable {
 
     public func add(_ drafts: [SpendDraft]) async throws -> [Spend] {
         try await client.from("transaction").insert(drafts)
-            .select("id, amount, note, category, spent_on").execute().value
+            .select("id, amount, note, category, spent_on, account_id, created_at").execute().value
     }
 
     public func save(_ spend: Spend) async throws {
-        struct Row: Encodable { let amount: Decimal, note: String, category: SpendCategory, spent_on: String }
+        struct Row: Encodable { let amount: Decimal, note: String, category: SpendCategory, spent_on: String, account_id: String? }
         try await client.from("transaction")
-            .update(Row(amount: spend.amount, note: spend.note, category: spend.category, spent_on: spend.spentOn))
+            .update(Row(amount: spend.amount, note: spend.note, category: spend.category, spent_on: spend.spentOn, account_id: spend.accountID))
             .eq("id", value: spend.id).execute()
     }
 
     public func delete(_ spend: Spend) async throws {
         try await client.from("transaction").delete().eq("id", value: spend.id).execute()
+    }
+
+    public func accounts() async throws -> [MoneyAccount] {
+        try await client.from("money_account_now").select("id, name, kind, balance, balance_at, is_default, spent_since").order("created_at").execute().value
+    }
+
+    /// A new account with today's balance; the first one becomes the default.
+    public func addAccount(name: String, kind: MoneyAccount.Kind, balance: Decimal, isDefault: Bool) async throws -> MoneyAccount {
+        struct Row: Encodable { let name: String, kind: MoneyAccount.Kind, balance: Decimal, is_default: Bool }
+        return try await client.from("money_account").insert(Row(name: name, kind: kind, balance: balance, is_default: isDefault))
+            .select("id, name, kind, balance, balance_at, is_default").single().execute().value
+    }
+
+    /// The owner checked their bank: this is the balance now (spends from here on come off it).
+    public func setBalance(_ balance: Decimal, of account: MoneyAccount) async throws -> MoneyAccount {
+        struct Row: Encodable { let balance: Decimal, balance_at: String }
+        return try await client.from("money_account").update(Row(balance: balance, balance_at: Date.now.ISO8601Format()))
+            .eq("id", value: account.id).select("id, name, kind, balance, balance_at, is_default").single().execute().value
+    }
+
+    /// Spends with no account named come off this one (only one default at a time).
+    public func makeDefault(_ account: MoneyAccount) async throws {
+        try await client.from("money_account").update(["is_default": false]).eq("is_default", value: true).execute()
+        try await client.from("money_account").update(["is_default": true]).eq("id", value: account.id).execute()
+    }
+
+    /// Removes an account; its spends stay, without an account.
+    public func deleteAccount(_ account: MoneyAccount) async throws {
+        try await client.from("money_account").delete().eq("id", value: account.id).execute()
     }
 
     /// Sets a category's monthly limit, or removes it with nil.
@@ -559,7 +595,7 @@ public final class BlinkServer: Sendable {
         try await client.from("profile").update(["model_prefs": prefs]).eq("owner_id", value: user).execute()
     }
 
-    /// The daily Claude limit in USD (profile.settings.daily_cap_usd); nil means no limit.
+    /// The daily limit for paid models in USD (profile.settings.daily_cap_usd); nil means the server default ($5).
     public func dailyCap() async throws -> Double? {
         struct Settings: Decodable { let daily_cap_usd: Double? }
         struct Row: Decodable { let settings: Settings? }

@@ -358,6 +358,13 @@ extension Tokens {
     }
     private let daily = Habit(id: "h", name: "Read", createdAt: Date(timeIntervalSince1970: 1_700_000_000))
 
+    @Test func answersAreLoadedFromTheDayBeforeTheOldestHabit() {
+        let newer = Habit(id: "n", name: "Walk", createdAt: day(-3))
+        // 1_700_000_000 is 15 Nov 2023 in Kolkata.
+        #expect(HabitDay.answersSince([newer, daily], today: day(0), calendar: cal) == "2023-11-14")
+        #expect(HabitDay.answersSince([], today: day(0), calendar: cal) == "2026-10-11")
+    }
+
     @Test func countsDoneDaysAndWaitsForToday() {
         #expect(daily.progress(answers: answers([(0, .done), (-1, .done), (-2, .done)]), today: day(0), calendar: cal).streak == 3)
         // Today not answered yet: yesterday's run still stands.
@@ -466,6 +473,8 @@ extension Tokens {
         for i in 0..<60 { history.add(.text("item \(i)")) }
         #expect(history.items.count == ClipboardHistory.limit && history.items.first?.text == "item 59")
         #expect(history.search("ITEM 5").map(\.text).first == "item 59")
+        history.add(.text(String(repeating: "x", count: ClipboardHistory.maxText + 1)))
+        #expect(history.items.first?.text == "item 59") // over 1 MB of text is not kept
     }
 
     @Test func linksAreRecognisedAndSecretsAreNeverRecorded() {
@@ -677,4 +686,37 @@ extension Tokens {
     #expect(MoneyMath.parseAmount("€ 12.345") == Decimal(string: "12.35"))
     #expect(MoneyMath.parseAmount("1.2.3") == nil)
     #expect(MoneyMath.parseAmount("0") == nil && MoneyMath.parseAmount("") == nil)
+}
+
+@Test func monthSummaryComparesLikeWithLike() throws {
+    let cal = Calendar(identifier: .gregorian)
+    let json = #"[{"id":"1","amount":10,"note":"a","category":"food","spent_on":"2026-10-01"},{"id":"2","amount":20,"note":"b","category":"food","spent_on":"2026-10-04"},{"id":"3","amount":15,"note":"c","category":"fun","spent_on":"2026-09-02"},{"id":"4","amount":100,"note":"d","category":"housing","spent_on":"2026-09-20"}]"#
+    let spends = try JSONDecoder().decode([Spend].self, from: Data(json.utf8))
+    let s = MoneyMath.summary(spends, today: "2026-10-04", calendar: cal)
+    #expect(s.total == 30 && s.today == 20 && s.average == Decimal(string: "7.5") && s.forecast == Decimal(string: "232.5"))
+    #expect(s.lastMonthSoFar == 15 && s.lastMonthTotal == 115 && s.change == 1.0)
+    #expect(MoneyMath.cumulative(MoneyMath.daily(spends, month: "2026-10", calendar: cal)).prefix(4) == [10, 10, 10, 30])
+    #expect(MoneyMath.previous(month: "2026-01") == "2025-12" && MoneyMath.daysIn(month: "2026-02", calendar: cal) == 28)
+}
+
+@Test func accountBalancesTakeOffSpendsEnteredSinceTheyWereSet() throws {
+    let json = #"{"id":"a1","name":"Sparkasse","kind":"checking","balance":1000,"balance_at":"2026-10-01T10:00:00Z","is_default":true,"spent_since":23.4}"#
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let account = try decoder.decode(MoneyAccount.self, from: Data(json.utf8))
+    #expect(MoneyMath.balance(of: account) == Decimal(string: "976.6"))
+    var fresh = account
+    fresh.spentSince = nil
+    #expect(MoneyMath.totalBalance([account, fresh]) == Decimal(string: "1976.6"))
+    let summary = MoneyMath.Summary(total: 100, today: 10, average: 10, forecast: 310, lastMonthSoFar: 0, lastMonthTotal: 0)
+    #expect(MoneyMath.leftAtMonthEnd(total: 500, summary: summary, today: "2026-10-21", calendar: Calendar(identifier: .gregorian)) == 400)
+    #expect(MoneyMath.runwayDays(total: 500, average: 10) == 50 && MoneyMath.runwayDays(total: 500, average: 0) == nil)
+}
+
+@Test func balancesParseGermanAndEnglishStyleAndNegatives() {
+    #expect(MoneyMath.parseBalance("1.234,56") == Decimal(string: "1234.56"))
+    #expect(MoneyMath.parseBalance("1250.40") == Decimal(string: "1250.4"))
+    #expect(MoneyMath.parseBalance("-50") == -50 && MoneyMath.parseBalance("0") == 0)
+    #expect(MoneyMath.parseBalance("") == nil && MoneyMath.parseBalance("abc") == nil)
+    #expect(MoneyMath.parseBalance("1.250") == nil && MoneyMath.parseBalance("1,234.56") == nil)
 }

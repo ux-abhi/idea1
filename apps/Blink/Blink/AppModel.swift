@@ -185,8 +185,32 @@ final class AppModel {
         email = nil
         lastSync = nil
         UserDefaults.standard.removeObject(forKey: "lastSync")
+        // Nothing of this account stays behind for the next one to see, or to be saved into it.
+        mailWatch?.cancel(); mailWatch = nil
+        sendCountdown?.cancel(); sendCountdown = nil
+        clearAccountData()
+        // A sync already in flight can still land its results after this; clear again once it has finished.
+        if refreshing {
+            Task { [weak self] in
+                while self?.refreshing == true { try? await Task.sleep(for: .milliseconds(100)) }
+                if self?.email == nil { self?.clearAccountData() }
+            }
+        }
         signInNotice = notice
         screen = .signIn
+    }
+
+    private func clearAccountData() {
+        pending = []; activity = []; actionProblem = nil; undoChip = nil
+        items = []; unsaved = []; onServer = []; saveProblem = nil; focusNoteID = nil; openNoteID = nil
+        habits = []; habitAnswers = [:]
+        chat = []; UserDefaults.standard.removeObject(forKey: "chat")
+        agenda = .empty; allReminders = []; quickReplies = []
+        content = []; voice = VoiceProfile(); contentProblem = nil; contentUnsaved = []
+        ideas = []; questions = [:]; pageRead = nil; weekPlan = []; designed = []
+        spends = []; budgets = []; accounts = []; moneyProblem = nil
+        emails = []; mailStates = []; mailProblem = nil; reviewing = nil; outbox = []; sendingNow = nil
+        modelPrefs = [:]; modelProblem = nil; dailyCap = nil; spaces = []; openPage = nil
     }
 
     // MARK: Ask-First
@@ -511,9 +535,8 @@ final class AppModel {
             wake = times.wake
             evening = times.evening
         }
-        // 120 days covers a long streak's rules and "kept N of 7".
-        let since = HabitDay.key(Calendar.current.date(byAdding: .day, value: -120, to: habitToday) ?? habitToday)
-        guard let list = try? await server.habits(), let logs = try? await server.habitLogs(since: since) else { return }
+        guard let list = try? await server.habits(),
+              let logs = try? await server.habitLogs(since: HabitDay.answersSince(list, today: habitToday)) else { return }
         habits = list
         habitAnswers = Dictionary(grouping: logs, by: \.habitID).mapValues { Dictionary($0.map { ($0.day, $0.status) }) { $1 } }
     }
@@ -959,6 +982,7 @@ final class AppModel {
     // MARK: Money (Phase 7, first slice): spends typed in, sorted by the AI, monthly limits per category
 
     private(set) var spends: [Spend] = []
+    private(set) var accounts: [MoneyAccount] = []
     private(set) var budgets: [Budget] = []
     private(set) var moneyProblem: String?
     private(set) var sortingSpends = false
@@ -966,12 +990,14 @@ final class AppModel {
     /// This month and last, so the page can compare.
     func loadMoney() async {
         guard let server, email != nil else { return }
-        let start = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
-        let since = MoneyMath.month(of: HabitDay.key(start)) + "-01"
         do {
+            // This month and last for the charts; balances are added up by the server, however old.
+            let lastMonth = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
+            let since = MoneyMath.month(of: HabitDay.key(lastMonth)) + "-01"
             async let spent = server.spends(since: since)
             async let limits = server.budgets()
-            (spends, budgets) = try await (spent, limits)
+            async let list = server.accounts()
+            (spends, budgets, accounts) = try await (spent, limits, list)
         } catch {
             // Never show €0 as if nothing was spent.
             moneyProblem = "Can't load your spending right now. Check your connection."
@@ -997,6 +1023,7 @@ final class AppModel {
         do {
             let saved = try await server.add(drafts)
             spends = (saved + spends).sorted { $0.spentOn > $1.spentOn }
+            await reloadAccounts()
             return saved
         } catch {
             moneyProblem = "Couldn't save. Check your connection and try again."
@@ -1009,7 +1036,7 @@ final class AppModel {
         moneyProblem = nil
         let before = spends[i]
         spends[i] = spend
-        do { try await server.save(spend) } catch {
+        do { try await server.save(spend); await reloadAccounts() } catch {
             if let j = spends.firstIndex(where: { $0.id == spend.id }) { spends[j] = before }
             moneyProblem = "Couldn't save that change. Check your connection."
         }
@@ -1019,10 +1046,62 @@ final class AppModel {
         guard let server else { return }
         moneyProblem = nil
         spends.removeAll { $0.id == spend.id }
-        do { try await server.delete(spend) } catch {
+        do { try await server.delete(spend); await reloadAccounts() } catch {
             spends.append(spend)
             spends.sort { $0.spentOn > $1.spentOn }
             moneyProblem = "Couldn't delete that. Check your connection."
+        }
+    }
+
+    /// Balances change with every spend; the server adds them up.
+    private func reloadAccounts() async {
+        guard let server, email != nil, let list = try? await server.accounts() else { return }
+        accounts = list
+    }
+
+    func addAccount(name: String, kind: MoneyAccount.Kind, balance: Decimal) async {
+        guard let server else { return }
+        moneyProblem = nil
+        do {
+            let account = try await server.addAccount(name: name, kind: kind, balance: balance, isDefault: accounts.isEmpty)
+            accounts.append(account)
+        } catch {
+            moneyProblem = "Couldn't add the account. Is the name already used?"
+        }
+    }
+
+    func setBalance(_ balance: Decimal, of account: MoneyAccount) async {
+        guard let server else { return }
+        moneyProblem = nil
+        do {
+            let updated = try await server.setBalance(balance, of: account)
+            if let i = accounts.firstIndex(where: { $0.id == account.id }) { accounts[i] = updated }
+        } catch {
+            moneyProblem = "Couldn't update the balance. Check your connection."
+        }
+    }
+
+    func makeDefault(_ account: MoneyAccount) async {
+        guard let server else { return }
+        moneyProblem = nil
+        do {
+            try await server.makeDefault(account)
+            for i in accounts.indices { accounts[i].isDefault = accounts[i].id == account.id }
+        } catch {
+            moneyProblem = "Couldn't change the default account. Check your connection."
+            await reloadAccounts() // the first step may have cleared the old default
+        }
+    }
+
+    func deleteAccount(_ account: MoneyAccount) async {
+        guard let server else { return }
+        moneyProblem = nil
+        do {
+            try await server.deleteAccount(account)
+            accounts.removeAll { $0.id == account.id }
+            for i in spends.indices where spends[i].accountID == account.id { spends[i].accountID = nil }
+        } catch {
+            moneyProblem = "Couldn't delete the account. Check your connection."
         }
     }
 
@@ -1092,17 +1171,13 @@ final class AppModel {
         var id: String { draft.messageID }
     }
     var reviewing: Review?
-    /// Approved mail waiting for its time, and the one counting down its 10 seconds before it goes.
+    /// Approved mail waiting for its time, and the one counting down to its send time.
     private(set) var outbox: [BlinkAction] = []
     private(set) var sendingNow: BlinkAction?
     private var sendCountdown: Task<Void, Never>?
 
-    /// Writes a reply into Drafts (it shows in Apple Mail) and opens it for review, so it can be sent from Blink.
-    func draftReply(to message: EmailMessage, note: String = "") async {
-        await reviewReply(to: message, note: note, reuse: false)
-    }
-
     /// Opens the reply for review: Blink's earlier draft if there is one (with edits made in Apple Mail), else a new one.
+    /// `reuse: false` always writes a fresh reply into Drafts (it shows in Apple Mail).
     func reviewReply(to message: EmailMessage, note: String = "", sendAt: Date? = nil, reuse: Bool? = nil) async {
         guard let server, !draftingMail.contains(message.id) else { return }
         draftingMail.insert(message.id)
@@ -1125,11 +1200,12 @@ final class AppModel {
         }
     }
 
-    /// Sends the reviewed reply after Touch ID: now (after a 10-second chance to cancel) or at its time. Returns a
+    /// Sends the reviewed reply after Touch ID: now (after a chance to cancel) or at its time. Returns a
     /// problem to show in the review sheet, or nil when it's on its way.
     func send(_ review: Review) async -> String? {
         guard let server else { return "Sign in first." }
-        let at = review.sendAt ?? .now.addingTimeInterval(10)
+        // 20 s, not 10: Touch ID can take a while, and the cancel window counts from this signed time.
+        let at = review.sendAt ?? .now.addingTimeInterval(20)
         let when = review.sendAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "now"
         do {
             let action = try await server.proposeSend(review.draft, at: at, title: "Send reply to \(review.sender)?",
@@ -1151,13 +1227,15 @@ final class AppModel {
         }
     }
 
-    /// After Touch ID: "Sending… Cancel" for 10 seconds, then hand it to the server; scheduled mail just joins the outbox.
+    /// After Touch ID: "Sending… Cancel" until the signed send time, then hand it to the server; scheduled mail just joins the outbox.
     private func afterSendApproved(_ action: BlinkAction, now: Bool = true) async {
         await loadOutbox()
         guard now, let server else { return }
         sendingNow = action
         sendCountdown = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(10))
+            // The server sends nothing before send_at, so wait for it (plus 1 s for clock drift), however long Touch ID took.
+            let wait = (action.payload.sendAt ?? .now).timeIntervalSinceNow + 1
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
             guard !Task.isCancelled else { return }
             self?.sendingNow = nil
             try? await server.sendDueMail()
@@ -1171,7 +1249,7 @@ final class AppModel {
         outbox = list
     }
 
-    /// Stops a send that hasn't gone yet (the 10-second countdown or a scheduled one).
+    /// Stops a send that hasn't gone yet (the countdown or a scheduled one).
     func cancelSend(_ action: BlinkAction) async {
         guard let server else { return }
         if sendingNow?.id == action.id { sendCountdown?.cancel(); sendingNow = nil }

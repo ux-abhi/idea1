@@ -11,7 +11,7 @@ end $$;
 -- User A writes.
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 insert into public.profile default values;
-insert into public.item (type, title) values ('note', 'A secret');
+insert into public.item (id, type, title) values ('00000000-0000-0000-0000-0000000000e1', 'note', 'A secret');
 insert into public.action (kind, risk, payload, payload_hash, proposed_by)
   values ('send_email', 'red', '{"to":"x"}', '\x01', 'blink'),
          ('add_reminder', 'green', '{"t":"y"}', '\x02', 'blink');
@@ -226,7 +226,17 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 do $$ begin
   insert into public.transaction (amount, note, category) values (8.50, 'Lunch', 'food');
   insert into public.budget (category, monthly_limit) values ('food', 250);
-  assert (select count(*) from public.transaction) = 1, 'A should see own spend';
+  insert into public.money_account (id, name, kind, balance, is_default)
+    values ('00000000-0000-0000-0000-0000000000f1', 'Sparkasse', 'checking', 1200, true);
+  insert into public.transaction (amount, note, category, account_id)
+    values (23.40, 'Rewe', 'groceries', '00000000-0000-0000-0000-0000000000f1');
+  begin
+    insert into public.money_account (name, is_default) values ('N26', true);
+    raise exception 'a second default account was accepted';
+  exception when unique_violation then null;
+  end;
+  assert (select count(*) from public.transaction) = 2, 'A should see own spends';
+  assert (select spent_since from public.money_account_now where name = 'Sparkasse') = 23.40, 'balance view adds up spends';
   begin
     insert into public.transaction (amount, note) values (-5, 'refund?');
     raise exception 'a negative spend was accepted';
@@ -251,6 +261,13 @@ do $$ begin
   assert (select count(*) from public.mail_sender_rule) = 0, 'B must not see A''s sender rules';
   assert (select count(*) from public.transaction) = 0, 'B must not see A''s spends';
   assert (select count(*) from public.budget) = 0, 'B must not see A''s budgets';
+  assert (select count(*) from public.money_account) = 0, 'B must not see A''s accounts';
+  assert (select count(*) from public.money_account_now) = 0, 'B must not see A''s balances';
+  begin
+    insert into public.transaction (amount, account_id) values (5, '00000000-0000-0000-0000-0000000000f1');
+    raise exception 'B spent from A''s account';
+  exception when insufficient_privilege then null;
+  end;
   update public.voice_profile set notes = 'hacked', page = 'hacked', brief = 'hacked';
   begin
     insert into public.item (type, title, segment_id) values ('task', 'sneak', '00000000-0000-0000-0000-0000000000c1');
@@ -260,6 +277,23 @@ do $$ begin
   begin
     insert into public.habit_log (habit_id, day, status) values ('00000000-0000-0000-0000-0000000000f1', '2026-10-14', 'done');
     raise exception 'B logged A''s habit';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.link (from_item, to_item, kind) values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000e1', 'about');
+    raise exception 'B linked A''s items';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.calendar_event (source, ext_id, occurrence_start, ends_at, snapshot_device)
+      values ('apple', 'x', '2026-10-14 09:00+00', '2026-10-14 10:00+00', '00000000-0000-0000-0000-0000000000d1');
+    raise exception 'B used A''s device on an event';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.action (kind, risk, payload, payload_hash, proposed_by, decided_by_device)
+      values ('add_reminder', 'green', '{}', '\x00', 'blink', '00000000-0000-0000-0000-0000000000d1');
+    raise exception 'B used A''s device on an action';
   exception when insufficient_privilege then null;
   end;
 end $$;

@@ -10,21 +10,103 @@ struct MoneyView: View {
     @State private var typed = ""
     @State private var drafts: [SpendDraft] = []
     @State private var editingLimit: SpendCategory?
+    @State private var editingAccount: AccountEditor.Mode?
 
     private var month: String { MoneyMath.month(of: HabitDay.key(.now)) }
 
     var body: some View {
-        let total = MoneyMath.total(model.spends, month: month)
-        DashPage("Money", summary: "\(total.formatted(.currency(code: "EUR"))) this month") {
+        let today = HabitDay.key(.now)
+        let summary = MoneyMath.summary(model.spends, today: today)
+        DashPage("Money", summary: pageSummary(summary)) {
             if let problem = model.moneyProblem {
                 Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
             }
+            if !model.accounts.isEmpty { moneyMetrics(summary, today: today) }
+            metrics(summary)
             DashCard("Add spending") { entry }
-            DashCard("This month") { monthCard }
+            AccountsCard(editing: $editingAccount)
+            charts(summary, today: today)
+            DashCard("Categories and limits") { monthCard }
             DashCard("Latest") { latest }
         }
+        .animation(.default, value: model.spends)
         .task { await model.loadMoney() }
         .sheet(item: $editingLimit) { LimitEditor(category: $0) }
+        .sheet(item: $editingAccount) { AccountEditor(mode: $0) }
+    }
+
+    /// How much there is, what's left at month end and how long it lasts, at this month's pace.
+    private func moneyMetrics(_ s: MoneyMath.Summary, today: String) -> some View {
+        let total = MoneyMath.totalBalance(model.accounts)
+        let left = MoneyMath.leftAtMonthEnd(total: total, summary: s, today: today)
+        let runway = MoneyMath.runwayDays(total: total, average: s.average)
+        return HStack(spacing: 12) {
+            MetricTile(title: "Money you have", value: total, detail: "\(model.accounts.count) account\(model.accounts.count == 1 ? "" : "s")",
+                       valueColor: total < 0 ? .red : .primary)
+            MetricTile(title: "Left at month end", value: left, detail: "If you keep this pace",
+                       detailColor: left < 0 ? .red : .secondary, valueColor: left < 0 ? .red : .primary)
+            MetricTile(title: "Lasts", text: runway.map { $0 >= 365 ? "Over a year" : "\($0) days" } ?? "—",
+                       detail: runway.map { _ in "At \(s.average.formatted(.currency(code: "EUR"))) a day" } ?? "Add spends to see",
+                       valueColor: (runway ?? 99) < 30 ? .orange : .primary)
+        }
+    }
+
+    private func pageSummary(_ s: MoneyMath.Summary) -> String {
+        guard let change = s.change else { return "\(s.total.formatted(.currency(code: "EUR"))) this month" }
+        let pct = Int((abs(change) * 100).rounded())
+        return "\(s.total.formatted(.currency(code: "EUR"))) this month · \(pct)% \(change >= 0 ? "more" : "less") than last month by today"
+    }
+
+    // MARK: Dashboard: headline numbers and charts
+
+    private var limitsTotal: Decimal? {
+        model.budgets.isEmpty ? nil : model.budgets.reduce(Decimal.zero) { $0 + $1.monthlyLimit }
+    }
+
+    private func metrics(_ s: MoneyMath.Summary) -> some View {
+        let change = s.change.map { c -> (String, Color) in
+            let pct = Int((abs(c) * 100).rounded())
+            return (c >= 0 ? "▲ \(pct)% vs last month" : "▼ \(pct)% vs last month", c > 0.1 ? .orange : c < 0 ? .green : .secondary)
+        }
+        let overForecast = limitsTotal.map { s.forecast > $0 } ?? false
+        return HStack(spacing: 12) {
+            MetricTile(title: "This month", value: s.total, detail: change?.0 ?? "No data last month",
+                       detailColor: change?.1 ?? .secondary)
+            MetricTile(title: "Today", value: s.today, detail: "Average \(s.average.formatted(.currency(code: "EUR"))) a day")
+            MetricTile(title: "Month-end forecast", value: s.forecast,
+                       detail: limitsTotal.map { overForecast ? "Over your limits (\($0.formatted(.currency(code: "EUR"))))" : "Within your limits" }
+                           ?? "At this pace", detailColor: overForecast ? .red : .secondary)
+            MetricTile(title: "Last month", value: s.lastMonthTotal, detail: "In total")
+        }
+    }
+
+    @ViewBuilder
+    private func charts(_ s: MoneyMath.Summary, today: String) -> some View {
+        let day = Int(today.suffix(2)) ?? 1
+        let daily = Array(MoneyMath.daily(model.spends, month: month).prefix(day))
+        if s.total > 0 || s.lastMonthTotal > 0 {
+            DashCard("Spending pace") {
+                PaceChart(thisMonth: MoneyMath.cumulative(daily),
+                          lastMonth: MoneyMath.cumulative(MoneyMath.daily(model.spends, month: MoneyMath.previous(month: month))),
+                          limit: limitsTotal, daysInMonth: MoneyMath.daysIn(month: month))
+                Text("Solid: this month so far. Dashed: last month. Above the dashed line means spending faster than last month.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        if s.total == 0 && s.lastMonthTotal == 0 {
+            EmptyCard(symbol: "chart.xyaxis.line", title: "Charts appear after your first spend",
+                      message: "Your spending pace against last month, each day's total, and where the money goes by category.")
+        }
+        if s.total > 0 {
+            HStack(alignment: .top, spacing: 16) {
+                DashCard("Day by day") {
+                    DailyBars(daily: daily, average: s.average, daysInMonth: MoneyMath.daysIn(month: month))
+                }
+                DashCard("By category") {
+                    CategoryRing(totals: MoneyMath.totals(model.spends, month: month))
+                }
+            }
+        }
     }
 
     // MARK: Entry: type → AI sorts → check → save
@@ -142,7 +224,9 @@ struct MoneyView: View {
 
 /// One sorted entry before saving: amount, what, category, all editable.
 private struct DraftRow: View {
+    @Environment(AppModel.self) private var model
     @Binding var draft: SpendDraft
+    private var accounts: [MoneyAccount] { model.accounts }
     let remove: () -> Void
     // Text, not a number field: a macOS number field only commits on Return, so a click on Save would keep the old amount.
     @State private var amount = ""
@@ -158,6 +242,13 @@ private struct DraftRow: View {
                 ForEach(SpendCategory.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
             }
             .labelsHidden().frame(width: 150)
+            if !accounts.isEmpty {
+                Picker("Paid from", selection: $draft.accountID) {
+                    Text("No account").tag(String?.none)
+                    ForEach(accounts) { Text($0.name).tag(Optional($0.id)) }
+                }
+                .labelsHidden().frame(width: 120)
+            }
             Text(HabitDay.date(fromKey: draft.spentOn).map { $0.formatted(.dateTime.weekday(.abbreviated).day()) } ?? draft.spentOn)
                 .font(.caption).foregroundStyle(.secondary).frame(width: 50)
             Button("Remove", systemImage: "xmark.circle.fill", action: remove)
@@ -192,6 +283,22 @@ private struct SpendRow: View {
                 Button(c.title, systemImage: c.symbol) {
                     var changed = spend
                     changed.category = c
+                    Task { await model.saveSpend(changed) }
+                }
+            }
+        }
+        if !model.accounts.isEmpty {
+            Menu("Paid From") {
+                ForEach(model.accounts) { a in
+                    Button(a.name, systemImage: spend.accountID == a.id ? "checkmark" : a.kind.symbol) {
+                        var changed = spend
+                        changed.accountID = a.id
+                        Task { await model.saveSpend(changed) }
+                    }
+                }
+                Button("No Account") {
+                    var changed = spend
+                    changed.accountID = nil
                     Task { await model.saveSpend(changed) }
                 }
             }
