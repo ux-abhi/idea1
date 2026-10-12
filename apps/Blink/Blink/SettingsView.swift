@@ -20,6 +20,7 @@ struct SettingsRoot: View {
                     Tab("Your Day", systemImage: "sun.horizon") { DaySettings() }
                     Tab("Blink & Notch", systemImage: "eyes") { NotchSettings() }
                     Tab("AI & Usage", systemImage: "sparkles") { UsageSettings() }
+                    Tab("Connections", systemImage: "key") { ConnectionsSettings() }
                     Tab("Privacy", systemImage: "lock.shield") { PrivacySettings() }
                 }
             } else {
@@ -315,6 +316,86 @@ struct UsageSettings: View {
             do { month = try await server.usage(since: start) } catch { failed = true }
             day = (try? await server.usage(since: .now.addingTimeInterval(-86_400)))?
                 .filter { $0.model.hasPrefix("claude") }.reduce(0) { $0 + $1.costUSD }
+        }
+    }
+}
+
+/// Are the keys on your server there and accepted? A free, read-only check per service; keys never reach this Mac.
+struct ConnectionsSettings: View {
+    @Environment(AppModel.self) private var model
+    @State private var status: [String: String]?
+    @State private var checking = false
+    @State private var failed = false
+
+    private let services: [(key: String, name: String, secret: String, use: String)] = [
+        ("anthropic", "Anthropic (Claude)", "ANTHROPIC_API_KEY", "Chat, planning and drafts when Claude is picked"),
+        ("groq", "Groq", "GROQ_API_KEY", "Free models and quick text edits"),
+        ("apify", "Apify", "APIFY_TOKEN", "Read My Page on the Content page"),
+        ("cloudflare", "Cloudflare Workers AI", "CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID", "Free post images"),
+    ]
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(services, id: \.key) { service in
+                    LabeledContent {
+                        Label(word(status?[service.key]), systemImage: symbol(status?[service.key]))
+                            .foregroundStyle(tint(status?[service.key]))
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(service.name)
+                            Text("\(service.use) · \(service.secret)").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                HStack {
+                    Button("Check Again") { Task { await check() } }.disabled(checking)
+                    if checking { ProgressView().controlSize(.small) }
+                    if failed { Text("Couldn't reach your server.").foregroundStyle(.orange) }
+                }
+            } header: {
+                Text("Keys on your server")
+            } footer: {
+                Text("Add or change keys in your Supabase project › Edge Functions › Secrets. Each check is free and read-only.")
+            }
+        }
+        .formStyle(.grouped)
+        .task { await check() }
+    }
+
+    private func check() async {
+        guard let server = model.server else { return }
+        checking = true
+        defer { checking = false }
+        do { status = try await server.connections(); failed = false } catch { failed = true }
+    }
+
+    private func word(_ s: String?) -> String {
+        switch s {
+        case "ok": "Working"
+        case "missing": "Not added"
+        case "rejected": "Key rejected"
+        case "unreachable": "Can't reach"
+        default: "Checking…"
+        }
+    }
+
+    private func symbol(_ s: String?) -> String {
+        switch s {
+        case "ok": "checkmark.circle.fill"
+        case "missing": "minus.circle"
+        case "rejected": "xmark.octagon.fill"
+        case "unreachable": "wifi.exclamationmark"
+        default: "ellipsis.circle"
+        }
+    }
+
+    private func tint(_ s: String?) -> Color {
+        switch s {
+        case "ok": .green
+        case "rejected": .red
+        case "missing", "unreachable": .orange
+        default: .secondary
         }
     }
 }

@@ -262,6 +262,8 @@ private struct PieceEditor: View {
                 Text(piece.hashtags.map { "#\($0)" }.joined(separator: " ")).font(.callout).foregroundStyle(.secondary)
             }
 
+            PieceMedia(piece: piece, handle: model.voice.page)
+
             ForEach(check.issues, id: \.message) { issue in
                 Label(issue.message, systemImage: issue.blocks ? "exclamationmark.octagon.fill" : "exclamationmark.triangle")
                     .font(.caption)
@@ -348,6 +350,147 @@ extension AppModel {
         }
         if let url { NSWorkspace.shared.open(url) }
         Task { await setStatus(.published, of: piece) }
+    }
+}
+
+/// A draft's picture: carousel slides drawn on the Mac (over one FLUX background, if made), or a cover image.
+/// Slides drag into any app; Export… writes PNGs to a folder you pick.
+private struct PieceMedia: View {
+    @Environment(AppModel.self) private var model
+    let piece: ContentPiece
+    let handle: String
+
+    var body: some View {
+        let _ = model.mediaVersion // reload after a new image
+        let image = PostMedia.exists(for: piece.id) ? NSImage(contentsOf: PostMedia.url(for: piece.id)) : nil
+        let carousel = piece.format == "carousel" && !piece.parts.isEmpty
+        VStack(alignment: .leading, spacing: 8) {
+                if carousel {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 8) {
+                            ForEach(piece.parts.indices, id: \.self) { index in
+                                slide(index, background: image)
+                                    .frame(width: 1080, height: 1350)
+                                    .scaleEffect(0.12, anchor: .topLeading)
+                                    .frame(width: 130, height: 162, alignment: .topLeading)
+                                    .clipShape(.rect(cornerRadius: 8))
+                                    .onDrag { provider(for: render(slide(index, background: image)), name: "slide-\(index + 1)") }
+                                    .accessibilityLabel("Slide \(index + 1): \(piece.parts[index])")
+                            }
+                        }
+                    }
+                } else if let image {
+                    Image(nsImage: image).resizable().scaledToFill()
+                        .frame(width: 200, height: 200).clipShape(.rect(cornerRadius: 10))
+                        .onDrag { NSItemProvider(contentsOf: PostMedia.url(for: piece.id)) ?? NSItemProvider() }
+                        .accessibilityLabel("Cover image")
+                }
+                HStack(spacing: 8) {
+                    Button {
+                        Task { await model.makeImage(for: piece) }
+                    } label: {
+                        if model.makingImage.contains(piece.id) {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label(image == nil ? (carousel ? "Make Background" : "Make Image") : "New Image", systemImage: "photo.badge.plus")
+                        }
+                    }
+                    .disabled(model.makingImage.contains(piece.id))
+                    .help("A free FLUX image from Cloudflare; text is drawn on your Mac")
+                    if carousel || image != nil {
+                        Button("Export…") { export(carousel: carousel, background: image) }
+                    }
+                }
+                .controlSize(.small)
+        }
+    }
+
+    private func slide(_ index: Int, background: NSImage?) -> some View {
+        SlideView(text: piece.parts[index], index: index, total: piece.parts.count,
+                  handle: handle.split(separator: " ").first.map(String.init) ?? "", background: background)
+    }
+
+    private func render(_ view: some View) -> Data? {
+        let renderer = ImageRenderer(content: view.frame(width: 1080, height: 1350))
+        renderer.scale = 1
+        guard let image = renderer.nsImage, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    private func provider(for data: Data?, name: String) -> NSItemProvider {
+        let provider = NSItemProvider()
+        if let data {
+            provider.registerDataRepresentation(forTypeIdentifier: "public.png", visibility: .all) { done in
+                done(data, nil)
+                return nil
+            }
+        }
+        provider.suggestedName = name
+        return provider
+    }
+
+    /// Writes slide-01.png… (or cover.jpg) into a folder the owner picks, then shows them in Finder.
+    private func export(carousel: Bool, background: NSImage?) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Export Here"
+        panel.message = "Choose a folder for this post's images"
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        var written: [URL] = []
+        if carousel {
+            for index in piece.parts.indices {
+                let file = folder.appending(path: String(format: "slide-%02d.png", index + 1))
+                if let data = render(slide(index, background: background)), (try? data.write(to: file)) != nil { written.append(file) }
+            }
+        } else if let data = try? Data(contentsOf: PostMedia.url(for: piece.id)) {
+            let file = folder.appending(path: "cover.jpg")
+            if (try? data.write(to: file)) != nil { written.append(file) }
+        }
+        if !written.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(written) }
+    }
+}
+
+/// One 1080 × 1350 carousel slide: the first over the background image, the rest on a dimmed version of it; big, crisp text.
+struct SlideView: View {
+    let text: String
+    let index: Int
+    let total: Int
+    let handle: String
+    let background: NSImage?
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Group {
+                if let background {
+                    Image(nsImage: background).resizable().scaledToFill()
+                        .blur(radius: index == 0 ? 0 : 30)
+                } else {
+                    LinearGradient(colors: [.indigo, .black], startPoint: .topLeading, endPoint: .bottomTrailing)
+                }
+            }
+            .frame(width: 1080, height: 1350)
+            .clipped()
+            LinearGradient(colors: [.black.opacity(index == 0 ? 0.2 : 0.55), .black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer()
+                Text(text)
+                    .font(.system(size: index == 0 ? 92 : 68, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineSpacing(8)
+                    .minimumScaleFactor(0.5)
+                Spacer()
+                HStack {
+                    Text(handle).font(.system(size: 34, weight: .semibold, design: .rounded))
+                    Spacer()
+                    Text("\(index + 1)/\(total)").font(.system(size: 34, weight: .semibold, design: .rounded).monospacedDigit())
+                }
+                .foregroundStyle(.white.opacity(0.8))
+            }
+            .padding(90)
+        }
+        .frame(width: 1080, height: 1350)
     }
 }
 

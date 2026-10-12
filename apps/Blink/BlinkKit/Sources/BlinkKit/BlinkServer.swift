@@ -333,6 +333,26 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    /// A cover or a text-free carousel background from Cloudflare FLUX (the owner's free daily allowance), as JPEG data.
+    public func makeImage(subject: String, background: Bool) async throws -> Data {
+        struct Body: Encodable { let subject: String; let kind: String }
+        struct Reply: Decodable { let image: String }
+        do {
+            let reply: Reply = try await client.functions.invoke(
+                "image", options: .init(body: Body(subject: String(subject.prefix(500)), kind: background ? "background" : "cover")))
+            guard let data = Data(base64Encoded: reply.image) else { throw ChatProblem(message: "The image didn't come through. Try again.") }
+            return data
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't make an image.")
+        }
+    }
+
+    /// Settings › Connections: "ok", "missing", "rejected" or "unreachable" per key on the server (never the keys).
+    public func connections() async throws -> [String: String] {
+        try await client.functions.invoke("connections", options: .init(body: [String: String]()))
+    }
+
     public func contentPieces() async throws -> [ContentPiece] {
         try await client.from("content_piece")
             .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for")

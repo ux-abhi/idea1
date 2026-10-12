@@ -759,6 +759,29 @@ final class AppModel {
 
     func dismissPageRead() { pageRead = nil }
 
+    // MARK: Post images (Cloudflare FLUX; kept on this Mac)
+
+    private(set) var makingImage: Set<String> = []
+    /// Bumped when an image is saved, so views reload it from disk.
+    private(set) var mediaVersion = 0
+
+    /// One image per draft: a text-free background for a carousel, otherwise a cover.
+    func makeImage(for piece: ContentPiece) async {
+        guard let server, !makingImage.contains(piece.id) else { return }
+        makingImage.insert(piece.id)
+        defer { makingImage.remove(piece.id) }
+        contentProblem = nil
+        do {
+            let data = try await server.makeImage(subject: piece.hook.isEmpty ? piece.idea : piece.hook, background: piece.format == "carousel")
+            try PostMedia.save(data, for: piece.id)
+            mediaVersion += 1
+        } catch let problem as BlinkServer.ChatProblem {
+            contentProblem = problem.message
+        } catch {
+            contentProblem = "Couldn't make or save the image. Try again."
+        }
+    }
+
     /// The week plan: ideas already placed on the next 7 days.
     private(set) var weekPlan: [ContentIdea] = []
 
