@@ -21,7 +21,7 @@ xcuserdata/
 
 # Supabase / Node
 node_modules/
-supabase/.temp/
+**/supabase/.temp/
 .branches/
 
 # OS / editors

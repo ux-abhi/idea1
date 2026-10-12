@@ -3,3 +3,5 @@
 DEVELOPMENT_TEAM = YOURTEAMID
 BUNDLE_ID_PREFIX = com.pexilim
 APP_DISPLAY_NAME = Blink
+// The sign-in helper for one-click server setup (functions/signin on the distributor's server). Empty hides the button.
+BLINK_SIGNIN_HELPER = https:/$()/YOUR-PROJECT.supabase.co/functions/v1/signin

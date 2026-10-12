@@ -5,8 +5,10 @@ create extension if not exists pg_cron;
 create extension if not exists pg_net with schema extensions;
 
 -- A random shared secret, made and kept inside Vault; nobody ever types or sees it.
+-- Safe to run again (the one-click setup may retry): the secret is made only if it isn't there yet.
 select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'mail_cron_secret',
-                           'Sent by the mail schedule to the mail function');
+                           'Sent by the mail schedule to the mail function')
+where not exists (select 1 from vault.secrets where name = 'mail_cron_secret');
 
 -- Only the server itself (service role) can read it back, to check the schedule's calls.
 create or replace function public.mail_cron_secret() returns text

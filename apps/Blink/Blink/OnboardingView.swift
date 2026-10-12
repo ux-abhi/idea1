@@ -1,4 +1,5 @@
 // © Pexilim
+import AuthenticationServices
 import BlinkKit
 import SwiftUI
 
@@ -149,20 +150,105 @@ private struct WelcomeStep: View {
 }
 
 private struct ServerStep: View {
+    @State private var manual = ServerInstaller.helper == nil
+
     var body: some View {
-        StepCard(title: "Connect your server",
-                 subtitle: "Blink keeps everything on your own free Supabase server, so your notes, mail and money stay private. For now you set it up once at supabase.com; one-click setup is coming in the next update.") {
-            ConnectView()
-                .frame(minHeight: 230, maxHeight: 340)
-            DisclosureGroup("Where do I find these?") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("1. Open your project at supabase.com.")
-                    Text("2. Go to Project Settings › API Keys.")
-                    Text("3. Copy the Project URL and the publishable key (it starts with sb_publishable_).")
+        StepCard(title: "Your own server",
+                 subtitle: "Blink keeps everything on your own free Supabase server, so your notes, mail and money stay private. Not even we can read them.") {
+            if manual {
+                ConnectView()
+                    .frame(minHeight: 230, maxHeight: 340)
+                DisclosureGroup("Where do I find these?") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("1. Open your project at supabase.com.")
+                        Text("2. Go to Project Settings › API Keys.")
+                        Text("3. Copy the Project URL and the publishable key (it starts with sb_publishable_).")
+                    }
+                    .font(.callout)
+                    .padding(.top, 6)
                 }
-                .font(.callout)
-                .padding(.top, 6)
+                if ServerInstaller.helper != nil {
+                    Button("Create a new server for me instead") { manual = false }.buttonStyle(.borderless)
+                }
+            } else {
+                CreateServer()
+                Button("I already have a server") { manual = true }.buttonStyle(.borderless)
             }
+        }
+    }
+}
+
+/// One click: sign in with Supabase, and Blink makes the server, sets it up and signs you in.
+private struct CreateServer: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.webAuthenticationSession) private var webAuth
+    @State private var installer = ServerInstaller()
+    @State private var email = ""
+    @State private var password = ""
+    @State private var groq = ""
+
+    private var ready: Bool { email.contains("@") && email.contains(".") && password.count >= 8 }
+
+    var body: some View {
+        if installer.working || installer.step != nil && installer.problem == nil {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(ServerInstaller.Step.allCases, id: \.self) { step in
+                    let current = installer.step?.rawValue ?? 0
+                    HStack(spacing: 10) {
+                        if step.rawValue < current {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        } else if step.rawValue == current {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "circle").foregroundStyle(.tertiary)
+                        }
+                        Text(step.title).foregroundStyle(step.rawValue <= current ? .primary : .secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityValue(step.rawValue < current ? "Done" : step.rawValue == current ? "In progress" : "Waiting")
+                }
+                Text("Keep Blink open. This takes about 3 minutes.").font(.caption).foregroundStyle(.secondary)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Your Blink login").font(.headline)
+                TextField("Email", text: $email).textFieldStyle(.roundedBorder).textContentType(.username).autocorrectionDisabled()
+                SecureField("Password (at least 8 characters)", text: $password).textFieldStyle(.roundedBorder).textContentType(.newPassword)
+                if installer.progress.ownerCreated {
+                    Text("Your login was already made on the new server: type the same email and password as before.").font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Free AI key (optional)").font(.headline).padding(.top, 4)
+                SecureField("Groq key, starts with gsk_", text: $groq).textFieldStyle(.roundedBorder)
+                Link("Get a free Groq key", destination: URL(string: "https://console.groq.com/keys")!).font(.caption)
+                if let problem = installer.problem {
+                    Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.callout)
+                }
+                Button {
+                    Task { await start() }
+                } label: {
+                    Label(installer.problem == nil ? "Sign in with Supabase" : "Try Again", systemImage: "person.badge.key")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!ready)
+                Text("Opens supabase.com to sign in or sign up for free. Blink then creates your server; we never see your Supabase account.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func start() async {
+        guard let url = installer.startURL() else { return }
+        do {
+            let callback = try await webAuth.authenticate(using: url, callbackURLScheme: "blink", preferredBrowserSession: nil)
+            let token = try await installer.token(from: callback)
+            await installer.install(token: token, email: email.trimmingCharacters(in: .whitespaces), password: password, groqKey: groq, model: model)
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            // Closing the sign-in window is not a problem worth a message.
+        } catch {
+            installer.fail((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
         }
     }
 }

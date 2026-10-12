@@ -758,3 +758,25 @@ extension Tokens {
     #expect(SetupStep.all(keys: nil, calendarGranted: true, voicePage: "", mailConnected: true, hasAccount: true, hasHabit: true)
         .first { $0.id == .aiKey }?.done == true)
 }
+
+@Test func setupProgressResumesAndResets() {
+    let defaults = UserDefaults(suiteName: "blink.tests.setup.\(UUID().uuidString)")!
+    let progress = ServerSetup.Progress(defaults: defaults)
+    progress.ref = "abc"
+    progress.migrations = 7
+    progress.markDone("mailSchedule")
+    #expect(ServerSetup.Progress(defaults: defaults).migrations == 7 && progress.done("mailSchedule") && !progress.done("cleanupSchedule"))
+    progress.reset() // a stale project: start over
+    #expect(progress.ref == nil && progress.migrations == 0 && !progress.done("mailSchedule") && !progress.ownerCreated)
+}
+
+@Test func serverSetupBasics() {
+    // RFC 7636 appendix B: this verifier gives this S256 challenge.
+    #expect(ServerSetup.PKCE.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk") == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+    let pkce = ServerSetup.PKCE()
+    #expect(pkce.verifier.count >= 43 && pkce.challenge.count == 43 && !pkce.state.isEmpty)
+    #expect(ServerSetup.region(for: "Asia/Kolkata") == "ap-south-1" && ServerSetup.region(for: "Europe/Berlin") == "eu-central-1")
+    #expect(ServerSetup.region(for: "America/New_York") == "us-east-1")
+    let fns = ServerSetup.installable(["chat", "_shared", "signin", "mail", "money", "mail-probe"])
+    #expect(fns.map(\.slug) == ["chat", "mail", "money"] && fns.first { $0.slug == "mail" }?.verifyJWT == false)
+}
