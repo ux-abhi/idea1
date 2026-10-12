@@ -77,6 +77,9 @@ struct BlinkPanel: View {
                 }
                 .onChange(of: model.chat.count) { proxy.scrollTo("end", anchor: .bottom) }
             }
+            if model.aiKeyMissing, let step = model.setupSteps.first(where: { $0.id == .aiKey }) {
+                NeedsSetup(step: step, model: model).padding(.horizontal, 12).padding(.bottom, 8)
+            }
             Divider()
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Ask Blink…", text: $text, axis: .vertical)

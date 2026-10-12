@@ -12,142 +12,183 @@ struct TodayView: View {
     let showContent: () -> Void
     var showInbox: () -> Void = {}
     @AppStorage("tourDone") private var tourDone = false
+    @State private var addingTask = false
+    @State private var newTask = ""
 
     var body: some View {
         TimelineView(.everyMinute) { context in
             let now = context.date
             ScrollView {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 16) {
-                        main(now: now).frame(minWidth: 420)
-                        side(now: now).frame(width: 300)
+                VStack(spacing: 16) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: 16) {
+                            HeroCard(now: now, showNotes: showNotes, adding: $addingTask, newTask: $newTask)
+                            DayRings(rings: rings(now)).frame(width: 330)
+                        }
+                        VStack(spacing: 16) {
+                            HeroCard(now: now, showNotes: showNotes, adding: $addingTask, newTask: $newTask)
+                            DayRings(rings: rings(now))
+                        }
                     }
-                    VStack(spacing: 16) {
-                        main(now: now)
-                        side(now: now, inRow: true)
-                    }
+                    tiles(now)
+                    let steps = model.setupSteps
+                    if steps.contains(where: { !$0.done }) { SetupCard(steps: steps) }
+                    if !tourDone { TipsCard { tourDone = true } }
+                    lists(now: now)
                 }
                 .padding(20)
+                .frame(maxWidth: 920)
+                .frame(maxWidth: .infinity)
             }
             .background(BlinkCanvas())
         }
     }
 
-    // MARK: Columns
+    // MARK: Visual summary
 
-    private func main(now: Date) -> some View {
-        VStack(spacing: 16) {
-            HeroCard(now: now, showNotes: showNotes)
-            if !tourDone { TipsCard { tourDone = true } }
-            if model.eveningDue {
-                DashCard("Evening check-in") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Tomorrow, \(model.tomorrow.formatted(.dateTime.weekday(.wide).day().month())): \(model.agenda.dayLine(for: model.tomorrow))")
-                            .foregroundStyle(.secondary)
-                        if let answer = model.chat.last(where: { $0.role == .assistant }), !model.chat.isEmpty {
-                            Text(ChatPanel.markdown(answer.text))
-                        }
-                        if !model.quickReplies.isEmpty && !model.thinking {
-                            HStack {
-                                ForEach(model.quickReplies, id: \.self) { reply in
-                                    Button(reply) { Task { await model.quickReply(reply) } }
-                                }
-                            }
-                        }
-                        HStack {
-                            Button { Task { await model.planTomorrow() } } label: {
-                                if model.thinking { ProgressView().controlSize(.small) } else { Label("Plan with Blink", systemImage: "moon.stars") }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(model.thinking)
-                            Button("All set") { model.finishEvening() }
-                        }
-                    }
-                }
-            }
-            if let next = model.agenda.today(now: now).first {
-                NextMeetingCard(event: next, now: now)
-            }
-            if let first = model.pending.first {
-                DashCard("Waiting for you", trailing: model.pending.count > 1 ? "See all \(model.pending.count)" : nil,
-                         action: showWaiting) {
-                    CardView(action: first, count: model.pending.count, problem: model.actionProblem, app: model)
-                }
-            }
-            let habits = model.habits.filter { model.isScheduledToday($0) }
-            if !habits.isEmpty {
-                DashCard("Habits") { CardRows(items: habits) { HabitRow(habit: $0) } }
-            }
-            let mail = model.importantMail.filter { $0.status != .drafted }
-            if !mail.isEmpty {
-                DashCard("Important mail", trailing: "Inbox", action: showInbox) {
-                    CardRows(items: Array(mail.prefix(4))) { message in
-                        HStack(spacing: 10) {
-                            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("\(message.sender): \(message.subject)").lineLimit(1)
-                                Text(message.reason.isEmpty ? message.summary : message.reason).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        }
-                    }
-                }
-            }
-            let posts = model.readyToPost + model.postsToday.filter { $0.status == .drafted }
-            if !posts.isEmpty {
-                DashCard("Posts for today", trailing: "Open Content", action: showContent) {
-                    CardRows(items: posts) { piece in
-                        HStack(spacing: 10) {
-                            Text(piece.platform.name).font(.caption.weight(.semibold)).frame(width: 70, alignment: .leading)
-                            Text(piece.hook.isEmpty ? piece.body : piece.hook).lineLimit(1)
-                            Spacer()
-                            Text(piece.status == .approved ? "Ready" : "To review")
-                                .font(.caption).foregroundStyle(piece.status == .approved ? .green : .orange)
-                        }
-                    }
-                }
-            }
-            DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks,
-                                          reminders: model.agenda.reminders, now: now), now: now)
-            if model.calendarAccess != .granted {
-                DashCard("Calendar") { ConnectCalendarRow() }
-            }
+    private func rings(_ now: Date) -> [DayRings.Ring] {
+        let cal = Calendar.current
+        let meetings = model.agenda.events.filter { cal.isDate($0.start, inSameDayAs: now) }
+        // shortcut: "done today" = finished tasks last changed today (no completion time is stored); add a completed_at
+        // column if editing an old finished task ever inflates the ring.
+        let tasksDone = model.doneTasks.filter { cal.isDate($0.updatedAt, inSameDayAs: now) }.count
+        let tasksDue = model.openTasks.filter { $0.isDue(by: cal.startOfDay(for: now).addingTimeInterval(86_400)) }.count
+        let habits = model.habits.filter { model.isScheduledToday($0) }
+        return [
+            .init(id: "Meetings", done: meetings.filter { $0.end <= now }.count, total: meetings.count, tint: .mint),
+            .init(id: "Tasks", done: tasksDone, total: tasksDone + tasksDue, tint: .orange),
+            .init(id: "Habits", done: habits.filter { model.answerToday($0) == .done }.count, total: habits.count, tint: .green),
+        ]
+    }
+
+    /// Four numbers you can click through: tasks, mail, posts, money.
+    private func tiles(_ now: Date) -> some View {
+        let overdue = model.openTasks.filter { ($0.dueAt ?? .distantFuture) < now }.count
+        let due = model.openTasks.filter { $0.isDue(by: now) }.count
+        let mail = model.importantMail.filter { $0.status == .new }.count
+        let ready = model.readyToPost.count
+        let today = HabitDay.key(now)
+        let month = MoneyMath.summary(model.spends, today: today)
+        let money = model.accounts.isEmpty ? nil : MoneyMath.leftAtMonthEnd(total: MoneyMath.totalBalance(model.accounts), summary: month, today: today)
+        return HStack(spacing: 12) {
+            tile("tasks", MetricTile(title: "Tasks due", text: "\(due)", detail: overdue > 0 ? "\(overdue) overdue" : nextDeadline(now) ?? "On track",
+                                     detailColor: overdue > 0 ? .orange : .secondary))
+            tile("inbox", MetricTile(title: "Important mail", text: "\(mail)", detail: mail == 0 ? "All caught up" : "New",
+                                     detailColor: mail == 0 ? .green : .red))
+            tile("content", MetricTile(title: "Posts ready", text: "\(ready)", detail: ready == 0 ? "None waiting" : "To post"))
+            tile("money", MetricTile(title: "Spent this month", value: month.total,
+                                     detail: money.map { "\($0.formatted(.currency(code: "EUR"))) left at month end" } ?? "Add an account",
+                                     detailColor: (money ?? 1) < 0 ? .red : .secondary))
         }
     }
 
-    /// The stat cards: a column beside the day, or one row under it when the window is narrow.
-    private func side(now: Date, inRow: Bool = false) -> some View {
-        let todays = model.agenda.events.filter { Calendar.current.isDate($0.start, inSameDayAs: now) }
-        let ended = todays.filter { $0.end <= now }.count
-        let habits = model.habits.filter { model.isScheduledToday($0) }
-        let done = habits.filter { model.answerToday($0) == .done }.count
-        let due = model.openTasks.filter { $0.isDue(by: now) }
-        let layout = inRow ? AnyLayout(HStackLayout(alignment: .top, spacing: 12)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("At a glance").font(.headline).padding(.horizontal, 4)
-            layout {
-            StatCard(title: "Meetings today", value: todays.isEmpty ? "None" : "\(todays.count - ended) left",
-                     progress: todays.isEmpty ? nil : Double(ended) / Double(todays.count), tint: .mint)
-            StatCard(title: "Habits today", value: habits.isEmpty ? "None yet" : "\(done) of \(habits.count)",
-                     detail: bestStreak(),
-                     progress: habits.isEmpty ? nil : Double(done) / Double(habits.count), tint: .green)
-            StatCard(title: "Tasks due", value: due.isEmpty ? "None" : "\(due.count)", detail: nextDeadline(now),
-                     progress: nil, tint: due.contains { ($0.dueAt ?? .distantFuture) < now } ? .orange : .accentColor)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        }
+    private func tile(_ page: String, _ content: MetricTile) -> some View {
+        Button { model.go(to: page) } label: { content }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens \(page.capitalized)")
     }
 
     private func nextDeadline(_ now: Date) -> String? {
         guard let task = model.openTasks.filter({ ($0.dueAt ?? .distantPast) > now }).min(by: { $0.dueAt! < $1.dueAt! }),
               let due = task.dueAt else { return nil }
-        return "Next: \(task.title) · \(due.formatted(.dateTime.weekday(.abbreviated).hour().minute()))"
+        return "Next: \(task.title), \(due.formatted(.dateTime.weekday(.abbreviated).hour().minute()))"
     }
 
     private func bestStreak() -> String? {
-        guard let best = model.habits.map({ ($0, model.progress($0).streak) }).max(by: { $0.1 < $1.1 }), best.1 > 0 else {
-            return nil
+        guard let best = model.habits.map({ ($0, model.progress($0).streak) }).max(by: { $0.1 < $1.1 }), best.1 > 0 else { return nil }
+        return "Best streak \(best.1) day\(best.1 == 1 ? "" : "s")"
+    }
+
+    private var weekCharts: some View {
+        let days = WeekBars.lastWeek()
+        // Habit days start at wake time, so their week ends on the habit day, not the calendar day.
+        let habitDays = WeekBars.lastWeek(now: model.habitToday)
+        let habitDone: [(day: String, value: Double)] = habitDays.map { day in
+            (day, Double(model.habitAnswers.values.filter { $0[day] == .done }.count))
         }
-        return "Best streak: \(best.0.name) · \(best.1 == 1 ? "1 day" : "\(best.1) days")"
+        let spent: [(day: String, value: Double)] = days.map { day in
+            (day, WeekBars.euros(model.spends.filter { $0.spentOn == day }.reduce(Decimal.zero) { $0 + $1.amount }))
+        }
+        return HStack(alignment: .top, spacing: 16) {
+            WeekBars(title: "Habits this week", days: habitDone, tint: .green)
+            WeekBars(title: "Spent this week", days: spent, tint: .accentColor,
+                     format: { $0.formatted(.currency(code: "EUR").precision(.fractionLength(0))) })
+        }
+    }
+
+    // MARK: The day, then the lists
+
+    @ViewBuilder
+    private func lists(now: Date) -> some View {
+        if model.eveningDue {
+            DashCard("Evening check-in") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Tomorrow, \(model.tomorrow.formatted(.dateTime.weekday(.wide).day().month())): \(model.agenda.dayLine(for: model.tomorrow))")
+                        .foregroundStyle(.secondary)
+                    if let answer = model.chat.last(where: { $0.role == .assistant }), !model.chat.isEmpty {
+                        Text(ChatPanel.markdown(answer.text))
+                    }
+                    if !model.quickReplies.isEmpty && !model.thinking {
+                        HStack {
+                            ForEach(model.quickReplies, id: \.self) { reply in
+                                Button(reply) { Task { await model.quickReply(reply) } }
+                            }
+                        }
+                    }
+                    HStack {
+                        Button { Task { await model.planTomorrow() } } label: {
+                            if model.thinking { ProgressView().controlSize(.small) } else { Label("Plan with Blink", systemImage: "moon.stars") }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.thinking)
+                        Button("All set") { model.finishEvening() }
+                    }
+                }
+            }
+        }
+        if let next = model.agenda.today(now: now).first {
+            NextMeetingCard(event: next, now: now)
+        }
+        if let first = model.pending.first {
+            DashCard("Waiting for you", trailing: model.pending.count > 1 ? "See all \(model.pending.count)" : nil,
+                     action: showWaiting) {
+                CardView(action: first, count: model.pending.count, problem: model.actionProblem, app: model)
+            }
+        }
+        DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks, reminders: model.agenda.reminders, now: now), now: now)
+        weekCharts
+        let habits = model.habits.filter { model.isScheduledToday($0) }
+        if !habits.isEmpty {
+            DashCard("Habits", trailing: bestStreak()) { CardRows(items: habits) { HabitRow(habit: $0) } }
+        }
+        let mail = model.importantMail.filter { $0.status != .drafted }
+        if !mail.isEmpty {
+            DashCard("Important mail", trailing: "Inbox", action: showInbox) {
+                CardRows(items: Array(mail.prefix(4))) { message in
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(message.sender): \(message.subject)").lineLimit(1)
+                            Text(message.reason.isEmpty ? message.summary : message.reason).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                }
+            }
+        }
+        let posts = model.readyToPost + model.postsToday.filter { $0.status == .drafted }
+        if !posts.isEmpty {
+            DashCard("Posts for today", trailing: "Open Content", action: showContent) {
+                CardRows(items: posts) { piece in
+                    HStack(spacing: 10) {
+                        Text(piece.platform.name).font(.caption.weight(.semibold)).frame(width: 70, alignment: .leading)
+                        Text(piece.hook.isEmpty ? piece.body : piece.hook).lineLimit(1)
+                        Spacer()
+                        Text(piece.status == .approved ? "Ready" : "To review")
+                            .font(.caption).foregroundStyle(piece.status == .approved ? .green : .orange)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -158,8 +199,9 @@ private struct HeroCard: View {
     @Environment(AppModel.self) private var model
     let now: Date
     let showNotes: () -> Void
-    @State private var adding = false
-    @State private var newTask = ""
+    // Owned by Today, so a layout change (narrow ↔ wide) doesn't lose a half-typed task.
+    @Binding var adding: Bool
+    @Binding var newTask: String
 
     var body: some View {
         let hero = model.agenda.hero(now: now, tasks: model.dueTasks)
@@ -308,6 +350,7 @@ private struct DayTimelineCard: View {
 
     var body: some View {
         DashCard("Your day") {
+            if !plan.isEmpty { DayStrip(plan: plan, now: now).padding(.bottom, 6) }
             if plan.isEmpty {
                 Text("Nothing planned for the rest of today. Add a task above, or ask Blink to plan your day (⌃⌥Space).")
                     .foregroundStyle(.secondary)
@@ -386,32 +429,4 @@ private struct DayTimelineCard: View {
     }
 }
 
-private struct StatCard: View {
-    let title: String
-    let value: String
-    var detail: String?
-    let progress: Double?
-    let tint: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.system(.title2, design: .rounded).weight(.semibold)).monospacedDigit()
-            if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-            if let progress {
-                GeometryReader { geo in
-                    Capsule().fill(.quaternary)
-                        .overlay(alignment: .leading) {
-                            Capsule().fill(tint).frame(width: max(geo.size.width * progress, progress > 0 ? 6 : 0))
-                        }
-                }
-                .frame(height: 6)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading) // equal heights in a row
-        .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
-        .accessibilityElement(children: .combine)
-    }
-}
 #endif

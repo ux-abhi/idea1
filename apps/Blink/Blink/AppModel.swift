@@ -16,14 +16,67 @@ final class AppModel {
     enum Status: Equatable { case checking, connected, unreachable }
 
     private(set) var screen: Screen = .loading
+
+    /// Which server keys work ("ok", "missing", "rejected"), checked once per launch; nil until known.
+    private(set) var keyStatus: [String: String]?
+
+    func loadKeyStatus() async {
+        guard let server, email != nil, let status = try? await server.connections() else { return }
+        keyStatus = status
+    }
+
+    /// Settings › Connections checked the keys itself: share the answer, so setup prompts update at once.
+    func updateKeyStatus(_ status: [String: String]) { keyStatus = status }
+
+    /// Opens Settings from anywhere (the notch, a prompt), captured from the window's scene; works with it closed too.
+    var settingsOpener: (() -> Void)?
+
+    /// What's still to set up, in order (Today shows the ring; pages show their own step where it's needed).
+    var setupSteps: [SetupStep] {
+        SetupStep.all(keys: keyStatus, calendarGranted: calendarAccess == .granted, voicePage: voice.page,
+                      mailConnected: mailStates.contains { $0.lastError == nil }, hasAccount: !accounts.isEmpty,
+                      hasHabit: !habits.isEmpty)
+    }
+
+    /// True when no AI key works: chat and drafts can't run until one is added.
+    var aiKeyMissing: Bool { setupSteps.first { $0.id == .aiKey }?.done == false }
+
+    /// Goes where a setup step is fixed: a Settings tab or a window page.
+    func go(to destination: String) {
+        if destination.hasPrefix("settings:") { openSettings(String(destination.dropFirst(9))) }
+        else {
+            #if os(macOS)
+            NSApp.activate()
+            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+            #endif
+            openPage = destination
+        }
+    }
+
+    /// Opens Settings at a tab ("usage", "connections", "calendar"…), bringing Blink forward.
+    func openSettings(_ tab: String? = nil) {
+        if let tab { UserDefaults.standard.set(tab, forKey: "settings.tab") }
+        #if os(macOS)
+        NSApp.activate()
+        NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+        #endif
+        settingsOpener?()
+    }
     private(set) var server: BlinkServer?
     private(set) var email: String?
     private(set) var status: Status = .checking
-    private(set) var lastSync: Date? = UserDefaults.standard.object(forKey: "lastSync") as? Date
+    private(set) var lastSync: Date? = {
+        let saved = UserDefaults.standard.object(forKey: "lastSync") as? Date
+        // Installs from before onboarding existed have synced already: don't walk them through it.
+        if saved != nil, UserDefaults.standard.object(forKey: "onboarding.done") == nil {
+            for key in ["onboarding.done", "onboarding.welcomed", "onboarding.calendarSeen"] { UserDefaults.standard.set(true, forKey: key) }
+        }
+        return saved
+    }()
     /// Shown above the sign-in form, e.g. after the server ended the session.
     private(set) var signInNotice: String?
 
-    private var refreshing = false
+    private(set) var refreshing = false
 
     /// Ask-First cards waiting for the user (§6).
     private(set) var pending: [BlinkAction] = []
@@ -163,6 +216,8 @@ final class AppModel {
             await loadMail()
             await loadMoney()
             await loadHabits()
+            // Once per launch, and again on each sync while no key works (one free, read-only ping per provider).
+            if keyStatus == nil || aiKeyMissing { await loadKeyStatus() }
         } catch {
             switch ServerProblem(error) {
             case .signedOut:
@@ -210,7 +265,7 @@ final class AppModel {
         ideas = []; questions = [:]; pageRead = nil; weekPlan = []; designed = []
         spends = []; budgets = []; accounts = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
         emails = []; mailStates = []; mailProblem = nil; reviewing = nil; outbox = []; sendingNow = nil
-        modelPrefs = [:]; modelProblem = nil; dailyCap = nil; spaces = []; openPage = nil
+        modelPrefs = [:]; modelProblem = nil; dailyCap = nil; spaces = []; openPage = nil; keyStatus = nil
     }
 
     // MARK: Ask-First
@@ -759,14 +814,32 @@ final class AppModel {
         do {
             questions[idea] = try await server.draftContent(idea: idea, platforms: platforms, plannedFor: plannedFor)
             await loadContent()
+            if !batchingDrafts {
+                announce("✍︎ Drafts ready: \(idea.split(separator: "\n").first.map(String.init)?.prefix(40) ?? "your post")")
+            }
             return true
         } catch let problem as BlinkServer.ChatProblem {
             contentProblem = problem.message
         } catch {
             contentProblem = "Can't reach your server right now. Try again in a moment."
         }
+        announceProblem()
         return false
     }
+
+    /// Something that finished in the background (ideas, drafts, a week plan, a page read): the notch peeks with it,
+    /// so the owner doesn't have to open the window to find out.
+    struct Notice: Equatable {
+        let id = UUID()
+        let text: String
+        let failed: Bool
+    }
+    private(set) var notice: Notice?
+    /// While Write All runs, one notice at the end instead of one per draft.
+    private var batchingDrafts = false
+
+    private func announce(_ text: String, failed: Bool = false) { notice = Notice(text: text, failed: failed) }
+    private func announceProblem() { if let contentProblem { announce(contentProblem, failed: true) } }
 
     private(set) var ideas: [ContentIdea] = []
     /// Idea → what the model asked to know for a stronger post (shown on the idea's card until answered).
@@ -788,9 +861,14 @@ final class AppModel {
         thinkingOfIdeas = true
         defer { thinkingOfIdeas = false }
         contentProblem = nil
-        do { ideas = try await server.contentIdeas(theme: theme, platforms: platforms) }
+        do {
+            ideas = try await server.contentIdeas(theme: theme, platforms: platforms)
+            announce("💡 \(ideas.count) post ideas ready")
+            return
+        }
         catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
         catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
+        announceProblem()
     }
 
     func clearIdeas() async { ideas = [] }
@@ -804,9 +882,15 @@ final class AppModel {
         readingPage = true
         defer { readingPage = false }
         contentProblem = nil
-        do { pageRead = try await server.readPage(); await loadContentStats() }
+        do {
+            pageRead = try await server.readPage()
+            await loadContentStats()
+            announce("📊 Read \(pageRead?.read ?? 0) posts · stats in Content")
+            return
+        }
         catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
         catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
+        announceProblem()
     }
 
     /// "Use as my voice": the page read's suggestion fills the Voice profile (never-say words are kept).
@@ -856,16 +940,25 @@ final class AppModel {
         thinkingOfIdeas = true
         defer { thinkingOfIdeas = false }
         contentProblem = nil
-        do { weekPlan = try await server.contentIdeas(theme: theme, platforms: platforms, days: HabitDay.nextDays()) }
+        do {
+            weekPlan = try await server.contentIdeas(theme: theme, platforms: platforms, days: HabitDay.nextDays())
+            announce("📅 Week planned: \(weekPlan.count) posts")
+            return
+        }
         catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
         catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
+        announceProblem()
     }
 
     func clearWeekPlan() { weekPlan = [] }
 
     /// Drafts for every planned day, one after another.
     func writeWeek() async {
+        let count = weekPlan.count
+        batchingDrafts = true
+        defer { batchingDrafts = false }
         for idea in weekPlan { await write(idea) }
+        if contentProblem == nil { announce("✍︎ \(count) drafts written for your week") }
     }
 
     /// Planned for today and not out yet: the notch and Today show these.
@@ -1463,8 +1556,10 @@ final class AppModel {
 
     /// Asked only when the user taps Connect Calendar, never at launch.
     func connectCalendar() async {
-        calendarAccess = await calendarReader.requestAccess()
-        if calendarAccess == .granted { await startCalendar() }
+        let access = await calendarReader.requestAccess()
+        // Load the agenda before saying "granted", so nothing shows "no meetings" while it loads.
+        if access == .granted { await startCalendar() }
+        calendarAccess = access
     }
 
     private func startCalendar() async {

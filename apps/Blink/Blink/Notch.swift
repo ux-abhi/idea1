@@ -223,6 +223,22 @@ final class NotchController {
             }
         }
 
+        // Background work finished (ideas, drafts, week plan, page read): peek with the result, so the owner needn't
+        // open the window. When the notch is already open, its chat panel shows the result itself.
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await notice in Observations({ app.notice }) {
+                guard let self, let notice, self.model.level == .rest else { continue }
+                self.model.mood = notice.failed ? .concerned : .done
+                self.model.peekNote = notice.text
+                self.show(.peek, closingAfter: 6)
+                AccessibilityNotification.Announcement(notice.text).post()
+                try? await Task.sleep(for: .seconds(6))
+                if self.model.peekNote == notice.text { self.model.peekNote = nil }
+                self.evaluateCue()
+            }
+        }
+
         // 7 / 30 / 100-day habit streaks: Celebrate for 3 s, then back to whatever the cues say (§7).
         Task { [weak self] in
             guard let app = self?.app else { return }
@@ -604,6 +620,7 @@ struct NotchView: View {
                 NSApp.activate()
                 NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
             }
+            Button("Settings…") { app.openSettings() }
             Button("Quit Blink") { NSApp.terminate(nil) }
         }
         .accessibilityElement(children: .contain)
@@ -793,6 +810,10 @@ struct ChatPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             UndoChipRow(app: app)
+            // Chat needs a working AI key; say so here, where it's tried, with the way to fix it. "/" commands still work.
+            if app.aiKeyMissing, !input.hasPrefix("/"), let step = app.setupSteps.first(where: { $0.id == .aiKey }) {
+                NeedsSetup(step: step, model: app)
+            }
             if app.drafting || app.thinkingOfIdeas {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)

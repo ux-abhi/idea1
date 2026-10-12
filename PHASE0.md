@@ -76,6 +76,16 @@ Gates:
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
 
+## Onboarding, visual Today, storage (Mac session, 2026-10-13)
+Owner: Blink sets up each person's server (one-click via Supabase, next); distribution not decided yet.
+- [x] First run: Welcome → Server → Account → Calendar (real next meeting = value moment) → About you; existing installs skip it.
+- [x] Settings in plain sight: sidebar, notch menu, menu bar; prompts open the right tab.
+- [x] Setup ring on Today and just-in-time "Add …" prompts (AI key in the notch chat and Blink panel, handle, mail, money, habit).
+- [x] Today redesigned: day rings, clickable number tiles, day strip, habits and spending this week.
+- [x] Notch peeks when ideas, drafts, a week plan or a page read finish (or fail).
+- [x] Storage: nightly cleanup job (setup/cleanup_schedule.sql), clipboard caps 200 KB, post images pruned.
+- [ ] One-click server creation (Supabase Management API: create project, run migrations, deploy functions, set secrets).
+
 ## Content redesign (Mac session, 2026-10-12)
 Owner: Apify only for Instagram; LinkedIn and X numbers typed in (no X account yet); post performance first; tab layout approved.
 - [x] Content page in four tabs: Overview · Posts · Plan · Ideas; New Post (⌘N) as a sheet; posts open in their own sheet.

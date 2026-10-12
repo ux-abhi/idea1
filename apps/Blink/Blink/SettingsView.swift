@@ -6,22 +6,26 @@ import SwiftUI
 /// Settings (⌘,), behind the same app lock as the window. Sections follow ARCHITECTURE §36.2;
 /// Models & cost, Connections, Automatic rules and Data arrive with the features they control.
 struct SettingsRoot: View {
+    /// The tabs, by key, so a prompt elsewhere ("Add a key") can open the right one.
+    enum Section: String { case server, devices, calendar, day, notch, usage, connections, privacy }
+
     @Environment(AppModel.self) private var model
+    @AppStorage("settings.tab") private var tab: Section = .server
 
     var body: some View {
         Group {
             if model.locked {
                 LockView()
             } else if model.screen == .home {
-                TabView {
-                    Tab("Server", systemImage: "server.rack") { ServerSettings() }
-                    Tab("Devices", systemImage: "laptopcomputer.and.iphone") { DevicesSettings() }
-                    Tab("Calendar", systemImage: "calendar") { CalendarSettings() }
-                    Tab("Your Day", systemImage: "sun.horizon") { DaySettings() }
-                    Tab("Blink & Notch", systemImage: "eyes") { NotchSettings() }
-                    Tab("AI & Usage", systemImage: "sparkles") { UsageSettings() }
-                    Tab("Connections", systemImage: "key") { ConnectionsSettings() }
-                    Tab("Privacy", systemImage: "lock.shield") { PrivacySettings() }
+                TabView(selection: $tab) {
+                    Tab("Server", systemImage: "server.rack", value: .server) { ServerSettings() }
+                    Tab("Devices", systemImage: "laptopcomputer.and.iphone", value: .devices) { DevicesSettings() }
+                    Tab("Calendar", systemImage: "calendar", value: .calendar) { CalendarSettings() }
+                    Tab("Your Day", systemImage: "sun.horizon", value: .day) { DaySettings() }
+                    Tab("Blink & Notch", systemImage: "eyes", value: .notch) { NotchSettings() }
+                    Tab("AI & Usage", systemImage: "sparkles", value: .usage) { UsageSettings() }
+                    Tab("Connections", systemImage: "key", value: .connections) { ConnectionsSettings() }
+                    Tab("Privacy", systemImage: "lock.shield", value: .privacy) { PrivacySettings() }
                 }
             } else {
                 ContentUnavailableView("Connect your server first", systemImage: "server.rack",
@@ -371,7 +375,12 @@ struct ConnectionsSettings: View {
         guard let server = model.server else { return }
         checking = true
         defer { checking = false }
-        do { status = try await server.connections(); failed = false } catch { failed = true }
+        do {
+            let checked = try await server.connections()
+            status = checked
+            model.updateKeyStatus(checked)
+            failed = false
+        } catch { failed = true }
     }
 
     private func word(_ s: String?) -> String {

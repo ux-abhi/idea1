@@ -67,6 +67,8 @@ struct DashCard<Content: View>: View {
                     Spacer()
                     if let trailing, let action {
                         Button(trailing, action: action).buttonStyle(.plain).foregroundStyle(.secondary)
+                    } else if let trailing {
+                        Text(trailing).font(.callout).foregroundStyle(.secondary)
                     }
                 }
             }

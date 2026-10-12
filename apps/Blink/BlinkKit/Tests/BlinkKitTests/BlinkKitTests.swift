@@ -594,11 +594,13 @@ extension Tokens {
 
 @Test func quickCommandsParseInTheNotch() throws {
     let cal = Calendar.current
-    let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 10))!
+    // The system's date reader resolves "tomorrow" from the real clock, so the test does too.
+    let now = Date.now
     guard case .task(let title, let due)? = QuickCommand.parse("/task Send invoice tomorrow at 10", now: now) else {
         Issue.record("task not parsed"); return
     }
-    #expect(title == "Send invoice" && due.map { cal.component(.day, from: $0) } == 13)
+    let tomorrow = cal.date(byAdding: .day, value: 1, to: now)!
+    #expect(title == "Send invoice" && due.map { cal.isDate($0, inSameDayAs: tomorrow) } == true)
     #expect(QuickCommand.parse("/remind Call Sam", now: now) == .remind(title: "Call Sam", due: nil))
     #expect(QuickCommand.parse("/timer 10m") == .timer(minutes: 10))
     #expect(QuickCommand.parse("/timer 1.5h") == .timer(minutes: 90))
@@ -740,4 +742,19 @@ extension Tokens {
     #expect(ContentStats.byWeekday(posts, calendar: cal).first { $0.weekday == 2 }?.engagement == 80) // Mondays: 120 and 40
     #expect(ContentStats.top(posts, count: 1).first?.url == "b")
     #expect(ContentStats.perWeek(posts, weeks: 3, now: day(12), calendar: cal) == [1, 2, 1])
+}
+
+@Test func setupStepsKnowWhatIsMissing() {
+    let fresh = SetupStep.all(keys: ["groq": "missing", "anthropic": "missing"], calendarGranted: false, voicePage: "",
+                              mailConnected: false, hasAccount: false, hasHabit: false)
+    #expect(fresh.filter(\.done).isEmpty && fresh.first?.id == .aiKey)
+    let ready = SetupStep.all(keys: ["groq": "ok"], calendarGranted: true, voicePage: "@uxabhi_ on Instagram",
+                              mailConnected: true, hasAccount: true, hasHabit: true)
+    #expect(ready.allSatisfy { $0.done })
+    // A provider that's briefly unreachable still has a key.
+    #expect(SetupStep.all(keys: ["groq": "unreachable", "anthropic": "missing"], calendarGranted: true, voicePage: "",
+                          mailConnected: true, hasAccount: true, hasHabit: true).first { $0.id == .aiKey }?.done == true)
+    // While the key check hasn't answered, don't nag about keys.
+    #expect(SetupStep.all(keys: nil, calendarGranted: true, voicePage: "", mailConnected: true, hasAccount: true, hasHabit: true)
+        .first { $0.id == .aiKey }?.done == true)
 }

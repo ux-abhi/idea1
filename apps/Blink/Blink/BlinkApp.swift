@@ -91,6 +91,8 @@ struct MenuBarContent: View {
             NSApp.activate()
             NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
         }
+        SettingsLink { Text("Settings…") }
+            .keyboardShortcut(",")
         Divider()
         Button("Quit Blink") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
@@ -100,26 +102,33 @@ struct MenuBarContent: View {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("onboarding.done") private var onboardingDone = false
+    #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+    #endif
 
     var body: some View {
+        content
+            #if os(macOS)
+            // The notch and setup prompts open Settings through this, even when the window is locked or closed later.
+            .onAppear { let open = openSettings; model.settingsOpener = { open() } }
+            #endif
+    }
+
+    @ViewBuilder
+    private var content: some View {
         // The lock replaces the content rather than covering it, so nothing renders behind it.
         if model.locked {
             LockView()
-        } else if model.screen == .home {
+        } else if model.screen == .home && onboardingDone {
             #if os(macOS)
             MainWindow()
             #else
             NavigationStack { HomeView() }
             #endif
         } else {
-            NavigationStack {
-                switch model.screen {
-                case .loading: ProgressView()
-                case .connect: ConnectView()
-                case .signIn: SignInView()
-                case .home: HomeView()
-                }
-            }
+            // First run, or signed out: the onboarding owns the window (server, sign-in, calendar, about you).
+            OnboardingView()
         }
     }
 }

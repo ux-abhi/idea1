@@ -96,6 +96,16 @@ struct MainWindow: View {
                 NewSpaceSheet { page = .space($0) }
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 210)
+            // Settings in plain sight, not only behind ⌘,.
+            .safeAreaInset(edge: .bottom) {
+                SettingsLink { Label("Settings", systemImage: "gearshape") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18).padding(.vertical, 10)
+                    .help("Settings (⌘,)")
+            }
+
         } detail: {
             detail
                 .inspector(isPresented: $showPanel) { BlinkPanel(page: page ?? .section(.today)) }
