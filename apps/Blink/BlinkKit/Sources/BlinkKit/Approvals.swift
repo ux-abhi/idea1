@@ -32,10 +32,16 @@ public struct BlinkAction: Decodable, Identifiable, Equatable, Sendable {
         public let due: Date?
         /// For `task.complete` / `task.delete` / `reminder.complete` / `reminder.delete`.
         public let targetID: String?
+        /// For `mail.compose` (from chat) and `mail.send`: which email, when to send, what to say, and to whom.
+        public let emailID: String?
+        public let sendAt: Date?
+        public let note: String?
+        public let to: String?
+        public let subject: String?
 
         enum CodingKeys: String, CodingKey {
-            case title, summary, verb, reminder, due
-            case targetID = "target_id"
+            case title, summary, verb, reminder, due, note, to, subject
+            case targetID = "target_id", emailID = "email_id", sendAt = "send_at"
         }
     }
 

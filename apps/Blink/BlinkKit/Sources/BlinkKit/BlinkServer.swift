@@ -354,6 +354,8 @@ public final class BlinkServer: Sendable {
         try await client.functions.invoke("connections", options: .init(body: [String: String]()))
     }
 
+    private struct IDRow: Decodable { let id: String }
+
     // MARK: Mail (Phase 5)
 
     /// The last week's triaged mail that isn't done, newest first.
@@ -385,16 +387,73 @@ public final class BlinkServer: Sendable {
         }
     }
 
-    /// A reply in the owner's voice, saved to that account's Drafts folder (it shows in Apple Mail). Returns the folder.
-    public func draftReply(to email: EmailMessage, note: String) async throws -> String {
-        struct Body: Encodable { let action = "draft"; let id: String; let note: String }
-        struct Reply: Decodable { let mailbox: String }
+    /// A reply in the owner's voice, saved to that account's Drafts folder (it shows in Apple Mail), returned for review.
+    /// With `reuse`, Blink's earlier draft is read back (including edits made in Apple Mail) instead of writing a new one.
+    public func draftReply(to email: EmailMessage, note: String, reuse: Bool = false) async throws -> MailDraft {
+        struct Body: Encodable { let action = "draft"; let id: String; let note: String; let reuse: Bool }
+        struct Reply: Decodable { let draft: MailDraft }
         do {
-            let reply: Reply = try await client.functions.invoke("mail", options: .init(body: Body(id: email.id, note: note)))
-            return reply.mailbox
+            let reply: Reply = try await client.functions.invoke("mail", options: .init(body: Body(id: email.id, note: note, reuse: reuse)))
+            return reply.draft
         } catch let FunctionsError.httpError(_, data) {
             struct ErrorBody: Decodable { let error: String }
             throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't write the draft.")
+        }
+    }
+
+    /// Proposes sending exactly this reply at `sendAt` as a red action; it goes out only after `approveRed` (Touch ID).
+    public func proposeSend(_ draft: MailDraft, at sendAt: Date, title: String, summary: String) async throws -> BlinkAction {
+        struct Payload: Encodable {
+            let title: String, summary: String, verb = "Send"
+            let email_id: String, account: String, from: String, to: String, subject: String, body: String
+            let in_reply_to: String, message_id: String, send_at: String
+        }
+        struct Row: Encodable { let kind = "mail.send", risk = "red", payload: Payload, payload_hash = "\\x00", proposed_by = "blink" }
+        let payload = Payload(title: title, summary: summary, email_id: draft.emailID, account: draft.account, from: draft.from,
+                              to: draft.to.trimmingCharacters(in: .whitespaces), subject: draft.subject, body: draft.body,
+                              in_reply_to: draft.inReplyTo, message_id: draft.messageID, send_at: sendAt.ISO8601Format())
+        return try await client.from("action").insert(Row(payload: payload))
+            .select("id, kind, risk, payload, payload_hash").single().execute().value
+    }
+
+    /// Asks the mail worker to send approved mail that is due now (the 5-minute schedule does it too).
+    public func sendDueMail() async throws {
+        _ = try await client.functions.invoke("mail", options: .init(body: ["action": "send"]))
+    }
+
+    /// Approved mail waiting for its send time, soonest first.
+    public func outbox() async throws -> [BlinkAction] {
+        try await client.from("action")
+            .select("id, kind, risk, payload, payload_hash, status, decided_at")
+            .eq("kind", value: "mail.send").eq("status", value: "approved")
+            .order("created_at")
+            .execute().value
+    }
+
+    /// Stops a scheduled send if it hasn't gone yet. Returns false when it's too late (already sending or sent).
+    public func cancelSend(_ action: BlinkAction) async throws -> Bool {
+        let rows: [IDRow] = try await client.from("action")
+            .update(["status": "declined", "decided_at": Date.now.ISO8601Format()])
+            .eq("id", value: action.id).eq("status", value: "approved")
+            .select("id").execute().value
+        return !rows.isEmpty
+    }
+
+    /// The owner says what this mail is; the sender rule makes all later mail from them follow suit.
+    public func teach(_ verdict: SenderVerdict, for email: EmailMessage) async throws {
+        struct Rule: Encodable { let sender: String, verdict: String, example: String }
+        try await client.from("email_msg").update(["triage": verdict.rawValue])
+            .eq("from_addr", value: email.senderKey).neq("status", value: "done").execute()
+        try await client.from("mail_sender_rule")
+            .upsert(Rule(sender: email.senderKey, verdict: verdict.rawValue, example: String(email.subject.prefix(300))), onConflict: "owner_id,sender")
+            .execute()
+    }
+
+    /// Undoes `teach`: drops the sender rule and puts each mail back as it was sorted before.
+    public func forget(senderKey: String, restoring emails: [EmailMessage]) async throws {
+        try await client.from("mail_sender_rule").delete().eq("sender", value: senderKey).execute()
+        for email in emails {
+            try await client.from("email_msg").update(["triage": email.triage.rawValue]).eq("id", value: email.id).execute()
         }
     }
 

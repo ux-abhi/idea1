@@ -622,3 +622,18 @@ extension Tokens {
     #expect(mail.sender == "w@tv.com" && mail.triage == .important)
     #expect(mail.mailURL?.absoluteString == "message://%3Cabc%40tv%2Ecom%3E")
 }
+
+@Test func replyNeedsOnePlainRecipientAndScheduledSendsDecode() throws {
+    var draft = MailDraft(emailID: "e1", account: "icloud", from: "hello@pexilim.com", to: "w@tv.com", subject: "Re: Hi",
+                          body: "Thanks", inReplyTo: "<a@tv.com>", messageID: "<b@pexilim.com>")
+    #expect(draft.hasValidRecipient)
+    for bad in ["w@tv.com, x@y.com", "Wolfram <w@tv.com>", "w@tv", ""] {
+        draft.to = bad
+        #expect(!draft.hasValidRecipient, "\(bad) accepted")
+    }
+    let json = #"{"id":"a1","kind":"mail.send","risk":"red","payload_hash":"\\x01","payload":{"title":"Send reply?","subject":"Re: Hi","to":"w@tv.com","email_id":"e1","send_at":"2026-10-15T07:00:00Z"}}"#
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let action = try decoder.decode(BlinkAction.self, from: Data(json.utf8))
+    #expect(action.payload.sendAt == Date(timeIntervalSince1970: 1_792_047_600) && action.payload.emailID == "e1")
+}

@@ -60,12 +60,16 @@ struct MainWindow: View {
     @State private var newSpace = false
     @AppStorage("blinkPanel") private var showPanel = true
     @State private var searching = false
+    // Sidebar groups fold; each remembers whether it's open.
+    @AppStorage("sidebar.open.main") private var mainOpen = true
+    @AppStorage("sidebar.open.spaces") private var spacesOpen = true
+    @AppStorage("sidebar.open.review") private var reviewOpen = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationSplitView {
             List(selection: $page) {
-                SwiftUI.Section {
+                SwiftUI.Section("Blink", isExpanded: $mainOpen) {
                     row(.today)
                     row(.inbox)
                     row(.calendar)
@@ -74,7 +78,7 @@ struct MainWindow: View {
                     row(.content)
                 }
                 spacesSection
-                SwiftUI.Section {
+                SwiftUI.Section("Review", isExpanded: $reviewOpen) {
                     row(.waiting)
                     row(.activity)
                 }
@@ -160,7 +164,7 @@ struct MainWindow: View {
             }
 
     private var spacesSection: some View {
-        SwiftUI.Section("Spaces") {
+        SwiftUI.Section("Spaces", isExpanded: $spacesOpen) {
             ForEach(model.spaces) { space in spaceRow(space) }
             Button { newSpace = true } label: { Label("New Space", systemImage: "plus") }
                 .buttonStyle(.plain)

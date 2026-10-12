@@ -83,8 +83,13 @@ Owner choices: Gmail + iCloud (hello@pexilim.com and hello@uxabhi.com are iCloud
 - [x] mail Edge Function: own IMAP client (tested on recorded replies), triage on the free Groq model, reply drafts in the owner's voice appended to the account's Drafts folder (shows in Apple Mail), reply sent from the address the mail went to; mail text fenced as data.
 - [x] Schedule: pg_cron every 5 minutes with a Vault secret (backend/supabase/setup/mail_schedule.sql); ran OK.
 - [x] App: Inbox page (Important / Needs a reply / Everything else / Newsletters), Draft Reply (with a note), Open in Mail, Done; important mail peeks in the notch and shows on Today; Sync Now also checks mail.
-- [ ] Owner adds GMAIL_ADDRESS, GMAIL_APP_PASSWORD, ICLOUD_ADDRESS, ICLOUD_APP_PASSWORD, MAIL_ALIASES; first real check.
-- [ ] Send after Touch ID from Blink (SMTP from the server, red Ask-First card + 10 s Cancel). Until then the owner sends drafts from Apple Mail.
+- [x] Owner added the Gmail and iCloud secrets; first real check ran. Uni Siegen mailbox added (UNI_ADDRESS, UNI_PASSWORD).
+- [x] Stricter triage: job-board alerts and renewal spam never important (rule in code + prompt), larger free model.
+- [x] Owner teaches triage: Mark Important / Not Important per sender (mail_sender_rule), applied before the model and shown to it as examples; undoable.
+- [x] Inbox: mailbox tabs (All / Gmail / iCloud / Uni), search, folding sections; sidebar groups fold.
+- [x] Send from Blink after Touch ID: review sheet (edit, now or later), red mail.send action signed over the exact mail, own SMTP client on the server, 10 s Cancel for "now", scheduled sends cancellable in the Inbox, copy to Sent, Blink's draft removed from Drafts.
+- [x] Chat: "send the reply to Paresh on the 15th" proposes a card; approving opens the reply for review with that time.
+- [ ] First real send on each account (Gmail, iCloud, uni); check Sent has no duplicate copy on iCloud and uni.
 
 ## Phase 3 status (Mac session, 2026-10-12): started
 Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no platform APIs yet).

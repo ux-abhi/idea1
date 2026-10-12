@@ -206,8 +206,13 @@ final class AppModel {
         actionProblem = nil
         do {
             switch action.risk {
+            case .red where action.kind == "mail.send":
+                // Mail is sent only from the review sheet, which shows the exact recipient and text. A card shows only its
+                // title, which whoever inserted it chose, so it is never approved from here.
+                try await server.setStatus("declined", for: action)
+                actionProblem = "Mail is sent from the Inbox, where you can see the whole message."
             case .red:
-                // shortcut: approval only; the server executors (mail, posts) and the 10 s "Sending… Cancel" land with them.
+                // shortcut: approval only; the post executor lands with autoposting.
                 try await server.approveRed(action)
             case .green, .amber:
                 try await server.setStatus("approved", for: action)
@@ -283,6 +288,15 @@ final class AppModel {
                 try? await server.setStatus("failed", for: action, result: ["error": error.localizedDescription])
                 throw error
             }
+        case "mail.compose":
+            // From chat ("send the reply to Paresh on the 15th"): write or reuse the draft, then show it for review.
+            if !emails.contains(where: { $0.id == action.payload.emailID }) { await loadMail() }
+            guard let message = emails.first(where: { $0.id == action.payload.emailID }) else {
+                try await server.setStatus("failed", for: action, result: ["error": "That email isn't in Blink anymore."])
+                return
+            }
+            try await server.setStatus("done", for: action, result: ["email_id": message.id])
+            await reviewReply(to: message, note: action.payload.note ?? "", sendAt: action.payload.sendAt)
         default:
             break
         }
@@ -951,6 +965,7 @@ final class AppModel {
         guard let server, email != nil else { return }
         if let list = try? await server.emails() { emails = list }
         if let states = try? await server.mailStates() { mailStates = states }
+        await loadOutbox()
         // Pick up the server's 5-minute checks while the app runs (one small query each time).
         if mailWatch == nil {
             mailWatch = Task { [weak self] in
@@ -973,19 +988,125 @@ final class AppModel {
         await loadMail()
     }
 
+    /// A reply open for review before sending; `sendAt` nil means "send now".
+    struct Review: Identifiable {
+        var draft: MailDraft
+        var sendAt: Date?
+        let sender: String
+        var id: String { draft.messageID }
+    }
+    var reviewing: Review?
+    /// Approved mail waiting for its time, and the one counting down its 10 seconds before it goes.
+    private(set) var outbox: [BlinkAction] = []
+    private(set) var sendingNow: BlinkAction?
+    private var sendCountdown: Task<Void, Never>?
+
+    /// Writes a reply into Drafts (it shows in Apple Mail) and opens it for review, so it can be sent from Blink.
     func draftReply(to message: EmailMessage, note: String = "") async {
+        await reviewReply(to: message, note: note, reuse: false)
+    }
+
+    /// Opens the reply for review: Blink's earlier draft if there is one (with edits made in Apple Mail), else a new one.
+    func reviewReply(to message: EmailMessage, note: String = "", sendAt: Date? = nil, reuse: Bool? = nil) async {
         guard let server, !draftingMail.contains(message.id) else { return }
         draftingMail.insert(message.id)
         defer { draftingMail.remove(message.id) }
         mailProblem = nil
         do {
-            let folder = try await server.draftReply(to: message, note: note)
+            let draft = try await server.draftReply(to: message, note: note, reuse: reuse ?? (note.isEmpty && message.status == .drafted))
             if let i = emails.firstIndex(where: { $0.id == message.id }) { emails[i].status = .drafted }
-            offerUndo("Draft saved to \(folder): \(message.subject)") {}
+            openPage = "inbox"
+            #if os(macOS)
+            // Approved from the notch: bring the window forward so the review sheet is seen.
+            NSApp.activate()
+            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+            #endif
+            reviewing = Review(draft: draft, sendAt: sendAt.flatMap { $0 > .now ? $0 : nil }, sender: message.sender)
         } catch let problem as BlinkServer.ChatProblem {
             mailProblem = problem.message
         } catch {
             mailProblem = "Can't reach your server right now."
+        }
+    }
+
+    /// Sends the reviewed reply after Touch ID: now (after a 10-second chance to cancel) or at its time. Returns a
+    /// problem to show in the review sheet, or nil when it's on its way.
+    func send(_ review: Review) async -> String? {
+        guard let server else { return "Sign in first." }
+        let at = review.sendAt ?? .now.addingTimeInterval(10)
+        let when = review.sendAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "now"
+        do {
+            let action = try await server.proposeSend(review.draft, at: at, title: "Send reply to \(review.sender)?",
+                                                       summary: "\(review.draft.subject) · \(when)")
+            do {
+                try await server.approveRed(action)
+            } catch {
+                // No half-approved sends left behind: the sheet stays open to try again.
+                try? await server.setStatus("declined", for: action)
+                if case ApprovalKey.Problem.cancelled = error { return "" }
+                throw error
+            }
+            reviewing = nil
+            if let i = emails.firstIndex(where: { $0.id == review.draft.emailID }) { emails.remove(at: i) }
+            await afterSendApproved(action, now: review.sendAt == nil)
+            return nil
+        } catch {
+            return "Couldn't send. Check your connection and try again."
+        }
+    }
+
+    /// After Touch ID: "Sending… Cancel" for 10 seconds, then hand it to the server; scheduled mail just joins the outbox.
+    private func afterSendApproved(_ action: BlinkAction, now: Bool = true) async {
+        await loadOutbox()
+        guard now, let server else { return }
+        sendingNow = action
+        sendCountdown = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            self?.sendingNow = nil
+            try? await server.sendDueMail()
+            await self?.loadOutbox()
+            await self?.loadActivity()
+        }
+    }
+
+    func loadOutbox() async {
+        guard let server, email != nil, let list = try? await server.outbox() else { return }
+        outbox = list
+    }
+
+    /// Stops a send that hasn't gone yet (the 10-second countdown or a scheduled one).
+    func cancelSend(_ action: BlinkAction) async {
+        guard let server else { return }
+        if sendingNow?.id == action.id { sendCountdown?.cancel(); sendingNow = nil }
+        do {
+            if try await !server.cancelSend(action) {
+                mailProblem = "Too late to cancel: it's already sending."
+            }
+        } catch {
+            mailProblem = "Couldn't cancel. Check your connection."
+        }
+        await loadOutbox()
+        await loadMail()
+    }
+
+    /// The owner corrects Blink: this mail (and everything later from this sender) is important or not.
+    func teach(_ verdict: SenderVerdict, for message: EmailMessage) async {
+        guard let server, let i = emails.firstIndex(where: { $0.id == message.id }) else { return }
+        let before = emails
+        let triage: EmailMessage.Triage = verdict == .important ? .important : .newsletter
+        for j in emails.indices where emails[j].senderKey == message.senderKey { emails[j].triage = triage }
+        do {
+            try await server.teach(verdict, for: emails[i])
+            offerUndo(verdict == .important ? "Mail from \(message.sender) will show as important" : "Mail from \(message.sender) won't show as important") { [weak self] in
+                guard let self else { return }
+                let changed = before.filter { $0.senderKey == message.senderKey }
+                emails = before
+                try? await server.forget(senderKey: message.senderKey, restoring: changed)
+            }
+        } catch {
+            emails = before
+            mailProblem = "Couldn't save that. Check your connection."
         }
     }
 

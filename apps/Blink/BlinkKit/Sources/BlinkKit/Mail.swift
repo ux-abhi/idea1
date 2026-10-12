@@ -13,7 +13,7 @@ public struct EmailMessage: Codable, Identifiable, Equatable, Sendable {
     public let fromAddr: String
     public let subject: String
     public let receivedAt: Date?
-    public let triage: Triage
+    public var triage: Triage
     public let reason: String
     public let summary: String
     public let needsReply: Bool
@@ -52,4 +52,39 @@ public struct MailState: Codable, Equatable, Sendable {
     public let lastCheckedAt: Date?
     public let lastError: String?
     enum CodingKeys: String, CodingKey { case account, lastCheckedAt = "last_checked_at", lastError = "last_error" }
+}
+
+/// A reply ready to review: what the mail worker wrote into Drafts, and exactly what will be sent once approved.
+public struct MailDraft: Codable, Equatable, Sendable {
+    public let emailID: String
+    public let account: String
+    public let from: String
+    public var to: String
+    public var subject: String
+    public var body: String
+    public let inReplyTo: String
+    public let messageID: String
+
+    enum CodingKeys: String, CodingKey {
+        case account, from, to, subject, body
+        case emailID = "email_id", inReplyTo = "in_reply_to", messageID = "message_id"
+    }
+
+    public init(emailID: String, account: String, from: String, to: String, subject: String, body: String, inReplyTo: String, messageID: String) {
+        (self.emailID, self.account, self.from, self.to, self.subject, self.body, self.inReplyTo, self.messageID) =
+            (emailID, account, from, to, subject, body, inReplyTo, messageID)
+    }
+
+    /// One plain address, the same rule the server checks before sending.
+    public var hasValidRecipient: Bool {
+        to.wholeMatch(of: /[^\s@<>,;"()]+@[^\s@<>,;"()]+\.[^\s@<>,;"()]+/) != nil
+    }
+}
+
+/// The owner's verdict on a sender, taught from the Inbox: the worker applies it to all later mail from them.
+public enum SenderVerdict: String, Sendable { case important, newsletter }
+
+extension EmailMessage {
+    /// The rule key for this sender: the address itself, lowercased.
+    public var senderKey: String { fromAddr.lowercased() }
 }
