@@ -76,6 +76,13 @@ Gates:
 ## After Phase 0
 Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
 
+## Content redesign (Mac session, 2026-10-12)
+Owner: Apify only for Instagram; LinkedIn and X numbers typed in (no X account yet); post performance first; tab layout approved.
+- [x] Content page in four tabs: Overview · Posts · Plan · Ideas; New Post (⌘N) as a sheet; posts open in their own sheet.
+- [x] Posts: one line each, search, platform filter, folding sections (Ready · Drafts · Posted).
+- [x] Overview: connected accounts (follower numbers typed in, `social_account`), likes/comments/reel views per post, engagement per post, best format, best day, posts per week, top posts, "what works".
+- [ ] Owner: set Voice (handle + creator brief), then Read My Page once to fill Overview.
+
 ## Phase 7 status (Mac session, 2026-10-12): first slice
 Owner: "a basic entry, like a budget calculator at max, with AI that sorts it properly"; meals left out for now.
 - [x] `transaction` + `budget` tables (RLS tests); `money` Edge Function sorts free text into spends with categories on the free Groq model (checked amounts, categories, days).

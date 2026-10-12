@@ -5,187 +5,50 @@ import BlinkKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Content: one idea → a draft per platform (§36.4). Edit, approve, then copy & open to post it yourself.
+/// Content (§36.4), in four tabs: Overview (how posts perform, connected accounts), Posts (a searchable list that
+/// folds by status; a post opens in its own sheet), Plan (the next 7 days) and Ideas. New Post writes drafts.
 struct ContentView: View {
+    enum Tab: String, CaseIterable, Identifiable {
+        case overview, posts, plan, ideas
+        var id: String { rawValue }
+        var title: String { rawValue.capitalized }
+    }
+
     @Environment(AppModel.self) private var model
-    @State private var idea = ""
-    @AppStorage("contentPlatforms") private var picked = "instagram,linkedin,x"
+    @AppStorage("content.tab") private var tab: Tab = .posts
+    @State private var composing = false
     @State private var editingVoice = false
-    @State private var showPosted = false
+    @State private var opened: String?
+    @State private var query = ""
+    @State private var platform: ContentPiece.Platform?
 
     var body: some View {
-        let live = model.content.filter { $0.status != .published }
-        let posted = model.content.filter { $0.status == .published }
+        let live = model.content.filter { $0.status != .archived }
         let ready = live.filter { $0.status == .approved }.count
-        DashPage("Content", summary: live.isEmpty ? "Ideas into posts" : "\(live.count) drafts · \(ready) ready to post") {
-            DashCard("New post") {
-                TextField("What's the idea? e.g. \"3 checkout mistakes that lose users\". Or leave it empty and ask for ideas.", text: $idea, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(2...6)
-                    .padding(10)
-                    .background(.quaternary.opacity(0.6), in: .rect(cornerRadius: 12, style: .continuous))
-                HStack(spacing: 8) {
-                    ForEach(ContentPiece.Platform.allCases, id: \.self) { platform in
-                        let on = platforms.contains(platform)
-                        Button { toggle(platform) } label: {
-                            Label(platform.name, systemImage: on ? "checkmark.circle.fill" : "circle")
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(on ? .accentColor : .secondary)
-                        .accessibilityAddTraits(on ? .isSelected : [])
-                    }
-                    Spacer()
-                    ModelMenu(feature: "content", compact: true)
-                        .menuStyle(.borderlessButton)
-                        .controlSize(.small)
-                    Button {
-                        Task { await model.planWeek(theme: idea, platforms: platforms) }
-                    } label: { Label("Plan My Week", systemImage: "calendar") }
-                    .disabled(platforms.isEmpty || model.thinkingOfIdeas)
-                    Button {
-                        Task { await model.suggestIdeas(theme: idea, platforms: platforms) }
-                    } label: {
-                        if model.thinkingOfIdeas { ProgressView().controlSize(.small) } else { Label("Give Me Ideas", systemImage: "lightbulb") }
-                    }
-                    .disabled(platforms.isEmpty || model.thinkingOfIdeas)
-                    Button {
-                        Task { if await model.draft(idea: idea, platforms: platforms) { idea = "" } }
-                    } label: {
-                        if model.drafting { ProgressView().controlSize(.small) } else { Label("Write Drafts", systemImage: "sparkles") }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(idea.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || platforms.isEmpty || model.drafting)
-                    .keyboardShortcut(.return, modifiers: .command)
-                }
-                if let problem = model.contentProblem {
-                    Text(problem).font(.callout).foregroundStyle(.orange)
-                } else if !model.voice.isSetUp {
-                    Button("Tell Blink about your page (e.g. @uxabhi, who it's for, your topics) so posts aren't generic…") { editingVoice = true }
-                        .buttonStyle(.link)
-                }
+        let drafts = live.filter { $0.status == .drafted }.count
+        DashPage("Content", summary: "\(drafts) draft\(drafts == 1 ? "" : "s") · \(ready) ready to post") {
+            Picker("Section", selection: $tab) {
+                ForEach(Tab.allCases) { Text($0.title).tag($0) }
             }
-
-            if let read = model.pageRead {
-                DashCard("What works on @\(read.handle)", trailing: "Close", action: { model.dismissPageRead() }) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("From your last \(read.read) posts. Ideas and your week plan now build on your best ones.")
-                            .font(.callout).foregroundStyle(.secondary)
-                        if let analysis = read.analysis {
-                            ForEach(analysis.works, id: \.self) { Label($0, systemImage: "hand.thumbsup").font(.callout) }
-                            ForEach(analysis.avoid, id: \.self) { Label($0, systemImage: "hand.thumbsdown").font(.callout).foregroundStyle(.secondary) }
-                        }
-                        if !read.best.isEmpty {
-                            Text("Your best recent posts").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 4)
-                            ForEach(read.best) { post in
-                                HStack(spacing: 8) {
-                                    Image(systemName: post.kind == "video" ? "play.rectangle" : post.kind == "carousel" ? "square.stack" : "photo")
-                                        .foregroundStyle(.secondary)
-                                    Text(post.caption.isEmpty ? post.url : post.caption).lineLimit(1)
-                                    Spacer()
-                                    Text([post.likes.map { "\($0) likes" }, post.comments.map { "\($0) comments" }, post.views.map { "\($0) views" }]
-                                        .compactMap(\.self).joined(separator: " · "))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                    if let link = URL(string: post.url) { Link(destination: link) { Image(systemName: "arrow.up.right.square") } }
-                                }
-                            }
-                        }
-                        if let voice = read.analysis?.voice, !voice.page.isEmpty {
-                            Divider()
-                            Text("Suggested voice").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            Text("\(voice.page)\nFor: \(voice.audience)\nTopics: \(voice.topics)\nTone: \(voice.tone)").font(.callout)
-                            HStack {
-                                Button("Use as My Voice") { Task { await model.useReadAsVoice() } }
-                                    .buttonStyle(.borderedProminent)
-                                Button("Edit Voice…") { editingVoice = true }
-                            }
-                        }
-                    }
-                }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            if let problem = model.contentProblem {
+                Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
             }
-
-            if !model.weekPlan.isEmpty {
-                DashCard("Your week", trailing: "Clear", action: { model.clearWeekPlan() }) {
-                    CardRows(items: model.weekPlan) { item in
-                        HStack(alignment: .top, spacing: 12) {
-                            Text(HabitDay.label(item.day ?? "")).font(.callout.weight(.semibold)).frame(width: 90, alignment: .leading)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("\(item.platform.name) · \(item.formatName)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                Text(item.title).font(.headline)
-                                Text("“\(item.hook)”").font(.callout)
-                            }
-                            Spacer()
-                            Button("Write") { Task { await model.write(item) } }
-                                .disabled(model.drafting)
-                        }
-                    }
-                    Button { Task { await model.writeWeek() } } label: {
-                        Label("Write All \(model.weekPlan.count)", systemImage: "square.and.pencil")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(model.drafting)
-                }
-            }
-
-            if !model.ideas.isEmpty {
-                DashCard("Ideas", trailing: "Clear", action: { Task { await model.clearIdeas() } }) {
-                    CardRows(items: model.ideas) { item in
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("\(item.platform.name) · \(item.formatName)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                Text(item.title).font(.headline)
-                                Text("“\(item.hook)”").font(.callout)
-                                Text(item.why).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button("Write This") { Task { await model.write(item) } }
-                                .disabled(model.drafting)
-                        }
-                    }
-                }
-            }
-
-            if live.isEmpty && !model.drafting {
-                EmptyCard(symbol: "megaphone", title: "No drafts yet",
-                          message: "Write an idea above. Blink drafts an Instagram carousel or reel, a LinkedIn post and an X post or thread, checks them for AI-sounding phrases and limits, and you post them yourself.")
-            }
-
-            // One card per idea, newest first.
-            ForEach(ideas(live), id: \.self) { group in
-                DashCard(group) {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if let asked = model.questions[group], !asked.isEmpty {
-                            QuestionsBox(idea: group, questions: asked,
-                                         platforms: Array(Set(live.filter { $0.idea == group }.map(\.platform))))
-                        }
-                        ForEach(live.filter { $0.idea == group }) { piece in
-                            PieceEditor(piece: piece)
-                            if piece.id != live.last(where: { $0.idea == group })?.id { Divider() }
-                        }
-                    }
-                }
-            }
-
-            if !posted.isEmpty {
-                DashCard {
-                    DisclosureGroup(isExpanded: $showPosted) {
-                        CardRows(items: posted) { piece in
-                            HStack {
-                                Text(piece.platform.name).font(.caption.weight(.semibold)).frame(width: 70, alignment: .leading)
-                                Text(piece.hook.isEmpty ? piece.body : piece.hook).lineLimit(1)
-                                Spacer()
-                                if let at = piece.publishedAt {
-                                    Text(at, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .padding(.top, 8)
-                    } label: {
-                        Text("Posted (\(posted.count))").font(.headline)
-                    }
-                }
+            switch tab {
+            case .overview: ContentOverview(editVoice: { editingVoice = true })
+            case .posts: posts(live)
+            case .plan: plan(live)
+            case .ideas: ideas
             }
         }
+        .searchable(text: $query, prompt: "Search posts")
+        .onChange(of: query) { if !query.isEmpty { tab = .posts } }
         .toolbar {
+            Button { composing = true } label: { Label("New Post", systemImage: "square.and.pencil") }
+                .keyboardShortcut("n")
+                .help("Write drafts from an idea (⌘N)")
             Button { Task { await model.readPage() } } label: {
                 if model.readingPage { ProgressView().controlSize(.small) } else { Label("Read My Page", systemImage: "text.viewfinder") }
             }
@@ -194,8 +57,286 @@ struct ContentView: View {
             Button { editingVoice = true } label: { Label("Voice", systemImage: "person.wave.2") }
                 .help("How you write")
         }
+        .sheet(isPresented: $composing) { NewPostSheet(written: { tab = .posts }, editVoice: { composing = false; editingVoice = true }) }
         .sheet(isPresented: $editingVoice) { VoiceSheet() }
-        .task { await model.loadContent() }
+        .sheet(item: Binding(get: { opened.map(OpenedPiece.init) }, set: { opened = $0?.id })) { PieceSheet(id: $0.id) }
+        .task {
+            await model.loadContent()
+            await model.loadContentStats()
+        }
+    }
+
+    // MARK: Posts: one line each, folded by status, searchable
+
+    @ViewBuilder
+    private func posts(_ live: [ContentPiece]) -> some View {
+        let shown = live.filter(matches)
+        HStack {
+            Picker("Platform", selection: $platform) {
+                Text("All platforms").tag(ContentPiece.Platform?.none)
+                ForEach(ContentPiece.Platform.allCases, id: \.self) { Text($0.name).tag(Optional($0)) }
+            }
+            .fixedSize()
+            Spacer()
+        }
+        if live.isEmpty && !model.drafting {
+            EmptyCard(symbol: "megaphone", title: "No posts yet",
+                      message: "Write an idea and Blink drafts an Instagram carousel or reel, a LinkedIn post and an X post, checks them, and you post them yourself.",
+                      actionTitle: "New Post", action: { composing = true })
+        } else if shown.isEmpty && !live.isEmpty {
+            ContentUnavailableView.search(text: query)
+        }
+        if model.drafting {
+            DashCard { HStack { ProgressView().controlSize(.small); Text("Writing drafts…").foregroundStyle(.secondary) } }
+        }
+        section("ready", "Ready to post", shown.filter { $0.status == .approved })
+        section("drafts", "Drafts", shown.filter { $0.status == .drafted })
+        section("posted", "Posted", shown.filter { $0.status == .published }, openByDefault: false)
+    }
+
+    private func matches(_ piece: ContentPiece) -> Bool {
+        guard platform == nil || piece.platform == platform else { return false }
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty || [piece.hook, piece.body, piece.idea].contains { $0.localizedStandardContains(q) }
+    }
+
+    @ViewBuilder
+    private func section(_ key: String, _ title: String, _ list: [ContentPiece], openByDefault: Bool = true) -> some View {
+        if !list.isEmpty {
+            FoldingCard(key: "content.\(key)", title: title, count: list.count, openByDefault: openByDefault) {
+                CardRows(items: list) { piece in PostRow(piece: piece) { opened = piece.id } }
+            }
+        }
+    }
+
+    // MARK: Plan: the next 7 days
+
+    @ViewBuilder
+    private func plan(_ live: [ContentPiece]) -> some View {
+        DashCard("Next 7 days") {
+            HStack {
+                Button { Task { await model.planWeek(theme: "", platforms: model.contentPlatforms) } } label: {
+                    if model.thinkingOfIdeas { ProgressView().controlSize(.small) } else { Label("Plan My Week", systemImage: "calendar") }
+                }
+                .disabled(model.thinkingOfIdeas)
+                if !model.weekPlan.isEmpty {
+                    Button { Task { await model.writeWeek() } } label: { Label("Write All \(model.weekPlan.count)", systemImage: "square.and.pencil") }
+                        .buttonStyle(.borderedProminent).disabled(model.drafting)
+                    Button("Clear Plan") { model.clearWeekPlan() }
+                }
+                Spacer()
+            }
+            ForEach(HabitDay.nextDays(), id: \.self) { day in
+                let planned = model.weekPlan.filter { $0.day == day }
+                let pieces = live.filter { $0.plannedFor == day }
+                HStack(alignment: .top, spacing: 12) {
+                    Text(HabitDay.label(day)).font(.callout.weight(.semibold))
+                        .foregroundStyle(day == HabitDay.key(.now) ? Color.accentColor : .primary)
+                        .frame(width: 90, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 6) {
+                        if planned.isEmpty && pieces.isEmpty { Text("Nothing planned").font(.callout).foregroundStyle(.tertiary) }
+                        ForEach(pieces) { piece in PostRow(piece: piece, compact: true) { opened = piece.id } }
+                        ForEach(planned) { item in
+                            HStack {
+                                Image(systemName: "lightbulb").foregroundStyle(.secondary).accessibilityHidden(true)
+                                Text("\(item.platform.name) · \(item.title)").lineLimit(1)
+                                Spacer()
+                                Button("Write") { Task { await model.write(item) } }.controlSize(.small).disabled(model.drafting)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+                if day != HabitDay.nextDays().last { Divider() }
+            }
+            // Plan items for days already past or without a day: still written by Write All, so shown here too.
+            let later = model.weekPlan.filter { item in !HabitDay.nextDays().contains(item.day ?? "") }
+            if !later.isEmpty {
+                Divider()
+                HStack(alignment: .top, spacing: 12) {
+                    Text("Other").font(.callout.weight(.semibold)).frame(width: 90, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(later) { item in
+                            HStack {
+                                Image(systemName: "lightbulb").foregroundStyle(.secondary).accessibilityHidden(true)
+                                Text("\(item.day.map { HabitDay.label($0) + " · " } ?? "")\(item.platform.name) · \(item.title)").lineLimit(1)
+                                Spacer()
+                                Button("Write") { Task { await model.write(item) } }.controlSize(.small).disabled(model.drafting)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Ideas
+
+    @ViewBuilder
+    private var ideas: some View {
+        DashCard("Ideas", trailing: model.ideas.isEmpty ? nil : "Clear", action: { Task { await model.clearIdeas() } }) {
+            HStack {
+                Button { Task { await model.suggestIdeas(theme: "", platforms: model.contentPlatforms) } } label: {
+                    if model.thinkingOfIdeas { ProgressView().controlSize(.small) } else { Label("Give Me Ideas", systemImage: "lightbulb") }
+                }
+                .disabled(model.thinkingOfIdeas)
+                Text("Six ideas built on what works on your page.").font(.caption).foregroundStyle(.secondary)
+            }
+            if model.ideas.isEmpty {
+                Text("No ideas yet. Ask for some, or type /ideas in the notch.").foregroundStyle(.secondary)
+            }
+            CardRows(items: model.ideas) { item in
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(item.platform.name) · \(item.formatName)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(item.title).font(.headline)
+                        Text("“\(item.hook)”").font(.callout)
+                        Text(item.why).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Write This") { Task { await model.write(item); tab = .posts } }
+                        .disabled(model.drafting)
+                }
+            }
+        }
+    }
+}
+
+/// The sheet's item: just the piece's id, so the sheet always shows the latest copy from the model.
+private struct OpenedPiece: Identifiable { let id: String }
+
+/// One post in a list: platform, hook, day and state. Click to open it.
+private struct PostRow: View {
+    @Environment(AppModel.self) private var model
+    let piece: ContentPiece
+    var compact = false
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 10) {
+                Text(piece.platform.short).font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(piece.hook.isEmpty ? piece.body : piece.hook).lineLimit(1)
+                    if !compact { Text(piece.idea).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                }
+                Spacer()
+                if model.questions[piece.idea]?.isEmpty == false && piece.status == .drafted {
+                    Image(systemName: "questionmark.bubble").foregroundStyle(.orange).help("Blink has questions to make it stronger")
+                }
+                if !compact, let day = piece.plannedFor {
+                    Text(HabitDay.label(day)).font(.caption).foregroundStyle(day == HabitDay.key(.now) ? .orange : .secondary)
+                }
+                if let at = piece.publishedAt {
+                    Text(at, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text(piece.status == .approved ? "Ready" : "Draft")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background((piece.status == .approved ? Color.green : Color.secondary).opacity(0.15), in: .capsule)
+                        .foregroundStyle(piece.status == .approved ? .green : .secondary)
+                }
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(piece.platform.name): \(piece.hook.isEmpty ? piece.body : piece.hook), \(piece.status == .approved ? "ready" : piece.status == .published ? "posted" : "draft")")
+    }
+}
+
+/// One post, opened: the full editor, and Blink's questions for its idea.
+private struct PieceSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let id: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(model.content.first { $0.id == id }?.idea ?? "Post").font(.headline).lineLimit(1)
+                Spacer()
+                // Esc, not Return: Return belongs to the slide fields.
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+            .padding(16)
+            Divider()
+            ScrollView {
+                if let piece = model.content.first(where: { $0.id == id }) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if let asked = model.questions[piece.idea], !asked.isEmpty, piece.status == .drafted {
+                            QuestionsBox(idea: piece.idea, questions: asked,
+                                         platforms: Array(Set(model.content.filter { $0.idea == piece.idea }.map(\.platform))))
+                        }
+                        PieceEditor(piece: piece)
+                    }
+                    .padding(16)
+                } else {
+                    ContentUnavailableView("This post is gone", systemImage: "trash")
+                }
+            }
+        }
+        .frame(width: 640, height: 640)
+        // Edits save a second after typing stops; closing sooner must not lose them.
+        .onDisappear { Task { await model.saveContent(id) } }
+    }
+}
+
+/// New Post: an idea → drafts for the chosen platforms.
+private struct NewPostSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("contentPlatforms") private var picked = "instagram,linkedin,x"
+    @State private var idea = ""
+    let written: () -> Void
+    let editVoice: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("New Post").font(.title3.weight(.semibold))
+            TextField("What's the idea? e.g. \"3 checkout mistakes that lose users\"", text: $idea, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(3...8)
+                .padding(10)
+                .background(.quaternary.opacity(0.6), in: .rect(cornerRadius: 12, style: .continuous))
+            HStack(spacing: 8) {
+                ForEach(ContentPiece.Platform.allCases, id: \.self) { platform in
+                    let on = platforms.contains(platform)
+                    Button { toggle(platform) } label: { Label(platform.name, systemImage: on ? "checkmark.circle.fill" : "circle") }
+                        .buttonStyle(.bordered)
+                        .tint(on ? .accentColor : .secondary)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                }
+                Spacer()
+                ModelMenu(feature: "content", compact: true).menuStyle(.borderlessButton).controlSize(.small)
+            }
+            if let problem = model.contentProblem { Text(problem).font(.callout).foregroundStyle(.orange) }
+            else if !model.voice.isSetUp {
+                Button("Tell Blink about your page (e.g. @uxabhi, who it's for, your topics) so posts aren't generic…", action: editVoice)
+                    .buttonStyle(.link)
+            }
+            HStack {
+                // The idea doubles as a theme for a week plan or a set of ideas.
+                Button("Plan My Week") { Task { await model.planWeek(theme: idea, platforms: platforms); written(); dismiss() } }
+                    .disabled(platforms.isEmpty || model.thinkingOfIdeas)
+                Button("Give Me Ideas") { Task { await model.suggestIdeas(theme: idea, platforms: platforms); dismiss() } }
+                    .disabled(platforms.isEmpty || model.thinkingOfIdeas)
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button {
+                    Task {
+                        if await model.draft(idea: idea, platforms: platforms) { written(); dismiss() }
+                    }
+                } label: {
+                    if model.drafting { ProgressView().controlSize(.small) } else { Label("Write Drafts", systemImage: "sparkles") }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(idea.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || platforms.isEmpty || model.drafting)
+            }
+        }
+        .padding(20)
+        .frame(width: 560)
     }
 
     private var platforms: [ContentPiece.Platform] {
@@ -206,12 +347,6 @@ struct ContentView: View {
         var set = Set(platforms)
         if set.contains(platform) { set.remove(platform) } else { set.insert(platform) }
         picked = ContentPiece.Platform.allCases.filter(set.contains).map(\.rawValue).joined(separator: ",")
-    }
-
-    /// Ideas in the order their newest draft appeared.
-    private func ideas(_ pieces: [ContentPiece]) -> [String] {
-        var seen = Set<String>()
-        return pieces.compactMap { seen.insert($0.idea).inserted ? $0.idea : nil }
     }
 }
 

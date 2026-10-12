@@ -12,6 +12,14 @@ public struct ContentPiece: Codable, Identifiable, Equatable, Sendable {
             case .x: "X"
             }
         }
+        /// For tight lists: "IG", "in", "X".
+        public var short: String {
+            switch self {
+            case .instagram: "IG"
+            case .linkedin: "in"
+            case .x: "X"
+            }
+        }
     }
     public enum Status: String, Codable, Sendable { case drafted, approved, published, archived }
 
@@ -154,13 +162,13 @@ public struct ContentIdea: Decodable, Identifiable, Hashable, Sendable {
 
 public extension HabitDay {
     /// The next `count` days from today as "2026-10-14" keys (the week plan's days, in the owner's time zone).
-    static func nextDays(_ count: Int = 7, from now: Date = .now, calendar: Calendar = .current) -> [String] {
+    public static func nextDays(_ count: Int = 7, from now: Date = .now, calendar: Calendar = .current) -> [String] {
         let today = calendar.startOfDay(for: now)
         return (0..<count).compactMap { calendar.date(byAdding: .day, value: $0, to: today).map { key($0, calendar: calendar) } }
     }
 
     /// "Tue 14 Oct" for a "2026-10-14" key.
-    static func label(_ key: String, calendar: Calendar = .current) -> String {
+    public static func label(_ key: String, calendar: Calendar = .current) -> String {
         guard let date = date(fromKey: key, calendar: calendar) else { return key }
         if calendar.isDateInToday(date) { return "Today" }
         if calendar.isDateInTomorrow(date) { return "Tomorrow" }

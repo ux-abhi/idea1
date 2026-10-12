@@ -226,6 +226,12 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 do $$ begin
   insert into public.transaction (amount, note, category) values (8.50, 'Lunch', 'food');
   insert into public.budget (category, monthly_limit) values ('food', 250);
+  insert into public.social_account (platform, handle, followers) values ('linkedin', 'Test User', 1400);
+  begin
+    insert into public.social_account (platform, followers) values ('tiktok', 5);
+    raise exception 'an unknown platform was accepted';
+  exception when check_violation then null;
+  end;
   insert into public.money_account (id, name, kind, balance, is_default)
     values ('00000000-0000-0000-0000-0000000000f1', 'Sparkasse', 'checking', 1200, true);
   insert into public.transaction (amount, note, category, account_id)
@@ -263,6 +269,7 @@ do $$ begin
   assert (select count(*) from public.budget) = 0, 'B must not see A''s budgets';
   assert (select count(*) from public.money_account) = 0, 'B must not see A''s accounts';
   assert (select count(*) from public.money_account_now) = 0, 'B must not see A''s balances';
+  assert (select count(*) from public.social_account) = 0, 'B must not see A''s follower numbers';
   begin
     insert into public.transaction (amount, account_id) values (5, '00000000-0000-0000-0000-0000000000f1');
     raise exception 'B spent from A''s account';

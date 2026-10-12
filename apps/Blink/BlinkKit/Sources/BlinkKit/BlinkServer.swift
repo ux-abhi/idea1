@@ -552,6 +552,24 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    /// The owner's Instagram posts the page reader saw, newest first (for the Content overview).
+    public func pagePosts() async throws -> [PagePost] {
+        try await client.from("social_post").select("url, kind, caption, likes, comments, views, posted_at")
+            .order("posted_at", ascending: false, nullsFirst: false).limit(200).execute().value
+    }
+
+    public func socialAccounts() async throws -> [SocialAccount] {
+        try await client.from("social_account").select("platform, handle, followers, updated_at").execute().value
+    }
+
+    /// Saves a typed-in follower number (nil = no account there yet).
+    public func save(_ account: SocialAccount) async throws {
+        struct Row: Encodable { let platform: String, handle: String, followers: Int? }
+        try await client.from("social_account")
+            .upsert(Row(platform: account.platform.rawValue, handle: account.handle, followers: account.followers), onConflict: "owner_id,platform")
+            .execute()
+    }
+
     public func contentPieces() async throws -> [ContentPiece] {
         try await client.from("content_piece")
             .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for")

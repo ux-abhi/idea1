@@ -720,3 +720,24 @@ extension Tokens {
     #expect(MoneyMath.parseBalance("") == nil && MoneyMath.parseBalance("abc") == nil)
     #expect(MoneyMath.parseBalance("1.250") == nil && MoneyMath.parseBalance("1,234.56") == nil)
 }
+
+@Test func contentStatsComparePostsAndFormats() {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "UTC")!
+    let day: (Int) -> Date = { cal.date(from: DateComponents(year: 2026, month: 10, day: $0, hour: 12))! }
+    let posts = [
+        PagePost(url: "a", kind: .video, caption: "", likes: 100, comments: 20, views: 5000, postedAt: day(12)),   // Mon
+        PagePost(url: "b", kind: .carousel, caption: "", likes: 300, comments: 60, views: nil, postedAt: day(10)), // Sat
+        PagePost(url: "c", kind: .image, caption: "", likes: 40, comments: nil, views: nil, postedAt: day(5)),     // Mon
+        PagePost(url: "d", kind: .video, caption: "", likes: 60, comments: 0, views: 3000, postedAt: day(1)),      // Thu
+    ]
+    let s = ContentStats.summary(posts, count: 2)
+    #expect(s.posts == 2 && s.averageLikes == 200 && s.averageComments == 40 && s.averageReelViews == 5000)
+    #expect(s.change == 3.8) // (120+360)/2 = 240 against (40+60)/2 = 50: (240 - 50) / 50
+    #expect(ContentStats.summary(posts, count: 3).change == nil) // 3 newest against only 1 older: no trend
+    #expect(ContentStats.byFormat(posts).map(\.kind) == [.carousel, .video, .image])
+    #expect(ContentStats.byFormat(posts).first { $0.kind == .video }?.views == 4000)
+    #expect(ContentStats.byWeekday(posts, calendar: cal).first { $0.weekday == 2 }?.engagement == 80) // Mondays: 120 and 40
+    #expect(ContentStats.top(posts, count: 1).first?.url == "b")
+    #expect(ContentStats.perWeek(posts, weeks: 3, now: day(12), calendar: cal) == [1, 2, 1])
+}

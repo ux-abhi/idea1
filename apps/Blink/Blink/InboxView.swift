@@ -44,7 +44,7 @@ struct InboxView: View {
             }
             let scheduled = model.outbox.filter { $0.id != model.sendingNow?.id }
             if !scheduled.isEmpty {
-                MailSection(key: "outbox", title: "Scheduled to send", count: scheduled.count) {
+                FoldingCard(key: "inbox.outbox", title: "Scheduled to send", count: scheduled.count) {
                     CardRows(items: scheduled) { OutboxRow(action: $0) }
                 }
             }
@@ -94,7 +94,7 @@ struct InboxView: View {
     @ViewBuilder
     private func section(_ key: String, _ title: String, _ list: [EmailMessage], openByDefault: Bool = true) -> some View {
         if !list.isEmpty {
-            MailSection(key: key, title: title, count: list.count, openByDefault: openByDefault) {
+            FoldingCard(key: "inbox.\(key)", title: title, count: list.count, openByDefault: openByDefault) {
                 CardRows(items: list) { MailRow(message: $0) }
             }
         }
@@ -104,31 +104,6 @@ struct InboxView: View {
         let checked = model.mailStates.compactMap(\.lastCheckedAt).max()
         let when = checked.map { "checked \($0.formatted(.relative(presentation: .named)))" } ?? "not checked yet"
         return important == 0 ? "Nothing important · \(when)" : "\(important) important · \(when)"
-    }
-}
-
-/// One foldable Inbox section; whether it's open is remembered per section.
-private struct MailSection<Content: View>: View {
-    let title: String
-    let count: Int
-    @AppStorage private var open: Bool
-    @ViewBuilder let content: Content
-
-    init(key: String, title: String, count: Int, openByDefault: Bool = true, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.count = count
-        _open = AppStorage(wrappedValue: openByDefault, "inbox.open.\(key)")
-        self.content = content()
-    }
-
-    var body: some View {
-        DashCard {
-            DisclosureGroup(isExpanded: $open) {
-                content.padding(.top, 8)
-            } label: {
-                Text("\(title) · \(count)").font(.headline)
-            }
-        }
     }
 }
 

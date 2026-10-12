@@ -78,6 +78,31 @@ struct DashCard<Content: View>: View {
     }
 }
 
+/// A card that folds; whether it's open is remembered per key (Inbox and Content sections).
+struct FoldingCard<Content: View>: View {
+    let title: String
+    let count: Int
+    @AppStorage private var open: Bool
+    @ViewBuilder let content: Content
+
+    init(key: String, title: String, count: Int, openByDefault: Bool = true, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.count = count
+        _open = AppStorage(wrappedValue: openByDefault, "open.\(key)")
+        self.content = content()
+    }
+
+    var body: some View {
+        DashCard {
+            DisclosureGroup(isExpanded: $open) {
+                content.padding(.top, 8)
+            } label: {
+                Text("\(title) · \(count)").font(.headline)
+            }
+        }
+    }
+}
+
 /// An empty card that says what will appear and how (§36.2), with an optional action.
 struct EmptyCard: View {
     let symbol: String

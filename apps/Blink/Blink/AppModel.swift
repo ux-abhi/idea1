@@ -208,7 +208,7 @@ final class AppModel {
         agenda = .empty; allReminders = []; quickReplies = []
         content = []; voice = VoiceProfile(); contentProblem = nil; contentUnsaved = []
         ideas = []; questions = [:]; pageRead = nil; weekPlan = []; designed = []
-        spends = []; budgets = []; accounts = []; moneyProblem = nil
+        spends = []; budgets = []; accounts = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
         emails = []; mailStates = []; mailProblem = nil; reviewing = nil; outbox = []; sendingNow = nil
         modelPrefs = [:]; modelProblem = nil; dailyCap = nil; spaces = []; openPage = nil
     }
@@ -799,7 +799,7 @@ final class AppModel {
         readingPage = true
         defer { readingPage = false }
         contentProblem = nil
-        do { pageRead = try await server.readPage() }
+        do { pageRead = try await server.readPage(); await loadContentStats() }
         catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
         catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
     }
@@ -980,6 +980,38 @@ final class AppModel {
     }
 
     // MARK: Money (Phase 7, first slice): spends typed in, sorted by the AI, monthly limits per category
+
+    // MARK: Content overview: how the owner's posts perform, and their accounts
+
+    private(set) var pagePosts: [PagePost] = []
+    private(set) var socialAccounts: [SocialAccount] = []
+
+    func loadContentStats() async {
+        guard let server, email != nil else { return }
+        do {
+            async let posts = server.pagePosts()
+            async let accounts = server.socialAccounts()
+            let (p, a) = try await (posts, accounts)
+            guard email != nil else { return }
+            (pagePosts, socialAccounts) = (p, a)
+        } catch {
+            // Never show "no posts yet" (and invite a paid re-read) when the list just didn't load.
+            contentProblem = "Can't load your page stats right now. Check your connection."
+        }
+    }
+
+    /// The owner's typed-in followers for a platform (nil = no account there yet).
+    func setFollowers(_ followers: Int?, handle: String, on platform: SocialAccount.Platform) async {
+        guard let server else { return }
+        let account = SocialAccount(platform: platform, handle: handle, followers: followers, updatedAt: .now)
+        let before = socialAccounts
+        socialAccounts.removeAll { $0.platform == platform }
+        socialAccounts.append(account)
+        do { try await server.save(account) } catch {
+            socialAccounts = before
+            contentProblem = "Couldn't save that number. Check your connection."
+        }
+    }
 
     private(set) var spends: [Spend] = []
     private(set) var accounts: [MoneyAccount] = []
