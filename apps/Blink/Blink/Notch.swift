@@ -223,19 +223,13 @@ final class NotchController {
             }
         }
 
-        // Background work finished (ideas, drafts, week plan, page read): peek with the result, so the owner needn't
-        // open the window. When the notch is already open, its chat panel shows the result itself.
+        // Background work finished (ideas, drafts, week plan, page read): say so in the notch, so the owner needn't
+        // open the window. If the notch is open right then, the result waits and peeks as soon as it closes.
         Task { [weak self] in
             guard let app = self?.app else { return }
             for await notice in Observations({ app.notice }) {
-                guard let self, let notice, self.model.level == .rest else { continue }
-                self.model.mood = notice.failed ? .concerned : .done
-                self.model.peekNote = notice.text
-                self.show(.peek, closingAfter: 6)
-                AccessibilityNotification.Announcement(notice.text).post()
-                try? await Task.sleep(for: .seconds(6))
-                if self.model.peekNote == notice.text { self.model.peekNote = nil }
-                self.evaluateCue()
+                guard let self, let notice else { continue }
+                if self.model.level == .open { self.pendingNotice = notice } else { await self.announce(notice) }
             }
         }
 
@@ -483,10 +477,32 @@ final class NotchController {
         return true
     }
 
+    /// A notice that arrived while the notch was open, shown when it closes.
+    private var pendingNotice: AppModel.Notice?
+
+    /// Peeks with a finished job ("💡 6 post ideas ready"), Done eyes (or Concerned when it failed), for 6 seconds.
+    private func announce(_ notice: AppModel.Notice) async {
+        model.mood = notice.failed ? .concerned : .done
+        model.peekNote = notice.text
+        show(.peek, closingAfter: 6)
+        AccessibilityNotification.Announcement(notice.text).post()
+        try? await Task.sleep(for: .seconds(6))
+        if model.peekNote == notice.text { model.peekNote = nil }
+        evaluateCue()
+    }
+
     func close() {
         guard let panel else { return }
         autoClose?.cancel()
         set(.rest)
+        // Finished while the notch was open: say it now, once it has closed.
+        if let notice = pendingNotice {
+            pendingNotice = nil
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(400))
+                await self?.announce(notice)
+            }
+        }
         model.chatting = false
         model.clipboarding = false
         model.evening = false
