@@ -176,4 +176,5 @@ Owner, 2026-10-12: stop the iPhone for now, pending the paid Apple Developer acc
 - [x] Personal names, emails, employer and university removed from code, prompts and tests; the owner's mail priorities moved to the `MAIL_PRIORITIES` secret (set on the owner's server).
 - [x] `/ponytail-review` of the fixes: 1 must-fix (relaunch within 30 s showed an empty app) and 4 should-fix, all fixed.
 - [x] CI green (functions, swift, database, secrets); migration applied live; money, mail and signin redeployed; the next mail check ran OK.
-- [ ] Not done here: VoiceOver pass on the new screens (onboarding, money accounts, content tabs) and an Instruments 0 fps check (§36.7).
+- [x] VoiceOver on the new screens: confirmed by the owner (2026-10-13).
+- [ ] Instruments 0 fps at rest (§36.7).
