@@ -12,7 +12,7 @@ struct BlinkApp: App {
     #endif
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             RootView()
                 .environment(model)
                 .onChange(of: scenePhase, initial: true) { _, phase in model.scenePhaseChanged(phase) }
@@ -37,7 +37,7 @@ struct BlinkApp: App {
         // VoiceOver can't reach the floating notch panel; the menu bar icon is its entry point (§36.2).
         MenuBarExtra("Blink", systemImage: "eyes", isInserted: .constant(restStyle != .hidden)) {
             MenuBarContent(showNotch: { appDelegate.showNotch() }, ask: { appDelegate.askBlink() },
-                           clipboard: { appDelegate.showClipboard() })
+                           clipboard: { appDelegate.showClipboard() }, search: { appDelegate.showSearch() })
                 .environment(model)
         }
         #endif
@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showNotch() { notch?.open() }
     func askBlink() { notch?.toggleChat() }
     func showClipboard() { notch?.toggleClipboard() }
+    func showSearch() { notch?.toggleSearch() }
 }
 
 /// The menu bar menu: the notch's status and actions, reachable by VoiceOver and the keyboard.
@@ -64,6 +65,7 @@ struct MenuBarContent: View {
     let showNotch: () -> Void
     let ask: () -> Void
     let clipboard: () -> Void
+    let search: () -> Void
 
     var body: some View {
         Text(model.agenda.statusLine(now: .now, tasks: model.dueTasks))
@@ -78,6 +80,8 @@ struct MenuBarContent: View {
             .keyboardShortcut(.space, modifiers: [.control, .option])
         Button("Clipboard…", action: clipboard)
             .keyboardShortcut("v", modifiers: [.control, .option])
+        Button("Search…", action: search)
+            .keyboardShortcut("k", modifiers: [.control, .option])
         Button("Start Focus (25 min)") { model.startFocus() }
         Menu("Timer") {
             ForEach([5, 10, 15, 30, 60], id: \.self) { m in Button("\(m) min") { model.startTimer(minutes: Double(m)) } }
@@ -88,8 +92,7 @@ struct MenuBarContent: View {
             .disabled(model.status == .checking)
         Button("Show in Notch", action: showNotch)
         Button("Open Blink") {
-            NSApp.activate()
-            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+            model.showWindow()
         }
         SettingsLink { Text("Settings…") }
             .keyboardShortcut(",")
@@ -105,13 +108,18 @@ struct RootView: View {
     @AppStorage("onboarding.done") private var onboardingDone = false
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     #endif
 
     var body: some View {
         content
             #if os(macOS)
             // The notch and setup prompts open Settings through this, even when the window is locked or closed later.
-            .onAppear { let open = openSettings; model.settingsOpener = { open() } }
+            .onAppear {
+                let open = openSettings, window = openWindow
+                model.settingsOpener = { open() }
+                model.windowOpener = { window(id: "main") }
+            }
             #endif
     }
 

@@ -33,6 +33,8 @@ final class NotchModel {
     var evening = false
     /// The open notch shows the clipboard history (⌃⌥V).
     var clipboarding = false
+    /// The open notch shows search (⌃⌥K): notes, tasks, reminders, posts and spaces.
+    var searching = false
     /// What's typed in the chat bubble; the panel above previews a "/" command from it.
     var input = ""
     /// A one-line announcement for the peek (e.g. important mail), instead of the day's status line.
@@ -53,7 +55,7 @@ final class NotchModel {
         case .rest: return rest
         case .peek: return CGSize(width: max(rest.width, 320), height: rest.height + 36)
         // Eyes row, 8 pt gap, the measured content, 20 pt to breathe at the bottom.
-        case .open: return CGSize(width: max(rest.width, chatting ? Self.chatWidth : Self.openWidth),
+        case .open: return CGSize(width: max(rest.width, chatting || searching ? Self.chatWidth : Self.openWidth),
                                   height: rest.height + 8 + min(glanceHeight, Self.maxGlanceHeight) + 20)
         }
     }
@@ -137,6 +139,7 @@ final class NotchController {
         hotkeys = [
             GlobalHotkey(id: 1, keyCode: kVK_Space) { [weak self] in self?.toggleChat() },
             GlobalHotkey(id: 2, keyCode: kVK_ANSI_V) { [weak self] in self?.toggleClipboard() },
+            GlobalHotkey(id: 3, keyCode: kVK_ANSI_K) { [weak self] in self?.toggleSearch() },
         ]
 
         // Thinking while Claude works, then Done for 2 s (§7).
@@ -508,7 +511,23 @@ final class NotchController {
         guard !showLockInstead() else { return }
         if model.level == .open && model.clipboarding { close(); return }
         model.chatting = false
+        model.searching = false
         model.clipboarding = true
+        if model.level == .open, let panel {
+            panel.allowsKey = true
+            panel.makeKey()
+        } else {
+            open()
+        }
+    }
+
+    /// ⌃⌥K or "Search…": search with the keyboard in it; again closes it.
+    func toggleSearch() {
+        guard !showLockInstead() else { return }
+        if model.level == .open && model.searching { close(); return }
+        model.chatting = false
+        model.clipboarding = false
+        model.searching = true
         if model.level == .open, let panel {
             panel.allowsKey = true
             panel.makeKey()
@@ -521,6 +540,7 @@ final class NotchController {
         guard !showLockInstead() else { return }
         if model.level == .open && model.chatting { close(); return }
         model.clipboarding = false
+        model.searching = false
         model.chatting = true
         if model.level == .open, let panel {
             panel.allowsKey = true
@@ -549,8 +569,7 @@ final class NotchController {
     /// While Blink is locked the notch stays shut; the window comes forward with its unlock prompt instead.
     private func showLockInstead() -> Bool {
         guard app.locked else { return false }
-        NSApp.activate()
-        NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+        app.showWindow()
         return true
     }
 
@@ -594,6 +613,7 @@ final class NotchController {
         }
         model.chatting = false
         model.clipboarding = false
+        model.searching = false
         model.evening = false
         panel.allowsKey = false
         // Hand the keyboard back to the app that had it (§36.2).
@@ -656,6 +676,8 @@ struct NotchView: View {
             ChatPanel(app: app, input: model.input)
         } else if model.clipboarding {
             ClipboardPanel(store: clipboard, done: close)
+        } else if model.searching {
+            SearchPanel(app: app, done: close)
         } else if app.timer != nil || app.finishedTimer != nil {
             TimerCard(app: app)
         } else if model.evening || app.eveningDue {
@@ -722,8 +744,7 @@ struct NotchView: View {
             if app.timer != nil { Button("Stop Timer") { app.stopTimer() } }
             Divider()
             Button("Open Blink") {
-                NSApp.activate()
-                NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                app.showWindow()
             }
             Button("Settings…") { app.openSettings() }
             Button("Quit Blink") { NSApp.terminate(nil) }
@@ -815,8 +836,7 @@ struct GlanceView: View {
                         Spacer(minLength: 8)
                         Button("Review") {
                             app.openPage = "inbox"
-                            NSApp.activate()
-                            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                            app.showWindow()
                             done()
                         }
                         .buttonStyle(.plain).foregroundStyle(.mint)
@@ -831,8 +851,7 @@ struct GlanceView: View {
                         Spacer(minLength: 8)
                         Button("Review") {
                             app.openPage = "content"
-                            NSApp.activate()
-                            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                            app.showWindow()
                             done()
                         }
                         .buttonStyle(.plain).foregroundStyle(.mint)
@@ -856,8 +875,7 @@ struct GlanceView: View {
                 if app.readyToPost.count > 2 {
                     Button("\(app.readyToPost.count - 2) more ready in Content") {
                         app.openPage = "content"
-                        NSApp.activate()
-                        NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                        app.showWindow()
                         done()
                     }
                     .buttonStyle(.plain).foregroundStyle(.mint)
@@ -1344,6 +1362,83 @@ struct TimerEars: View {
 }
 
 /// Clipboard history in the notch: search, recent copies, click to copy back (then ⌘V where you want it).
+/// ⌃⌥K: search everything from the notch; picking a result opens it in the Blink window.
+struct SearchPanel: View {
+    let app: AppModel
+    let done: () -> Void
+    @State private var query = ""
+    @State private var selected = 0
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let results = app.search(query)
+        let current = min(selected, max(results.count - 1, 0))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.white.opacity(0.5))
+                TextField("Search notes, tasks, reminders, posts and spaces", text: $query)
+                    .textFieldStyle(.plain)
+                    .focused($focused)
+                    .onSubmit { if results.indices.contains(current) { open(results[current]) } }
+                    .onKeyPress(.downArrow) { selected = min(current + 1, results.count - 1); return .handled }
+                    .onKeyPress(.upArrow) { selected = max(current - 1, 0); return .handled }
+                    .onChange(of: query) { selected = 0 }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(.white.opacity(0.08), in: .rect(cornerRadius: 10, style: .continuous))
+
+            if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                Text("Type a word from a note, task, reminder, post or space.").foregroundStyle(.white.opacity(0.55))
+            } else if results.isEmpty {
+                Text("Nothing matches “\(query)”.").foregroundStyle(.white.opacity(0.55))
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 2) {
+                            ForEach(Array(results.enumerated()), id: \.element.id) { index, hit in
+                                Button { open(hit) } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: hit.symbol).foregroundStyle(.white.opacity(0.55)).frame(width: 22)
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(hit.title).lineLimit(1)
+                                            Text(hit.detail).font(.caption).foregroundStyle(.white.opacity(0.45)).lineLimit(1)
+                                        }
+                                        Spacer(minLength: 8)
+                                    }
+                                    .padding(.horizontal, 8).padding(.vertical, 6)
+                                    .background(index == current ? Color.white.opacity(0.12) : .clear, in: .rect(cornerRadius: 8))
+                                    .contentShape(.rect)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("\(hit.title), \(hit.detail)")
+                                .id(hit.id)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 190)
+                    .onChange(of: current) { if results.indices.contains(current) { proxy.scrollTo(results[current].id) } }
+                }
+            }
+            Text("↑↓ and Return to open in Blink · ⌘K in the window too").font(.caption).foregroundStyle(.white.opacity(0.4))
+        }
+        .font(.callout)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 20)
+        .onAppear { focused = true }
+    }
+
+    /// Closes the notch (which hands focus back), then brings the Blink window forward on the result.
+    private func open(_ hit: AppModel.SearchHit) {
+        done()
+        if let note = hit.noteID { app.focusNoteID = note }
+        app.openPage = hit.pageKey
+        Task {
+            try? await Task.sleep(for: .milliseconds(80)) // after close() handed focus back to the previous app
+            app.showWindow()
+        }
+    }
+}
+
 struct ClipboardPanel: View {
     let store: ClipboardStore
     let done: () -> Void

@@ -30,6 +30,8 @@ final class AppModel {
 
     /// Opens Settings from anywhere (the notch, a prompt), captured from the window's scene; works with it closed too.
     var settingsOpener: (() -> Void)?
+    /// Opens a new Blink window when the last one was closed (SwiftUI's openWindow, captured by RootView).
+    var windowOpener: (() -> Void)?
 
     /// What's still to set up, in order (Today shows the ring; pages show their own step where it's needed).
     var setupSteps: [SetupStep] {
@@ -41,13 +43,20 @@ final class AppModel {
     /// True when no AI key works: chat and drafts can't run until one is added.
     var aiKeyMissing: Bool { setupSteps.first { $0.id == .aiKey }?.done == false }
 
+    /// Brings the Blink window forward, or opens it again if it was closed.
+    func showWindow() {
+        #if os(macOS)
+        NSApp.activate()
+        if let window = NSApp.windows.first(where: { $0.canBecomeMain }) { window.makeKeyAndOrderFront(nil) } else { windowOpener?() }
+        #endif
+    }
+
     /// Goes where a setup step is fixed: a Settings tab or a window page.
     func go(to destination: String) {
         if destination.hasPrefix("settings:") { openSettings(String(destination.dropFirst(9))) }
         else {
             #if os(macOS)
-            NSApp.activate()
-            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+            showWindow()
             #endif
             openPage = destination
         }
@@ -57,8 +66,7 @@ final class AppModel {
     func openSettings(_ tab: String? = nil) {
         if let tab { UserDefaults.standard.set(tab, forKey: "settings.tab") }
         #if os(macOS)
-        NSApp.activate()
-        NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+        showWindow()
         #endif
         settingsOpener?()
     }
@@ -437,6 +445,38 @@ final class AppModel {
     // shortcut: online only, no local cache; add SwiftData + delta sync by rev (§17, §36.1) when offline capture or the iPhone app needs it.
 
     var notes: [BlinkItem] { items.filter { $0.type == .note }.sorted { $0.updatedAt > $1.updatedAt } }
+
+    /// One search result: what it is, and where it opens in the window (a page key as in `openPage`, maybe a note).
+    struct SearchHit: Identifiable {
+        let id: String
+        let symbol: String
+        let title: String
+        let detail: String
+        let pageKey: String
+        var noteID: String?
+    }
+
+    /// Notes, tasks, reminders, posts and spaces matching the words, for ⌘K in the window and ⌃⌥K in the notch.
+    func search(_ query: String) -> [SearchHit] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return [] }
+        func has(_ text: String) -> Bool { text.localizedCaseInsensitiveContains(q) }
+        var list: [SearchHit] = []
+        list += spaces.filter { has($0.title) || has($0.goal) }
+            .map { SearchHit(id: "s" + $0.id, symbol: $0.icon, title: $0.title, detail: "Space", pageKey: "space:\($0.id)") }
+        list += notes.filter { has($0.title) || has($0.body) }
+            .map { SearchHit(id: "n" + $0.id, symbol: "note.text", title: $0.title.isEmpty ? "New note" : $0.title,
+                             detail: "Note · " + $0.body.prefix(80).replacingOccurrences(of: "\n", with: " "), pageKey: "notes", noteID: $0.id) }
+        list += items.filter { $0.type == .task && $0.status != .archived && has($0.title) }
+            .map { SearchHit(id: "t" + $0.id, symbol: $0.status == .done ? "checkmark.circle.fill" : "circle", title: $0.title,
+                             detail: $0.status == .done ? "Task · done" : "Task", pageKey: $0.spaceID.map { "space:\($0)" } ?? "tasks") }
+        list += allReminders.filter { has($0.title) }
+            .map { SearchHit(id: "r" + $0.id, symbol: "bell", title: $0.title, detail: "Apple Reminder", pageKey: "tasks") }
+        list += content.filter { has($0.body) || has($0.idea) || $0.parts.contains(where: has) }
+            .map { SearchHit(id: "c" + $0.id, symbol: "megaphone", title: $0.hook.isEmpty ? $0.idea : $0.hook,
+                             detail: "\($0.platform.name) post · \($0.status.rawValue)", pageKey: "content") }
+        return Array(list.prefix(40))
+    }
     var openTasks: [BlinkItem] { items.filter { $0.type == .task && $0.status == .open } }
     /// Open tasks with a due time, for the notch's cues and status line.
     var dueTasks: [DueItem] { openTasks.compactMap { t in t.dueAt.map { DueItem(id: t.id, title: t.title, due: $0) } } }
@@ -1439,8 +1479,7 @@ final class AppModel {
             openPage = "inbox"
             #if os(macOS)
             // Approved from the notch: bring the window forward so the review sheet is seen.
-            NSApp.activate()
-            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+            showWindow()
             #endif
             reviewing = Review(draft: draft, sendAt: sendAt.flatMap { $0 > .now ? $0 : nil }, sender: message.sender)
         } catch let problem as BlinkServer.ChatProblem {

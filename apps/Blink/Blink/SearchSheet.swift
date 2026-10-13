@@ -3,7 +3,7 @@
 import BlinkKit
 import SwiftUI
 
-/// ⌘K: find a note, task, reminder, post or space by its words, and jump to it.
+/// ⌘K: find a note, task, reminder, post or space by its words, and jump to it (the notch has the same, ⌃⌥K).
 struct SearchSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -12,17 +12,8 @@ struct SearchSheet: View {
     @State private var selected = 0
     @FocusState private var focused: Bool
 
-    private struct Hit: Identifiable {
-        let id: String
-        let symbol: String
-        let title: String
-        let detail: String
-        let page: MainWindow.Page
-        var noteID: String?
-    }
-
     var body: some View {
-        let results = hits
+        let results = model.search(query)
         let current = min(selected, max(results.count - 1, 0))
         VStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -73,29 +64,8 @@ struct SearchSheet: View {
         .onAppear { focused = true }
     }
 
-    private var hits: [Hit] {
-        let q = query.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return [] }
-        func has(_ text: String) -> Bool { text.localizedCaseInsensitiveContains(q) }
-        var list: [Hit] = []
-        list += model.spaces.filter { has($0.title) || has($0.goal) }
-            .map { Hit(id: "s" + $0.id, symbol: $0.icon, title: $0.title, detail: "Space", page: .space($0.id)) }
-        list += model.notes.filter { has($0.title) || has($0.body) }
-            .map { Hit(id: "n" + $0.id, symbol: "note.text", title: $0.title.isEmpty ? "New note" : $0.title,
-                       detail: "Note · " + $0.body.prefix(80).replacingOccurrences(of: "\n", with: " "), page: .section(.notes), noteID: $0.id) }
-        list += model.items.filter { $0.type == .task && $0.status != .archived && has($0.title) }
-            .map { Hit(id: "t" + $0.id, symbol: $0.status == .done ? "checkmark.circle.fill" : "circle", title: $0.title,
-                       detail: $0.status == .done ? "Task · done" : "Task", page: $0.spaceID.map { .space($0) } ?? .section(.tasks)) }
-        list += model.allReminders.filter { has($0.title) }
-            .map { Hit(id: "r" + $0.id, symbol: "bell", title: $0.title, detail: "Apple Reminder", page: .section(.tasks)) }
-        list += model.content.filter { has($0.body) || has($0.idea) || $0.parts.contains(where: has) }
-            .map { Hit(id: "c" + $0.id, symbol: "megaphone", title: $0.hook.isEmpty ? $0.idea : $0.hook,
-                       detail: "\($0.platform.name) post · \($0.status.rawValue)", page: .section(.content)) }
-        return Array(list.prefix(40))
-    }
-
-    private func go(_ hit: Hit) {
-        open(hit.page, hit.noteID)
+    private func go(_ hit: AppModel.SearchHit) {
+        open(MainWindow.Page(key: hit.pageKey), hit.noteID)
         dismiss()
     }
 }
