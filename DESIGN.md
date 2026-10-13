@@ -2,7 +2,7 @@
 
 > **Superseded on conflict by [ARCHITECTURE.md](ARCHITECTURE.md)**, the single source of truth for tech and UX architecture.
 
-Companion to [PLAN.md](PLAN.md). This file decides **how the assistant looks, feels, thinks and saves battery**. Planning only: no app code yet.
+Companion to [PLAN.md](PLAN.md). This file decides **how the assistant looks, feels, thinks and saves battery**. Earlier planning notes: Blink is now being built (ARCHITECTURE.md and PHASE0.md are current). Look v1–v3, Rive, DynamicNotchKit, SpriteKit and "Claude only" model switching are history: the built eyes are SwiftUI (Look v4, ARCHITECTURE §36.3) and the owner picks Claude, Groq or OpenRouter models per feature (§31).
 
 ---
 

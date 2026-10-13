@@ -26,10 +26,7 @@ Pinned in `apps/Blink/BlinkKit/Package.resolved`.
 
 ## Planned runtime dependencies
 
-| Component | License | Source |
-|---|---|---|
-| DynamicNotchKit | MIT | https://github.com/MrKai77/DynamicNotchKit |
-| rive-ios | MIT | https://github.com/rive-app/rive-ios |
+None planned. DynamicNotchKit and rive-ios were considered and are not used: the notch and the eyes are Blink's own code.
 
 Rule: only MIT, Apache-2.0, BSD, ISC or zlib in shipped code. GPL/AGPL projects (e.g. Boring Notch, Inbox Zero) are reference-only. See ARCHITECTURE.md §32.
 

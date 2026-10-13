@@ -1,54 +1,10 @@
-# Remotion video
+# Blink launch film
 
-<p align="center">
-  <a href="https://github.com/remotion-dev/logo">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/remotion-dev/logo/raw/main/animated-logo-banner-dark.apng">
-      <img alt="Animated Remotion Logo" src="https://github.com/remotion-dev/logo/raw/main/animated-logo-banner-light.gif">
-    </picture>
-  </a>
-</p>
+Remotion project for the 60-second film and its 30- and 15-second cuts, each in 16:9 and 9:16. Never shipped with the app.
 
-Welcome to your Remotion project!
-
-## Commands
-
-**Install Dependencies**
-
-```console
-npm i --loglevel=error
-```
-
-**Start Preview**
-
-```console
-npm run dev
-```
-
-**Render video**
-
-```console
-npx remotion render
-```
-
-**Upgrade Remotion**
-
-```console
-npx remotion upgrade
-```
-
-## Docs
-
-Get started with Remotion by reading the [fundamentals page](https://www.remotion.dev/docs/the-fundamentals).
-
-## Help
-
-We provide help on our [Discord server](https://discord.gg/6VzzNDwUwV).
-
-## Issues
-
-Found an issue with Remotion? [File an issue here](https://github.com/remotion-dev/remotion/issues/new).
-
-## License
-
-Note that for some entities a company license is needed. [Read the terms here](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md).
+- `npm i`, then `npm run dev` to preview in Remotion Studio.
+- Export: `npx remotion render <id> out/<name>.mp4` with `BlinkIntro`, `BlinkIntroVertical`, `BlinkCut30`, `BlinkCut30Vertical`, `BlinkCut15` or `BlinkCut15Vertical`. `out/` is git-ignored.
+- Music: put the licensed track at `public/music/product-launch.mp3` ("Product Launch" by lnplusmusic, Pixabay licence; git-ignored, never redistributed). Scenes are cut to its 100 BPM grid; `src/Music.tsx` explains the jump to its ending.
+- Sound effects: Kenney CC0 in `public/sfx/kenney/`; air and motion sounds made by `sound/make_sounds.py`.
+- Eyes: `public/eyes-*.png` are exported from the app's `BlinkEyes` view.
+- Licence: Remotion is free for companies of up to 3 people; a company licence is needed beyond that.

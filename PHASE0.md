@@ -1,3 +1,20 @@
+# Build status
+
+## Where we are (2026-10-13)
+
+| Phase | Status | What's left |
+|---|---|---|
+| 0 Foundation | ✅ Done | |
+| 1 Notch, calendar, Ask-First | ✅ Done | State matrix (§9.8) not formally covered |
+| 2 Notes, tasks, habits, Spaces, Mac window | ✅ Done | |
+| 3 Chat and content engine | 🟡 In progress | LinkedIn/X playbooks as skills; per-post metrics over time; posting by API (copy & open today) |
+| 4 Claude app connector | ⬜ Not started | No `mcp` function yet |
+| 5 Email | 🟡 Nearly done | First real send on each account; check Sent has no duplicate copy |
+| 6 iPhone | ⏸ Paused (owner, 2026-10-12) | Decision on the paid Apple Developer account |
+| 7 Money | 🟡 In progress | 20:45 "missed spends?" nudge; Apple Pay / SMS capture; 80/100% limit alerts |
+| 8 Polish | ⬜ Not started | Weekly review, learned rules, health page |
+| Onboarding and one-click server | 🟡 Built, not proven | One real end-to-end run with the registered OAuth app |
+
 # Phase 0: foundation
 
 **Done when** (ARCHITECTURE §29, §36.7): the app opens behind Face ID / Touch ID; your server accepts only your login; Blink's eye states are approved on screen; CI is green.
@@ -73,9 +90,6 @@ Gates:
 - [x] New screens checked by the owner: Spaces, timeline, Blink panel, Settings.
 - [x] Evening check-in fills tomorrow on the timeline, checked end to end by the owner.
 
-## After Phase 0
-Phase 1: the notch panel (rest, peek, glance), calendar and reminders from EventKit, the meeting card at T−10, and Ask-First approvals with server-verified signatures.
-
 ## Onboarding, visual Today, storage (Mac session, 2026-10-13)
 Owner: Blink sets up each person's server (one-click via Supabase, next); distribution not decided yet.
 - [x] First run: Welcome → Server → Account → Calendar (real next meeting = value moment) → About you; existing installs skip it.
@@ -85,7 +99,12 @@ Owner: Blink sets up each person's server (one-click via Supabase, next); distri
 - [x] Notch peeks when ideas, drafts, a week plan or a page read finish (or fail).
 - [x] Storage: nightly cleanup job (setup/cleanup_schedule.sql), clipboard caps 200 KB, post images pruned.
 - [x] One-click server creation: "Sign in with Supabase" through a stateless helper (functions/signin, holds the OAuth client secret, stores nothing), then the app creates the project, runs the bundled migrations, deploys the functions, creates the owner's login, closes sign-ups, runs the schedules; resumable.
-- [ ] Owner: register the "Blink" OAuth app in Supabase and add BLINK_OAUTH_CLIENT_ID / BLINK_OAUTH_CLIENT_SECRET; then one real end-to-end run.
+- [x] Owner registered the "Blink" OAuth app; BLINK_OAUTH_CLIENT_ID / BLINK_OAUTH_CLIENT_SECRET set on the helper.
+- [ ] One real end-to-end run of one-click setup.
+- [x] Restart Setup in Settings (sign out, forget the server here, show onboarding again).
+- [x] The notch confirms finished ideas and drafts even if it was open.
+- [x] Toolbar crash fixed: search fields moved into the pages, Blink's own sidebar button.
+- [x] Energy at rest (2026-10-13): ≈1% CPU, energy impact ≈1 (Activity Monitor numbers, Debug build).
 
 ## Content redesign (Mac session, 2026-10-12)
 Owner: Apify only for Instagram; LinkedIn and X numbers typed in (no X account yet); post performance first; tab layout approved.
@@ -99,21 +118,23 @@ Owner: "a basic entry, like a budget calculator at max, with AI that sorts it pr
 - [x] `transaction` + `budget` tables (RLS tests); `money` Edge Function sorts free text into spends with categories on the free Groq model (checked amounts, categories, days).
 - [x] Money page: type the day's spending → Sort It → check/edit → Save; this month per category against a monthly limit; latest spends by day (change category, delete).
 - [x] Notch `/spent 8.50 lunch, 3 bus` saves at once with Undo. Blink panel on Money answers "Where is my money going?" from this month's numbers.
+- [x] Money dashboard: pace, day-by-day and category charts, month-end forecast.
+- [x] Accounts with balances (`money_account`, view `money_account_now`); a spend can come off an account; "Left at month end" and "Lasts N days" at this month's pace.
 - [ ] Later in Phase 7: 20:45 "Any spends I missed today?" nudge, Apple Pay / bank SMS capture via Shortcuts, limit alerts (P1 at 80/100%), Money on iPhone.
 
 ## Phase 5 status (Mac session, 2026-10-12): started
-Owner choices: Gmail + iCloud (hello@pexilim.com and hello@uxabhi.com are iCloud+ custom-domain addresses); important = jobs and TeamViewer, uni and official, clients and products, money and bills; checking runs on the server.
+Owner choices: Gmail + iCloud (two iCloud+ custom-domain addresses); important = jobs, uni and official, clients and products, money and bills; checking runs on the server.
 - [x] Server can reach imap.gmail.com/imap.mail.me.com:993 and smtp.gmail.com:465/587, smtp.mail.me.com:587 (probe, then retired).
 - [x] email_msg + mail_state tables (summaries only, apps change status only; RLS tests, live).
 - [x] mail Edge Function: own IMAP client (tested on recorded replies), triage on the free Groq model, reply drafts in the owner's voice appended to the account's Drafts folder (shows in Apple Mail), reply sent from the address the mail went to; mail text fenced as data.
 - [x] Schedule: pg_cron every 5 minutes with a Vault secret (backend/supabase/setup/mail_schedule.sql); ran OK.
 - [x] App: Inbox page (Important / Needs a reply / Everything else / Newsletters), Draft Reply (with a note), Open in Mail, Done; important mail peeks in the notch and shows on Today; Sync Now also checks mail.
-- [x] Owner added the Gmail and iCloud secrets; first real check ran. Uni Siegen mailbox added (UNI_ADDRESS, UNI_PASSWORD).
+- [x] Owner added the Gmail and iCloud secrets; first real check ran. University mailbox: code ready; not connected yet (needs UNI_ADDRESS, UNI_PASSWORD and UNI_IMAP_HOST as secrets, checked 2026-10-13).
 - [x] Stricter triage: job-board alerts and renewal spam never important (rule in code + prompt), larger free model.
 - [x] Owner teaches triage: Mark Important / Not Important per sender (mail_sender_rule), applied before the model and shown to it as examples; undoable.
 - [x] Inbox: mailbox tabs (All / Gmail / iCloud / Uni), search, folding sections; sidebar groups fold.
 - [x] Send from Blink after Touch ID: review sheet (edit, now or later), red mail.send action signed over the exact mail, own SMTP client on the server, 10 s Cancel for "now", scheduled sends cancellable in the Inbox, copy to Sent, Blink's draft removed from Drafts.
-- [x] Chat: "send the reply to Paresh on the 15th" proposes a card; approving opens the reply for review with that time.
+- [x] Chat: "send the reply to Sam on the 15th" proposes a card; approving opens the reply for review with that time.
 - [ ] First real send on each account (Gmail, iCloud, uni); check Sent has no duplicate copy on iCloud and uni.
 
 ## Phase 3 status (Mac session, 2026-10-12): started
@@ -125,13 +146,13 @@ Owner choices: Instagram, LinkedIn and X first; posts go out by copy & open (no 
 - [x] Notch: /post, /ideas, Copy & Open on ready posts; chat history kept across restarts (last 20 turns, on this Mac).
 - [x] Model choice per feature in Settings: Claude or free Groq models (chat with tools, content drafts); server allowlist.
 - [x] Quick model switcher in the Blink panel header and on the Content page (same setting as Settings › AI & Usage).
-- [x] Daily Claude limit in Settings (last 24 hours; free Groq models keep working), enforced by the chat and content functions.
+- [x] Daily limit for paid models (Claude + OpenRouter) in Settings, over the last 24 hours; $5 when not set (`BLINK_DAILY_CAP_USD`); free Groq models keep working. Enforced by the chat, content, page and mail functions.
 
 ### Future: more free models (owner, 2026-10-12)
 - **GLM-4.7-Flash / GLM-4.6V-Flash on z.ai**: listed free with no end date, OpenAI-style API with tools and JSON; one request at a time, slow. Needs a free z.ai key as a server secret.
 - **On this Mac (Ollama)**: 16 GB Mac → Qwen 3.5 9B or Qwen 3 8B. Called from the Mac app itself (the server can't reach the Mac), so for text edits, idea lists and summaries, or an offline "this Mac only" mode.
 - **Cloudflare Workers AI FLUX** for free carousel and cover images (10,000 free units a day); needs a free Cloudflare token.
-- Skipped for now: DeepSeek, Kimi, Qwen on Alibaba Cloud (trial credits only), SiliconFlow (needs Chinese ID check), OpenRouter (no free Chinese models in Oct 2026).
+- Skipped for now: DeepSeek, Kimi, Qwen on Alibaba Cloud (trial credits only), SiliconFlow (needs Chinese ID check). OpenRouter is in use for best models only (four picks, small prepaid credit), not for free models.
 - [x] Read My Page (Apify, own public Instagram): suggested voice, what works / avoid, best posts; ideas and the week plan build on the best posts.
 - [x] Post images: Cloudflare FLUX (free allowance, 100 a day cap); carousel slides drawn on the Mac over one background, drag or Export…; covers for other posts.
 - [x] Settings › Connections: checks each server key (Anthropic, Groq, Apify, Cloudflare) with a free read-only call.
@@ -141,3 +162,13 @@ Phase 3 audit (2026-10-12):
 - [x] `/ponytail-debt`: 24 shortcuts, all with an upgrade trigger (chat-history note updated: kept on this Mac).
 - [x] `/ponytail-audit`: page reader now reads only the handle saved in Voice (the request can't name another account); every Apify try counts toward the 10-minute guard; fixed and deployed.
 - [x] Owner rule: no post design until asked (slides and images only after Design Slides / Make Image).
+
+## Phase 6 (iPhone): paused
+Owner, 2026-10-12: stop the iPhone for now, pending the paid Apple Developer account decision (push, Live Activity updates). Shared code keeps building for iOS.
+
+## Marketing (2026-10-13)
+- [x] Launch film in `marketing/intro-video` (Remotion): 60 s plus 30 s and 15 s cuts, 16:9 and 9:16; Kenney CC0 sound effects; the Pixabay music track is git-ignored.
+
+## Audit gate for onboarding, one-click setup, money accounts and content tabs (2026-10-13)
+- [x] `/ponytail-debt`: 26 shortcuts, all with an upgrade trigger (two stale phase labels reworded).
+- [x] Backend `/ponytail-audit`: no must-fix; fixes in `20261013090000_audit_fixes.sql` (expired cards cleaned, spend-cap index, account names unique without case, server-side balance time, one-step default account), money function no longer ignores a failed account read, sign-in helper returns only fixed error words.

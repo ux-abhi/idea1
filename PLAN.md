@@ -4,7 +4,7 @@
 
 > **One line:** A Claude-powered second brain that lives in your MacBook notch and your iPhone Dynamic Island. It knows your day, prepares things before you ask, and never acts without your OK.
 
-Status: **Planning.** Nothing is built yet. This file is the single source of truth: update it as decisions are made.
+Status: **earlier planning notes.** Blink is now being built; ARCHITECTURE.md (decisions) and PHASE0.md (status) are current. DynamicNotchKit, Rive and capture-only money are history (ARCHITECTURE §31).
 Look, mascot (**Blink**), model switching, content engine and battery decisions live in **[DESIGN.md](DESIGN.md)**.
 
 ---

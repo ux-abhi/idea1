@@ -42,6 +42,7 @@ Claude-powered personal assistant in the MacBook notch and the iPhone Dynamic Is
 | Performance, battery | `swiftui-performance`, `debugging-instruments`, `metrickit` |
 | Tests | `swift-testing` |
 | Web app and design pages | `frontend-design`, `webapp-testing`, `gsap-*`, `motion-dev-animations` |
+| Marketing film (`marketing/intro-video`, Remotion) | `remotion-best-practices` and `remotion-*`, `sound-effects`, `design-motion-principles` |
 | Content engine (Phase 3) | `ig-*` |
 
 ## Code rules
@@ -55,6 +56,7 @@ Claude-powered personal assistant in the MacBook notch and the iPhone Dynamic Is
 - Shipped code: MIT, Apache-2.0 or BSD only. Record each new dependency in `THIRD_PARTY_NOTICES.md` in the same commit.
 - Never copy code from GPL/AGPL projects (Boring Notch, Inbox Zero) or paste skill text into app code.
 - Never commit secrets. `Local.xcconfig`, `.env` files, keys and certificates are git-ignored.
+- `marketing/` is never shipped; its licensed music stays git-ignored.
 
 ## Commits
 Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`). Small and focused.

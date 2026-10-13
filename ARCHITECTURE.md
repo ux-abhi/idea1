@@ -1,8 +1,8 @@
 # Blink: Architecture (Tech + UX)
 
-**The one place.** This document combines every technical and UX decision for Blink, the personal assistant. If it disagrees with `PLAN.md` or `DESIGN.md`, **this file wins**. Planning only: no app code yet.
+**The one place.** This document combines every technical and UX decision for Blink, the personal assistant. If it disagrees with `PLAN.md` or `DESIGN.md`, **this file wins**. Blink is being built: PHASE0.md tracks what is done, phase by phase.
 
-Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `claude/busy-bohr-utx0v6`
+Status: building (phases 0–2 done; 3, 5 and 7 in progress; 4 and 8 not started; iPhone paused) · Last updated: 13 Oct 2026
 
 ---
 
@@ -42,7 +42,7 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 
 **Part D: Delivery**
 
-26. Repo structure (planned)
+26. Repo structure
 27. Cost
 28. Distribution
 29. Build phases
@@ -68,7 +68,7 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 | 2 | **Prepares ahead** | It plans tomorrow with you at night, works overnight, and has everything ready in the morning |
 | 3 | **Asks before acting** | Every action is an Ask-First card. 🔴 actions need Face ID and are never automatic |
 | 4 | **Everything is linked** | Meetings, notes, emails, people, to-dos, projects, habits, money and content are connected |
-| 5 | **Claude is the brain** | The Auto router picks Opus, Sonnet or Haiku per job; you can switch any time |
+| 5 | **You pick the brain** | Claude by default; per feature you can pick Claude, free Groq models or a few top OpenRouter models. Every model goes through the same Ask-First checks |
 | 6 | **Ask once, learn forever** | One setup conversation; after that it learns from what you approve, edit and skip |
 | 7 | **Private and light** | Private backend, Face ID, keys never displayed; the server works and devices sleep |
 
@@ -81,9 +81,9 @@ Status: planning · Last updated: Oct 2026 · Repo: `ux-abhi/idea1` · Branch: `
 | **Notes** | Your own second brain: linked, searchable by meaning | Blink DB |
 | **Tasks and habits** | To-dos, reminders, daily habit checks ✅ ❌ ⏭, streaks | Blink DB (optional mirror to Apple Reminders) |
 | **Segments** (projects and more) | Say "I have a project" → Blink builds a space from existing parts: goal, milestones, reminders, notes, calendar, people, money, content (§35) | Blink DB |
-| **Email** | Triage, drafts saved to Apple Mail, send after approval | IMAP/SMTP to the accounts behind Apple Mail: **Gmail + iCloud Mail** (§36.8) |
-| **Money** | Spending capture and budgets, with no bank app connection needed | Apple Pay + bank SMS + bank email alerts (SimpleFIN optional) |
-| **Content** | One idea becomes native drafts for every platform | Blink DB + platform playbooks/skills |
+| **Email** | Triage, owner-taught sender rules, drafts saved to the mail account (shows in Apple Mail), send from Blink after Touch ID | IMAP/SMTP to each account: today Gmail, iCloud and one more IMAP mailbox (§36.8) |
+| **Money** | Typed spends sorted by AI, accounts with balances, monthly limits, runway and month-end forecast, charts; no bank app connection | Typed entries today; Apple Pay, bank SMS and alert emails later into the same `transaction` table (SimpleFIN optional) |
+| **Content** | One idea becomes native drafts for every platform; Content page in four tabs: Overview (post stats, connected accounts), Posts, Plan, Ideas | Blink DB + platform playbooks/skills |
 | **Chat** | You and Claude together, everywhere | Claude API |
 
 ## 3. A day with Blink (the reference journey)
@@ -132,7 +132,7 @@ flowchart LR
 | Surface | Shows | Can do | Blink rendering |
 |---|---|---|---|
 | **Mac notch, resting** | Eyes, small glow, count dot | Hover to peek | Live: blink only at rest |
-| **Mac notch, expanded** | Cards, brief, chat input, quick capture | Ask-First actions, chat, drag files in | Live particles while reacting |
+| **Mac notch, expanded** | Cards, brief, chat input, quick capture | Ask-First actions, chat, drag files in | Live SwiftUI eyes; gold burst only on Celebrate |
 | **Mac window** | Full modules, Blink panel on every screen | Everything | Blink panel (live) |
 | **Mac menu bar** | iPhone Live Activity (mirrored by macOS 26+) | Click → iPhone Mirroring | System |
 | **Dynamic Island** | Countdown / status + Blink | Long-press → actions | Still poses |
@@ -170,13 +170,13 @@ Sidebar                    Content                 Inspector
 ```
 Level 0  resting   eyes + dot          (always)
 Level 1  peek      one-line status     (hover / event)
-Level 2  open      card or chat        (click / ⌥Space / important event)
+Level 2  open      card or chat        (click / ⌃⌥Space / important event)
 ```
 
 **Navigation rules**
 - Every object (note, email, event, task, post, transaction) has **one detail view**, and the same view opens from any surface.
 - **Links panel** on every detail view: related meetings, people, notes, tasks, emails.
-- **Global search** (⌘F / pull-down on iPhone) is semantic plus keyword across all modules.
+- **Global search** (⌘K / pull-down on iPhone) is semantic plus keyword across all modules. On the Mac, page search fields live inside each page (a toolbar search field duplicated items and crashed, 2026-10-13).
 
 ## 6. Interaction model: Ask-First
 
@@ -195,7 +195,7 @@ Level 2  open      card or chat        (click / ⌥Space / important event)
 - **Waiting for you** queue: missed cards collect in one list on every surface.
 - **Learning:** after N identical approvals → "Do this automatically?" Only 🟢/🟡 can become automatic; 🔴 never one by one without you.
 - **Batch approval for posting:** you can approve a whole week of posts at once, with one Face ID. That approval covers exactly those posts, at those times, with that wording. Each post still shows a **10-minute "going out soon · Cancel"** heads-up, and any edit by Blink after approval puts the post back in the queue.
-- **Every action is logged** with what Blink did and how to undo it.
+- **Every action is logged** with what Blink did and how to undo it (kept 180 days, §31 "Keep the server light").
 - **Suggestions in context:** note written → "Turn into a post?" · meeting ended → "Follow-up?" · date in email → "Add to calendar?"
 
 ## 7. Blink: character, state machine, rules
@@ -383,19 +383,19 @@ flowchart TB
 | Layer | Choice | Why |
 |---|---|---|
 | Apple apps | **Swift 6, SwiftUI**, one multiplatform Xcode project | Native look, battery, all Apple APIs |
-| Mac notch | **AppKit NSPanel** + [DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit) (MIT). [Boring Notch](https://github.com/TheBoredTeam/boring.notch) is GPL-3.0: ideas only, never its code (§32) | Proven notch overlay approach |
-| Blink rendering | **Rive** (eyes + glass state machine) + **SpriteKit/Metal** particle layer; PNG still poses for iPhone surfaces | Stateful mascot, low cost, still poses where iOS requires |
+| Mac notch | **Own AppKit `NSPanel`** with a SwiftUI `NotchShape`, no notch library. [Boring Notch](https://github.com/TheBoredTeam/boring.notch) is GPL-3.0: ideas only, never its code (§32) | Full control, no dependency |
+| Blink rendering | **SwiftUI-drawn eyes** (animatable shapes, 0 fps at rest); a `Canvas` burst for Celebrate; PNG still poses later for iPhone surfaces. Rive only if a full-body mascot is ever made | No dependency, near-zero idle cost |
 | Local store | **SwiftData** cache | Offline, fast UI |
 | Calendar / reminders | **EventKit** | All device calendar accounts, no extra logins |
 | iPhone system | **ActivityKit** (Live Activities), **WidgetKit**, **App Intents** (Shortcuts, Siri, Action Button, Focus Filter), **UserNotifications**, **BackgroundTasks** | Dynamic Island, widgets, automations |
 | Security | **LocalAuthentication** (Face ID / Touch ID), **Keychain** with biometry-bound access control | "Only me" |
 | Backend | **Supabase**: Postgres, **pgvector**, Edge Functions (Deno/TypeScript), **pg_cron**, **Vault**, Realtime, Auth | One managed service, free tier to start |
-| Embeddings | Supabase built-in embedding model (gte-small) in Edge Functions + Postgres full-text search | Semantic search without adding another AI provider; Claude stays the only "brain" |
-| AI | **Claude API**: Messages + tool use, structured outputs, Batches, web search tool, prompt caching, Agent Skills (code execution). **Groq** for quick text edits only (§31) | See §19 |
+| Embeddings | Supabase built-in embedding model (gte-small) in Edge Functions + Postgres full-text search | Semantic search without adding an AI provider just for search |
+| AI | **Claude API** (default: Messages + tool use, structured outputs, prompt caching), **Groq** free tier (GPT-OSS 120B/20B, Llama 3.3 70B, Qwen, MiniMax) and **OpenRouter** (four hand-picked top models). Server allowlist in `functions/_shared/models.ts`; paid models share a daily cap, default $5 (`BLINK_DAILY_CAP_USD`). Mail triage and money sorting: Groq GPT-OSS 120B; quick edits: GPT-OSS 20B. Images: Cloudflare FLUX. Own Instagram page: Apify | §19, §31 |
 | Claude app access | **Remote MCP server** (Edge Function) with OAuth | Custom connector |
 | Push | **Web Push** straight from your server (encrypted by standard); **APNs via an encrypted relay** for the native iPhone app | §33 |
 | Mail | **IMAP + SMTP** worker | Works with any account behind Apple Mail |
-| Money | Shortcuts (Wallet "Transaction", "Message" triggers) → App Intent → API; email alerts; **SimpleFIN** optional | No bank app connection needed |
+| Money | Typed entries sorted by Groq (built); later Shortcuts (Wallet "Transaction", "Message" triggers) → App Intent → API, email alerts, **SimpleFIN** optional | No bank app connection needed |
 | Social | LinkedIn Posts API, Instagram Graph API, X API (pay-per-use), one-tap handoff for the rest | §18 |
 | Analytics / health | **MetricKit** (device), Supabase logs, a cost table | Battery and spend visible |
 
@@ -412,14 +412,18 @@ flowchart TB
 | `BlinkLiveActivity` | Meeting / reminder / morning-brief activities (Island compact, minimal, expanded) |
 | `BlinkIntents` | App Intents: Log Transaction, Ingest Message, Quick Capture, Plan My Day, What's Next, Focus Filter |
 
+**Built today:** one multiplatform app target `Blink` (Mac complete; iOS builds but is paused, §29) plus the `BlinkKit` package. Widgets, Live Activity and Intents targets are not created yet. The app bundles `backend/supabase/{migrations,functions,setup}` as resources for one-click server setup (§33.3).
+
 **Mac notch controller**
 - Borderless, non-activating `NSPanel` at the notch rect of the built-in display; follows display changes and multiple monitors.
 - Observers: `NSWorkspace.didWakeNotification`, screen unlock (distributed notification), full-screen detection, screen-sharing detection, power source / battery level → calm mode.
-- Levels 0/1/2 as in §5; hover via tracking area; ⌥Space global hotkey.
+- Levels 0/1/2 as in §5; hover via tracking area; global hotkeys ⌃⌥Space (chat) and ⌃⌥V (clipboard).
 
 **iPhone wake strategy:** Lock Screen widget (always) + push-to-start morning Live Activity at wake − 15 min + optional "Sleep Focus off" Shortcuts automation that runs the *Morning Brief* intent.
 
 ## 15. Backend
+
+**Built today:** `approve` (verifies Touch ID signatures for red actions), `chat` (tool loop, Ask-First), `content` (drafts, ideas, week plan), `page` (reads the owner's own Instagram via Apify), `image` (Cloudflare FLUX), `text` (quick edits on Groq), `money` (sorts typed spends), `mail` (IMAP triage, drafts, SMTP outbox; pg_cron every 5 min), `connections` (checks each server key with a free read-only call), and `signin` (Pexilim's stateless sign-in helper, never installed on owners' servers). Apps read and write tables directly through RLS; there is no `api` or `/sync` function yet. `ingest`, `mcp` and the push sender are still planned. The table below is the full design.
 
 | Component | Responsibility |
 |---|---|
@@ -462,7 +466,12 @@ erDiagram
 | `calendar_event` | ext_id, title, start, end, attendees, location, url, snapshot_at | From device snapshots |
 | `email_msg` | imap_uid, thread_id, from, subject, received_at, triage, summary, needs_reply | Bodies fetched on demand, not stored long-term |
 | `habit` / `habit_log` | name, schedule / date, status (done, missed, skipped) | Streaks computed |
-| `transaction` | amount, currency, merchant, card, at, source (applepay, sms, email, simplefin), category, dedupe_key | De-duplication by amount + merchant + time window |
+| `transaction` | amount, currency, merchant, category, day, source (manual, applepay, sms, email, simplefin), account_id → money_account, dedupe_key | De-duplication by amount + merchant + time window (capture later) |
+| `money_account` | name, kind (checking, savings, cash, card, other), balance, balance_at, currency, is_default | Balance set by hand; view `money_account_now` adds `spent_since` |
+| `social_account` | platform (instagram, linkedin, x), handle, followers | LinkedIn/X followers typed in; null = no account yet |
+| `social_post` | platform, handle, url, caption, likes, comments, views | The owner's own page, read by Apify; captions are untrusted data |
+| `voice_profile` | notes, never_say, page, brief | The owner's voice and creator brief |
+| `mail_state` / `mail_sender_rule` | per-account IMAP cursor / sender or @domain → important or not | Owner-taught triage |
 | `budget` | category, monthly_limit | Alerts at 80/100% |
 | `content_atom` | idea, story, points, proof, cta, assets | Core message |
 | `content_piece` | atom_id, platform, format, body, media, status, scheduled_at, published_url | Per-platform draft |
@@ -473,6 +482,8 @@ erDiagram
 | `blink_event` | at, state, reason | Drives Blink state, analytics |
 | `device` / `push_token` | platform, apns token, live-activity push-to-start token | Push routing |
 | `model_usage` | at, feature, model, input_tokens, output_tokens, cost | Cost meter |
+
+Not built yet: `content_atom`, `playbook`, `person`, `segment_member`, `template`, `daily_log`, `push_token`.
 
 All tables carry an `owner_id` and are protected by **row-level security** (`owner_id = auth.uid()`). Today only one account exists and sign-ups are switched off by a setting, so the same schema can serve many users later without a rewrite (§32).
 
@@ -502,6 +513,8 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 
 ## 19. AI layer (Claude)
 
+**Built today (§31 "Model choice" wins):** no automatic tiers. Each feature uses the owner's pick from Settings › AI & Usage (`profile.model_prefs`, checked against the server allowlist), else the server default. Fixed jobs: mail triage and money sorting on Groq GPT-OSS 120B (Haiku if there is no Groq key), quick edits on GPT-OSS 20B. Paid models (Claude, OpenRouter) share one daily cap over the last 24 hours: the owner's setting, else `BLINK_DAILY_CAP_USD`, else $5; free Groq never stops. The tier table below is the later plan.
+
 **Model router**: features ask for a *tier*, never a model name.
 
 | Tier | Model | Used for |
@@ -516,7 +529,7 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 - **Structured outputs** for triage, extraction and plans (fixed JSON schemas).
 - **Prompt caching** of the stable prefix: system prompt + "What Blink knows" + voice samples.
 - **Web search tool** for overnight research and playbook refresh.
-- **Safety:** email, SMS and web text are always treated as **data, never instructions**; 🔴 actions require Face ID on a device; refusal fallback enabled; per-day spend cap with a P1 alert.
+- **Safety:** email, SMS and web text are always treated as **data, never instructions**; 🔴 actions require Face ID on a device; refusal fallback enabled; per-day spend cap (default $5) that pauses paid models (an alert is not built yet).
 - **Option to evaluate in Phase 3:** Claude Managed Agents scheduled deployments for the nightly autopilot (Anthropic runs the loop; secrets in vaults) instead of our own cron.
 
 ## 20. Skills and playbooks
@@ -541,6 +554,8 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 
 ## 21. Background jobs
 
+**Running today:** `mail-poll` (pg_cron every 5 min, `setup/mail_schedule.sql`) and `blink-cleanup` (pg_cron 03:30 UTC nightly, `setup/cleanup_schedule.sql`: `remove_old_rows()` drops mail summaries that are done or newsletters after 30 days and all after 90, finished Ask-First cards after 180, `blink_event` after 30, `model_usage` after 400; notes, tasks, habits, spends, accounts, budgets, posts and drafts are never touched). The rest are planned.
+
 | Job | Schedule | Does |
 |---|---|---|
 | `mail_poll` | every 2–5 min | Fetch new mail → triage → P1 notify / queue |
@@ -563,13 +578,13 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 |---|---|
 | App access | Face ID to open; second check for Email, Money, Keys |
 | Device secrets | Keychain, `biometryCurrentSet` (adding a new face/finger invalidates) |
-| Server secrets | Supabase **Vault** (Claude key, mail password, bank/social tokens); never returned to clients; replace-only behind Face ID |
+| Server secrets | Edge Function secrets on the owner's own project (AI keys, mail app passwords, Apify, Cloudflare); Vault holds the cron secret. Never returned to clients; Settings › Connections shows only working / missing / rejected |
 | Auth | One account today (sign-ups off by setting, not by design); per-user rows and secrets; short-lived sessions; device registration |
 | Database | Row-level security on every table |
 | Transport | HTTPS only; APNs tokens per device |
 | Claude connector | OAuth to your account only; writes become `action` rows |
-| AI safety | Untrusted text is data, never instructions; 🔴 needs Face ID; full action audit log |
-| Data minimisation | Email bodies fetched on demand, not stored long-term; transactions keep only needed fields |
+| AI safety | Untrusted text is data, never instructions; 🔴 needs Face ID; action audit log (180 days) |
+| Data minimisation | Email bodies fetched on demand, not stored long-term; transactions keep only needed fields; old rows removed nightly (§21 `blink-cleanup`); clipboard stays on the Mac (50 items, 200 KB caps) |
 | Code | No secrets in git; config via ignored files + Keychain |
 | Option later | End-to-end encryption for notes (disables server-side AI search over them) |
 
@@ -577,9 +592,9 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 
 | Area | Budget / rule |
 |---|---|
-| Mac idle | No rendering at rest (blink only every 20–40 s); target near-zero CPU, "Low" energy impact |
+| Mac idle | No rendering at rest (blink only every 20–40 s); target near-zero CPU, "Low" energy impact. Measured 2026-10-13: ≈1% CPU and energy impact ≈1 at rest (Phase 2: 0.0% CPU, 58 MB) |
 | Mac calm mode | Lid closed, display asleep, full screen, screen sharing, or battery <20% → no motion |
-| Particles | ≤30 particles, ≤30 fps, only while Blink reacts |
+| Particles | Celebrate burst only (≤30, `Canvas`, ≤30 fps) |
 | iPhone | No polling; push-driven; Live Activity countdowns rendered by the system; updates only on change; still poses |
 | Widgets | Day timeline computed once; reload on change only |
 | Network | Batched delta sync; no background sockets on iPhone |
@@ -610,33 +625,44 @@ All tables carry an `owner_id` and are protected by **row-level security** (`own
 
 # Part D: Delivery
 
-## 26. Repo structure (being created in Phase 0)
+## 26. Repo structure
 
 ```
 idea1/
-├── ARCHITECTURE.md          ← this file (source of truth)
-├── PLAN.md, DESIGN.md       ← earlier detail, superseded on conflict
-├── design/                  ← blink-studio.html, Rive files, icon sources
-├── apps/Blink/                ← Xcode multiplatform project
-│   ├── BlinkKit/              ← shared Swift package
-│   ├── Blink-macOS/  Blink-iOS/
-│   ├── BlinkWidgets/  BlinkLiveActivity/  BlinkIntents/
+├── ARCHITECTURE.md           ← source of truth
+├── PHASE0.md                 ← build status, phase by phase
+├── PLAN.md, DESIGN.md        ← earlier detail, superseded on conflict
+├── CLAUDE.md, SKILLS.md, THIRD_PARTY_NOTICES.md, LICENSE, skills-lock.json
+├── design/                   ← tokens.json, prototypes
+├── docs/decisions/           ← ADR template
+├── apps/Blink/
+│   ├── Blink/                ← app target (Mac window, notch, onboarding, settings)
+│   ├── BlinkKit/             ← shared Swift package + tests
+│   └── Config/               ← Local.xcconfig.example (Local.xcconfig is git-ignored)
 ├── backend/supabase/
-│   ├── migrations/          ← schema, RLS, pg_cron
-│   ├── functions/           ← api, chat, ingest, mcp, jobs
-│   └── workers/mail/        ← IMAP/SMTP worker
-├── skills/                  ← Blink-native + platform skills (uploaded to the API)
-├── .claude/skills/          ← same skills for Claude Code (ig-* installed)
-├── templates/               ← voice.md etc.
-└── evals/                   ← triage, extraction, injection test sets
+│   ├── migrations/           ← schema + RLS (bundled into the app)
+│   ├── functions/            ← approve, chat, connections, content, image, mail, money, page, signin, text, _shared
+│   ├── setup/                ← pg_cron schedules (mail, cleanup)
+│   └── tests/                ← rls.sql, run.sh
+├── marketing/intro-video/    ← Remotion launch film (60/30/15 s); never shipped
+├── templates/                ← voice.md etc.
+├── .claude/skills/           ← dev skills (some symlinked from .agents/skills/)
+└── .github/workflows/ci.yml
 ```
+
+Planned, not created: `skills/` (server-side skills), `evals/`, widget, Live Activity and Intents targets.
 
 ## 27. Cost (estimates)
 
 | Item | Cost |
 |---|---|
 | Apple Developer Program | $0 to start (free account); $99/yr for push, auto Live Activities, TestFlight |
-| Claude API | Under ~$1–2/day with the router, caching and Batches, billed to **your own** Anthropic key |
+| Claude API | Billed to **your own** Anthropic key; paid models stop at a daily cap (default $5, set in Settings) |
+| Groq | Free tier (mail triage, money sorting, text edits, optional chat and drafts) |
+| OpenRouter | Optional small prepaid credit, best models only |
+| Apify (Read My Page) | ≈ $0.05 per read, at most one per 10 min |
+| Cloudflare Workers AI (images) | Free daily allowance; app cap 100 a day |
+| Sign-in helper | Pexilim runs one stateless Edge Function (free tier) |
 | Your server | Supabase free tier, or self-hosted Docker on your own machine/VPS (≈$5–10/mo VPS); each user pays their own |
 | SimpleFIN | Optional, $15/yr |
 | LinkedIn / Instagram APIs | Free |
@@ -656,15 +682,17 @@ The design is the same in every stage; stage C only switches on server push.
 
 | # | Phase | Done when… |
 |---|---|---|
-| 0 | Setup + Blink design: Xcode project, Supabase, Face ID, Vault, Rive Blink + still poses, setup script | Face ID gate works; backend accepts only your login; Blink states approved |
+| 0 | Setup + Blink design: Xcode project, Supabase, Face ID, Vault, SwiftUI Blink eyes, setup | Face ID gate works; backend accepts only your login; Blink states approved |
 | 1 | Notch + Blink + Calendar + Reminders + Ask-First | Meeting card pops out at T−10; morning brief on unlock; Ask-First works; idle CPU ≈ 0 |
 | 2 | Notes, tasks, habits, **Segments** (Project template first), evening planning, Mac window | Evening check-in fills the schedule checker and builds tomorrow; Blink panel everywhere |
 | 3 | Chat + router + content engine (Instagram skills first, then LinkedIn/X) | One idea → native drafts per platform; morning card → publish/handoff |
 | 4 | Claude app connector + Blink skills | Same assistant inside the Claude app |
 | 5 | Email | P1 mail alerts; drafts appear in Apple Mail; send after Face ID |
 | 6 | iPhone app: Island, widgets, wake-up | "In 3 min / started 3 min ago"; Lock Screen Today; not a significant battery user |
-| 7 | Money | Apple Pay tap + bank SMS appear within a minute, de-duplicated |
+| 7 | Money (first slice built: typed entries, accounts, runway, charts) | Apple Pay tap + bank SMS appear within a minute, de-duplicated |
 | 8 | Polish: weekly review, learning rules, health page | Sunday review complete; auto-approval suggestions work |
+
+**Current status:** see the phase table at the top of PHASE0.md. Phase 6 (iPhone) is paused by the owner (2026-10-12) until the Apple Developer account decision.
 
 ## 30. Risks and things to verify on device
 
@@ -674,7 +702,7 @@ The design is the same in every stage; stage C only switches on server push.
 | Live Activity countdown rendering and update budget | Test in Phase 6; keep updates to state changes |
 | Alarm/Sleep Focus trigger reliability (developer reports) | Widget + push-to-start as primary |
 | Notch overlay edge cases (multi-monitor, full screen, external display) | Test early on real displays; calm mode |
-| Rive + particles battery cost | Instruments per phase; still poses fallback |
+| Notch animation battery cost | Instruments per phase; measured ≈1% CPU / energy impact ≈1 at rest (2026-10-13) |
 | Third-party skills changing | Pin to a reviewed commit; review before updates |
 | Prompt injection via email/web | Data-only handling, Ask-First, eval set |
 | Instagram account type requirement | Creator account linked to a Page, or handoff |
@@ -687,23 +715,23 @@ The design is the same in every stage; stage C only switches on server push.
 | Apps | Native SwiftUI (no Electron/web) | Look, battery, Apple APIs |
 | Backend | Supabase, **run by each user** (cloud project or self-hosted Docker) | Open source; same stack either way; data stays with the user |
 | Privacy | Your server, your keys; Pexilim holds no data; encrypted push relay only | Privacy even from Pexilim |
-| AI provider | Claude for chat, planning and every action; Groq (`openai/gpt-oss-20b`) only for quick text edits (fix, shorter, clearer, summarise) that return text the owner previews (decided 2026-10-12, replaces "Claude only") | Fast and cheap for plain text work; Ask-First stays with one model |
+| AI provider | Several providers: Claude (default), Groq free models, OpenRouter best models; the owner picks per feature (see the "Model choice" and "OpenRouter" rows). Ask-First is the same for all (2026-10-12, replaces "Claude only") | Fast and cheap for everyday work; no single-provider dependency |
 | Embeddings | Supabase built-in model + full-text | No second AI provider for the "thinking" |
 | Notes | Own system (no Apple Notes) | Full control, linking, search |
 | Reminders | Blink-first, shown in notch/Island; Apple Reminders mirror optional | Your request |
 | Email | IMAP/SMTP behind Apple Mail | Keeps Apple Mail as-is |
-| Money | Apple Pay + SMS + email alerts; bank sync optional | No bank app connection needed |
+| Money | Typed entries first, accounts and runway (built); Apple Pay, SMS and email capture later; bank sync optional | No bank app connection needed |
 | Content | Core message → platform skills; proposed weekly plan | Any platform, ask once |
 | Posting | Blink prepares and publishes everything; you approve once per post or once per week | Fully hands-off after one yes, never without one |
 | Segments | Projects and other spaces built from existing blocks + templates as data | One mechanism serves students, freelancers, creators, families |
 | Integrations | Plug in MCP connectors through Blink's gateway on your server; build only what has no connector | Less code, more apps, same privacy and Ask-First rules |
-| Mascot | Blink: tilted pill eyes, particles in glass, glow inside the notch only | Your sketch + Apple look |
+| Mascot | Blink: panda duo-tone pill eyes drawn in SwiftUI (Look v4); glow inside the notch only | Your sketch + Apple look |
 | Safety | Ask-First; 🔴 Face ID; never auto | Trust |
 | Distribution | Free first, $99 later | Budget |
 | Licenses in shipped code | Permissive only (MIT, Apache-2.0, BSD); GPL/AGPL projects are reference-only | Keeps Blink sellable |
 | Data model | `owner_id` + row-level security on every table | Multi-user ready without a rewrite |
 | Dev skills | Development tools only, never shipped in the app | Clean product boundary |
-| Mail worker on the server (2026-10-12) | Supabase Edge Function with a small built-in IMAP client (no mail library), scheduled by pg_cron every 5 min with a Vault-held secret; app passwords as Edge Function secrets; triage on the free Groq model; drafts appended to each account's Drafts folder so they appear in Apple Mail. Only summaries are stored. Sending stays in Apple Mail until the Touch ID send lands | Owner chose server checking; probe showed IMAP 993 and SMTP 465/587 reachable from Edge Functions |
+| Mail worker on the server (2026-10-12) | Supabase Edge Function with a small built-in IMAP client (no mail library), scheduled by pg_cron every 5 min with a Vault-held secret; app passwords as Edge Function secrets; triage on the free Groq model; drafts appended to each account's Drafts folder so they appear in Apple Mail. Only summaries are stored. Sending happens from Blink after Touch ID (next row) | Owner chose server checking; probe showed IMAP 993 and SMTP 465/587 reachable from Edge Functions |
 | Sending mail from Blink (2026-10-12) | The app proposes a red `mail.send` action holding the exact mail; Touch ID signs its server-computed hash; the mail worker sends approved, due ones over its own SMTP client (claimed before sending, so never twice), copies to Sent, removes the draft. "Now" waits 10 s for Cancel; later sends wait in the outbox and are cancellable. A DB check keeps `mail.send` red. Chat only proposes a reply (amber `mail.compose`) that opens the review | Owner wants to send and schedule from Blink without opening Apple Mail; reuses the §36.5 approval path instead of a new one |
 | Owner-taught triage (2026-10-12) | Per-sender rules (`mail_sender_rule`, address or @domain) beat the model and the built-in job-alert rule; the latest 40 go to the model as examples | Owner: "I can just mark them as important, and AI can feed it to the system" |
 | Money starts with typed entries (2026-10-12) | Phase 7 begins with the owner typing the day's spending; a free Groq model splits it into spends and categories (11 fixed ones), the owner checks before saving; `/spent` in the notch saves at once with Undo. Same `transaction` table (source = manual) that Apple Pay/SMS capture will fill later | Owner wants a basic budget calculator now, fed in the evening, with AI doing the sorting |
@@ -713,6 +741,18 @@ The design is the same in every stage; stage C only switches on server push.
 | Model choice (2026-10-12) | The owner picks the model per feature in Settings (chat and planning, content drafts): Claude Opus / Sonnet / Haiku, or free-tier models on Groq (GPT-OSS 120B and 20B, Llama 3.3 70B, Qwen 3.8 27B, MiniMax M2.7). Stored in `profile.model_prefs`; the server only calls models on its allowlist (`functions/_shared/models.ts`). Ask-First and every check stay the same whichever model writes. Replaces "Claude for chat and every action" | Owner request: don't depend on one provider; free models for everyday work. Next: OpenRouter for more open models, Ollama on the Mac for local, Cloudflare FLUX for free images |
 | Focus timers (2026-10-12) | Pomodoro (25 / 5, long break every 4th) and plain timers in the notch: countdown in the right ear, one chime at the end, survive restarts; sleep until the end instead of ticking | Owner request; stays near 0 CPU |
 | Clipboard history (2026-10-12) | Last 50 copies, on this Mac only (never the server or Claude); items marked concealed or transient by password managers are never recorded; pause and clear | Owner request; privacy first |
+| Money accounts and runway (2026-10-12) | `money_account` (checking, savings, cash, card, other) with a balance set by hand; a spend can come off an account (the default one if none is named); view `money_account_now` = balance − spends since `balance_at`, summed in the database. Money page: total, "Left at month end", "Lasts N days" at this month's pace, pace / day-by-day / category charts | Owner wants to see what they have and how long it lasts, without a bank connection |
+| Content in tabs (2026-10-12) | Content page in four tabs: Overview · Posts · Plan · Ideas. Overview: likes, comments, reel views and engagement per post, best format, best day, top posts. `social_account` holds follower numbers (LinkedIn and X typed in). New Post is a sheet (⌘N) | Owner: post performance first; Apify only for Instagram; no LinkedIn/X APIs yet |
+| Keep the server light (2026-10-12) | Nightly pg_cron `blink-cleanup` runs `remove_old_rows()` (see §21); clipboard text and rich items capped at 200 KB; post images pruned. Personal records are never removed. **The Ask-First audit log keeps 180 days:** finished cards (done, undone, expired, declined, failed) and pending cards ignored past their expiry are removed after 180 days; approved ones (a scheduled send) never. This replaces "full action audit log" in §6 and §22 | Free-tier size limits; mail stays in the mailbox anyway |
+| Onboarding and Settings in plain sight (2026-10-13) | First run: Welcome → Server → Account → Calendar (the real next meeting) → About you; existing installs skip it. Settings opens from the sidebar, notch menu and menu bar. Setup ring on Today and just-in-time "Add …" prompts. Restart Setup in Settings | Others must be able to set Blink up without help or shortcuts |
+| Notch confirms finished work (2026-10-13) | The notch peeks when ideas, drafts, a week plan or a page read finish or fail, even if it was already open | Long jobs shouldn't finish silently |
+| Search inside pages (2026-10-13) | Search fields moved from the toolbar into each page; Blink draws its own sidebar button | macOS duplicated toolbar items on rebuild and crashed |
+| Default daily cap $5 (2026-10-13) | Paid models (Claude + OpenRouter) stop when the last 24 hours reach the owner's limit, else `BLINK_DAILY_CAP_USD`, else $5. Free Groq is never stopped | There is always a limit, even before the owner sets one |
+| Third mailbox (2026-10-12) | Mail tables allow a third account; its address, password and hosts come from secrets. Inbox has mailbox tabs | Owner's university mail |
+| Secrets as Edge Function secrets (2026-10-13) | AI keys and mail passwords live as Edge Function secrets on the owner's project (the installer sets them through the Management API); Vault keeps only the cron secret | Matches how Edge Functions read keys; still only the owner's server |
+| iPhone paused (2026-10-12) | Phase 6 waits for the owner's decision on the paid Apple Developer account. Shared code keeps building for iOS | Free accounts: 7-day installs, no push |
+| No notch library, no Rive (2026-10-11/12) | Notch = own `NSPanel` + SwiftUI `NotchShape`; eyes = SwiftUI shapes; Celebrate burst = `Canvas`. DynamicNotchKit and rive-ios are not dependencies | No dependencies, 0 fps at rest |
+| Launch film (2026-10-13) | Remotion project in `marketing/intro-video`: 60 s film plus 30 s and 15 s cuts, 16:9 and 9:16, mood colours without purple, "by Pexilim". Kenney CC0 sound effects; the licensed Pixabay track stays out of git. Remotion and ElevenLabs sound-effects skills are dev tools. Never shipped | Owner wants a launch video; Remotion is free for companies of up to 3 people |
 
 ## 32. Sellable, clean codebase
 
@@ -726,8 +766,9 @@ Goal: Blink is built for you first, but the code can be **sold or licensed later
 
 | Project | License | Use |
 |---|---|---|
-| [DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit) | MIT | ✅ Dependency |
-| [rive-ios](https://github.com/rive-app/rive-ios) | MIT | ✅ Dependency (Blink animation runtime) |
+| [DynamicNotchKit](https://github.com/MrKai77/DynamicNotchKit) | MIT | Not used (the notch is our own code) |
+| [rive-ios](https://github.com/rive-app/rive-ios) | MIT | Not used (the eyes are SwiftUI) |
+| [Remotion](https://www.remotion.dev) | Remotion License | Marketing film only, never shipped |
 | [supabase-swift](https://github.com/supabase/supabase-swift) | MIT | ✅ Dependency |
 | [iOS16-Live-Activities](https://github.com/1998code/iOS16-Live-Activities) | MIT | ✅ Sample to learn from |
 | [Boring Notch](https://github.com/TheBoredTeam/boring.notch) | GPL-3.0 | ⚠️ Ideas only: copying code would force Blink to be open source |
@@ -782,12 +823,12 @@ What changes only if Blink is sold to other people (not built now): Sign in with
 | Thing | Where it lives | Who can see it |
 |---|---|---|
 | All Blink data (notes, tasks, mail metadata, transactions, content, memory) | **Your server** (Postgres) | You |
-| API keys and tokens (Claude, mail, social, SimpleFIN) | **Your server's Vault** | You (never shown, replace-only) |
+| API keys and tokens (AI, mail, social, SimpleFIN) | **Your server's Edge Function secrets** (Vault for the cron secret) | You (never shown, replace-only) |
 | Device cache | Your Mac/iPhone (encrypted by the OS, Face ID) | You |
-| AI requests | Sent from your server **directly to Anthropic** with **your own** Claude key | You + Anthropic under your account's terms |
+| AI requests | Sent from your server **directly to the provider you picked** (Anthropic, Groq, OpenRouter, Cloudflare, Apify) with **your own** keys | You + Anthropic under your account's terms |
 | Social posts | From your server directly to LinkedIn/Instagram/X with your tokens | You + the platform |
 | Push notification content | Encrypted on your server, decrypted on your phone | You |
-| Pexilim | Ships the apps and the backend package. Runs only the encrypted push relay | Device tokens, message size and timing. **No content** in alert pushes; Live Activity pushes can't be encrypted, so they carry only IDs, times and generic text (§36.1) |
+| Pexilim | Ships the apps and the backend package. Runs only the encrypted push relay and the stateless sign-in helper for one-click setup (it sees an OAuth code, returns a short-lived token, stores and logs nothing) | Device tokens, message size and timing. **No content** in alert pushes; Live Activity pushes can't be encrypted, so they carry only IDs, times and generic text (§36.1) |
 
 ```mermaid
 flowchart LR
@@ -816,10 +857,10 @@ flowchart LR
 Your own setup (today): Mode A in **your** Supabase account. Pexilim-as-company has no access to it.
 
 **33.3 Connecting the apps to your server**
-1. Run the setup wizard (Supabase CLI) → it prints your **server address** and a **pairing QR code**.
-2. Open Blink on the Mac or iPhone → *Connect your server* → scan the QR code (or paste the address).
-3. Sign in to **your** server's own login. Each device is registered with your server, not with Pexilim.
-4. Add API keys in Blink → they go **over TLS straight to your server's Vault**, never to Pexilim. The apps show "Connected ✓" and never display keys again.
+1. Open Blink → Welcome → **Server**: *Sign in with Supabase* (Blink creates your free project, installs the bundled migrations and functions, creates your login, turns sign-ups off and sets the schedules; resumable), or *I already have a server* (paste the address and publishable key).
+2. **Account**: sign in to **your** server's own login. Each device is registered with your server, not with Pexilim.
+3. **Calendar**: allow access; your real next meeting shows in the notch (the value moment). Then **About you** (optional).
+4. Add API keys as Edge Function secrets on your server (the free Groq key can be entered during setup); Settings › Connections shows "Working ✓" and never displays keys. Settings › Restart Setup signs out, forgets the server on this Mac and shows onboarding again. iPhone pairing by QR comes with Phase 6.
 5. Optional: certificate pinning for self-hosted servers with your own domain.
 
 **33.4 Push notifications without giving up privacy**
@@ -845,7 +886,7 @@ Your own setup (today): Mode A in **your** Supabase account. Pexilim-as-company 
 - **Version handshake:** apps check the server version and guide upgrades (migrations run by you via the wizard), so nobody is forced onto a Pexilim-run service.
 
 **33.7 Trade-offs, stated plainly**
-- AI still means your data goes to **Anthropic** under your own key and account. That's the price of a Claude-powered assistant; Blink sends only what each task needs.
+- AI still means your data goes to **the AI provider you picked** under your own key and account. That's the price of a Claude-powered assistant; Blink sends only what each task needs.
 - Self-hosting means **you** are responsible for backups and updates. The wizard and health page make that simple, but it isn't zero effort.
 - Live Activity pushes show less detail than a centralised design would.
 - Optional later step: **end-to-end encryption of notes** with keys only on your devices (server-side AI search over notes is then turned off).
@@ -1056,9 +1097,9 @@ The plan was checked against all 64 installed skills in four reviews: Apple plat
 | **Glass** | System bars adopt glass automatically. `.glassEffect` and `.buttonStyle(.glass)` go only on custom floating controls (the Blink button, the quick-sheet bar). Ask-First cards sit on solid `surface`. Every `.clear` glass has a dimming layer |
 | **Symbols** | Risk: `checkmark.circle` 🟢 · `clock.badge.checkmark` 🟡 · `faceid` 🔴 (`lock.shield` on Macs without Touch ID).<br>Habits: `checkmark.circle.fill` done · `circle.dashed` not yet · `forward.end` skipped.<br>Money: the locale's currency symbol or `banknote`. Capture: `square.and.pencil`. Ask: the custom "Blink eyes" symbol, made from a system template with 3 sources.<br>No emoji in UI chrome |
 | **States** | New §9.8 state matrix: every surface × empty · loading · partial · error · offline · permission denied · first run, each with an Xcode preview. Specific states:<br>• server unreachable (separate from device offline);<br>• Supabase project paused;<br>• server version mismatch;<br>• Claude key invalid, out of credit, rate-limited or at its spend cap;<br>• "All clear";<br>• "Last synced 5 min ago" in the ears and toolbar.<br>Copy templates: **error** = what happened · what Blink will do · one fix button; **empty** = what appears here and how, plus one example |
-| **Onboarding** | The value moment is your real next meeting in the notch within **2 minutes**. Order: connect server → Calendar → Claude key → first brief. Everything else (mail, money, content, habits, writing samples) is set up with just-in-time cards the first time you open that module, tracked by a "Setup 3/7" chip in Today.<br>• Notification permission is asked at the first heads-up.<br>• Adding a device: an existing device shows a code or QR. The Mac accepts a pasted address or code.<br>• "No server yet?" branches to the server setup guide.<br>• A permissions table (when · why · denied state) covers notifications, Time-Sensitive, Focus, microphone, speech, location, Photos add-only, Contacts, Calendars and Reminders |
+| **Onboarding** | The value moment is your real next meeting in the notch within **2 minutes**. Order: connect server → Calendar → Claude key → first brief. Everything else (mail, money, content, habits, writing samples) is set up with just-in-time cards the first time you open that module, tracked by a "Setup 3/7" chip in Today.<br>• Notification permission is asked at the first heads-up.<br>• Adding a device: an existing device shows a code or QR. The Mac accepts a pasted address or code.<br>• "No server yet?" branches to the server setup guide.<br>• A permissions table (when · why · denied state) covers notifications, Time-Sensitive, Focus, microphone, speech, location, Photos add-only, Contacts, Calendars and Reminders **Built (2026-10-13):** Welcome → Server → Account → Calendar → About you; existing installs skip it. A setup ring on Today and just-in-time "Add …" prompts open the right Settings tab. |
 | **Activity and undo** | New **Activity** screen (Mac sidebar; reached from Today on iPhone): what Blink did · where · Undo/Reverse. 🟡 actions can be undone in place for 24 h; after that, Reverse creates a new card. Settings › **Automatic rules**: list, pause or delete each learned rule. Tapping a habit tick in a widget again undoes it |
-| **Settings** | Mac uses a `Settings {}` scene (⌘,). Sections: What Blink knows · Blink & Notch · Notifications & Focus · Models & cost · Connections · Automatic rules · Privacy & Security · Server · Devices · Data · About. The iPhone Form uses the same order |
+| **Settings** | Mac uses a `Settings {}` scene (⌘,). Sections: What Blink knows · Blink & Notch · Notifications & Focus · Models & cost · Connections · Automatic rules · Privacy & Security · Server · Devices · Data · About. The iPhone Form uses the same order **Built:** tabs Server · Devices · Calendar · Your Day · Blink & Notch · AI & Usage · Connections · Privacy; reachable from the sidebar, notch menu and menu bar, not only ⌘,. |
 | **Cross-device** | A card answered on one device disappears everywhere. While the Mac is active (unlocked, with input in the last 2 min), the iPhone holds P1/P2 alerts; P0 goes to both. One deep link, `blink://item/<id>`, opens the same detail view from notifications, widgets, Live Activities, Spotlight and the Claude app |
 | **Habits without guilt** | • Missed = neutral dashed circle with Idle eyes. Concerned is reserved for things that need action.<br>• Answer buttons are neutral: Done / Not today / Skip.<br>• Skips and rest days never break a streak. Show "kept 5 of 7" alongside the run.<br>• One automatic streak freeze per week. A sick day is a separate pause.<br>• The day ends at your wake time, in the device's current time zone.<br>• No "streak at risk" push unless you opt in.<br>• Celebrate only at 7, 30 and 100 days |
 | **Accessibility** | **VoiceOver:** the notch has label "Blink", its value is the current state sentence, and its actions are Open, Talk, Pause and Next card. The eyes are hidden from VoiceOver. Only P0/P1 make announcements. The menu bar icon is the VoiceOver entry point.<br>**Other assistive tech:** every gesture has a named action plus a menu or keyboard equivalent. Voice Control input labels. A rotor for "Waiting for you". 44 pt minimum touch targets.<br>**Dynamic Type:** at accessibility sizes the ears show only a glyph and a number; the panel grows to ≤50% of the screen and scrolls.<br>**Colour:** mood colours are fills and glyphs, never body text on light surfaces. Every mood pairs colour with a shape and a word. Budget always shows text plus a symbol. Differentiate Without Color is honoured. Contrast is checked on `notch.tile` as well as on black |
@@ -1070,7 +1111,7 @@ The plan was checked against all 64 installed skills in four reviews: Apple plat
 
 The full spec is `design/tokens.json` → `motion`, with a summary in DESIGN.md "Motion".
 
-- **Renderers.** Notch eyes are native SwiftUI animatable shapes, with no dependency and true 0 fps at rest. Particles and the thinking loop use `Canvas` with a `TimelineView` capped at 30 fps and paused when idle. **SpriteKit is dropped.** The full mascot (app panel, splash, setup) uses Rive or a pre-rendered loop, paused off screen. The Island, widgets and notifications use PNG poses exported from the same source.
+- **Renderers.** Notch eyes are native SwiftUI animatable shapes, with no dependency and true 0 fps at rest. Particles and the thinking loop use `Canvas` with a `TimelineView` capped at 30 fps and paused when idle. **SpriteKit is dropped.** The full mascot (app panel, splash, setup) uses a pre-rendered loop (Rive only if needed), paused off screen. The Island, widgets and notifications use PNG poses exported from the same source.
 - **Frame rate.** Transitions run at native rate (≤120 fps), ambient animation at 30 fps, rest and calm at 0. In Low Power Mode or at a serious thermal state, ambient animation stops and only springs remain.
 - **Morphs.** States morph by animating `NotchShape` inside the fixed panel. `matchedGeometryEffect` moves the eyes and title. `glassEffectID` is used only for the iPhone Blink button → chat.
 - **The Island is system-animated only.** It swaps poses with `.contentTransition`, rolls numbers with `.numericText`, and counts down with `Text(timerInterval:)`. iPhone Ask-First cards are in-app sheets or notification actions.
@@ -1164,9 +1205,11 @@ Every phase also needs:
 
 | Item | Decision |
 |---|---|
-| **Mail** | Two accounts, both read in Apple Mail, both connected by IMAP/SMTP with an **app password** stored in Vault. One merged triage list; a reply always sends from the account the thread came in on. Each card shows a small account tag (Gmail / iCloud) |
+| **Mail** | Up to three accounts today (Gmail, iCloud and one more IMAP mailbox), each connected by IMAP/SMTP with an **app password** kept as an Edge Function secret. One merged triage list; a reply always sends from the account the thread came in on. Each card shows a small account tag (Gmail / iCloud) |
 | Gmail | Turn on 2-Step Verification, then create an app password (Google Account › Security › App passwords). IMAP `imap.gmail.com:993`, SMTP `smtp.gmail.com:465`. Drafts go to `[Gmail]/Drafts`; Gmail files sent mail automatically. The Google connector is still used for Calendar and Drive; Gmail over the connector only if you ever sell (restricted-scope review) |
 | iCloud Mail | Create an app-specific password at account.apple.com › Sign-In and Security. IMAP `imap.mail.me.com:993`, SMTP `smtp.mail.me.com:587` (STARTTLS); the username is your iCloud address. Drafts go to `Drafts`. *Verify* that sent mail lands in `Sent Messages`; if not, Blink appends a copy |
+| Other IMAP mailbox | Secrets `UNI_ADDRESS`, `UNI_PASSWORD`, `UNI_IMAP_HOST` (required), `UNI_SMTP_HOST` (defaults to the IMAP host). Inbox has mailbox tabs (All / per account) |
+| **Owner's mail priorities** | Optional secret `MAIL_PRIORITIES`: the owner's own words for what's always important (their employer, university, offices, clients, products). Added to triage as `<owner_priorities>`; never in code |
 | **Banks** | No bank names needed. Capture works from Apple Pay taps, bank texts and alert emails from any bank; the nightly "any spends?" prompt catches the rest |
 | **Mac** | Your own MacBook is the build and test machine. Phase 0 checks: notch model (MacBook Pro 2021+ or Air M2+), macOS 26, Xcode installed, Claude Code running on it with this repo |
 
