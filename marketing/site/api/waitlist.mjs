@@ -14,7 +14,7 @@ async function send(mail) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: mail.to, subject, html, text, headers: { "List-Unsubscribe": `<${mail.leave}>` } }),
+    body: JSON.stringify({ from, to: mail.to, reply_to: "hello@blinkk.app", subject, html, text, headers: { "List-Unsubscribe": `<${mail.leave}>` } }),
   });
   if (!res.ok) console.error("resend", res.status, (await res.text()).slice(0, 200));
 }

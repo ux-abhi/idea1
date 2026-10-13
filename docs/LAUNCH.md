@@ -35,5 +35,5 @@ The site is plain files in `marketing/site/` (no build step).
 ## 4. Before the public launch
 - [ ] One full first-run on a fresh Supabase account (one-click setup end to end).
 - [ ] Check whether Supabase pauses a free project after a week without visits even though Blink's mail check runs every 5 minutes; if it does, tell users in Settings.
-- [ ] Support address answered (hello@pexilim.com) and the privacy and terms pages read once more.
+- [ ] Support address answered (hello@blinkk.app) and the privacy and terms pages read once more.
 - [ ] Later, with the $99: Developer ID signing, notarization (`xcrun notarytool`), Sparkle updates, TestFlight for iPhone.

@@ -9,7 +9,7 @@ export function waitlistResult(status, body) {
   const said = typeof body?.error === "string" && body.error.length <= 160 ? body.error : "";
   if (status === 429) return { ok: false, text: said || "Too many tries. Wait a minute, then try again." };
   if (status === 400) return { ok: false, text: said || "Check your email address and try again." };
-  return { ok: false, text: "Couldn't reach the waitlist. Try again, or email hello@pexilim.com." };
+  return { ok: false, text: "Couldn't reach the waitlist. Try again, or email hello@blinkk.app." };
 }
 
 // Checks before sending. Returns the field to fix and what to say, or null.
@@ -41,7 +41,7 @@ if (form) {
     if (form.getAttribute("aria-busy") === "true") return;
     const url = window.BLINK_WAITLIST_URL;
     if (!url) {
-      status.innerHTML = 'The waitlist opens soon — email <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>';
+      status.innerHTML = 'The waitlist opens soon — email <a href="mailto:hello@blinkk.app">hello@blinkk.app</a>';
       status.className = "wl-status";
       return;
     }

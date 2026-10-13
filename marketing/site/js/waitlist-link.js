@@ -8,7 +8,7 @@
   if (!token) { status.textContent = button.dataset.missing; button.hidden = true; return; }
   button.addEventListener("click", async () => {
     const url = window.BLINK_WAITLIST_ACTIONS_URL;
-    if (!url) { status.textContent = "Please email hello@pexilim.com."; return; }
+    if (!url) { status.textContent = "Please email hello@blinkk.app."; return; }
     button.disabled = true;
     status.textContent = "One moment…";
     try {
