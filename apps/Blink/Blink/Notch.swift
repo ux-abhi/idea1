@@ -12,6 +12,8 @@ final class NotchModel {
 
     var level = Level.rest
     var mood = Mood.idle
+    /// The pointer is over the notch: a soft blue glow rises from its bottom edge, like the app icon.
+    var hovering = false
     /// The hardware notch, measured from the screen.
     var notchSize = CGSize(width: 200, height: 32)
     /// The glance content's measured height; the open shape fits it.
@@ -483,6 +485,7 @@ final class NotchController {
         let restVisible = model.level != .rest || RestStyle.current == .ears
         let inside = restVisible && shapeRect().contains(NSEvent.mouseLocation)
         panel?.ignoresMouseEvents = !inside
+        if model.hovering != inside { model.hovering = inside }
         if inside {
             leaveTask?.cancel()
             leaveTask = nil
@@ -637,6 +640,8 @@ final class NotchController {
         }
         if level != .peek { autoPeeking = false }
         if level != .open { autoOpened = false }
+        // The shape changed under a still pointer: no glow on a notch the pointer has left.
+        if model.hovering && !shapeRect().contains(NSEvent.mouseLocation) { model.hovering = false }
         if level == .rest && model.briefing {
             model.briefing = false // brief seen: Morning → Idle (§7)
             evaluateCue()
@@ -728,7 +733,13 @@ struct NotchView: View {
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
-        .background(.black) // notch.hardware: always pure black
+        .background {
+            // notch.hardware: always pure black. The hover glow sits under the content, so text keeps its contrast.
+            ZStack {
+                Color.black
+                HoverGlow(active: model.hovering && !app.thinking)
+            }
+        }
         .overlay {
             // Inside the notch only (tokens: glow.rule).
             ThinkingGlow(active: app.thinking && model.level == .open)
@@ -1288,6 +1299,22 @@ struct SplitInput: View, Animatable {
         } else {
             Task { await app.ask(message) }
         }
+    }
+}
+
+/// Hovered: a soft blue glow rising from inside the bottom edge, like the app icon. It doesn't move, so it costs
+/// nothing while shown; it only fades in and out.
+struct HoverGlow: View {
+    let active: Bool
+
+    var body: some View {
+        // A hint, not a light: well under the glow token, close to the edge.
+        EllipticalGradient(colors: [.blue.opacity(Tokens.Glow.alpha * 0.4), .clear], center: .bottom, startRadiusFraction: 0, endRadiusFraction: 0.5)
+            .blur(radius: Tokens.Glow.blur)
+            .opacity(active ? 1 : 0)
+            .animation(.easeInOut(duration: Tokens.Motion.moodTint.dur), value: active)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
