@@ -38,6 +38,7 @@ Served from the site itself (no CDN), not part of the app.
 |---|---|---|---|
 | GSAP core + ScrollTrigger (self-hosted in js/vendor) | 3.13.0 | GSAP Standard "no charge" license (free, including commercial use; not MIT) | https://gsap.com/standard-license |
 | Inter, Latin subset (self-hosted in assets/fonts) | v20 | SIL Open Font License 1.1 | https://github.com/rsms/inter |
+| Bricolage Grotesque, Latin subset (self-hosted in assets/fonts) | v9 | SIL Open Font License 1.1 | https://github.com/ateliertriay/bricolage |
 
 ## Development tools (not shipped)
 

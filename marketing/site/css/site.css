@@ -29,7 +29,8 @@
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --ease-pop: cubic-bezier(.34, 1.56, .64, 1);
   --page: min(1180px, 100% - 32px);
-  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;   /* reading text and the app mock-ups (reads like the Mac) */
+  --display: "Bricolage Grotesque", var(--font);                       /* Blink's voice: headlines, titles, the sign-off */
 }
 
 /* Band themes: every component reads these. */
@@ -90,7 +91,7 @@ button { font: inherit; color: inherit; }
   border-bottom: 1px solid rgba(0, 0, 0, .07);
 }
 .site-head .inner { width: var(--page); margin: 0 auto; height: 60px; display: flex; align-items: center; gap: 28px; }
-.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; font-size: 19px; letter-spacing: -.02em; text-decoration: none; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font: 700 21px/1 var(--display); font-stretch: 90%; letter-spacing: -.02em; text-decoration: none; }
 .brand-notch { width: 46px; height: 24px; margin-top: -14px; padding-top: 10px; box-sizing: content-box; background: var(--black); border-radius: 0 0 12px 12px; display: grid; place-items: center; }
 .brand-notch .eyes-look { width: 30px; }
 .site-head nav { margin-left: auto; display: flex; gap: 26px; font-size: 15px; font-weight: 500; }
@@ -114,11 +115,13 @@ button { font: inherit; color: inherit; }
 .btn.ghost:hover { text-decoration: underline; }
 
 /* ---------- Type ---------- */
-h1, h2, h3 { margin: 0; font-weight: 700; text-wrap: balance; }
-h1 { font-size: clamp(48px, 7.6vw, 108px); letter-spacing: -.05em; line-height: .96; }
-h2 { font-size: clamp(36px, 5vw, 64px); letter-spacing: -.04em; line-height: 1.02; }
-h3 { font-size: 22px; letter-spacing: -.02em; line-height: 1.2; }
-.sub, .lede { margin: 0; color: var(--muted); font-size: clamp(18px, 1.7vw, 21px); line-height: 1.45; font-weight: 450; text-wrap: pretty; max-width: 36em; }
+/* One scale, ratio 1.25 from the 17px body: 13.6 · 17 · 21 · 26.5 · 33 · 41 · 52 · 66 · 83 · 104.
+   Headlines are set a little narrow and heavy; titles a touch wider and lighter, so the two levels never look alike. */
+h1, h2, h3 { margin: 0; font-family: var(--display); text-wrap: balance; font-optical-sizing: auto; }
+h1 { font-size: clamp(52px, 7.4vw, 104px); font-weight: 700; font-stretch: 94%; letter-spacing: -.018em; line-height: .96; }
+h2 { font-size: clamp(41px, 5vw, 66px); font-weight: 680; font-stretch: 94%; letter-spacing: -.015em; line-height: 1; }
+h3 { font-size: 21px; font-weight: 620; font-stretch: 100%; letter-spacing: -.005em; line-height: 1.2; }
+.sub, .lede { margin: 0; color: var(--muted); font-size: clamp(18px, 1.7vw, 21px); line-height: 1.5; font-weight: 400; text-wrap: pretty; max-width: 34em; }
 .sub strong { color: var(--fg); }
 p { text-wrap: pretty; }
 kbd {
@@ -129,9 +132,9 @@ kbd {
 /* ---------- Sections ---------- */
 section { padding: clamp(96px, 13vh, 152px) 0; }
 .wrap { width: var(--page); margin: 0 auto; }
-/* Section heads sit left, with the sub beside the title on wide screens. */
-.head { display: grid; gap: 18px 56px; align-items: end; margin-bottom: clamp(40px, 6vw, 72px); }
-@media (min-width: 900px) { .head { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } }
+/* Section heads sit left: the headline, then its one-line sub right under it. */
+.head { display: grid; gap: 18px; justify-items: start; margin-bottom: clamp(40px, 6vw, 64px); }
+.head h2 { max-width: 14em; }
 
 /* Dark bands hang a notch, with Blink inside, into the next section. */
 .band { position: relative; }
@@ -153,29 +156,21 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
     radial-gradient(36% 46% at 96% 18%, rgba(255, 159, 10, .13), transparent 70%),
     var(--white);
 }
-/* Centred: one line of proof, the promise, the action, three reasons to trust it. */
+/* Centred: the promise, what it does, the action, and one quiet line of facts. */
 .hero-head { text-align: center; display: grid; justify-items: center; }
-.hero h1 { max-width: 11em; margin-top: 20px; font-size: clamp(46px, 6.6vw, 92px); }
-.hero .lede { margin-top: 18px; max-width: 31em; }
-.eyebrow {
-  margin: 0; display: inline-flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; border-radius: 999px;
-  font-size: 14px; font-weight: 500; color: var(--muted); background: rgba(255, 255, 255, .7); border: 1px solid var(--line);
-}
-.eyebrow-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px rgba(48, 209, 88, .18); }
+.hero h1 { max-width: 11em; }
+.hero .lede { margin-top: 22px; max-width: 31em; }
 .cta-row { margin-top: 30px; display: flex; gap: 12px 16px; align-items: center; flex-wrap: wrap; }
 .hero .cta-row { justify-content: center; }
-.trust { list-style: none; margin: 26px 0 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px; color: var(--muted); font-size: 15px; }
-.trust li { display: inline-flex; align-items: center; gap: 7px; }
-.trust svg { width: 18px; height: 18px; fill: none; stroke: var(--green); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.hero .cta-note { margin: 18px 0 0; color: var(--muted); font-size: 15px; }
 
 /* The Mac. Everything inside .screen scales with its width (cqw). */
 .mac { width: min(1080px, 100%); margin: clamp(48px, 7vw, 80px) auto 0; }
-/* The hero shows the top of the Mac only, so the notch is the subject; the screen fades into the page. */
-.hero .mac { margin-top: clamp(36px, 4.5vw, 56px); margin-bottom: -26%; -webkit-mask-image: linear-gradient(#000 40%, transparent 66%); mask-image: linear-gradient(#000 40%, transparent 66%); }
-@media (max-width: 640px) {
-  .hero .screen { aspect-ratio: 1 / 1; }
-  .hero .mac { margin-bottom: -16%; -webkit-mask-image: linear-gradient(#000 62%, transparent 94%); mask-image: linear-gradient(#000 62%, transparent 94%); }
-}
+/* The hero shows a short, whole screen (no fade): the notch is the subject, the buttons sit below on white. */
+.hero .mac { margin-top: clamp(36px, 4.5vw, 56px); }
+.hero .screen { aspect-ratio: 16 / 7; }
+@media (max-width: 640px) { .hero .screen { aspect-ratio: 4 / 3; } .hero .menubar span:last-child { display: none; } }
+.hero .moments { margin-top: 28px; }
 .bezel {
   padding: clamp(6px, 1vw, 12px); border-radius: clamp(14px, 2.2vw, 28px);
   background: var(--black); border: 1px solid #C7C7CC;
@@ -311,7 +306,7 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
   display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 28px; align-items: center;
   background: radial-gradient(70% 80% at 100% 0%, rgba(10, 132, 255, .28), transparent 70%), linear-gradient(var(--gray5), var(--gray6));
 }
-.t-ask h3 { font-size: clamp(24px, 2.2vw, 30px); letter-spacing: -.03em; }
+.t-ask h3 { font-size: clamp(26.5px, 2.4vw, 33px); }
 .t-ask .tile-demo { margin: 0; }
 @media (max-width: 760px) { .t-ask { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
 .chat { border-radius: 0 0 26px 26px; background: var(--black); padding: 16px clamp(16px, 2vw, 22px) 20px; }
@@ -392,7 +387,7 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
 .panel[hidden] { display: flex; visibility: hidden; }
 .panel:not([hidden]) { animation: panel-in .45s var(--ease-out); }
 @keyframes panel-in { from { opacity: 0; transform: translateY(8px); filter: blur(6px); } }
-.panel h3 { font-size: clamp(24px, 2.4vw, 32px); letter-spacing: -.03em; }
+.panel h3 { font-size: clamp(26.5px, 2.4vw, 33px); }
 .panel-text p { margin: 10px 0 0; color: var(--muted); font-size: 17px; max-width: 40em; }
 .panel-demo { --pad: clamp(18px, 2.4vw, 28px); margin-top: auto; min-width: 0; padding: var(--pad); border-radius: 22px; background: var(--white); box-shadow: 0 0 0 1px rgba(0, 0, 0, .04), 0 12px 32px -18px rgba(0, 0, 0, .18); }
 @media (max-width: 900px) {
@@ -526,7 +521,7 @@ button.dot:active { transform: scale(.85); }
   content: counter(step); position: absolute; left: 26px; top: -30px; display: grid; place-items: center; width: 44px; height: 30px;
   background: var(--black); color: #fff; font-weight: 700; font-size: 15px; border-radius: 0 0 14px 14px;
 }
-.step > b { display: block; font-size: 20px; letter-spacing: -.015em; margin: 22px 0 6px; }
+.step > b { display: block; font: 620 21px/1.2 var(--display); letter-spacing: -.005em; margin: 22px 0 6px; }
 .step > span { color: var(--muted); }
 .step-art { overflow: hidden; display: grid; place-items: center; min-height: 196px; padding: 18px; border-radius: 20px; background: var(--white); box-shadow: 0 0 0 1px rgba(0, 0, 0, .04), 0 12px 32px -18px rgba(0, 0, 0, .18); }
 /* 1: the disk image window */
@@ -627,9 +622,9 @@ button.dot:active { transform: scale(.85); }
 @keyframes blink { 0%, 96%, 100% { transform: scaleY(1); } 98% { transform: scaleY(.08); } }
 .site-foot .inner { width: var(--page); margin: 0 auto; }
 .foot-top { display: grid; gap: 40px 64px; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr); align-items: start; }
-.sign { margin: 0 0 22px; max-width: 15em; color: var(--white); font-size: clamp(26px, 2.8vw, 34px); font-weight: 650; letter-spacing: -.03em; line-height: 1.15; text-wrap: balance; }
+.sign { margin: 0 0 22px; max-width: 15em; color: var(--white); font: 650 clamp(26.5px, 2.8vw, 33px)/1.12 var(--display); font-stretch: 90%; letter-spacing: -.02em; text-wrap: balance; }
 .foot-cols { display: grid; gap: 28px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.foot-cols h2 { margin: 0 0 12px; font-size: 14px; font-weight: 600; letter-spacing: 0; line-height: 1.3; color: #8E8E93; }
+.foot-cols h2 { margin: 0 0 12px; font-family: var(--font); font-size: 14px; font-weight: 600; letter-spacing: 0; line-height: 1.3; color: #8E8E93; }
 .foot-cols ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; color: #D1D1D6; overflow-wrap: anywhere; }
 .site-foot a:not(.btn) { color: #D1D1D6; text-decoration: none; }
 .site-foot a:not(.btn):hover, .site-foot a[aria-current] { color: var(--white); text-decoration: underline; }
@@ -638,7 +633,7 @@ button.dot:active { transform: scale(.85); }
 .copy small { font-size: 14px; }
 /* The name, set big enough that the screen's bottom edge crops it. */
 .wordmark {
-  margin: 8px 0 -.2em; text-align: center; font-size: clamp(120px, 27vw, 400px); font-weight: 800; letter-spacing: -.07em; line-height: .9;
+  margin: 8px 0 -.2em; text-align: center; font-family: var(--display); font-size: clamp(120px, 27vw, 400px); font-weight: 800; font-stretch: 88%; letter-spacing: -.025em; line-height: .9;
   background: linear-gradient(#48484A, var(--gray6) 85%); -webkit-background-clip: text; background-clip: text; color: transparent;
   user-select: none;
 }
