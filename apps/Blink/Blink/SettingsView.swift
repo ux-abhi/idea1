@@ -435,6 +435,8 @@ struct ConnectionsSettings: View {
 }
 
 struct PrivacySettings: View {
+    @Environment(AppModel.self) private var model
+    @State private var clearingChat = false
     @AppStorage("lockAfter") private var lockAfter = AppLock.defaultRelockAfter
     @AppStorage(ClipboardStore.pausedKey) private var clipboardPaused = false
     @Environment(ClipboardStore.self) private var clipboard
@@ -467,6 +469,16 @@ struct PrivacySettings: View {
             }
             Section("What stays on this Mac") {
                 Label("Your fingerprint. Touch ID only unlocks a key that never leaves the Secure Enclave", systemImage: "touchid")
+                LabeledContent {
+                    Button("Clear Chat History…") { clearingChat = true }.disabled(model.chat.isEmpty)
+                } label: {
+                    Label("Your chat with Blink: the last 20 messages", systemImage: "bubble.left.and.bubble.right")
+                }
+            }
+            .confirmationDialog("Clear your chat with Blink?", isPresented: $clearingChat) {
+                Button("Clear Chat History", role: .destructive) { model.clearChat() }
+            } message: {
+                Text("This removes the conversation from this Mac. Cards waiting for your OK, your notes and tasks stay.")
             }
             Section {
                 Text("Everything goes only to your own server, never to Pexilim.").foregroundStyle(.secondary)

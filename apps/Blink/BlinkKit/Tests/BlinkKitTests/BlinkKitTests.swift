@@ -881,3 +881,8 @@ extension Tokens {
     // Last month's keys go; only the newest week (by number: 41 beats 9) stays.
     #expect(kept == ["2026-10:fun:100", "2026-10:groceries:80", "week-2026-41"])
 }
+
+@Test func clearCommandClearsTheChat() {
+    #expect(QuickCommand.parse("/clear") == .clear && QuickCommand.parse("  /CLEAR ") == .clear)
+    #expect(QuickCommand.suggestions(for: "/cl").map(\.name) == ["/clear"])
+}

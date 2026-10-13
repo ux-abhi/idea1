@@ -957,6 +957,15 @@ struct ChatPanel: View {
                         .font(.callout).foregroundStyle(.white.opacity(0.55))
                 }
             } else {
+                if !app.thinking {
+                    HStack {
+                        Spacer()
+                        Button("Clear") { app.clearChat() }
+                            .buttonStyle(.plain).font(.caption).foregroundStyle(.white.opacity(0.55))
+                            .help("Clear this chat (/clear)")
+                            .accessibilityLabel("Clear chat")
+                    }
+                }
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 10) {
@@ -1120,6 +1129,7 @@ struct CommandHint: View {
         case .post(let idea): "Post: \(idea)"
         case .ideas(let theme): theme.isEmpty ? "Ideas for your page" : "Ideas: \(theme)"
         case .spent(let text): "Spent: \(text)"
+        case .clear: "Clear this chat"
         }
     }
 
@@ -1133,6 +1143,7 @@ struct CommandHint: View {
         case .post: "megaphone"
         case .ideas: "lightbulb"
         case .spent: "eurosign.circle"
+        case .clear: "trash"
         }
     }
 
@@ -1147,6 +1158,7 @@ struct CommandHint: View {
         case .post: return "Drafts for your platforms from Content, saved there to edit and approve."
         case .ideas: return "Six ideas for your page; Write turns one into drafts."
         case .spent: return "Blink sorts each amount into a category and saves it to Money, with Undo."
+        case .clear: return "Removes this conversation from this Mac. Cards waiting for your OK stay."
         }
     }
 }

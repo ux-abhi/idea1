@@ -1133,6 +1133,8 @@ final class AppModel {
         case .ideas(let theme):
             await suggestIdeas(theme: theme, platforms: contentPlatforms)
             if let problem = contentProblem { chat.append(.init(role: .assistant, text: problem)) }
+        case .clear:
+            clearChat()
         case .spent(let text):
             // Typed on purpose in the notch: sorted and saved at once, with Undo (the Money page lets you check first).
             let drafts = await sortSpends(text)

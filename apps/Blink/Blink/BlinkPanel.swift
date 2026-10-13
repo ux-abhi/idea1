@@ -119,8 +119,8 @@ struct BlinkPanel: View {
             if !model.chat.isEmpty {
                 Button { model.clearChat() } label: { Image(systemName: "square.and.pencil") }
                     .buttonStyle(.borderless)
-                    .help("New conversation")
-                    .accessibilityLabel("New conversation")
+                    .help("Clear chat and start a new one")
+                    .accessibilityLabel("Clear chat")
             }
         }
         .padding(12)
