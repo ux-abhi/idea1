@@ -58,7 +58,7 @@ for (const b of moods) {
     img.src = `assets/eyes-${b.dataset.mood}.png`;
     $("#peek-text").textContent = b.dataset.text;
     $("#peek-text").style.color = idle ? "" : colour;
-    $("#peek").style.setProperty("--mood-glow", idle ? "transparent" : colour);
+    $("#peek").style.setProperty("--mood-glow", idle ? "" : colour);
     if (!reduce) img.animate([{ transform: "scale(.85)" }, { transform: "scale(1)" }], { duration: 420, easing: POP });
   });
 }
@@ -151,13 +151,6 @@ const DAYS = [32, 18, 45, 12, 60, 28, 22, 38, 15, 52, 26, 30, 19, 41]; // the fi
 const BUDGET = 40, TOP = 64;
 $("#bars").innerHTML = DAYS.map((v) => `<span class="${v > BUDGET ? "over" : ""}" style="height:${(v / TOP) * 100}%"></span>`).join("")
   + `<div class="budget-line" style="bottom:${(BUDGET / TOP) * 100}%"><em>€${BUDGET} a day</em></div>`;
-const CATS = [["--brown", 42], ["--pink", 27], ["--cyan", 17], ["--gray", 14]];
-let at = 0;
-$("#donut").innerHTML = CATS.map(([c, share]) => {
-  const arc = `<circle cx="21" cy="21" r="15.915" stroke="var(${c})" stroke-dasharray="${share - 1} ${101 - share}" stroke-dashoffset="${-at}"></circle>`;
-  at += share;
-  return arc;
-}).join("");
 
 /* ---------- Ask-First: Touch ID demo ---------- */
 const touch = $("#touch"), touchBtn = $("#touch-btn"), touchLabel = $("#touch-label");
@@ -213,10 +206,20 @@ if (motion) {
     },
   });
 
-  // Scroll reveals: rise, unblur. Once each. Opacity, not autoAlpha, so hidden demos stay reachable by Tab.
-  for (const el of $$(".reveal")) {
-    gsap.from(el, { y: 36, opacity: 0, filter: "blur(10px)", duration: 1, ease: "power3.out", scrollTrigger: { trigger: el, start: "top 88%", once: true } });
+  // Dark bands drop their notch into the next section, then Blink opens its eyes. Once each.
+  for (const tab of $$(".notch-tab")) {
+    gsap.timeline({ scrollTrigger: { trigger: tab, start: "top 92%", once: true } })
+      .from(tab, { yPercent: -100, duration: 0.6, ease: "power3.out" })
+      .from($("img", tab), { scaleY: 0.08, duration: 0.3, ease: "power2.out" }, "-=0.1");
   }
+
+  // Bento: the tiles that enter together rise and unblur together, a short stagger apart.
+  // Opacity, not autoAlpha, so demos not yet revealed stay reachable by Tab.
+  gsap.set(".tile", { opacity: 0, y: 28, filter: "blur(8px)" });
+  ScrollTrigger.batch(".tile", {
+    start: "top 90%", once: true,
+    onEnter: (tiles) => gsap.to(tiles, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.8, stagger: 0.08, ease: "power3.out", clearProps: "transform,filter" }),
+  });
 
   // Ask: the keys press, then the answer arrives.
   const keys = $$("#ask-mock .keys kbd"), answer = $("#ask-mock .bubble-a");
@@ -250,17 +253,16 @@ if (motion) {
   // Day: the blocks snap into the timeline.
   gsap.from("#day-mock .block", { scaleX: 0, duration: 0.7, stagger: 0.08, ease: "power3.out", scrollTrigger: { trigger: "#day-mock .timeline", start: "top 80%", once: true } });
 
-  // Money: bars grow, the donut draws, the balance counts up.
+  // Money: bars grow, the balance counts up.
   gsap.from("#bars span", { scaleY: 0, duration: 0.6, stagger: 0.035, ease: "power3.out", scrollTrigger: { trigger: "#bars", start: "top 85%", once: true } });
-  gsap.from("#donut circle", { strokeDasharray: "0 100", duration: 0.9, stagger: 0.12, ease: "power2.out", scrollTrigger: { trigger: "#donut", start: "top 85%", once: true } });
   const bal = $("#balance"), to = +bal.dataset.to, money = { v: 0 };
   onEnter(bal, () => gsap.to(money, { v: to, duration: 1.1, ease: "power3.out",
     onUpdate: () => (bal.textContent = money.v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })) }), "top 90%");
 
   // Content: the idea cards deal out, then the notch says they're ready.
-  gsap.from("#content-mock .idea", { y: 70, autoAlpha: 0, scale: 0.94, duration: 0.8, stagger: 0.1, ease: "back.out(1.4)", clearProps: "transform",
+  gsap.from("#content-mock .idea", { y: 50, autoAlpha: 0, scale: 0.94, duration: 0.8, delay: 0.2, stagger: 0.1, ease: "back.out(1.4)", clearProps: "transform",
     scrollTrigger: { trigger: "#content-mock .ideas", start: "top 85%", once: true } });
-  gsap.from("#content-mock .mini-notch", { scaleX: 0.5, autoAlpha: 0, duration: 0.6, delay: 0.7, ease: "back.out(1.6)", transformOrigin: "50% 0%",
+  gsap.from("#content-mock .mini-notch", { scaleX: 0.5, autoAlpha: 0, duration: 0.6, delay: 0.9, ease: "back.out(1.6)", transformOrigin: "50% 0%",
     scrollTrigger: { trigger: "#content-mock .ideas", start: "top 85%", once: true } });
 
   // Privacy: the links draw between the boxes.

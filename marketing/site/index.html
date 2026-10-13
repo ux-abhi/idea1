@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Blink: your notch, now with a brain</title>
-  <meta name="description" content="Blink is a free personal assistant for Mac that lives in your MacBook's notch. Mail, clipboard, search, your day, habits, money and content, on your own server with your own keys.">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="description" content="Blink is a free personal assistant for Mac that lives in your MacBook's notch. Mail, clipboard, search, your day, habits, money and content, on your own server with your own keys. Join the waitlist.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self' https://*.supabase.co; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#FFFFFF">
   <meta property="og:title" content="Blink: your notch, now with a brain">
-  <meta property="og:description" content="A free personal assistant that lives in your MacBook's notch. By Pexilim.">
+  <meta property="og:description" content="A free personal assistant that lives in your MacBook's notch. By Pexilim. Join the waitlist.">
   <meta property="og:image" content="https://blink.pexilim.com/assets/blink-film-poster.jpg">
   <link rel="canonical" href="https://blink.pexilim.com/">
   <link rel="icon" href="assets/favicon.png" type="image/png">
@@ -34,30 +34,32 @@
 
 <header class="site-head">
   <div class="inner">
-    <a class="brand" href="./" aria-label="Blink home"><img src="assets/eyes-idle.png" alt="" width="30" height="15">Blink</a>
+    <a class="brand" href="./" aria-label="Blink home"><span class="brand-notch"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span>Blink</a>
     <nav aria-label="Main">
-      <a href="#ask">Features</a>
-      <a href="#ask-first">Ask-First</a>
+      <a href="#features">Features</a>
       <a href="#privacy">Privacy</a>
       <a href="#faq">FAQ</a>
-      <a href="install.html">Install guide</a>
     </nav>
-    <a class="btn small" href="install.html#download">Download</a>
+    <a class="btn small" href="#waitlist">Join the waitlist</a>
   </div>
 </header>
 
 <main id="main">
 
-  <!-- Hero -->
-  <section class="hero" aria-labelledby="hero-title">
+  <!-- Hero (light) -->
+  <section class="hero light" aria-labelledby="hero-title">
     <div class="wrap">
-      <h1 id="hero-title" class="hero-in">Your notch, now with a brain.</h1>
-      <p class="sub hero-in">Blink is a personal assistant that lives in your MacBook's notch.</p>
-      <div class="cta-row hero-in">
-        <a class="btn" href="install.html#download">Download for Mac</a>
-        <a class="btn ghost" href="#film" data-play-film>Watch the film</a>
+      <div class="hero-grid">
+        <h1 id="hero-title" class="hero-in">Your notch, now with a brain.</h1>
+        <div class="hero-side">
+          <p class="lede hero-in">Blink is a personal assistant that lives in your MacBook's notch. It reads your mail, keeps your clipboard, plans your day, and asks before it acts.</p>
+          <div class="cta-row hero-in">
+            <a class="btn" href="#waitlist">Join the waitlist</a>
+            <a class="btn ghost" href="#film" data-play-film>Watch the film</a>
+          </div>
+          <p class="cta-note hero-in">Free. For MacBooks with a notch on macOS 26.</p>
+        </div>
       </div>
-      <p class="cta-note hero-in">Free. Needs a MacBook with a notch and macOS 26.</p>
 
       <figure class="mac" id="hero-mac">
         <div class="bezel">
@@ -80,289 +82,261 @@
     </div>
   </section>
 
-  <!-- Film -->
-  <section id="film" aria-labelledby="film-title" style="padding-top:48px">
+  <!-- Film (dark) -->
+  <section id="film" class="band dark" aria-labelledby="film-title">
     <div class="wrap">
-      <div class="head reveal">
+      <div class="head">
         <h2 id="film-title">Meet Blink in 60 seconds.</h2>
+        <p class="sub">The notch, the eyes and a day with Blink. With sound.</p>
       </div>
-      <div class="mock-area reveal">
-        <div class="film-frame">
-          <video id="film-video" preload="none" playsinline poster="assets/blink-film-poster.jpg" width="1280" height="720" aria-label="Blink launch film, 60 seconds, with music">
-            <source src="assets/blink-film.mp4" type="video/mp4">
-          </video>
-          <button class="play" type="button" id="film-play">
-            <span class="disc"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M6 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L7.5 3.64A1 1 0 0 0 6 4.5z"/></svg></span>
-            <span>Play the film</span>
-          </button>
-        </div>
-        <p class="film-meta">60 seconds, with sound.</p>
+      <div class="film-frame">
+        <video id="film-video" preload="none" playsinline poster="assets/blink-film-poster.jpg" width="1280" height="720" aria-label="Blink launch film, 60 seconds, with music">
+          <source src="assets/blink-film.mp4" type="video/mp4">
+        </video>
+        <button class="play" type="button" id="film-play">
+          <span class="disc"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M6 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L7.5 3.64A1 1 0 0 0 6 4.5z"/></svg></span>
+          <span>Play the film</span>
+        </button>
       </div>
     </div>
+    <div class="notch-tab" aria-hidden="true"><div class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></div></div>
   </section>
 
-  <!-- Moods -->
-  <section aria-labelledby="moods-title">
+  <!-- Bento (mist) -->
+  <section id="features" class="mist" aria-labelledby="features-title">
     <div class="wrap">
-      <div class="head reveal">
-        <h2 id="moods-title">One glance tells you.</h2>
-        <p class="sub">Blink's eyes change colour with what's going on. Try it.</p>
-      </div>
-      <div class="mock-area peek-stage reveal">
-        <div class="peek" id="peek" aria-live="polite">
-          <div class="eyes-slot"><div class="eyes-look"><img id="peek-eyes" src="assets/eyes-idle.png" alt="" width="320" height="160"></div></div>
-          <span class="peek-text" id="peek-text">All clear</span>
-        </div>
-        <div class="moods" role="group" aria-label="Blink's moods">
-          <button class="mood" type="button" style="--c:#FFFFFF" data-mood="idle" data-text="All clear" aria-pressed="true"><i></i>At rest</button>
-          <button class="mood" type="button" style="--c:var(--red)" data-mood="important" data-text="Prof. Weber: thesis meeting moved" aria-pressed="false"><i></i>Needs you</button>
-          <button class="mood" type="button" style="--c:var(--mint)" data-mood="headsup" data-text="Thesis review in 10 min" aria-pressed="false"><i></i>Time</button>
-          <button class="mood" type="button" style="--c:var(--green)" data-mood="done" data-text="Reminder set for Friday" aria-pressed="false"><i></i>Done</button>
-        </div>
-        <p class="mood-note">Orange for your evening check-in. Yellow when a streak hits a milestone.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- Ask -->
-  <section id="ask" aria-labelledby="ask-title">
-    <div class="wrap">
-      <div class="head reveal">
-        <h2 id="ask-title">Ask anything.</h2>
-        <p class="sub">Press <kbd>⌃⌥Space</kbd> and type. Blink answers right in the notch, powered by Claude. Or pick a free model on Groq.</p>
-      </div>
-      <div class="mock-area reveal" id="ask-mock">
-        <div class="keys" aria-hidden="true"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>Space</kbd></div>
-        <div class="chat">
-          <div class="chat-top"><img src="assets/eyes-idle.png" alt="" width="56" height="28">Ask Blink</div>
-          <div class="bubble-q">Plan my day around the thesis review.</div>
-          <div class="bubble-a">Deep work on chapter 3 from 10 to 12, thesis review at 2, gym at 5:30. Want me to block the time?</div>
-          <div class="models" role="group" aria-label="Choose a model (demo)">
-            <button class="model" type="button" aria-pressed="true" data-note="Claude, with your own Anthropic key.">Claude Sonnet</button>
-            <button class="model" type="button" aria-pressed="false" data-note="A free model on Groq, with your free Groq key.">GPT-OSS 120B <small>Free</small></button>
-            <button class="model" type="button" aria-pressed="false" data-note="A free model on Groq, with your free Groq key.">Llama 3.3 70B <small>Free</small></button>
-            <button class="model" type="button" aria-pressed="false" data-note="One of a few top models through your own OpenRouter credit.">Gemini 3.1 Pro</button>
-          </div>
-          <p class="model-note" id="model-note" aria-live="polite">Claude, with your own Anthropic key.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Mail -->
-  <section id="mail" aria-labelledby="mail-title">
-    <div class="wrap">
-      <div class="head reveal">
-        <h2 id="mail-title">It reads your mail.<br>And tells you what matters.</h2>
-        <p class="sub">Job alerts and renewal spam stay quiet. Teach it once per sender and it remembers. Replies are drafted in your voice and sent when you say, after Touch ID.</p>
-      </div>
-      <div class="mock-area reveal">
-        <div class="mail" id="mail-list">
-          <button class="row" type="button" aria-pressed="false"><span class="grow"><span class="t" style="display:block">Job Alerts</span><span class="m" style="display:block">25 new jobs picked for you</span></span><img src="assets/eyes-important.png" alt="" width="56" height="28"><span class="verdict">Not important</span></button>
-          <button class="row imp" type="button" aria-pressed="true"><span class="grow"><span class="t" style="display:block">Prof. Weber</span><span class="m" style="display:block">Thesis meeting moved to Friday</span></span><img src="assets/eyes-important.png" alt="" width="56" height="28"><span class="verdict">Important</span></button>
-          <button class="row" type="button" aria-pressed="false"><span class="grow"><span class="t" style="display:block">StreamBox</span><span class="m" style="display:block">Your plan renews in 3 days</span></span><img src="assets/eyes-important.png" alt="" width="56" height="28"><span class="verdict">Not important</span></button>
-          <button class="row" type="button" aria-pressed="false"><span class="grow"><span class="t" style="display:block">Weekly Digest</span><span class="m" style="display:block">This week in design</span></span><img src="assets/eyes-important.png" alt="" width="56" height="28"><span class="verdict">Not important</span></button>
-          <p class="mail-hint">Click a mail to teach Blink about that sender.</p>
-          <div class="panel draft">
-            <p class="panel-title" style="margin:0">Draft reply to Prof. Weber</p>
-            <p>Friday at 10 works for me. I'll bring the outline.</p>
-            <span class="chip">Sends on the 15th, after Touch ID</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Clipboard + Search -->
-  <section id="clipboard" aria-labelledby="clip-title">
-    <div class="wrap">
-      <div class="head reveal">
-        <h2 id="clip-title">Everything you copy.<br>Kept in your notch.</h2>
-        <p class="sub">Press <kbd>⌃⌥V</kbd> to search your last 50 copies and drag any of them into another app. Your clipboard never leaves your Mac, and passwords from password managers are never kept.</p>
-      </div>
-      <div class="mock-area grid-2">
-        <div class="panel reveal" id="clip-mock">
-          <p class="panel-title">Clipboard</p>
-          <label class="field"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search the clipboard demo</span><input id="clip-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false"></label>
-          <ul class="clip-list" id="clip-list">
-            <li class="row" draggable="true"><span class="icon"><svg><use href="#i-doc"/></svg></span><span class="grow"><span class="t" style="display:block">Q4 plan: launch on the 20th, beta first</span><span class="m" style="display:block">Text from Notes</span></span></li>
-            <li class="row" draggable="true"><span class="icon"><svg><use href="#i-link"/></svg></span><span class="grow"><span class="t" style="display:block">example.com/invoice/2026-10</span><span class="m" style="display:block">Link from Safari</span></span></li>
-            <li class="row" draggable="true"><span class="icon"><svg><use href="#i-photo"/></svg></span><span class="grow"><span class="t" style="display:block">Screenshot of the new onboarding</span><span class="m" style="display:block">Image, 2 min ago</span></span></li>
-            <li class="row" draggable="true"><span class="icon"><svg><use href="#i-file"/></svg></span><span class="grow"><span class="t" style="display:block">Invoice_October.pdf</span><span class="m" style="display:block">File from Finder</span></span></li>
-            <li class="row" draggable="true"><span class="icon"><svg><use href="#i-doc"/></svg></span><span class="grow"><span class="t" style="display:block">Booking ref KX7-224, gate B12</span><span class="m" style="display:block">Text from Mail</span></span></li>
-          </ul>
-          <p class="clip-count" id="clip-count" aria-live="polite">5 items. Try dragging one out.</p>
-        </div>
-
-        <div class="panel palette reveal" id="search-mock" aria-hidden="true">
-          <div class="palette-top"><div class="field"><svg><use href="#i-search"/></svg><span class="typed" id="palette-typed">thesis</span></div><kbd>⌘K</kbd></div>
-          <div style="margin-top:14px">
-            <div class="row hit on"><span class="icon"><svg><use href="#i-note"/></svg></span><span class="grow t">Thesis outline</span><span class="kind">Note</span></div>
-            <div class="row hit"><span class="icon"><svg><use href="#i-check"/></svg></span><span class="grow t">Send thesis draft to Prof. Weber</span><span class="kind">Task</span></div>
-            <div class="row hit"><span class="icon"><svg><use href="#i-bell"/></svg></span><span class="grow t">Thesis meeting, Friday 10:00</span><span class="kind">Reminder</span></div>
-            <div class="row hit"><span class="icon"><svg><use href="#i-space"/></svg></span><span class="grow t">Thesis</span><span class="kind">Space</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="head reveal" style="margin-top:56px">
-        <h3>Find anything with <kbd>⌘K</kbd>.</h3>
-        <p class="sub">Notes, tasks, reminders, posts and spaces, in one search.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- Day + habits -->
-  <section id="day" aria-labelledby="day-title">
-    <div class="wrap">
-      <div class="head reveal">
-        <h2 id="day-title">Plans your day.<br>Then plans tomorrow.</h2>
-        <p class="sub">A morning brief from your calendar, a meeting card ten minutes before, focus timers, and an evening check-in that sets up tomorrow.</p>
-      </div>
-      <div class="mock-area reveal" id="day-mock">
-        <div class="peeks" aria-hidden="true">
-          <div class="mini-notch" style="color:var(--mint)"><img src="assets/eyes-headsup.png" alt="" width="52" height="26">Thesis review in 10 min</div>
-          <div class="mini-notch" style="color:var(--orange)"><img src="assets/eyes-idle.png" alt="" width="52" height="26">Plan tomorrow?</div>
-        </div>
-        <div class="panel">
-          <p class="panel-title">Today</p>
-          <div class="timeline" role="img" aria-label="Timeline: standup 9:30, deep work 10 to 12, lunch 12:30, thesis 2 to 4 pm, gym 5:30 to 6:30.">
-            <div class="block short" style="--c:var(--mint);left:5%;width:5%">Standup</div>
-            <div class="block" style="--c:var(--blue);left:10%;width:20%">Deep work</div>
-            <div class="block mid" style="--c:var(--orange);left:35%;width:7.5%">Lunch</div>
-            <div class="block" style="--c:var(--yellow);left:50%;width:20%">Thesis</div>
-            <div class="block" style="--c:var(--green);left:85%;width:10%">Gym</div>
-            <div class="now" style="left:3.3%"></div>
-          </div>
-          <div class="hours" aria-hidden="true"><span>9</span><span>11</span><span>13</span><span>15</span><span>17</span><span>19</span></div>
-        </div>
+      <div class="head">
+        <h2 id="features-title">A lot of help in a small notch.</h2>
+        <p class="sub">Mail, clipboard, search, your day, habits, money and content. Every tile is a working demo, so go ahead and click.</p>
       </div>
 
-      <div class="head reveal" style="margin-top:96px">
-        <h3>Keeps your streaks alive.</h3>
-        <p class="sub">A nudge at the right moment, never a nag.</p>
-      </div>
-      <div class="mock-area reveal" style="margin-top:40px">
-        <div class="panel" style="max-width:640px;margin:0 auto">
-          <p class="panel-title">Habits this week</p>
-          <div class="weekdays" aria-hidden="true"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
-          <div id="habits"></div>
-          <p class="habit-hint">Tick today's circle for “No phone after 11”.</p>
-        </div>
-      </div>
-    </div>
-  </section>
+      <div class="bento">
 
-  <!-- Money -->
-  <section id="money" aria-labelledby="money-title">
-    <div class="wrap">
-      <div class="head reveal">
-        <h2 id="money-title">Tracks your money.</h2>
-        <p class="sub">Type what you spent in plain words and Blink sorts it. Balances, how long your money lasts and where it went, without connecting a bank.</p>
-      </div>
-      <div class="mock-area reveal" id="money-mock">
-        <div class="panel spend-in">
-          <p class="panel-title">/spent</p>
-          <div class="field" aria-hidden="true"><span class="typed">coffee 3.80, groceries 42, train 12</span></div>
-          <div class="chips" aria-label="Sorted by Blink">
-            <span class="spend-chip" style="--c:var(--pink)"><i></i>Food €3.80</span>
-            <span class="spend-chip" style="--c:var(--pink)"><i></i>Food €42.00</span>
-            <span class="spend-chip" style="--c:var(--cyan)"><i></i>Transport €12.00</span>
+        <!-- Ask: 2×2, dark -->
+        <article class="tile dark t-ask" id="ask" aria-labelledby="ask-title">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="ask-title">Ask anything.</h3>
+            <p>Press <kbd>⌃⌥Space</kbd> and type. Blink answers right in the notch, powered by Claude. Or pick a free model on Groq.</p>
           </div>
-        </div>
-        <div class="money-grid">
-          <div class="panel">
-            <p class="panel-title">Balance</p>
-            <div class="big-num">€<span id="balance" data-to="2480.50">2,480.50</span></div>
-            <div class="acct"><span>Checking</span><b>€1,920.00</b></div>
-            <div class="acct"><span>Savings</span><b>€460.00</b></div>
-            <div class="acct"><span>Cash</span><b>€100.50</b></div>
-            <div class="runway">Lasts 79 days at this pace</div>
+          <div class="tile-demo" id="ask-mock">
+            <div class="keys" aria-hidden="true"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>Space</kbd></div>
+            <div class="chat">
+              <div class="chat-top"><img src="assets/eyes-idle.png" alt="" width="56" height="28">Ask Blink</div>
+              <div class="bubble-q">Plan my day around the thesis review.</div>
+              <div class="bubble-a">Deep work on chapter 3 from 10 to 12, thesis review at 2, gym at 5:30. Want me to block the time?</div>
+            </div>
+            <div class="models" role="group" aria-label="Choose a model (demo)">
+              <button class="model" type="button" aria-pressed="true" data-note="Claude, with your own Anthropic key.">Claude Sonnet</button>
+              <button class="model" type="button" aria-pressed="false" data-note="A free model on Groq, with your free Groq key.">GPT-OSS 120B <small>Free</small></button>
+              <button class="model" type="button" aria-pressed="false" data-note="A free model on Groq, with your free Groq key.">Llama 3.3 70B <small>Free</small></button>
+              <button class="model" type="button" aria-pressed="false" data-note="One of a few top models through your own OpenRouter credit.">Gemini 3.1 Pro</button>
+            </div>
+            <p class="model-note" id="model-note" aria-live="polite">Claude, with your own Anthropic key.</p>
           </div>
-          <div class="panel">
-            <p class="panel-title">Last 14 days</p>
-            <div class="bars" id="bars" role="img" aria-label="Daily spending for 14 days against a €40 daily budget; four days went over."></div>
+        </article>
+
+        <!-- Mail: 2×1 -->
+        <article class="tile t-mail" id="mail" aria-labelledby="mail-title" data-mood="important">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-important.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="mail-title">Reads your mail. Tells you what matters.</h3>
+            <p>Teach it once per sender and it remembers. Replies are drafted in your voice and sent when you say, after Touch ID.</p>
           </div>
-          <div class="panel">
-            <p class="panel-title">Where it went</p>
-            <div class="donut-wrap">
-              <svg class="donut" viewBox="0 0 42 42" id="donut" role="img" aria-label="Home 42%, Food 27%, Transport 17%, Other 14%"></svg>
-              <ul class="legend">
-                <li style="--c:var(--brown)"><i></i>Home<b>42%</b></li>
-                <li style="--c:var(--pink)"><i></i>Food<b>27%</b></li>
-                <li style="--c:var(--cyan)"><i></i>Transport<b>17%</b></li>
-                <li style="--c:var(--gray)"><i></i>Other<b>14%</b></li>
-              </ul>
+          <div class="tile-demo">
+            <div class="mail" id="mail-list">
+              <button class="row" type="button" aria-pressed="false"><span class="grow"><span class="t">Job Alerts</span><span class="m">25 new jobs picked for you</span></span><span class="verdict">Not important</span></button>
+              <button class="row imp" type="button" aria-pressed="true"><span class="grow"><span class="t">Prof. Weber</span><span class="m">Thesis meeting moved to Friday</span></span><span class="verdict">Important</span></button>
+              <button class="row" type="button" aria-pressed="false"><span class="grow"><span class="t">StreamBox</span><span class="m">Your plan renews in 3 days</span></span><span class="verdict">Not important</span></button>
+            </div>
+            <p class="hint">Click a mail to teach Blink about that sender.</p>
+          </div>
+        </article>
+
+        <!-- Clipboard: 1×1 -->
+        <article class="tile t-clip" id="clipboard" aria-labelledby="clip-title">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="clip-title">Everything you copy.</h3>
+            <p><kbd>⌃⌥V</kbd> searches your last 50 copies. It never leaves your Mac, and passwords are never kept.</p>
+          </div>
+          <div class="tile-demo" id="clip-mock">
+            <label class="field"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search the clipboard demo</span><input id="clip-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false"></label>
+            <ul class="clip-list" id="clip-list">
+              <li class="row" draggable="true"><span class="icon"><svg aria-hidden="true"><use href="#i-doc"/></svg></span><span class="grow"><span class="t">Q4 plan: launch on the 20th</span><span class="m">Text from Notes</span></span></li>
+              <li class="row" draggable="true"><span class="icon"><svg aria-hidden="true"><use href="#i-link"/></svg></span><span class="grow"><span class="t">example.com/invoice/2026-10</span><span class="m">Link from Safari</span></span></li>
+              <li class="row" draggable="true"><span class="icon"><svg aria-hidden="true"><use href="#i-photo"/></svg></span><span class="grow"><span class="t">Onboarding screenshot</span><span class="m">Image, 2 min ago</span></span></li>
+              <li class="row" draggable="true"><span class="icon"><svg aria-hidden="true"><use href="#i-file"/></svg></span><span class="grow"><span class="t">Invoice_October.pdf</span><span class="m">File from Finder</span></span></li>
+            </ul>
+            <p class="hint" id="clip-count" aria-live="polite">4 items. Try dragging one out.</p>
+          </div>
+        </article>
+
+        <!-- ⌘K: 1×1 -->
+        <article class="tile t-search" aria-labelledby="search-title">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="search-title">Find anything with <kbd>⌘K</kbd>.</h3>
+            <p>Notes, tasks, reminders, posts and spaces, in one search.</p>
+          </div>
+          <div class="tile-demo palette" id="search-mock" aria-hidden="true">
+            <div class="field"><svg><use href="#i-search"/></svg><span class="typed" id="palette-typed">thesis</span></div>
+            <div class="hits">
+              <div class="row hit on"><span class="icon"><svg><use href="#i-note"/></svg></span><span class="grow t">Thesis outline</span><span class="kind">Note</span></div>
+              <div class="row hit"><span class="icon"><svg><use href="#i-check"/></svg></span><span class="grow t">Send draft to Prof. Weber</span><span class="kind">Task</span></div>
+              <div class="row hit"><span class="icon"><svg><use href="#i-bell"/></svg></span><span class="grow t">Thesis meeting, Fri 10:00</span><span class="kind">Reminder</span></div>
+              <div class="row hit"><span class="icon"><svg><use href="#i-space"/></svg></span><span class="grow t">Thesis</span><span class="kind">Space</span></div>
             </div>
           </div>
-        </div>
-        <p class="soon">Apple Pay capture is coming soon.</p>
-      </div>
-    </div>
-  </section>
+        </article>
 
-  <!-- Content -->
-  <section id="content" aria-labelledby="content-title">
-    <div class="wrap">
-      <div class="head reveal">
-        <h2 id="content-title">Writes your ideas.</h2>
-        <p class="sub">Ideas and drafts for Instagram, LinkedIn and X, in your voice. A weekly plan, and stats on what worked.</p>
-      </div>
-      <div class="mock-area reveal" id="content-mock">
-        <div class="mini-notch" style="color:var(--green)"><img src="assets/eyes-done.png" alt="" width="52" height="26">5 ideas ready</div>
-        <div class="ideas">
-          <div class="panel idea" style="--c:var(--pink)"><span class="fmt">Reel</span><span class="ttl">3 tools I use every day</span><span class="plat">Instagram</span></div>
-          <div class="panel idea" style="--c:var(--mint)"><span class="fmt">Carousel</span><span class="ttl">Building an app in a week</span><span class="plat">LinkedIn</span></div>
-          <div class="panel idea" style="--c:var(--orange)"><span class="fmt">Post</span><span class="ttl">Student budget, honestly</span><span class="plat">X</span></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Ask-First -->
-  <section id="ask-first" aria-labelledby="af-title">
-    <div class="wrap">
-      <div class="head reveal">
-        <h2 id="af-title">Never without your OK.</h2>
-        <p class="sub">Every action Blink wants to take is a card you approve. The bigger the step, the more it asks.</p>
-      </div>
-      <div class="mock-area reveal">
-        <div class="tiers">
-          <div class="panel tier" style="--c:var(--green)"><i></i><b>Small things happen at once.</b><span>Tick a habit, save a note. Undo for 5 seconds.</span></div>
-          <div class="panel tier" style="--c:var(--orange)"><i></i><b>Medium things take one click.</b><span>Add a reminder, change your calendar, plan tomorrow.</span></div>
-          <div class="panel tier" style="--c:var(--red)"><i></i><b>Important things need Touch ID.</b><span>Send mail, publish a post, anything with money. Never automatic.</span></div>
-        </div>
-        <div class="panel approve-card">
-          <div class="q">Send reply to Prof. Weber?</div>
-          <p class="preview">“Friday at 10 works for me. I'll bring the outline.” Sends on the 15th.</p>
-          <div class="touch" id="touch">
-            <button type="button" id="touch-btn" aria-describedby="touch-label">
-              <span class="sr-only">Approve with Touch ID (demo)</span>
-              <svg viewBox="-50 -50 100 100" aria-hidden="true">
-                <circle class="ring-bg" r="44" fill="none" stroke-width="4"/>
-                <circle class="ring" r="44" fill="none" stroke-width="4" pathLength="100" stroke-linecap="round" transform="rotate(-90)"/>
-                <g class="print" fill="none" stroke-width="3" stroke-linecap="round">
-                  <path d="M-16 12 A20 20 0 0 1 -20 0 A20 20 0 0 1 20 0 L20 6"/>
-                  <path d="M-9 18 A13 13 0 0 1 -13 4 A13 13 0 0 1 13 4 L13 13"/>
-                  <path d="M0 20 L0 5"/>
-                </g>
-                <path class="tick" d="M-18 2 L-5 15 L20 -12" fill="none" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-            <div class="touch-label" id="touch-label" aria-live="polite">Click to approve with Touch ID</div>
+        <!-- Moods: 2×1 -->
+        <article class="tile t-moods" id="moods" aria-labelledby="moods-title">
+          <div class="tile-text">
+            <h3 id="moods-title">One glance tells you.</h3>
+            <p>Blink's eyes change colour with what's going on. Orange for your evening check-in, yellow when a streak hits a milestone. Try the others.</p>
           </div>
-        </div>
+          <div class="tile-demo peek-stage">
+            <div class="peek" id="peek" aria-live="polite">
+              <div class="eyes-slot"><div class="eyes-look"><img id="peek-eyes" src="assets/eyes-idle.png" alt="" width="320" height="160"></div></div>
+              <span class="peek-text" id="peek-text">All clear</span>
+            </div>
+            <div class="moods" role="group" aria-label="Blink's moods">
+              <button class="mood" type="button" style="--c:var(--rest)" data-mood="idle" data-text="All clear" aria-pressed="true"><i></i>At rest</button>
+              <button class="mood" type="button" style="--c:var(--red)" data-mood="important" data-text="Prof. Weber: thesis meeting moved" aria-pressed="false"><i></i>Needs you</button>
+              <button class="mood" type="button" style="--c:var(--mint)" data-mood="headsup" data-text="Thesis review in 10 min" aria-pressed="false"><i></i>Time</button>
+              <button class="mood" type="button" style="--c:var(--green)" data-mood="done" data-text="Reminder set for Friday" aria-pressed="false"><i></i>Done</button>
+            </div>
+          </div>
+        </article>
+
+        <!-- Day: 2×1 -->
+        <article class="tile t-day" id="day" aria-labelledby="day-title">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-headsup.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="day-title">Plans your day. Then tomorrow.</h3>
+            <p>A morning brief from your calendar, a meeting card ten minutes before, focus timers, and an evening check-in that sets up tomorrow.</p>
+          </div>
+          <div class="tile-demo" id="day-mock">
+            <div class="peeks" aria-hidden="true">
+              <div class="mini-notch" style="--c:var(--mint)"><img src="assets/eyes-headsup.png" alt="" width="52" height="26">Thesis review in 10 min</div>
+              <div class="mini-notch" style="--c:var(--orange)"><img src="assets/eyes-idle.png" alt="" width="52" height="26">Plan tomorrow?</div>
+            </div>
+            <div class="timeline" role="img" aria-label="Timeline: standup 9:30, deep work 10 to 12, lunch 12:30, thesis 2 to 4 pm, gym 5:30 to 6:30.">
+              <div class="block short" style="--c:var(--mint);left:5%;width:5%">Standup</div>
+              <div class="block" style="--c:var(--blue-fill);left:10%;width:20%">Deep work</div>
+              <div class="block mid" style="--c:var(--orange);left:35%;width:7.5%">Lunch</div>
+              <div class="block" style="--c:var(--yellow);left:50%;width:20%">Thesis</div>
+              <div class="block" style="--c:var(--green);left:85%;width:10%">Gym</div>
+              <div class="now" style="left:3.3%"></div>
+            </div>
+            <div class="hours" aria-hidden="true"><span>9</span><span>11</span><span>13</span><span>15</span><span>17</span><span>19</span></div>
+          </div>
+        </article>
+
+        <!-- Money: 2×1 -->
+        <article class="tile t-money" id="money" aria-labelledby="money-title">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-done.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="money-title">Tracks your money.</h3>
+            <p>Type what you spent in plain words and Blink sorts it. Balances, how long your money lasts and where it went, without connecting a bank.</p>
+          </div>
+          <div class="tile-demo money-demo" id="money-mock">
+            <div class="money-sum">
+              <span class="label">Balance</span>
+              <div class="big-num">€<span id="balance" data-to="2480.50">2,480.50</span></div>
+              <div class="runway"><i></i>Lasts 79 days at this pace</div>
+            </div>
+            <div class="money-chart">
+              <span class="label">Last 14 days</span>
+              <div class="bars" id="bars" role="img" aria-label="Daily spending for 14 days against a €40 daily budget; four days went over."></div>
+            </div>
+          </div>
+        </article>
+
+        <!-- Habits: 1×1 -->
+        <article class="tile t-habits" aria-labelledby="habits-title">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-done.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="habits-title">Keeps your streaks alive.</h3>
+            <p>A nudge at the right moment, never a nag.</p>
+          </div>
+          <div class="tile-demo">
+            <div id="habits"></div>
+            <p class="hint">Tick today's circle for “No phone after 11”.</p>
+          </div>
+        </article>
+
+        <!-- Ask-First: 1×1, dark -->
+        <article class="tile dark t-af" id="ask-first" aria-labelledby="af-title">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-important.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="af-title">Never without your OK.</h3>
+            <p>Small things happen at once, medium things take a click, and sending mail, publishing or anything with money needs Touch ID.</p>
+          </div>
+          <div class="tile-demo approve">
+            <p class="q">Send reply to Prof. Weber?</p>
+            <div class="touch" id="touch">
+              <button type="button" id="touch-btn" aria-describedby="touch-label">
+                <span class="sr-only">Approve with Touch ID (demo)</span>
+                <svg viewBox="-50 -50 100 100" aria-hidden="true">
+                  <circle class="ring-bg" r="44" fill="none" stroke-width="4"/>
+                  <circle class="ring" r="44" fill="none" stroke-width="4" pathLength="100" stroke-linecap="round" transform="rotate(-90)"/>
+                  <g class="print" fill="none" stroke-width="3" stroke-linecap="round">
+                    <path d="M-16 12 A20 20 0 0 1 -20 0 A20 20 0 0 1 20 0 L20 6"/>
+                    <path d="M-9 18 A13 13 0 0 1 -13 4 A13 13 0 0 1 13 4 L13 13"/>
+                    <path d="M0 20 L0 5"/>
+                  </g>
+                  <path class="tick" d="M-18 2 L-5 15 L20 -12" fill="none" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <div class="touch-label" id="touch-label" aria-live="polite">Click to approve with Touch ID</div>
+            </div>
+          </div>
+        </article>
+
+        <!-- Content: 2×1 -->
+        <article class="tile t-content" id="content" aria-labelledby="content-title">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-done.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="content-title">Writes your ideas.</h3>
+            <p>Ideas and drafts for Instagram, LinkedIn and X, in your voice. A weekly plan, and stats on what worked.</p>
+          </div>
+          <div class="tile-demo" id="content-mock">
+            <div class="mini-notch" style="--c:var(--green)"><img src="assets/eyes-done.png" alt="" width="52" height="26">5 ideas ready</div>
+            <div class="ideas">
+              <div class="idea" style="--c:var(--pink)"><span class="fmt"><i></i>Reel</span><span class="ttl">3 tools I use every day</span><span class="plat">Instagram</span></div>
+              <div class="idea" style="--c:var(--mint)"><span class="fmt"><i></i>Carousel</span><span class="ttl">Building an app in a week</span><span class="plat">LinkedIn</span></div>
+              <div class="idea" style="--c:var(--orange)"><span class="fmt"><i></i>Post</span><span class="ttl">Student budget, honestly</span><span class="plat">X</span></div>
+            </div>
+          </div>
+        </article>
+
+        <!-- Privacy: 2×1 -->
+        <article class="tile t-priv" aria-labelledby="priv-tile-title">
+          <span class="peeker" aria-hidden="true"><span class="head"><span class="eyes-look"><img src="assets/eyes-done.png" alt="" width="320" height="160"></span></span></span>
+          <div class="tile-text">
+            <h3 id="priv-tile-title">Your server, your keys.</h3>
+            <p>Your data lives on a Supabase server in your own account. Pexilim stores none of it. <a href="#privacy">See where everything lives</a>.</p>
+          </div>
+          <div class="tile-demo keychain" aria-hidden="true">
+            <span class="yours"><span class="tag">Yours</span><span class="pill you">Your Mac</span><span class="wire"></span><span class="pill you">Your server</span></span><span class="wire"></span><span class="pill">Your AI</span>
+            <span class="pill pex-pill">Pexilim: none of it</span>
+          </div>
+        </article>
+
       </div>
     </div>
   </section>
 
-  <!-- Privacy -->
-  <section id="privacy" aria-labelledby="privacy-title">
+  <!-- Privacy (dark) -->
+  <section id="privacy" class="band dark" aria-labelledby="privacy-title">
     <div class="wrap">
-      <div class="head reveal">
+      <div class="head">
         <h2 id="privacy-title">Your server. Your keys.</h2>
-        <p class="sub">Your notes, mail, money and keys live on a Supabase server in your own account, created for you in one click. AI requests go from there to the provider you picked, with your key. Pexilim stores nothing.</p>
+        <p class="sub">Your notes, mail, money and keys live on a Supabase server in your own account, created for you in one click. AI requests go from there to the provider you picked, with your key. Pexilim stores none of it.</p>
       </div>
-      <div class="mock-area reveal" id="diagram">
+      <div class="diagram-area" id="diagram">
         <div class="diagram" role="img" aria-label="Diagram: your Mac talks to your own server. Your server talks to the AI provider you picked and to your mail provider. Pexilim is outside this loop.">
           <div class="you-box">
             <span class="tag">Yours</span>
@@ -378,68 +352,91 @@
         </div>
         <div class="pex"><div class="node"><b>Pexilim</b></div><span>Runs only a tiny sign-in helper for the one-click setup. It stores nothing.</span></div>
       </div>
-      <ul class="facts reveal">
+      <ul class="facts">
         <li><b>Stays on your Mac</b>Clipboard history, chat history and post images.</li>
         <li><b>Keys stay hidden</b>Stored as secrets on your server. Blink never shows them again.</li>
         <li><b>No tracking</b>No analytics in the app or on this site. Nothing reports back to Pexilim.</li>
       </ul>
     </div>
+    <div class="notch-tab" aria-hidden="true"><div class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></div></div>
   </section>
 
-  <!-- Setup -->
-  <section id="setup" aria-labelledby="setup-title">
+  <!-- Setup (light) -->
+  <section id="setup" class="light" aria-labelledby="setup-title">
     <div class="wrap">
-      <div class="head reveal">
+      <div class="head">
         <h2 id="setup-title">Set up in three minutes.</h2>
         <p class="sub">No code, no terminal.</p>
       </div>
-      <ol class="steps mock-area reveal">
-        <li class="panel"><b>Download and open Blink.</b><span>The first time, macOS asks you to confirm in System Settings. The <a href="install.html">install guide</a> shows how.</span></li>
-        <li class="panel"><b>Sign in with Supabase.</b><span>Blink creates your free server and installs everything on it. Already have one? Paste its address instead.</span></li>
-        <li class="panel"><b>Add a free key and your calendar.</b><span>Paste a free Groq key and allow Calendar. Your next meeting shows up in the notch.</span></li>
+      <ol class="steps">
+        <li><b>Download and open Blink.</b><span>When Blink is ready, we email you the link. The first time, macOS asks you to confirm in System Settings.</span></li>
+        <li><b>Sign in with Supabase.</b><span>Blink creates your free server and installs everything on it. Already have one? Paste its address instead.</span></li>
+        <li><b>Add a free key and your calendar.</b><span>Paste a free Groq key and allow Calendar. Your next meeting shows up in the notch.</span></li>
       </ol>
     </div>
   </section>
 
-  <!-- FAQ -->
-  <section id="faq" aria-labelledby="faq-title">
-    <div class="wrap">
-      <div class="head reveal"><h2 id="faq-title">Questions.</h2></div>
-      <div class="faq mock-area">
+  <!-- FAQ (mist) -->
+  <section id="faq" class="mist" aria-labelledby="faq-title">
+    <div class="wrap faq-grid">
+      <div class="head"><h2 id="faq-title">Questions.</h2><p class="sub">Something missing? Write to <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>.</p></div>
+      <div class="faq">
+        <details><summary>When can I get it?</summary><p>Blink isn't public yet. <a href="#waitlist">Join the waitlist</a> and we'll email you when it's ready to download.</p></details>
         <details><summary>Is it free?</summary><p>Yes. Blink is free to download and use. You only pay for services you choose to add, like a Claude key.</p></details>
         <details><summary>Do I need to code?</summary><p>No. Setup is a few clicks: sign in with Supabase and Blink creates and sets up your server for you. If you already run a Supabase server, you can paste its address instead.</p></details>
         <details><summary>What does it cost to run?</summary><p><strong>Nothing, if you want.</strong> Free models on Groq handle everyday work, and Supabase's free tier holds your data. Claude is optional, with your own Anthropic key; paid models stop for the day when they reach your daily limit ($5 unless you change it). If you outgrow Supabase's free tier, their paid plan is billed to you by Supabase.</p></details>
         <details><summary>Which Macs does it run on?</summary><p>MacBooks with a notch, running macOS 26 or later.</p></details>
-        <details><summary>Is my data safe?</summary><p>Your data lives on your own server, in your own Supabase account, and AI requests use your own keys. Pexilim runs no database and can't read your data. Your clipboard never leaves your Mac. Blink never sends, posts or spends without your OK, and the important actions need Touch ID. See the <a href="privacy.html">privacy policy</a> for the details.</p></details>
+        <details><summary>Is my data safe?</summary><p>Your data lives on your own server, in your own Supabase account, and AI requests use your own keys. Pexilim runs no database for the app and can't read your data. Your clipboard never leaves your Mac. Blink never sends, posts or spends without your OK, and the important actions need Touch ID. See the <a href="privacy.html">privacy policy</a> for the details.</p></details>
         <details><summary>Is there an iPhone app?</summary><p>Later. An iPhone app with the Dynamic Island is planned; Blink is Mac first.</p></details>
       </div>
     </div>
   </section>
 
-  <section class="end" aria-labelledby="end-title">
-    <div class="wrap reveal">
-      <div class="eyes-look" style="width:120px;margin:0 auto 18px"><img src="assets/eyes-idle.png" alt="" width="320" height="160" style="width:120px;margin:0"></div>
-      <h2 id="end-title">Blink</h2>
-      <p class="sub">Free for Mac.</p>
-      <div class="cta-row"><a class="btn" href="install.html#download">Download for Mac</a><a class="btn ghost" href="install.html">Read the install guide</a></div>
+  <!-- Waitlist (dark) -->
+  <section id="waitlist" class="band dark end" aria-labelledby="waitlist-title">
+    <div class="wrap">
+      <div class="end-eyes eyes-look" aria-hidden="true"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></div>
+      <h2 id="waitlist-title">Be first to meet Blink.</h2>
+      <p class="sub">Blink isn't out yet. Leave your email and we'll write when it's ready to download. Free for Mac.</p>
+
+      <form class="waitlist" id="waitlist-form" novalidate>
+        <div class="wl-row">
+          <label class="wl-label" for="wl-email">Email</label>
+          <input class="wl-input" id="wl-email" name="email" type="email" inputmode="email" autocomplete="email" required maxlength="254" placeholder="you@example.com" aria-describedby="wl-status">
+        </div>
+        <div class="hp" aria-hidden="true">
+          <label for="wl-website">Website</label>
+          <input id="wl-website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <div class="wl-consent">
+          <input id="wl-consent" name="consent" type="checkbox" required aria-describedby="wl-status">
+          <label for="wl-consent">Email me when Blink is ready. I can unsubscribe anytime.</label>
+        </div>
+        <p class="wl-fine">We keep your email, when you joined and that you agreed. Nothing else. <a href="privacy.html#waitlist">How we handle it</a>.</p>
+        <button class="btn wl-submit" type="submit" id="wl-submit">Join the waitlist</button>
+        <p class="wl-status" id="wl-status" role="status" aria-live="polite"></p>
+        <noscript><p class="wl-status">This form needs JavaScript. To join, email <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>.</p></noscript>
+      </form>
     </div>
   </section>
 </main>
 
 <footer class="site-foot">
   <div class="inner">
-    <p class="by" style="margin:0"><b>Blink</b> by Pexilim</p>
+    <p class="by"><b>Blink</b> by Pexilim</p>
     <nav aria-label="Footer">
-      <a href="install.html">Install guide</a>
       <a href="privacy.html">Privacy</a>
       <a href="terms.html">Terms</a>
+      <a href="install.html">Install guide</a>
       <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>
     </nav>
   </div>
 </footer>
 
+<script src="js/config.js"></script>
 <script src="js/vendor/gsap.min.js"></script>
 <script src="js/vendor/ScrollTrigger.min.js"></script>
 <script src="js/main.js" defer></script>
+<script type="module" src="js/waitlist.js"></script>
 </body>
 </html>

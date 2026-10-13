@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Blink privacy</title>
-  <meta name="description" content="Where Blink keeps your data: on your Mac, on your own server, and with the AI provider you pick. Pexilim stores nothing.">
+  <meta name="description" content="Where Blink keeps your data: on your Mac, on your own server, and with the AI provider you pick. Pexilim stores none of it. Plus what the waitlist keeps.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#FFFFFF">
   <link rel="canonical" href="https://blink.pexilim.com/privacy.html">
   <link rel="icon" href="assets/favicon.png" type="image/png">
   <link rel="stylesheet" href="css/fonts.css">
@@ -17,18 +17,17 @@
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-head">
   <div class="inner">
-    <a class="brand" href="./" aria-label="Blink home"><img src="assets/eyes-idle.png" alt="" width="30" height="15">Blink</a>
+    <a class="brand" href="./" aria-label="Blink home"><span class="brand-notch"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span>Blink</a>
     <nav aria-label="Main">
-      <a href="./#ask">Features</a>
+      <a href="./#features">Features</a>
       <a href="./#privacy">Privacy</a>
       <a href="./#faq">FAQ</a>
-      <a href="install.html">Install guide</a>
     </nav>
-    <a class="btn small" href="install.html#download">Download</a>
+    <a class="btn small" href="./#waitlist">Join the waitlist</a>
   </div>
 </header>
 
-<main id="main" class="doc">
+<main id="main" class="doc light">
   <h1>Privacy</h1>
   <p class="lede">Blink keeps your data on your Mac and on a server in your own account. Pexilim, the company that makes Blink, doesn't store it and can't read it.</p>
   <p class="updated">Last updated 13 October 2026</p>
@@ -38,7 +37,8 @@
     <li>Your clipboard, chat history and post images stay on your Mac.</li>
     <li>Everything else Blink keeps is on <strong>your own Supabase server</strong>, in your account.</li>
     <li>AI requests go from your server to the AI provider <strong>you</strong> pick, with <strong>your</strong> key.</li>
-    <li>Pexilim runs no database for Blink. The only thing we run is a tiny sign-in helper used once during setup, and it stores nothing.</li>
+    <li>Pexilim runs no database for the Blink app. For the app, the only thing we run is a tiny sign-in helper used once during setup, and it stores nothing.</li>
+    <li>If you join the waitlist on this website, we keep your email to tell you when Blink is ready. <a href="#waitlist">Details below</a>.</li>
     <li>No analytics, no tracking, no cookies, in the app or on this website.</li>
   </ul>
 
@@ -48,7 +48,7 @@
     <tr><th scope="row">Your server</th><td>Notes, tasks, reminders, habits, spaces, money entries and accounts, content ideas, drafts and post stats, mail summaries and your sender rules, and a log of the actions you approved (kept 180 days). Your AI keys and mail app passwords are stored there as secrets; Blink never shows them again. The server is a Supabase project in your account, run under your agreement with Supabase.</td></tr>
     <tr><th scope="row">Your mail provider</th><td>Your server checks your mailbox and stores only short summaries, not full messages. Reply drafts are saved to your mailbox's Drafts folder. Mail is sent only after you approve it with Touch ID.</td></tr>
     <tr><th scope="row">Your AI provider</th><td>When a task needs AI, your server sends what that task needs to the provider you chose (Anthropic for Claude, Groq, or OpenRouter), using your own key. If you turn them on, post images use Cloudflare and reading your own public Instagram page uses Apify, also with your keys. Each provider handles that data under your account's terms with them.</td></tr>
-    <tr><th scope="row">Pexilim</th><td>Only the sign-in helper, described below. No copy of your data, no admin access, no telemetry.</td></tr>
+    <tr><th scope="row">Pexilim</th><td>Only the sign-in helper, described below. No copy of your data, no admin access, no telemetry. Separately, the waitlist, if you join it.</td></tr>
   </table>
 
   <h2>The sign-in helper</h2>
@@ -56,7 +56,19 @@
   <p>The helper's code doesn't store or log the code or the token. Blink keeps the token in memory only while it sets up your server, then drops it. Like any hosted service, the platform the helper runs on may record basic request details such as the time and the result. If you choose “I already have a server” instead, the helper isn't used at all.</p>
 
   <h2>This website</h2>
-  <p>blink.pexilim.com is a set of static pages. It sets no cookies and runs no analytics or tracking. Everything it uses, the font, the animation library and the film, is served from this site itself, so no other company sees your visit. Like any web server, our host receives your IP address to send you the pages.</p>
+  <p>blink.pexilim.com is a set of static pages. It sets no cookies and runs no analytics or tracking. The only thing it sends anywhere is the waitlist form, when you submit it. Everything it uses, the font, the animation library and the film, is served from this site itself, so no other company sees your visit. Like any web server, our host receives your IP address to send you the pages.</p>
+
+  <h2 id="waitlist">Waitlist</h2>
+  <p>Blink isn't public yet. If you join the waitlist on this website:</p>
+  <ul>
+    <li><strong>What we keep:</strong> your email address, when you joined, and that you agreed to be emailed.</li>
+    <li><strong>Why:</strong> to email you when Blink is ready to download and about its launch. Nothing else.</li>
+    <li><strong>Where:</strong> on Pexilim's own Supabase server in the EU.</li>
+    <li><strong>How long:</strong> until launch plus 12 months, or until you ask us to remove it, whichever comes first.</li>
+    <li><strong>Leaving:</strong> use the unsubscribe link in any email we send, or write to <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>, and we delete your address.</li>
+    <li><strong>No sharing, no tracking:</strong> we don't sell or share your email, and our emails and this form carry no tracking.</li>
+  </ul>
+  <p>The form sends your email straight to that server. A hidden field catches spam bots; people never see it.</p>
 
   <h2>If you email us</h2>
   <p>If you write to <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>, we use your address and message only to reply. Ask us and we'll delete the conversation.</p>
@@ -76,11 +88,11 @@
 
 <footer class="site-foot">
   <div class="inner">
-    <p class="by" style="margin:0"><b>Blink</b> by Pexilim</p>
+    <p class="by"><b>Blink</b> by Pexilim</p>
     <nav aria-label="Footer">
-      <a href="install.html">Install guide</a>
       <a href="privacy.html" aria-current="page">Privacy</a>
       <a href="terms.html">Terms</a>
+      <a href="install.html">Install guide</a>
       <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>
     </nav>
   </div>

@@ -15,19 +15,20 @@ Open http://localhost:8765. Use a server rather than opening the file: the insta
 
 | Path | What |
 |---|---|
-| `index.html` | Home: hero notch, film, moods, Ask, Mail, Clipboard + ⌘K, Day + habits, Money, Content, Ask-First, privacy diagram, setup, FAQ |
-| `install.html` | Download, first-open steps (not notarized yet), setup, SHA-256 check |
-| `privacy.html`, `terms.html` | Plain-English policy and terms, "Last updated 13 October 2026" |
-| `css/site.css` | All styles. Colours are the dark values from `design/tokens.json` (no purple or indigo) |
-| `js/main.js` | Eyes (follow the pointer, blink), hero notch scroll, demos, GSAP reveals |
-| `js/install.js` | Shows the DMG size once `downloads/Blink.dmg` exists |
+| `index.html` | Home, alternating light and dark bands: hero notch, film, bento of live demos (Ask, Mail, Clipboard, ⌘K, moods, Day, Money, habits, Ask-First, Content, privacy), privacy diagram, setup, FAQ, waitlist form |
+| `install.html` | Waitlist note (the download button appears by itself once `downloads/Blink.dmg` exists), first-open steps, setup, SHA-256 check |
+| `privacy.html`, `terms.html` | Plain-English policy (with the Waitlist section) and terms, "Last updated 13 October 2026" |
+| `css/site.css` | All styles. Bands set `--bg/--fg/--muted/--link` via `.light`, `.mist`, `.dark`; mood colours from `design/tokens.json` are fills only (no purple or indigo) |
+| `js/main.js` | Eyes (follow the pointer, blink, peek over tiles), hero notch scroll, demos, GSAP reveals |
+| `js/config.js`, `js/waitlist.js` | Waitlist endpoint and form. Test: `node --test marketing/site/tests/waitlist.test.js` |
+| `js/install.js` | Shows the download button and size once `downloads/Blink.dmg` exists |
 | `assets/` | Eyes exported from the app (320×160), favicon, web film (`blink-film.mp4`, H.264 1280 wide, CRF 26) and its poster |
 | `downloads/` | Put `Blink.dmg` here (not in git yet) |
 
 ## Before going live
 
 - Add `downloads/Blink.dmg`, then replace the line in `install.html` with id `dmg-sha` with the real `shasum -a 256` output.
-- GSAP 3.13.0 and ScrollTrigger load from cdnjs with SRI hashes; Inter loads from Google Fonts. Both are named on the privacy page.
+- GSAP 3.13.0, ScrollTrigger and Inter are self-hosted. The only third-party request is the waitlist form's POST to Supabase (`connect-src` in the CSP).
 - The film's music is the licensed Pixabay track; fine on our own site.
 
 ## Motion and accessibility

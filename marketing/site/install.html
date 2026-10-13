@@ -7,7 +7,7 @@
   <meta name="description" content="How to download, install and set up Blink, the free notch assistant for Mac.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#FFFFFF">
   <link rel="canonical" href="https://blink.pexilim.com/install.html">
   <link rel="icon" href="assets/favicon.png" type="image/png">
   <link rel="stylesheet" href="css/fonts.css">
@@ -17,22 +17,27 @@
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-head">
   <div class="inner">
-    <a class="brand" href="./" aria-label="Blink home"><img src="assets/eyes-idle.png" alt="" width="30" height="15">Blink</a>
+    <a class="brand" href="./" aria-label="Blink home"><span class="brand-notch"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span>Blink</a>
     <nav aria-label="Main">
-      <a href="./#ask">Features</a>
+      <a href="./#features">Features</a>
       <a href="./#privacy">Privacy</a>
       <a href="./#faq">FAQ</a>
-      <a href="install.html" aria-current="page">Install guide</a>
     </nav>
-    <a class="btn small" href="#download">Download</a>
+    <a class="btn small" href="./#waitlist">Join the waitlist</a>
   </div>
 </header>
 
-<main id="main" class="doc">
+<main id="main" class="doc light">
   <h1>Install Blink.</h1>
-  <p class="lede">Free, for MacBooks with a notch running macOS 26. It takes about three minutes.</p>
+  <p class="lede">Free, for MacBooks with a notch running macOS 26. It takes about three minutes once you have the download.</p>
 
-  <div class="download-box" id="download">
+  <div class="note" id="waitlist-note">
+    <p><strong>Blink isn't public yet.</strong> Join the waitlist and we'll email you when it's ready to download. This guide is here so you know what to expect.</p>
+    <div class="cta-row"><a class="btn" href="./#waitlist">Join the waitlist</a></div>
+  </div>
+
+  <!-- Shown by js/install.js once downloads/Blink.dmg is on the server. -->
+  <div class="download-box" id="download" hidden>
     <a class="btn" id="dmg-link" href="downloads/Blink.dmg" download>Download Blink.dmg</a>
     <span class="size" id="dmg-size" hidden></span>
   </div>
@@ -43,7 +48,7 @@
 
   <h2>Install</h2>
   <ol class="steps-doc">
-    <li><b>Download Blink.dmg.</b>Use the button above. It lands in your Downloads folder.</li>
+    <li><b>Download Blink.dmg.</b>Use the link in your waitlist email. It lands in your Downloads folder.</li>
     <li><b>Drag Blink into Applications.</b>Open Blink.dmg and drag the Blink icon onto the Applications folder. Then eject the disk image.</li>
     <li><b>Open Blink.</b>Open your Applications folder and double-click Blink. macOS says it can't check Blink and doesn't open it. Click <span class="path">Done</span>, not Move to Trash.</li>
     <li><b>Allow it in System Settings.</b>Open <span class="path">System Settings › Privacy &amp; Security</span> and scroll down to Security. Next to “Blink was blocked”, click <span class="path">Open Anyway</span>, enter your Mac password, then click <span class="path">Open Anyway</span> once more. You only do this the first time.</li>
@@ -75,11 +80,11 @@
 
 <footer class="site-foot">
   <div class="inner">
-    <p class="by" style="margin:0"><b>Blink</b> by Pexilim</p>
+    <p class="by"><b>Blink</b> by Pexilim</p>
     <nav aria-label="Footer">
-      <a href="install.html" aria-current="page">Install guide</a>
       <a href="privacy.html">Privacy</a>
       <a href="terms.html">Terms</a>
+      <a href="install.html" aria-current="page">Install guide</a>
       <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>
     </nav>
   </div>
