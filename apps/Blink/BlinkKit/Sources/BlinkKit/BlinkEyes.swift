@@ -115,7 +115,7 @@ public struct BlinkEyes: View {
             let a = phase * 2 * .pi
             return (sin(a) * 0.18, -abs(cos(a)) * 0.05, 1)
         case .listening:
-            // shortcut: simulated voice level; drive from the mic level when voice lands (Phase 2).
+            // shortcut: simulated voice level; drive from the mic level when voice input lands.
             return (0, 0, 1 + 0.04 * sin(t * 2 * .pi / 2.4))
         default:
             return (0, 0, 1)

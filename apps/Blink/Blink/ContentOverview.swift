@@ -15,7 +15,7 @@ struct ContentOverview: View {
         let posts = model.pagePosts
         if posts.isEmpty && !model.voice.page.contains("@") {
             EmptyCard(symbol: "person.crop.circle.badge.plus", title: "Add your Instagram handle first",
-                      message: "Blink reads only your own page. Open Voice, start “About your page” with your handle (like @uxabhi), and you can import your creator brief there too. Then press Read My Page.",
+                      message: "Blink reads only your own page. Open Voice, start “About your page” with your handle (like @yourname), and you can import your creator brief there too. Then press Read My Page.",
                       actionTitle: "Open Voice", action: editVoice)
         } else if posts.isEmpty {
             EmptyCard(symbol: "chart.bar.xaxis", title: "See how your posts perform",

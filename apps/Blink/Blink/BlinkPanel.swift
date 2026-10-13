@@ -165,18 +165,18 @@ struct BlinkPanel: View {
             // This month's numbers, as data: the chat never reads the table itself.
             let month = MoneyMath.month(of: HabitDay.key(.now))
             let totals = MoneyMath.totals(model.spends, month: month).map { row in
-                let limit = model.budgets.first { $0.category == row.category }.map { " (limit \($0.monthlyLimit.formatted(.currency(code: "EUR"))))" } ?? ""
-                return "- \(row.category.title): \(row.total.formatted(.currency(code: "EUR")))\(limit)"
+                let limit = model.budgets.first { $0.category == row.category }.map { " (limit \($0.monthlyLimit.formatted(.currency(code: MoneyMath.currency))))" } ?? ""
+                return "- \(row.category.title): \(row.total.formatted(.currency(code: MoneyMath.currency)))\(limit)"
             }.joined(separator: "\n")
-            let recent = model.spends.filter { MoneyMath.month(of: $0.spentOn) == month }.prefix(40).map { "- \($0.spentOn) \($0.note) \($0.amount.formatted(.currency(code: "EUR"))) [\($0.category.title)]" }
+            let recent = model.spends.filter { MoneyMath.month(of: $0.spentOn) == month }.prefix(40).map { "- \($0.spentOn) \($0.note) \($0.amount.formatted(.currency(code: MoneyMath.currency))) [\($0.category.title)]" }
                 .joined(separator: "\n")
             let summary = MoneyMath.summary(model.spends, today: HabitDay.key(.now))
             let balance = MoneyMath.totalBalance(model.accounts)
-            let accounts = model.accounts.map { "- \($0.name) (\($0.kind.title)): \(MoneyMath.balance(of: $0).formatted(.currency(code: "EUR")))" }
+            let accounts = model.accounts.map { "- \($0.name) (\($0.kind.title)): \(MoneyMath.balance(of: $0).formatted(.currency(code: MoneyMath.currency)))" }
                 .joined(separator: "\n")
             let money = model.accounts.isEmpty ? "Accounts: none added yet.\n"
-                : "Accounts now:\n\(accounts)\nTotal: \(balance.formatted(.currency(code: "EUR"))). Left at month end at this pace: \(MoneyMath.leftAtMonthEnd(total: balance, summary: summary, today: HabitDay.key(.now)).formatted(.currency(code: "EUR"))).\n"
-            let context = String("\(money)Spent this month: \(summary.total.formatted(.currency(code: "EUR"))), \(summary.average.formatted(.currency(code: "EUR"))) a day, last month \(summary.lastMonthTotal.formatted(.currency(code: "EUR"))).\nBy category:\n\(totals.isEmpty ? "none" : totals)\nLatest spends:\n\(recent.isEmpty ? "none" : recent)".prefix(3900))
+                : "Accounts now:\n\(accounts)\nTotal: \(balance.formatted(.currency(code: MoneyMath.currency))). Left at month end at this pace: \(MoneyMath.leftAtMonthEnd(total: balance, summary: summary, today: HabitDay.key(.now)).formatted(.currency(code: MoneyMath.currency))).\n"
+            let context = String("\(money)Spent this month: \(summary.total.formatted(.currency(code: MoneyMath.currency))), \(summary.average.formatted(.currency(code: MoneyMath.currency))) a day, last month \(summary.lastMonthTotal.formatted(.currency(code: MoneyMath.currency))).\nBy category:\n\(totals.isEmpty ? "none" : totals)\nLatest spends:\n\(recent.isEmpty ? "none" : recent)".prefix(3900))
             return [Suggestion("How am I doing this month?", "How am I doing with money this month, given my balances and spending? Three short lines.", context: context),
                     Suggestion("Where is my money going?", "Where is my money going this month? Two or three short lines.", context: context),
                     Suggestion("Can I afford something?", "I'm thinking of buying something. Ask me what and how much, then tell me if my balances and pace allow it.", context: context),

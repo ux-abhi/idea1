@@ -22,7 +22,7 @@ struct AccountsCard: View {
                 HStack {
                     Text("Total").font(.headline)
                     Spacer()
-                    Text(MoneyMath.totalBalance(model.accounts), format: .currency(code: "EUR"))
+                    Text(MoneyMath.totalBalance(model.accounts), format: .currency(code: MoneyMath.currency))
                         .font(.headline).monospacedDigit()
                 }
                 .accessibilityElement(children: .combine)
@@ -52,7 +52,7 @@ private struct AccountRow: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(now, format: .currency(code: "EUR")).monospacedDigit().foregroundStyle(now < 0 ? .red : .primary)
+            Text(now, format: .currency(code: MoneyMath.currency)).monospacedDigit().foregroundStyle(now < 0 ? .red : .primary)
             Menu("Account", systemImage: "ellipsis.circle") { menu }
                 .labelStyle(.iconOnly).menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         }
@@ -60,7 +60,7 @@ private struct AccountRow: View {
         .onTapGesture(perform: edit)
         .contextMenu { menu }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(account.name), \(now.formatted(.currency(code: "EUR")))\(account.isDefault ? ", default" : "")")
+        .accessibilityLabel("\(account.name), \(now.formatted(.currency(code: MoneyMath.currency)))\(account.isDefault ? ", default" : "")")
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Update the balance")
     }

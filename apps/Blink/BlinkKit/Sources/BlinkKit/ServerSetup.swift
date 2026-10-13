@@ -62,10 +62,6 @@ public enum ServerSetup {
             get { defaults.string(forKey: "setup.ref") }
             nonmutating set { defaults.set(newValue, forKey: "setup.ref") }
         }
-        public var migrations: Int {
-            get { defaults.integer(forKey: "setup.migrations") }
-            nonmutating set { defaults.set(newValue, forKey: "setup.migrations") }
-        }
         public var ownerCreated: Bool {
             get { defaults.bool(forKey: "setup.owner") }
             nonmutating set { defaults.set(newValue, forKey: "setup.owner") }
@@ -104,8 +100,15 @@ public enum ServerSetup {
         public struct Health: Decodable, Sendable { public let name: String; public let status: String }
         public struct Key: Decodable, Sendable { public let type: String?; public let api_key: String?; public let name: String }
 
-        func request(_ path: String, method: String = "GET", json: Encodable? = nil) async throws -> Data {
-            var request = URLRequest(url: base.appending(path: path))
+        /// The URL for a Management API path; the query goes through URLComponents (`appending(path:)` would encode a `?`).
+        func url(_ path: String, query: [URLQueryItem] = []) -> URL {
+            var parts = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
+            if !query.isEmpty { parts.queryItems = query }
+            return parts.url!
+        }
+
+        func request(_ path: String, query: [URLQueryItem] = [], method: String = "GET", json: Encodable? = nil) async throws -> Data {
+            var request = URLRequest(url: url(path, query: query))
             request.httpMethod = method
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             if let json {
@@ -140,8 +143,7 @@ public enum ServerSetup {
         /// True once the database, sign-in and the REST API all answer; throws `Gone` when the project isn't this
         /// account's (403/404), so a stale saved project never makes setup wait forever.
         public func isReady(_ ref: String) async throws -> Bool {
-            var request = URLRequest(url: base.appending(path: "projects/\(ref)/health"))
-            request.url = URL(string: request.url!.absoluteString + "?services=db,auth,rest")
+            var request = URLRequest(url: url("projects/\(ref)/health", query: [URLQueryItem(name: "services", value: "db,auth,rest")]))
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             let (data, response) = try await session.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -153,6 +155,17 @@ public enum ServerSetup {
         public func runSQL(_ ref: String, _ query: String) async throws {
             struct Body: Encodable { let query: String }
             _ = try await request("projects/\(ref)/database/query", method: "POST", json: Body(query: query))
+        }
+
+        /// Versions already applied, from the server itself (the table the Supabase CLI uses too), so a retry after a
+        /// lost reply never runs a migration twice.
+        public func appliedMigrations(_ ref: String) async throws -> Set<String> {
+            struct Body: Encodable { let query: String }
+            struct Row: Decodable { let version: String }
+            try await runSQL(ref, Migration.ledger)
+            let data = try await request("projects/\(ref)/database/query", method: "POST",
+                                         json: Body(query: "select version from supabase_migrations.schema_migrations"))
+            return Set(try JSONDecoder().decode([Row].self, from: data).map(\.version))
         }
 
         /// Uploads one function's files (its own and the shared ones), named as the CLI names them.
@@ -172,9 +185,7 @@ public enum ServerSetup {
                 part("Content-Disposition: form-data; name=\"file\"; filename=\"\(file.path)\"\r\nContent-Type: application/typescript", file.data)
             }
             body.append(Data("--\(boundary)--\r\n".utf8))
-            var components = URLComponents(url: base.appending(path: "projects/\(ref)/functions/deploy"), resolvingAgainstBaseURL: false)!
-            components.queryItems = [URLQueryItem(name: "slug", value: slug)]
-            var request = URLRequest(url: components.url!)
+            var request = URLRequest(url: url("projects/\(ref)/functions/deploy", query: [URLQueryItem(name: "slug", value: slug)]))
             request.httpMethod = "POST"
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -190,7 +201,7 @@ public enum ServerSetup {
 
         /// The publishable key (for the apps) and a secret key (used once here, to create the owner's login).
         public func keys(_ ref: String) async throws -> (publishable: String, secret: String) {
-            let keys = try JSONDecoder().decode([Key].self, from: try await request("projects/\(ref)/api-keys?reveal=true"))
+            let keys = try JSONDecoder().decode([Key].self, from: try await request("projects/\(ref)/api-keys", query: [URLQueryItem(name: "reveal", value: "true")]))
             guard let publishable = keys.first(where: { $0.type == "publishable" })?.api_key ?? keys.first(where: { $0.name == "anon" })?.api_key,
                   let secret = keys.first(where: { $0.type == "secret" })?.api_key ?? keys.first(where: { $0.name == "service_role" })?.api_key else {
                 throw Problem(message: "Supabase didn't return the project's keys yet. Try again in a minute.")
@@ -219,7 +230,32 @@ public enum ServerSetup {
         let text = String(data: data, encoding: .utf8) ?? ""
         // Already there (a retry after a lost reply): that's the login we wanted.
         if status == 422, text.localizedCaseInsensitiveContains("already") { return }
-        guard status < 300 else { throw Problem(message: "Couldn't create your login: \(text.prefix(160))") }
+        guard (200..<300).contains(status) else { throw Problem(message: "Couldn't create your login: \(text.prefix(160))") }
+    }
+
+    /// One bundled migration file, applied in a transaction together with its row in the migrations ledger: either both
+    /// land or neither, so "Try Again" can always tell what is done.
+    public struct Migration: Sendable, Equatable {
+        public let version: String
+        public let name: String
+
+        static let ledger = "create schema if not exists supabase_migrations; create table if not exists supabase_migrations.schema_migrations (version text primary key, statements text[], name text);"
+
+        /// `20261012130000_money_accounts.sql` → version `20261012130000`, name `money_accounts`; nil for anything else.
+        public init?(fileName: String) {
+            guard fileName.hasSuffix(".sql") else { return nil }
+            let stem = fileName.dropLast(4)
+            let version = String(stem.prefix(while: \.isNumber))
+            let name = stem.dropFirst(version.count).drop(while: { $0 == "_" })
+            guard version.count >= 8, !name.isEmpty, name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { return nil }
+            self.version = version
+            self.name = String(name)
+        }
+
+        /// The migration plus its ledger row in one transaction (version and name are digits and letters only).
+        public func wrapped(_ sql: String) -> String {
+            "begin;\n\(sql)\n;\ninsert into supabase_migrations.schema_migrations (version, name) values ('\(version)', '\(name)') on conflict do nothing;\ncommit;"
+        }
     }
 
     /// Which bundled functions go to an owner's server, and whether each checks the login itself (mail does).

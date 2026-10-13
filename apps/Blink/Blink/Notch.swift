@@ -224,12 +224,13 @@ final class NotchController {
         }
 
         // Background work finished (ideas, drafts, week plan, page read): say so in the notch, so the owner needn't
-        // open the window. If the notch is open right then, the result waits and peeks as soon as it closes.
+        // open the window. If the notch is open right then, results wait and peek one by one as soon as it closes.
         Task { [weak self] in
             guard let app = self?.app else { return }
             for await notice in Observations({ app.notice }) {
                 guard let self, let notice else { continue }
-                if self.model.level == .open { self.pendingNotice = notice } else { await self.announce(notice) }
+                self.notices.append(notice)
+                self.showNotices()
             }
         }
 
@@ -477,8 +478,21 @@ final class NotchController {
         return true
     }
 
-    /// A notice that arrived while the notch was open, shown when it closes.
-    private var pendingNotice: AppModel.Notice?
+    /// Finished jobs not yet shown (they arrived while the notch was open, or during another notice's peek).
+    private var notices: [AppModel.Notice] = []
+    private var showingNotices = false
+
+    /// Peeks each waiting notice in turn; stops while the owner has the notch open (close() picks up the rest).
+    private func showNotices() {
+        guard !showingNotices else { return }
+        showingNotices = true
+        Task { [weak self] in
+            while let self, self.model.level != .open, !self.notices.isEmpty {
+                await self.announce(self.notices.removeFirst())
+            }
+            self?.showingNotices = false
+        }
+    }
 
     /// Peeks with a finished job ("💡 6 post ideas ready"), Done eyes (or Concerned when it failed), for 6 seconds.
     private func announce(_ notice: AppModel.Notice) async {
@@ -496,11 +510,10 @@ final class NotchController {
         autoClose?.cancel()
         set(.rest)
         // Finished while the notch was open: say it now, once it has closed.
-        if let notice = pendingNotice {
-            pendingNotice = nil
+        if !notices.isEmpty {
             Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(400))
-                await self?.announce(notice)
+                self?.showNotices()
             }
         }
         model.chatting = false

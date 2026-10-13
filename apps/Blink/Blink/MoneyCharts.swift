@@ -5,7 +5,7 @@ import Charts
 import SwiftUI
 
 /// Euros for chart axes: whole numbers, no cents.
-private let axisEuros = FloatingPointFormatStyle<Double>.Currency(code: "EUR").precision(.fractionLength(0))
+private let axisEuros = FloatingPointFormatStyle<Double>.Currency(code: MoneyMath.currency).precision(.fractionLength(0))
 private func double(_ d: Decimal) -> Double { NSDecimalNumber(decimal: d).doubleValue }
 
 /// One headline number on the Money dashboard.
@@ -17,7 +17,7 @@ struct MetricTile: View {
     var valueColor: Color = .primary
 
     init(title: String, value: Decimal, detail: String? = nil, detailColor: Color = .secondary, valueColor: Color = .primary) {
-        self.init(title: title, text: value.formatted(.currency(code: "EUR")), detail: detail, detailColor: detailColor, valueColor: valueColor)
+        self.init(title: title, text: value.formatted(.currency(code: MoneyMath.currency)), detail: detail, detailColor: detailColor, valueColor: valueColor)
     }
 
     init(title: String, text: String, detail: String? = nil, detailColor: Color = .secondary, valueColor: Color = .primary) {
@@ -123,7 +123,7 @@ struct CategoryRing: View {
                     let rect = geo[frame]
                     VStack(spacing: 0) {
                         Text("Total").font(.caption2).foregroundStyle(.secondary)
-                        Text(sum, format: .currency(code: "EUR").precision(.fractionLength(0))).font(.headline).monospacedDigit()
+                        Text(sum, format: .currency(code: MoneyMath.currency).precision(.fractionLength(0))).font(.headline).monospacedDigit()
                     }
                     .position(x: rect.midX, y: rect.midY)
                 }

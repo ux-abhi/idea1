@@ -77,7 +77,7 @@ struct TodayView: View {
                                      detailColor: mail == 0 ? .green : .red))
             tile("content", MetricTile(title: "Posts ready", text: "\(ready)", detail: ready == 0 ? "None waiting" : "To post"))
             tile("money", MetricTile(title: "Spent this month", value: month.total,
-                                     detail: money.map { "\($0.formatted(.currency(code: "EUR"))) left at month end" } ?? "Add an account",
+                                     detail: money.map { "\($0.formatted(.currency(code: MoneyMath.currency))) left at month end" } ?? "Add an account",
                                      detailColor: (money ?? 1) < 0 ? .red : .secondary))
         }
     }
@@ -112,7 +112,7 @@ struct TodayView: View {
         return HStack(alignment: .top, spacing: 16) {
             WeekBars(title: "Habits this week", days: habitDone, tint: .green)
             WeekBars(title: "Spent this week", days: spent, tint: .accentColor,
-                     format: { $0.formatted(.currency(code: "EUR").precision(.fractionLength(0))) })
+                     format: { $0.formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0))) })
         }
     }
 

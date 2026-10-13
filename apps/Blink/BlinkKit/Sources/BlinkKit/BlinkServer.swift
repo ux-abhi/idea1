@@ -527,15 +527,16 @@ public final class BlinkServer: Sendable {
 
     /// The owner checked their bank: this is the balance now (spends from here on come off it).
     public func setBalance(_ balance: Decimal, of account: MoneyAccount) async throws -> MoneyAccount {
-        struct Row: Encodable { let balance: Decimal, balance_at: String }
-        return try await client.from("money_account").update(Row(balance: balance, balance_at: Date.now.ISO8601Format()))
+        // balance_at is set by the server (its clock, like the spends'), whenever the balance is written.
+        struct Row: Encodable { let balance: Decimal }
+        return try await client.from("money_account").update(Row(balance: balance))
             .eq("id", value: account.id).select("id, name, kind, balance, balance_at, is_default").single().execute().value
     }
 
     /// Spends with no account named come off this one (only one default at a time).
     public func makeDefault(_ account: MoneyAccount) async throws {
-        try await client.from("money_account").update(["is_default": false]).eq("is_default", value: true).execute()
-        try await client.from("money_account").update(["is_default": true]).eq("id", value: account.id).execute()
+        // One transaction on the server, so a dropped connection can't leave no default.
+        try await client.rpc("set_default_account", params: ["account": account.id]).execute()
     }
 
     /// Removes an account; its spends stay, without an account.

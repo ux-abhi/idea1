@@ -636,7 +636,7 @@ extension Tokens {
 }
 
 @Test func replyNeedsOnePlainRecipientAndScheduledSendsDecode() throws {
-    var draft = MailDraft(emailID: "e1", account: "icloud", from: "hello@pexilim.com", to: "w@tv.com", subject: "Re: Hi",
+    var draft = MailDraft(emailID: "e1", account: "icloud", from: "hello@example.com", to: "w@tv.com", subject: "Re: Hi",
                           body: "Thanks", inReplyTo: "<a@tv.com>", messageID: "<b@pexilim.com>")
     #expect(draft.hasValidRecipient)
     for bad in ["w@tv.com, x@y.com", "Wolfram <w@tv.com>", "w@tv", ""] {
@@ -685,7 +685,9 @@ extension Tokens {
 
 @Test func typedAmountsParseWithCommaOrDot() {
     #expect(MoneyMath.parseAmount("8,50") == Decimal(string: "8.5"))
-    #expect(MoneyMath.parseAmount("€ 12.345") == Decimal(string: "12.35"))
+    #expect(MoneyMath.parseAmount("€ 12.345") == nil) // ambiguous: never 12.35 or 12,345
+    #expect(MoneyMath.parseAmount("1.234,56") == Decimal(string: "1234.56") && MoneyMath.parseAmount("1250.40") == Decimal(string: "1250.4"))
+    #expect(MoneyMath.parseAmount("-5") == nil)
     #expect(MoneyMath.parseAmount("1.2.3") == nil)
     #expect(MoneyMath.parseAmount("0") == nil && MoneyMath.parseAmount("") == nil)
 }
@@ -748,12 +750,15 @@ extension Tokens {
     let fresh = SetupStep.all(keys: ["groq": "missing", "anthropic": "missing"], calendarGranted: false, voicePage: "",
                               mailConnected: false, hasAccount: false, hasHabit: false)
     #expect(fresh.filter(\.done).isEmpty && fresh.first?.id == .aiKey)
-    let ready = SetupStep.all(keys: ["groq": "ok"], calendarGranted: true, voicePage: "@uxabhi_ on Instagram",
+    let ready = SetupStep.all(keys: ["groq": "ok"], calendarGranted: true, voicePage: "@yourname on Instagram",
                               mailConnected: true, hasAccount: true, hasHabit: true)
     #expect(ready.allSatisfy { $0.done })
     // A provider that's briefly unreachable still has a key.
     #expect(SetupStep.all(keys: ["groq": "unreachable", "anthropic": "missing"], calendarGranted: true, voicePage: "",
                           mailConnected: true, hasAccount: true, hasHabit: true).first { $0.id == .aiKey }?.done == true)
+    // A key the provider refused doesn't count.
+    #expect(SetupStep.all(keys: ["groq": "rejected", "anthropic": "missing"], calendarGranted: true, voicePage: "",
+                          mailConnected: true, hasAccount: true, hasHabit: true).first { $0.id == .aiKey }?.done == false)
     // While the key check hasn't answered, don't nag about keys.
     #expect(SetupStep.all(keys: nil, calendarGranted: true, voicePage: "", mailConnected: true, hasAccount: true, hasHabit: true)
         .first { $0.id == .aiKey }?.done == true)
@@ -763,11 +768,10 @@ extension Tokens {
     let defaults = UserDefaults(suiteName: "blink.tests.setup.\(UUID().uuidString)")!
     let progress = ServerSetup.Progress(defaults: defaults)
     progress.ref = "abc"
-    progress.migrations = 7
     progress.markDone("mailSchedule")
-    #expect(ServerSetup.Progress(defaults: defaults).migrations == 7 && progress.done("mailSchedule") && !progress.done("cleanupSchedule"))
+    #expect(ServerSetup.Progress(defaults: defaults).ref == "abc" && progress.done("mailSchedule") && !progress.done("cleanupSchedule"))
     progress.reset() // a stale project: start over
-    #expect(progress.ref == nil && progress.migrations == 0 && !progress.done("mailSchedule") && !progress.ownerCreated)
+    #expect(progress.ref == nil && !progress.done("mailSchedule") && !progress.ownerCreated)
 }
 
 @Test func serverSetupBasics() {
@@ -779,4 +783,18 @@ extension Tokens {
     #expect(ServerSetup.region(for: "America/New_York") == "us-east-1")
     let fns = ServerSetup.installable(["chat", "_shared", "signin", "mail", "money", "mail-probe"])
     #expect(fns.map(\.slug) == ["chat", "mail", "money"] && fns.first { $0.slug == "mail" }?.verifyJWT == false)
+    // Queries stay queries (appending a "?" to the path would encode it, and Supabase would answer 404).
+    let api = ServerSetup.Client(token: "t")
+    #expect(api.url("projects/abc/api-keys", query: [URLQueryItem(name: "reveal", value: "true")]).absoluteString
+            == "https://api.supabase.com/v1/projects/abc/api-keys?reveal=true")
+    #expect(api.url("projects/abc/health", query: [URLQueryItem(name: "services", value: "db,auth,rest")]).absoluteString
+            == "https://api.supabase.com/v1/projects/abc/health?services=db,auth,rest")
+}
+
+@Test func migrationsApplyWithTheirLedgerRow() {
+    let m = ServerSetup.Migration(fileName: "20261012130000_money_accounts.sql")
+    #expect(m?.version == "20261012130000" && m?.name == "money_accounts")
+    #expect(ServerSetup.Migration(fileName: "notes.txt") == nil && ServerSetup.Migration(fileName: "x'; drop table y;--.sql") == nil)
+    let sql = m!.wrapped("create table t ();")
+    #expect(sql.hasPrefix("begin;") && sql.hasSuffix("commit;") && sql.contains("values ('20261012130000', 'money_accounts')"))
 }

@@ -315,7 +315,7 @@ private struct NewPostSheet: View {
             }
             if let problem = model.contentProblem { Text(problem).font(.callout).foregroundStyle(.orange) }
             else if !model.voice.isSetUp {
-                Button("Tell Blink about your page (e.g. @uxabhi, who it's for, your topics) so posts aren't generic…", action: editVoice)
+                Button("Tell Blink about your page (e.g. @yourname, who it's for, your topics) so posts aren't generic…", action: editVoice)
                     .buttonStyle(.link)
             }
             HStack {
@@ -485,7 +485,7 @@ private struct QuestionsBox: View {
             Label("Blink needs a few facts to make this stronger", systemImage: "questionmark.bubble")
                 .font(.callout.weight(.semibold))
             ForEach(questions, id: \.self) { Text("• \($0)").font(.callout) }
-            TextField("Your answers, e.g. \"Germanly had 140 users; I paused features in June\"", text: $answers, axis: .vertical)
+            TextField("Your answers, e.g. \"my app had 140 users; I paused features in June\"", text: $answers, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(2...5)
             HStack {
@@ -530,10 +530,10 @@ private struct PieceMedia: View {
     @Environment(AppModel.self) private var model
     let piece: ContentPiece
     let handle: String
+    /// Decoded once per draft and new image, off the main thread, not on every keystroke in the draft.
+    @State private var image: NSImage?
 
     var body: some View {
-        let _ = model.mediaVersion // reload after a new image
-        let image = PostMedia.exists(for: piece.id) ? NSImage(contentsOf: PostMedia.url(for: piece.id)) : nil
         let carousel = piece.format == "carousel" && !piece.parts.isEmpty
         let asked = model.designed.contains(piece.id)
         VStack(alignment: .leading, spacing: 8) {
@@ -580,6 +580,10 @@ private struct PieceMedia: View {
                     }
                 }
                 .controlSize(.small)
+        }
+        .task(id: "\(piece.id)-\(model.mediaVersion)") { // reload after a new image
+            let url = PostMedia.url(for: piece.id)
+            image = await Task.detached { FileManager.default.fileExists(atPath: url.path) ? NSImage(contentsOf: url) : nil }.value
         }
     }
 
@@ -717,7 +721,7 @@ private struct VoiceSheet: View {
                 Text("Your story, projects, numbers, content pillars and rules, e.g. a Markdown file. Drafts, ideas and your week plan use only its facts, and its writing rules come first. Kept on your server.")
             }
             Section {
-                TextField("Your page", text: $page, prompt: Text("e.g. @uxabhi on Instagram: UX tips and design breakdowns"))
+                TextField("Your page", text: $page, prompt: Text("e.g. @yourname on Instagram: UX tips and design breakdowns"))
                 TextField("Who it's for", text: $audience, prompt: Text("e.g. junior designers and devs who want better UX"), axis: .vertical)
                     .lineLimit(1...3)
                 TextField("Your topics", text: $topics, prompt: Text("e.g. UX mistakes, app teardowns, design tools, building Blink"), axis: .vertical)

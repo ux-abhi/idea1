@@ -77,6 +77,10 @@ final class AppModel {
     private(set) var signInNotice: String?
 
     private(set) var refreshing = false
+    /// Goes up at every sign-out, so a sync that started for the previous account can tell its results are stale.
+    private var session = 0
+    /// A stale sync finished while the current one ran: run once more when it's done.
+    private var resyncAfter = false
 
     /// Ask-First cards waiting for the user (§6).
     private(set) var pending: [BlinkAction] = []
@@ -193,6 +197,9 @@ final class AppModel {
         screen = .connect
     }
 
+    /// Shown on the Sign in screen (e.g. when one-click setup finished but its sign-in didn't).
+    func noteSignIn(_ message: String) { signInNotice = message }
+
     /// Returns a sentence to show when sign-in fails.
     func signIn(email: String, password: String) async -> String? {
         guard let server else { return nil }
@@ -214,8 +221,11 @@ final class AppModel {
     func refresh() async {
         // One check-in at a time, or two could each register this device.
         guard let server, !refreshing else { return }
+        let mine = session
         refreshing = true
-        defer { refreshing = false }
+        defer {
+            if session == mine { refreshing = false }
+        }
         status = .checking
         do {
             let at = try await server.checkIn(platform: Self.platform, deviceName: Self.deviceName,
@@ -239,13 +249,29 @@ final class AppModel {
         } catch {
             switch ServerProblem(error) {
             case .signedOut:
-                await endSession(notice: "You've been signed out. Sign in again to continue.")
+                // Only for the account this sync was for; a newer sign-in isn't affected.
+                if session == mine { await endSession(notice: "You've been signed out. Sign in again to continue.") }
             case .unreachable:
                 status = .unreachable
             case .wrongLogin, .other:
                 // shortcut: anything else is shown as unreachable; split out when sync adds real failure modes.
                 status = .unreachable
             }
+        }
+        // Signed out (and maybe into another account) while this ran: drop what it loaded and sync the current one.
+        // Only server-loaded lists go; anything typed since (notes, drafts, chat) stays.
+        if session != mine {
+            if email == nil {
+                clearAccountData()
+            } else {
+                clearLoadedData()
+                // The new account's own sync may be running and have loaded some lists before this one wrote over
+                // them: sync again once it's done.
+                if refreshing { resyncAfter = true } else { Task { await refresh() } }
+            }
+        } else if resyncAfter {
+            resyncAfter = false
+            Task { await refresh() } // runs after this one has finished (refreshing is false by then)
         }
     }
 
@@ -262,33 +288,37 @@ final class AppModel {
         mailWatch?.cancel(); mailWatch = nil
         sendCountdown?.cancel(); sendCountdown = nil
         clearAccountData()
-        // A sync already in flight can still land its results after this; clear again once it has finished.
-        if refreshing {
-            Task { [weak self] in
-                while self?.refreshing == true { try? await Task.sleep(for: .milliseconds(100)) }
-                if self?.email == nil { self?.clearAccountData() }
-            }
-        }
+        // A sync still in flight sees the new session when it ends and throws its results away (see refresh).
+        session += 1
+        refreshing = false
+        resyncAfter = false
         signInNotice = notice
         screen = .signIn
     }
 
+    /// Everything of this account: what came from the server and what was typed here.
     private func clearAccountData() {
-        pending = []; activity = []; actionProblem = nil; undoChip = nil
-        items = []; unsaved = []; onServer = []; saveProblem = nil; focusNoteID = nil; openNoteID = nil
-        habits = []; habitAnswers = [:]
+        clearLoadedData()
+        unsaved = []; focusNoteID = nil; openNoteID = nil; contentUnsaved = []; reviewing = nil
         chat = []; UserDefaults.standard.removeObject(forKey: "chat")
+    }
+
+    /// Only what syncs load from the server (lists, statuses), never unsaved typing.
+    private func clearLoadedData() {
+        pending = []; activity = []; actionProblem = nil; undoChip = nil
+        items = []; onServer = []; saveProblem = nil
+        habits = []; habitAnswers = [:]
         agenda = .empty; allReminders = []; quickReplies = []
-        content = []; voice = VoiceProfile(); contentProblem = nil; contentUnsaved = []
+        content = []; voice = VoiceProfile(); contentProblem = nil
         ideas = []; questions = [:]; pageRead = nil; weekPlan = []; designed = []
         spends = []; budgets = []; accounts = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
-        emails = []; mailStates = []; mailProblem = nil; reviewing = nil; outbox = []; sendingNow = nil
+        emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil
         modelPrefs = [:]; modelProblem = nil; dailyCap = nil; spaces = []; openPage = nil; keyStatus = nil
     }
 
     // MARK: Ask-First
 
-    /// shortcut: fetched on check-in and when the notch opens; subscribe with Realtime when server-side proposers land (Phase 3).
+    /// shortcut: fetched on check-in and when the notch opens; subscribe with Realtime when the server proposes actions on its own (scheduled jobs, autoposting).
     func loadActions() async {
         guard let server, email != nil, let actions = try? await server.pendingActions() else { return }
         pending = actions
@@ -388,7 +418,7 @@ final class AppModel {
                 throw error
             }
         case "mail.compose":
-            // From chat ("send the reply to Paresh on the 15th"): write or reuse the draft, then show it for review.
+            // From chat ("send the reply to Sam on the 15th"): write or reuse the draft, then show it for review.
             if !emails.contains(where: { $0.id == action.payload.emailID }) { await loadMail() }
             guard let message = emails.first(where: { $0.id == action.payload.emailID }) else {
                 try await server.setStatus("failed", for: action, result: ["error": "That email isn't in Blink anymore."])
@@ -1086,7 +1116,7 @@ final class AppModel {
             let drafts = await sortSpends(text)
             if !drafts.isEmpty, let saved = await addSpends(drafts) {
                 let total = saved.reduce(Decimal.zero) { $0 + $1.amount }
-                offerUndo("Added \(saved.count == 1 ? saved[0].note : "\(saved.count) spends") · \(total.formatted(.currency(code: "EUR")))") { [weak self] in
+                offerUndo("Added \(saved.count == 1 ? saved[0].note : "\(saved.count) spends") · \(total.formatted(.currency(code: MoneyMath.currency)))") { [weak self] in
                     for spend in saved { await self?.deleteSpend(spend) }
                 }
             } else if let problem = moneyProblem {

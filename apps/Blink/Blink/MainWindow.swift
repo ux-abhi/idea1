@@ -159,7 +159,9 @@ struct MainWindow: View {
         }
         .onChange(of: page) { if let page { savedPage = page.key } }
         .task {
-            await model.refresh()
+            // Onboarding's last step has just synced in this launch: don't fetch everything twice in a row.
+            // (lastSync survives a relaunch, so it alone can't tell; status is .checking until this launch syncs.)
+            if model.status != .connected || model.lastSync.map({ Date.now.timeIntervalSince($0) > 30 }) ?? true { await model.refresh() }
             await model.loadActivity()
         }
     }

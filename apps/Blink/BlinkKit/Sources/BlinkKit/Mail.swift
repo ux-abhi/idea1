@@ -28,12 +28,12 @@ public struct EmailMessage: Codable, Identifiable, Equatable, Sendable {
 
     public var sender: String { fromName.isEmpty ? fromAddr : fromName }
 
-    /// "Gmail", "iCloud", "Uni Siegen".
+    /// "Gmail", "iCloud", "University".
     public static func accountName(_ account: String) -> String {
         switch account {
         case "gmail": "Gmail"
         case "icloud": "iCloud"
-        case "uni": "Uni Siegen"
+        case "uni": "University"
         default: account
         }
     }

@@ -46,11 +46,14 @@ final class ServerInstaller {
     /// The browser came back with blink://signin?code=…&state=…: trade the code for a Supabase token (through the helper).
     func token(from callback: URL) async throws -> String {
         let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        if let error = items.first(where: { $0.name == "error" })?.value {
-            throw ServerSetup.Problem(message: error == "access_denied" ? "You didn't allow Blink in Supabase. Try again when you're ready." : "Supabase sign-in failed: \(error)")
+        // Only answers to this attempt count, errors included, and only fixed words are shown (never text from the link).
+        guard items.first(where: { $0.name == "state" })?.value == pkce.state else {
+            throw ServerSetup.Problem(message: "That sign-in didn't come from this Blink. Start again.")
         }
-        guard let code = items.first(where: { $0.name == "code" })?.value,
-              items.first(where: { $0.name == "state" })?.value == pkce.state, let helper = Self.helper else {
+        if let error = items.first(where: { $0.name == "error" })?.value {
+            throw ServerSetup.Problem(message: error == "access_denied" ? "You didn't allow Blink in Supabase. Try again when you're ready." : "Supabase sign-in didn't finish. Try again.")
+        }
+        guard let code = items.first(where: { $0.name == "code" })?.value, let helper = Self.helper else {
             throw ServerSetup.Problem(message: "That sign-in didn't come from this Blink. Start again.")
         }
         var request = URLRequest(url: helper.appending(path: "token"))
@@ -116,14 +119,24 @@ final class ServerInstaller {
             waited += 5
         }
 
-        // 3. The database, migration by migration, in order; each one only once.
+        // 3. The database, migration by migration, in order; each one only once (the server's own ledger says which).
         step = .database
         let bundle = try Self.bundledServer()
-        let migrations = try FileManager.default.contentsOfDirectory(at: bundle.appending(path: "migrations"), includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "sql" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-        for file in migrations.dropFirst(progress.migrations) {
-            try await api.runSQL(ref, String(contentsOf: file, encoding: .utf8))
-            progress.migrations += 1
+        // shortcut: the ledger is the only record; an install half-done by the old counter-based build would rerun
+        // migration 1 and stop. Only the owner ran that build, and finished; seed the ledger if another case appears.
+        let files = try FileManager.default.contentsOfDirectory(at: bundle.appending(path: "migrations"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "sql" }
+            .map { file in
+                // A name Blink can't read must stop setup, never be skipped: later migrations build on it.
+                guard let migration = ServerSetup.Migration(fileName: file.lastPathComponent) else {
+                    throw ServerSetup.Problem(message: "This copy of Blink has a server file it can't read (\(file.lastPathComponent)). Update Blink.")
+                }
+                return (file, migration)
+            }
+            .sorted { $0.1.version < $1.1.version }
+        let applied = try await api.appliedMigrations(ref)
+        for (file, migration) in files where !applied.contains(migration.version) {
+            try await api.runSQL(ref, migration.wrapped(try String(contentsOf: file, encoding: .utf8)))
         }
 
         // 4. The server functions (each with the shared code they import). Deploying again just replaces them.
@@ -157,10 +170,16 @@ final class ServerInstaller {
         let groq = groqKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !groq.isEmpty { try await api.setSecrets(ref, ["GROQ_API_KEY": groq]) }
 
-        // 6. Into Blink: the same as connecting to a server by hand, then signing in.
+        // The server is complete: nothing to resume from here on.
+        progress.reset()
+
+        // 6. Into Blink: the same as connecting to a server by hand, then signing in. Connecting already shows the
+        // Sign in screen (this view is gone), so a failed sign-in is told there.
         step = .connect
         try await model.connect(url: projectURL.absoluteString, key: keys.publishable)
-        if let failure = await model.signIn(email: email, password: password) { throw ServerSetup.Problem(message: failure) }
+        if let failure = await model.signIn(email: email, password: password) {
+            model.noteSignIn("Your server is ready. Sign in to finish: \(failure)")
+        }
     }
 
     /// The server package inside the app: backend/supabase's migrations, functions and setup, bundled at build time.

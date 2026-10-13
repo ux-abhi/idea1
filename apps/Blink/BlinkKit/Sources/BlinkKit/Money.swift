@@ -134,6 +134,10 @@ public struct Budget: Codable, Equatable, Sendable {
 }
 
 public enum MoneyMath {
+    /// Every amount on screen is shown in this currency.
+    // shortcut: one currency for the owner; read money_account.currency per account when a non-EUR owner appears.
+    public static let currency = "EUR"
+
     /// "2026-10" for a "2026-10-12" day key.
     public static func month(of day: String) -> String { String(day.prefix(7)) }
 
@@ -235,13 +239,11 @@ public enum MoneyMath {
         return Int(NSDecimalNumber(decimal: total / average).doubleValue.rounded(.down))
     }
 
-    /// A typed amount ("8.50", "8,50", "€ 12") in cents precision; nil if it isn't a positive amount.
+    /// A typed spend or limit ("8.50", "8,50", "€ 12", "1.234,56"): the same rules as a balance, but positive and
+    /// under a million; nil otherwise ("1.250" is ambiguous and refused, never read as 1.25).
     public static func parseAmount(_ text: String) -> Decimal? {
-        let cleaned = text.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
-        guard cleaned.filter({ $0 == "." }).count <= 1, let value = Decimal(string: cleaned), value > 0, value < 1_000_000 else { return nil }
-        var input = value, rounded = Decimal()
-        NSDecimalRound(&rounded, &input, 2, .plain)
-        return rounded
+        guard let value = parseBalance(text), value > 0, value < 1_000_000 else { return nil }
+        return value
     }
 
     /// A typed account balance: may be zero or negative (a card you owe on); "1.234,56", "1250.40" and "-50" all work.

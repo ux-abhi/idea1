@@ -101,7 +101,7 @@ public enum ContentLint {
 
 /// Who the owner is online and how they write (`voice_profile`): drafts and ideas are made to fit it.
 public struct VoiceProfile: Codable, Equatable, Sendable {
-    /// "@uxabhi on Instagram: UX tips for junior designers"
+    /// "@yourname on Instagram: UX tips for junior designers"
     public var page: String
     public var audience: String
     public var topics: String

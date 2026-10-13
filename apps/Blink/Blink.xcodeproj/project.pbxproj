@@ -103,6 +103,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = B1A00000000000000000000A /* Build configuration list for PBXNativeTarget "Blink" */;
 			buildPhases = (
+				B1A000000000000000000050 /* Check Server Package */,
 				B1A00000000000000000000B /* Sources */,
 				B1A000000000000000000005 /* Frameworks */,
 				B1A00000000000000000000C /* Resources */,
@@ -192,6 +193,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		B1A000000000000000000050 /* Check Server Package */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Check Server Package";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The server package is bundled whole; a dotfile there (e.g. a local functions/.env) could carry secrets into the app.\nfor dir in migrations functions setup; do\n  bad=$(find \"$SRCROOT/../../backend/supabase/$dir\" -name \".*\" -print -quit 2>/dev/null)\n  if [ -n \"$bad\" ]; then echo \"error: $bad would be copied into Blink.app. Move it out of backend/supabase.\"; exit 1; fi\ndone\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		B1A00000000000000000000B /* Sources */ = {

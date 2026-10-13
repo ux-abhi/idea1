@@ -171,8 +171,7 @@ private struct ServerStep: View {
                     Button("Create a new server for me instead") { manual = false }.buttonStyle(.borderless)
                 }
             } else {
-                CreateServer()
-                Button("I already have a server") { manual = true }.buttonStyle(.borderless)
+                CreateServer { manual = true }
             }
         }
     }
@@ -186,6 +185,9 @@ private struct CreateServer: View {
     @State private var email = ""
     @State private var password = ""
     @State private var groq = ""
+    /// The browser sign-in is open; a second click would start a new attempt and void this one.
+    @State private var signingIn = false
+    let useExisting: () -> Void
 
     private var ready: Bool { email.contains("@") && email.contains(".") && password.count >= 8 }
 
@@ -232,15 +234,19 @@ private struct CreateServer: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
-                .disabled(!ready)
+                .disabled(!ready || signingIn)
                 Text("Opens supabase.com to sign in or sign up for free. Blink then creates your server; we never see your Supabase account.")
                     .font(.caption).foregroundStyle(.secondary)
+                // Hidden while setup runs: switching away mid-install would hide its progress, not stop it.
+                if !signingIn { Button("I already have a server", action: useExisting).buttonStyle(.borderless) }
             }
         }
     }
 
     private func start() async {
         guard let url = installer.startURL() else { return }
+        signingIn = true
+        defer { signingIn = false }
         do {
             let callback = try await webAuth.authenticate(using: url, callbackURLScheme: "blink", preferredBrowserSession: nil)
             let token = try await installer.token(from: callback)
@@ -324,7 +330,7 @@ private struct AboutStep: View {
 
     var body: some View {
         StepCard(title: "About you", subtitle: "So posts sound like you and Blink knows what you work on. You can skip this.") {
-            TextField("Instagram handle, e.g. @uxabhi_", text: $handle)
+            TextField("Instagram handle, e.g. @yourname", text: $handle)
                 .textFieldStyle(.roundedBorder)
                 .onAppear { if model.voice.page.contains("@") { handle = String(model.voice.page.split(separator: " ").first ?? "") } }
             if model.aiKeyMissing {

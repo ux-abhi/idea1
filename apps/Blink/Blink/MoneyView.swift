@@ -46,15 +46,15 @@ struct MoneyView: View {
             MetricTile(title: "Left at month end", value: left, detail: "If you keep this pace",
                        detailColor: left < 0 ? .red : .secondary, valueColor: left < 0 ? .red : .primary)
             MetricTile(title: "Lasts", text: runway.map { $0 >= 365 ? "Over a year" : "\($0) days" } ?? "—",
-                       detail: runway.map { _ in "At \(s.average.formatted(.currency(code: "EUR"))) a day" } ?? "Add spends to see",
+                       detail: runway.map { _ in "At \(s.average.formatted(.currency(code: MoneyMath.currency))) a day" } ?? "Add spends to see",
                        valueColor: (runway ?? 99) < 30 ? .orange : .primary)
         }
     }
 
     private func pageSummary(_ s: MoneyMath.Summary) -> String {
-        guard let change = s.change else { return "\(s.total.formatted(.currency(code: "EUR"))) this month" }
+        guard let change = s.change else { return "\(s.total.formatted(.currency(code: MoneyMath.currency))) this month" }
         let pct = Int((abs(change) * 100).rounded())
-        return "\(s.total.formatted(.currency(code: "EUR"))) this month · \(pct)% \(change >= 0 ? "more" : "less") than last month by today"
+        return "\(s.total.formatted(.currency(code: MoneyMath.currency))) this month · \(pct)% \(change >= 0 ? "more" : "less") than last month by today"
     }
 
     // MARK: Dashboard: headline numbers and charts
@@ -72,9 +72,9 @@ struct MoneyView: View {
         return HStack(spacing: 12) {
             MetricTile(title: "This month", value: s.total, detail: change?.0 ?? "No data last month",
                        detailColor: change?.1 ?? .secondary)
-            MetricTile(title: "Today", value: s.today, detail: "Average \(s.average.formatted(.currency(code: "EUR"))) a day")
+            MetricTile(title: "Today", value: s.today, detail: "Average \(s.average.formatted(.currency(code: MoneyMath.currency))) a day")
             MetricTile(title: "Month-end forecast", value: s.forecast,
-                       detail: limitsTotal.map { overForecast ? "Over your limits (\($0.formatted(.currency(code: "EUR"))))" : "Within your limits" }
+                       detail: limitsTotal.map { overForecast ? "Over your limits (\($0.formatted(.currency(code: MoneyMath.currency))))" : "Within your limits" }
                            ?? "At this pace", detailColor: overForecast ? .red : .secondary)
             MetricTile(title: "Last month", value: s.lastMonthTotal, detail: "In total")
         }
@@ -131,7 +131,7 @@ struct MoneyView: View {
                 Divider()
                 ForEach($drafts) { $draft in DraftRow(draft: $draft) { drafts.removeAll { $0.id == draft.id } } }
                 HStack {
-                    Text("Total \(drafts.reduce(Decimal.zero) { $0 + $1.amount }.formatted(.currency(code: "EUR")))").font(.headline)
+                    Text("Total \(drafts.reduce(Decimal.zero) { $0 + $1.amount }.formatted(.currency(code: MoneyMath.currency)))").font(.headline)
                     Spacer()
                     Button("Discard") { drafts = [] }
                     Button("Save \(drafts.count == 1 ? "Spend" : "All \(drafts.count)")") {
@@ -179,9 +179,9 @@ struct MoneyView: View {
             HStack {
                 Label(category.title, systemImage: category.symbol)
                 Spacer()
-                Text(total, format: .currency(code: "EUR")).monospacedDigit()
+                Text(total, format: .currency(code: MoneyMath.currency)).monospacedDigit()
                 if let limit {
-                    Text("of \(limit.formatted(.currency(code: "EUR")))").foregroundStyle(.secondary)
+                    Text("of \(limit.formatted(.currency(code: MoneyMath.currency)))").foregroundStyle(.secondary)
                 }
             }
             if limit != nil {
@@ -212,7 +212,7 @@ struct MoneyView: View {
                     Text(HabitDay.date(fromKey: day).map { $0.formatted(.dateTime.weekday(.wide).day().month()) } ?? day)
                         .font(.subheadline.weight(.semibold))
                     Spacer()
-                    Text(list.reduce(Decimal.zero) { $0 + $1.amount }, format: .currency(code: "EUR"))
+                    Text(list.reduce(Decimal.zero) { $0 + $1.amount }, format: .currency(code: MoneyMath.currency))
                         .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
                 }
                 ForEach(list) { SpendRow(spend: $0) }
@@ -235,7 +235,8 @@ private struct DraftRow: View {
         HStack(spacing: 8) {
             TextField("Amount", text: $amount)
                 .textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing)
-                .onAppear { amount = draft.amount.formatted(.number.precision(.fractionLength(2))) }
+                // No thousands separators: "1.250,40" would be ambiguous to read back.
+                .onAppear { amount = draft.amount.formatted(.number.grouping(.never).precision(.fractionLength(2))) }
                 .onChange(of: amount) { draft.amount = MoneyMath.parseAmount(amount) ?? 0 }
             TextField("What", text: $draft.note).textFieldStyle(.roundedBorder)
             Picker("Category", selection: $draft.category) {
@@ -267,13 +268,13 @@ private struct SpendRow: View {
             Image(systemName: spend.category.symbol).foregroundStyle(.secondary).frame(width: 18).accessibilityHidden(true)
             Text(spend.note.isEmpty ? spend.category.title : spend.note).lineLimit(1)
             Spacer()
-            Text(spend.amount, format: .currency(code: "EUR")).monospacedDigit()
+            Text(spend.amount, format: .currency(code: MoneyMath.currency)).monospacedDigit()
             Menu("Change", systemImage: "ellipsis.circle") { menu }
                 .labelStyle(.iconOnly).menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         }
         .contextMenu { menu }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(spend.note), \(spend.category.title), \(spend.amount.formatted(.currency(code: "EUR")))")
+        .accessibilityLabel("\(spend.note), \(spend.category.title), \(spend.amount.formatted(.currency(code: MoneyMath.currency)))")
     }
 
     @ViewBuilder
