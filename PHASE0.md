@@ -11,9 +11,10 @@
 | 4 Claude app connector | ⬜ Not started | No `mcp` function yet |
 | 5 Email | 🟡 Nearly done | First real send on each account; check Sent has no duplicate copy |
 | 6 iPhone | ⏸ Paused (owner, 2026-10-12) | Decision on the paid Apple Developer account |
-| 7 Money | 🟡 In progress | 20:45 "missed spends?" nudge; Apple Pay / SMS capture; 80/100% limit alerts |
+| 7 Money | 🟡 In progress | Owner sets up the iPhone automation; 80/100% limit alerts; bank SMS (rare in Germany) |
 | 8 Polish | ⬜ Not started | Weekly review, learned rules, health page |
 | Onboarding and one-click server | 🟡 Built, not proven | One real end-to-end run with the registered OAuth app |
+| Launch (free DMG + site) | 🟡 Ready to publish | Owner: helper on its own project, DNS for blink.pexilim.com, host the site (docs/LAUNCH.md) |
 
 # Phase 0: foundation
 
@@ -120,6 +121,9 @@ Owner: "a basic entry, like a budget calculator at max, with AI that sorts it pr
 - [x] Notch `/spent 8.50 lunch, 3 bus` saves at once with Undo. Blink panel on Money answers "Where is my money going?" from this month's numbers.
 - [x] Money dashboard: pace, day-by-day and category charts, month-end forecast.
 - [x] Accounts with balances (`money_account`, view `money_account_now`); a spend can come off an account; "Left at month end" and "Lasts N days" at this month's pace.
+- [x] Apple Pay capture (2026-10-13): Money › Apple Pay makes a private link for an iPhone Shortcuts "Transaction" automation; the `capture` function saves each tap (euros, category from the shop, account from the card, the same tap twice in a minute once). Live and checked end to end with a test key.
+- [x] Receipts from mail: paid receipts and card debits in non-spam mail become spends (no account, never twice with a tap: same amount within 2 days).
+- [x] Evening money nudge in the notch 45 minutes before the evening check-in (20:45 by default), with what was caught today.
 - [ ] Later in Phase 7: 20:45 "Any spends I missed today?" nudge, Apple Pay / bank SMS capture via Shortcuts, limit alerts (P1 at 80/100%), Money on iPhone.
 
 ## Phase 5 status (Mac session, 2026-10-12): started
@@ -178,3 +182,9 @@ Owner, 2026-10-12: stop the iPhone for now, pending the paid Apple Developer acc
 - [x] CI green (functions, swift, database, secrets); migration applied live; money, mail and signin redeployed; the next mail check ran OK.
 - [x] VoiceOver on the new screens: confirmed by the owner (2026-10-13).
 - [ ] Instruments 0 fps at rest (§36.7).
+
+## Launch kit (2026-10-13)
+- [x] `apps/Blink/scripts/release.sh`: free, ad-hoc signed Release DMG (sandboxed, same entitlements minus keychain-access-groups; the login keychain stands in). Test copy launched without errors.
+- [x] Site in `marketing/site` (home, install guide with Open Anyway, privacy, terms); no third-party requests.
+- [x] `docs/LAUNCH.md`: the owner's steps (helper on its own project, DNS, hosting) and what $99 adds.
+- [ ] First install of the DMG on a second Mac or user account, through the whole first run.
