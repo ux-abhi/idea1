@@ -32,7 +32,7 @@ Rule: only MIT, Apache-2.0, BSD, ISC or zlib in shipped code. GPL/AGPL projects 
 
 ## Website (marketing/site, not part of the app)
 
-Loaded from public CDNs at page load, not bundled.
+Served from the site itself (no CDN), not part of the app.
 
 | Component | Version | License | Source |
 |---|---|---|---|
