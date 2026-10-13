@@ -15,11 +15,11 @@ Open http://localhost:8765. Use a server rather than opening the file: the insta
 
 | Path | What |
 |---|---|
-| `index.html` | Home, alternating light and dark bands: hero notch, film, bento of live demos (Ask, Mail, Clipboard, ⌘K, moods, Day, Money, habits, Ask-First, Content, privacy), privacy diagram, setup, FAQ, waitlist form |
+| `index.html` | Home, alternating light and dark bands: hero notch, film, a five-tile bento of everyday demos (Ask, Mail, Clipboard, ⌘K, Touch ID), a tabbed showcase for one feature at a time (Day, Money, Habits, Content, Moods), privacy diagram, setup, FAQ, waitlist form |
 | `install.html` | Waitlist note (the download button appears by itself once `downloads/Blink.dmg` exists), first-open steps, setup, SHA-256 check |
 | `privacy.html`, `terms.html` | Plain-English policy (with the Waitlist section) and terms, "Last updated 13 October 2026" |
 | `css/site.css` | All styles. Bands set `--bg/--fg/--muted/--link` via `.light`, `.mist`, `.dark`; mood colours from `design/tokens.json` are fills only (no purple or indigo) |
-| `js/main.js` | Eyes (follow the pointer, blink, peek over tiles), hero notch scroll, demos, GSAP reveals |
+| `js/main.js` | Eyes (follow the pointer, blink, peek over the Mail tile), hero notch scroll, demos, showcase tabs (arrow keys, Home, End), GSAP reveals |
 | `js/config.js`, `js/waitlist.js` | Waitlist endpoint and form. Test: `node --test marketing/site/tests/waitlist.test.js` |
 | `js/install.js` | Shows the download button and size once `downloads/Blink.dmg` exists |
 | `assets/` | Eyes exported from the app (320×160), favicon, web film (`blink-film.mp4`, H.264 1280 wide, CRF 26) and its poster |
@@ -36,6 +36,7 @@ Open http://localhost:8765. Use a server rather than opening the file: the insta
 - Without GSAP, or with Reduce Motion on, every section shows its final state: the notch is open with the answer, the inbox is sorted, charts are drawn. The eyes don't follow or blink.
 - Reveals use opacity (not visibility), so keyboard users can Tab into demos before they've scrolled to them.
 - Demos that are real controls: mood buttons, model picker, mail rows (teach a sender), clipboard search and drag, habit tick, Touch ID approve.
+- The showcase never advances by itself: visitors read and play with each demo at their own pace. Without JS its panels show one under the other.
 
 ## Re-encode the film
 

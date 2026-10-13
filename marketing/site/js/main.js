@@ -94,7 +94,7 @@ const filterClips = () => {
     li.hidden = !hit;
     shown += hit;
   }
-  $("#clip-count").textContent = q ? `${shown} of ${clipRows.length} match “${q}”.` : `${clipRows.length} items. Try dragging one out.`;
+  $("#clip-count").textContent = q ? `${shown} of ${clipRows.length} match “${q}”.` : "";
 };
 clipInput.addEventListener("input", filterClips);
 for (const li of clipRows) {
@@ -151,6 +151,35 @@ const DAYS = [32, 18, 45, 12, 60, 28, 22, 38, 15, 52, 26, 30, 19, 41]; // the fi
 const BUDGET = 40, TOP = 64;
 $("#bars").innerHTML = DAYS.map((v) => `<span class="${v > BUDGET ? "over" : ""}" style="height:${(v / TOP) * 100}%"></span>`).join("")
   + `<div class="budget-line" style="bottom:${(BUDGET / TOP) * 100}%"><em>€${BUDGET} a day</em></div>`;
+
+/* ---------- Showcase: one feature at a time (ARIA tabs, arrow keys move and select) ---------- */
+const tabs = $$('[role="tab"]');
+const intros = {}; // panel id → its demo's entrance; each runs once, the first time the panel shows
+const select = (tab, focus) => {
+  for (const t of tabs) {
+    const on = t === tab;
+    t.setAttribute("aria-selected", String(on));
+    t.tabIndex = on ? 0 : -1;
+    $("#" + t.getAttribute("aria-controls")).hidden = !on;
+  }
+  if (focus) tab.focus();
+  tab.scrollIntoView({ block: "nearest", inline: "nearest" }); // keeps the picked pill in view on phones
+  const id = tab.getAttribute("aria-controls");
+  intros[id]?.();
+  delete intros[id];
+};
+for (const t of tabs) t.addEventListener("click", () => select(t));
+$(".tabs").addEventListener("keydown", (e) => {
+  const i = tabs.indexOf(document.activeElement);
+  const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+  const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : step ? (i + step + tabs.length) % tabs.length : -1;
+  if (i < 0 || next < 0) return;
+  e.preventDefault();
+  select(tabs[next], true);
+});
+// Without JS every panel shows, one under the other; with it they share one stage.
+$(".showcase").dataset.ready = "";
+for (const t of tabs.slice(1)) $("#" + t.getAttribute("aria-controls")).hidden = true;
 
 /* ---------- Ask-First: Touch ID demo ---------- */
 const touch = $("#touch"), touchBtn = $("#touch-btn"), touchLabel = $("#touch-label");
@@ -221,14 +250,10 @@ if (motion) {
     onEnter: (tiles) => gsap.to(tiles, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.8, stagger: 0.08, ease: "power3.out", clearProps: "transform,filter" }),
   });
 
-  // Ask: the keys press, then the answer arrives.
-  const keys = $$("#ask-mock .keys kbd"), answer = $("#ask-mock .bubble-a");
+  // Ask: the answer arrives a beat after the tile.
+  const answer = $("#ask-mock .bubble-a");
   gsap.set(answer, { autoAlpha: 0, y: 6 });
-  onEnter("#ask-mock", () => {
-    keys.forEach((k, i) => setTimeout(() => k.classList.add("down"), 250 + i * 120));
-    setTimeout(() => keys.forEach((k) => k.classList.remove("down")), 900);
-    gsap.to(answer, { autoAlpha: 1, y: 0, duration: 0.5, delay: 1.3, ease: "power3.out" });
-  });
+  onEnter("#ask-mock", () => gsap.to(answer, { autoAlpha: 1, y: 0, duration: 0.5, delay: 0.8, ease: "power3.out" }));
 
   // Mail: the noise steps back, the one that matters comes forward.
   onEnter(mail, () => setTimeout(() => mail.classList.add("sorted"), 700), "top 65%");
@@ -250,20 +275,17 @@ if (motion) {
     gsap.timeline({ delay: 0.5 }).add(typeInto(typed, "thesis", 0.09)).to(hits, { autoAlpha: 1, y: 0, duration: 0.4, stagger: 0.06, ease: "power3.out" });
   });
 
-  // Day: the blocks snap into the timeline.
-  gsap.from("#day-mock .block", { scaleX: 0, duration: 0.7, stagger: 0.08, ease: "power3.out", scrollTrigger: { trigger: "#day-mock .timeline", start: "top 80%", once: true } });
-
-  // Money: bars grow, the balance counts up.
-  gsap.from("#bars span", { scaleY: 0, duration: 0.6, stagger: 0.035, ease: "power3.out", scrollTrigger: { trigger: "#bars", start: "top 85%", once: true } });
-  const bal = $("#balance"), to = +bal.dataset.to, money = { v: 0 };
-  onEnter(bal, () => gsap.to(money, { v: to, duration: 1.1, ease: "power3.out",
-    onUpdate: () => (bal.textContent = money.v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })) }), "top 90%");
-
-  // Content: the idea cards deal out, then the notch says they're ready.
-  gsap.from("#content-mock .idea", { y: 50, autoAlpha: 0, scale: 0.94, duration: 0.8, delay: 0.2, stagger: 0.1, ease: "back.out(1.4)", clearProps: "transform",
-    scrollTrigger: { trigger: "#content-mock .ideas", start: "top 85%", once: true } });
-  gsap.from("#content-mock .mini-notch", { scaleX: 0.5, autoAlpha: 0, duration: 0.6, delay: 0.9, ease: "back.out(1.6)", transformOrigin: "50% 0%",
-    scrollTrigger: { trigger: "#content-mock .ideas", start: "top 85%", once: true } });
+  // Showcase demos play once, when their panel first shows (Day when the section scrolls in).
+  const dayIn = () => gsap.from("#day-mock .block", { scaleX: 0, duration: 0.7, delay: 0.15, stagger: 0.08, ease: "power3.out" });
+  onEnter(".showcase", () => { if (intros.day) { delete intros.day; dayIn(); } });
+  intros.day = dayIn;
+  intros.money = () => {
+    gsap.from("#bars span", { scaleY: 0, duration: 0.6, delay: 0.15, stagger: 0.035, ease: "power3.out" });
+    const bal = $("#balance"), money = { v: 0 };
+    gsap.to(money, { v: +bal.dataset.to, duration: 1.1, ease: "power3.out",
+      onUpdate: () => (bal.textContent = money.v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })) });
+  };
+  intros.content = () => gsap.from("#content-mock .idea", { y: 16, opacity: 0, duration: 0.5, delay: 0.15, stagger: 0.07, ease: "power3.out", clearProps: "transform,opacity" });
 
   // Privacy: the links draw between the boxes.
   gsap.from("#diagram .link", { scaleX: 0, scaleY: 0, duration: 0.6, stagger: 0.25, delay: 0.4, ease: "power2.out", scrollTrigger: { trigger: "#diagram", start: "top 75%", once: true } });
