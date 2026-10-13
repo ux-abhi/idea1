@@ -1,5 +1,5 @@
 // © Pexilim
-import { capProblem, claudeUsageCost, cost, pickModel } from "./models.ts";
+import { foldChunks, capProblem, claudeUsageCost, cost, pickModel } from "./models.ts";
 
 Deno.test("only listed models are ever picked", () => {
   if (pickModel({ chat: "openai/gpt-oss-120b" }, "chat").provider !== "groq") throw new Error("valid choice ignored");
@@ -36,4 +36,17 @@ Deno.test("Claude cache writes cost 1.25x and cache reads 0.1x", () => {
   const opus = pickModel(null, "chat"); // $4 in, $20 out per million
   const usd = claudeUsageCost(opus, { input_tokens: 1_000_000, cache_creation_input_tokens: 1_000_000, cache_read_input_tokens: 1_000_000, output_tokens: 1_000_000 });
   if (Math.abs(usd - (4 + 5 + 0.4 + 20)) > 1e-9) throw new Error(`wrong cost ${usd}`);
+});
+
+Deno.test("a streamed answer folds into one message, tool calls included", () => {
+  const { message, usage } = foldChunks([
+    { choices: [{ delta: { content: "Adding " } }] },
+    { choices: [{ delta: { content: "it." , tool_calls: [{ index: 0, id: "call_1", function: { name: "propose_", arguments: '{"ti' } }] } }] },
+    { choices: [{ delta: { tool_calls: [{ index: 0, function: { name: "task", arguments: 'tle":"Gym"}' } }] } }] },
+    { choices: [], usage: { prompt_tokens: 10, completion_tokens: 4 } },
+  ]);
+  if (message.content !== "Adding it.") throw new Error(String(message.content));
+  if (message.tool_calls?.[0].function.name !== "propose_task" || message.tool_calls[0].function.arguments !== '{"title":"Gym"}') throw new Error(JSON.stringify(message.tool_calls));
+  if (usage.completion_tokens !== 4) throw new Error("usage");
+  if (foldChunks([{ choices: [{ delta: { content: "Hi" } }] }]).message.tool_calls) throw new Error("no calls expected");
 });

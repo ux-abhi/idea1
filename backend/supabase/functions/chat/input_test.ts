@@ -63,3 +63,12 @@ Deno.test("a mail send proposal needs an email Blink showed, and a past time mea
   if (parseMailSend({ email_id: "e2", send_at: null }, known, now) !== null) throw new Error("unknown email accepted");
   if (parseMailSend({ email_id: "e1", send_at: "Thursday" }, known, now) !== null) throw new Error("bad date accepted");
 });
+
+Deno.test("streaming is asked for explicitly", () => {
+  const plain = parseChatRequest({ message: "hi" });
+  const streamed = parseChatRequest({ message: "hi", stream: true });
+  const odd = parseChatRequest({ message: "hi", stream: "yes" });
+  if (typeof plain === "string" || plain.stream || typeof streamed === "string" || !streamed.stream || typeof odd === "string" || odd.stream) {
+    throw new Error("stream flag");
+  }
+});

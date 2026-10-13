@@ -7,7 +7,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.4";
 import { Imap, quote } from "./imap.ts";
-import { buildDraft, uidWindow, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle } from "./message.ts";
+import { buildDraft, uidWindow, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle, splitResort } from "./message.ts";
 import { sendMail } from "./smtp.ts";
 import { type Mailer, sendDue, withTimeout } from "./outbox.ts";
 import { capProblem, compatible, cost, keepsSchema, lastDay, MODELS, type Model, pickModel } from "../_shared/models.ts";
@@ -129,6 +129,9 @@ async function generate(model: Model, system: string, user: string, schema: Reco
   return { text: message.content ?? "", inputTokens: usage.prompt_tokens ?? 0, outputTokens: usage.completion_tokens ?? 0 };
 }
 
+/** How many unsorted mails one check sorts again, so one run stays well inside the time limit. */
+const RESORT_BATCH = 10;
+
 const fence = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c");
 
 /** Receipts and card debits in this batch become spends (source email), unless the same payment is already in Money
@@ -158,7 +161,7 @@ async function recordSpends(admin: SupabaseClient, owner: string, account: strin
 }
 
 /** New mail since the last check, triaged and stored (summaries only). Returns how many arrived and how many matter. */
-async function poll(admin: SupabaseClient, owner: string, account: Account): Promise<{ found: number; important: number }> {
+async function poll(admin: SupabaseClient, owner: string, account: Account): Promise<{ found: number; important: number; resorted?: number }> {
   const [{ data: state }, { data: ruleRows }] = await Promise.all([
     admin.from("mail_state").select("uidvalidity, last_uid").eq("owner_id", owner).eq("account", account.id).maybeSingle(),
     admin.from("mail_sender_rule").select("sender, verdict, example").eq("owner_id", owner).order("updated_at", { ascending: false }).limit(300),
@@ -172,7 +175,18 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
     const since = new Date(Date.now() - 2 * 86_400_000).toUTCString().split(" ").slice(1, 4).join("-");
     const found = await imap.uidSearch(fresh ? `SINCE ${since}` : `UID ${Number(state!.last_uid) + 1}:*`);
     const { take: uids, last: lastUid } = uidWindow(found, fresh ? null : Number(state!.last_uid), box.uidNext);
-    const fetched = await imap.fetch(uids, 1500);
+    // Mail stored unsorted on an earlier run (the AI was down): fetch it again and sort it now, a few at a time.
+    const { data: unsorted } = fresh ? { data: [] } : await admin.from("email_msg").select("uid").eq("owner_id", owner)
+      .eq("account", account.id).eq("uidvalidity", box.uidValidity).eq("sorted", false)
+      .gte("created_at", new Date(Date.now() - 3 * 86_400_000).toISOString()).order("created_at", { ascending: false }).limit(RESORT_BATCH);
+    const resort = (unsorted ?? []).map((r) => Number(r.uid)).filter((uid) => !uids.includes(uid));
+    const fetched = await imap.fetch([...resort, ...uids], 1500);
+    // Unsorted mail that's no longer in the inbox (archived, deleted) can't be sorted: stop asking for it.
+    const gone = resort.filter((uid) => !fetched.some((m) => m.uid === uid));
+    if (gone.length) {
+      await admin.from("email_msg").update({ sorted: true }).eq("owner_id", owner).eq("account", account.id)
+        .eq("uidvalidity", box.uidValidity).in("uid", gone);
+    }
     await imap.logout();
 
     const parsed = fetched.map((m) => {
@@ -200,13 +214,14 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
         await admin.from("model_usage").insert({ owner_id: owner, feature: "mail.triage", model: model.id,
           input_tokens: result.inputTokens, output_tokens: result.outputTokens, cost_usd: cost(model, result.inputTokens, result.outputTokens) });
       } catch (error) {
-        // shortcut: when the model is down the batch is stored unsorted (normal, or newsletter if List-Unsubscribe), so an
-        // important mail gets no flag; add a re-sort of unsorted rows on the next run if that's ever seen in the Inbox.
+        // The model is down: the batch is stored unsorted (normal, or newsletter if List-Unsubscribe) and sorted on a
+        // later check (resort above), for up to 3 days.
         console.error("triage", error instanceof Error ? error.message : error);
       }
     }
     const rows = parsed.map((p) => {
       const found = verdicts.find((t) => t.uid === p.uid);
+      const sorted = !!found;
       const settled = settle(found ?? { triage: p.newsletter ? "newsletter" : "normal", reason: "", needs_reply: false }, p.from.address);
       // The owner's word beats both the model and the built-in rules.
       const told = ruleVerdict(rules, p.from.address);
@@ -217,16 +232,22 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
         owner_id: owner, account: account.id, uidvalidity: box.uidValidity, uid: p.uid,
         message_id: (p.h["message-id"] ?? "").slice(0, 998), from_name: p.from.name.slice(0, 300), from_addr: p.from.address.slice(0, 320),
         to_addr: p.to.slice(0, 320), subject: p.subject, received_at: p.received,
-        triage: v.triage, reason: v.reason, summary: found?.summary ?? "", needs_reply: v.needs_reply,
+        triage: v.triage, reason: v.reason, summary: found?.summary ?? "", needs_reply: v.needs_reply, sorted,
       };
     });
-    if (rows.length) await admin.from("email_msg").upsert(rows, { onConflict: "owner_id,account,uidvalidity,uid", ignoreDuplicates: true });
+    const { fresh: newRows, sortedAgain } = splitResort(rows, resort);
+    if (newRows.length) await admin.from("email_msg").upsert(newRows, { onConflict: "owner_id,account,uidvalidity,uid", ignoreDuplicates: true });
+    // Re-sorted ones: fill in what the AI says now (only while still unsorted, so nothing the owner changed is touched).
+    for (const r of sortedAgain) {
+      await admin.from("email_msg").update({ triage: r.triage, reason: r.reason, summary: r.summary, needs_reply: r.needs_reply, sorted: true })
+        .eq("owner_id", owner).eq("account", account.id).eq("uidvalidity", box.uidValidity).eq("uid", r.uid).eq("sorted", false);
+    }
     // Only mail that isn't spam or bulk (after the owner's own rules): a fake "invoice" must not become a spend.
     const trusted = new Set(rows.filter((r) => r.triage !== "newsletter").map((r) => r.uid));
     await recordSpends(admin, owner, account.id, box.uidValidity, verdicts.filter((v) => trusted.has(v.uid)), parsed);
     await admin.from("mail_state").upsert({ owner_id: owner, account: account.id, uidvalidity: box.uidValidity, last_uid: lastUid,
       last_checked_at: new Date().toISOString(), last_error: null });
-    return { found: rows.length, important: rows.filter((r) => r.triage === "important").length };
+    return { found: newRows.length, important: rows.filter((r) => r.triage === "important").length, ...(resort.length ? { resorted: resort.length } : {}) };
   } catch (error) {
     imap.logout().catch(() => {});
     throw error;

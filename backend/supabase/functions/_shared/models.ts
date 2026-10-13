@@ -89,6 +89,70 @@ export async function compatible(provider: "groq" | "openrouter", body: Record<s
   return { message: result?.choices?.[0]?.message ?? {}, usage: result?.usage ?? {} };
 }
 
+type Message = { content?: string | null; tool_calls?: { id: string; type?: string; function: { name: string; arguments: string } }[] };
+
+/** Folds an OpenAI-compatible stream's chunks into one message (text and tool calls, which arrive in pieces by index). */
+export function foldChunks(chunks: unknown[]): { message: Message; usage: { prompt_tokens?: number; completion_tokens?: number } } {
+  let content = "";
+  const calls: { id: string; type: string; function: { name: string; arguments: string } }[] = [];
+  let usage = {};
+  for (const chunk of chunks as { choices?: { delta?: { content?: string; tool_calls?: { index: number; id?: string; function?: { name?: string; arguments?: string } }[] } }[]; usage?: object }[]) {
+    if (chunk?.usage) usage = chunk.usage;
+    const delta = chunk?.choices?.[0]?.delta;
+    if (!delta) continue;
+    if (typeof delta.content === "string") content += delta.content;
+    for (const piece of delta.tool_calls ?? []) {
+      const call = calls[piece.index] ??= { id: "", type: "function", function: { name: "", arguments: "" } };
+      if (piece.id) call.id = piece.id;
+      if (piece.function?.name) call.function.name += piece.function.name;
+      if (piece.function?.arguments) call.function.arguments += piece.function.arguments;
+    }
+  }
+  return { message: { content, ...(calls.length ? { tool_calls: calls.filter(Boolean) } : {}) }, usage };
+}
+
+/** Like `compatible`, but streamed: `onText` gets each piece of the answer as it's written. Same errors. */
+export async function compatibleStream(provider: "groq" | "openrouter", body: Record<string, unknown>, onText: (text: string) => void) {
+  const endpoint = ENDPOINTS[provider];
+  const key = Deno.env.get(endpoint.secret);
+  if (!key) throw new Error(`Add your ${endpoint.name} key (${endpoint.secret}) to this server's Edge Function secrets first.`);
+  const response = await fetch(endpoint.url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ...body, stream: true, stream_options: { include_usage: true } }),
+  });
+  if (!response.ok || !response.body) {
+    // The same sentences as the one-shot call, from its status checks.
+    if (response.status === 401) throw new Error(`The ${endpoint.name} key on this server isn't valid.`);
+    if (response.status === 402) throw new Error(`Your ${endpoint.name} credit is used up. Top it up, or pick another model in Settings.`);
+    if (response.status === 429) throw new Error(provider === "groq" ? "The free Groq limit is used up for now. Try again later or switch model in Settings." : "OpenRouter is busy right now. Try again in a moment.");
+    console.error(provider, response.status, await response.text().catch(() => ""));
+    throw new Error(`${endpoint.name} returned an error (${response.status}).`);
+  }
+  const chunks: unknown[] = [];
+  let buffer = "";
+  const decoder = new TextDecoder();
+  for await (const bytes of response.body) {
+    buffer += decoder.decode(bytes, { stream: true });
+    let end;
+    while ((end = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, end).trim();
+      buffer = buffer.slice(end + 1);
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (data === "[DONE]") continue;
+      let chunk;
+      try { chunk = JSON.parse(data); } catch { continue; } // a keep-alive or comment line
+      // Errors after the stream started come in band, with HTTP 200.
+      if (chunk?.error) throw new Error(`${endpoint.name} stopped mid-answer: ${String(chunk.error.message ?? "error").slice(0, 120)}`);
+      chunks.push(chunk);
+      const text = chunk?.choices?.[0]?.delta?.content;
+      if (typeof text === "string" && text) onText(text);
+    }
+  }
+  return foldChunks(chunks);
+}
+
 /** The daily limit for paid models (§19), Claude and OpenRouter together: profile.settings.daily_cap_usd against the
  *  last 24 hours, or the server's BLINK_DAILY_CAP_USD (default $5) when the owner hasn't set one, so there is always a
  *  limit. Free Groq models never count and are never stopped. */

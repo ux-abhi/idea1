@@ -1,5 +1,5 @@
 // © Pexilim
-import { parseSpend, buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, ruleVerdict, parseSend, settle, uidWindow } from "./message.ts";
+import { parseSpend, splitResort, buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, ruleVerdict, parseSend, settle, uidWindow } from "./message.ts";
 
 Deno.test("headers unfold and decode encoded words", () => {
   const h = parseHeaders("Subject: =?UTF-8?B?SW50ZXJ2aWV3IOKAkyBBY21l?=\r\nFrom: \"Wolfram\"\r\n <w@acme.example>\r\nTo: hello@example.com\r\n");
@@ -100,4 +100,11 @@ Deno.test("receipts become spends only when they're clear euro payments", () => 
     throw new Error("a non-spend was accepted");
   }
   if (parseSpend({ spend_amount: 3, spend_currency: "EUR", spend_category: "crypto" })?.category !== "other") throw new Error("category");
+});
+
+Deno.test("unsorted mail is sorted again on a later check, never inserted twice", () => {
+  const rows = [{ uid: 1, sorted: true }, { uid: 2, sorted: true }, { uid: 3, sorted: false }, { uid: 9, sorted: false }];
+  const { fresh, sortedAgain } = splitResort(rows, [1, 3]);
+  if (JSON.stringify(fresh.map((r) => r.uid)) !== "[2,9]") throw new Error(`fresh ${JSON.stringify(fresh)}`);
+  if (JSON.stringify(sortedAgain.map((r) => r.uid)) !== "[1]") throw new Error(`again ${JSON.stringify(sortedAgain)}`);
 });

@@ -2,11 +2,12 @@
 // Blink's chat (ARCHITECTURE §15, §19): answers from the owner's own data and proposes actions as Ask-First cards.
 // Claude never writes anything directly: every proposal becomes a pending `action` the owner approves.
 // The owner picks Claude, a free Groq model or an OpenRouter pick in Settings; either way every write is only a proposal.
-// shortcut: non-streaming and no rate limit; stream and add a per-owner limit when chat moves past one user (§24).
+// Streams the answer when the app asks (stream: true): server-sent events {t: delta|reset|done|error}; else one JSON reply.
+// shortcut: no rate limit; add a per-owner limit when chat moves past one user (§24).
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule } from "./input.ts";
-import { capProblem, claudeUsageCost, compatible, cost, lastDay, pickModel } from "../_shared/models.ts";
+import { capProblem, claudeUsageCost, compatibleStream, cost, lastDay, pickModel } from "../_shared/models.ts";
 
 // Fixed, so it caches: the date and the owner's data go in the user turn, not here.
 const SYSTEM = `You are Blink, a personal assistant that lives in the owner's MacBook notch.
@@ -254,96 +255,144 @@ Deno.serve(async (req) => {
   // Cost meter (§24): clients can't write usage rows, so this uses the service role. Recorded on every exit after a
   // model call (a later turn failing must not hide what the earlier turns cost).
   const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  try {
-    if (model.provider !== "claude") {
-      // Groq and OpenRouter: the same system prompt, data and tools, in the OpenAI-compatible shape.
-      const provider = model.provider;
-      const messages: Record<string, unknown>[] = [
-        { role: "system", content: SYSTEM },
-        ...parsed.history.map((t) => ({ role: t.role, content: t.text })),
-        { role: "user", content: userTurn },
-      ];
-      const tools = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
-      try {
-        for (let turn = 0; turn < 4; turn++) {
-          const { message, usage } = await compatible(provider, { model: model.id, messages, tools, temperature: 0.3, max_completion_tokens: 2000 });
-          calls++;
-          inputTokens += usage.prompt_tokens ?? 0;
-          outputTokens += usage.completion_tokens ?? 0;
-          usd += cost(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
-          reply = (message.content ?? "").trim() || reply;
-          if (!message.tool_calls?.length) break;
-          messages.push({ role: "assistant", content: message.content ?? "", tool_calls: message.tool_calls });
-          for (const call of message.tool_calls) {
-            let input: unknown = null;
-            try { input = JSON.parse(call.function.arguments); } catch { /* checked by propose */ }
-            const result = await propose(call.function.name, input);
-            messages.push({ role: "tool", tool_call_id: call.id, content: result.content });
-          }
-        }
-      } catch (error) {
-        return json(502, { error: error instanceof Error ? error.message : "The model couldn't answer." });
-      }
-    } else {
-      // Keys made at organisation level need the workspace named on every request.
-      const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
-      const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
-      const messages: Anthropic.Beta.BetaMessageParam[] = [
-        ...parsed.history.map((t) => ({ role: t.role, content: t.text })),
-        { role: "user", content: userTurn },
-      ];
-      try {
-        for (let turn = 0; turn < 4; turn++) {
-          const response = await client.beta.messages.create({
-            model: model.id,
-            max_tokens: 16000,
-            system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-            tools: TOOLS,
-            messages,
-            output_config: { effort: "low" }, // chat: short, latency-sensitive
-            betas: ["server-side-fallback-2026-07-01"],
-            fallbacks: "default", // a declined request re-runs on Anthropic's recommended fallback
-          });
-          calls++;
-          inputTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0) + (response.usage.cache_read_input_tokens ?? 0);
-          outputTokens += response.usage.output_tokens;
-          usd += claudeUsageCost(model, response.usage);
+  const history = parsed.history; // checked above (kept as its own name so the inner function sees the checked type)
+  /** A sentence for the app, with the status it gets as JSON. */
+  class Stop extends Error {
+    constructor(readonly status: number, message: string) { super(message); }
+  }
 
-          if (response.stop_reason === "refusal") {
-            reply = "I can't help with that one.";
-            break;
+  /** The tool loop; `say` gets each piece of text as the model writes it ("reset" when a new turn starts after a tool). */
+  async function run(say: (event: Record<string, unknown>) => void): Promise<void> {
+    try {
+      if (model.provider !== "claude") {
+        // Groq and OpenRouter: the same system prompt, data and tools, in the OpenAI-compatible shape.
+        const provider = model.provider;
+        const messages: Record<string, unknown>[] = [
+          { role: "system", content: SYSTEM },
+          ...history.map((t) => ({ role: t.role, content: t.text })),
+          { role: "user", content: userTurn },
+        ];
+        const tools = TOOLS.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+        try {
+          for (let turn = 0; turn < 4; turn++) {
+            if (turn > 0) say({ t: "reset" });
+            const { message, usage } = await compatibleStream(provider, { model: model.id, messages, tools, temperature: 0.3, max_completion_tokens: 2000 },
+              (text) => say({ t: "delta", text }));
+            calls++;
+            inputTokens += usage.prompt_tokens ?? 0;
+            outputTokens += usage.completion_tokens ?? 0;
+            usd += cost(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
+            reply = (message.content ?? "").trim() || reply;
+            if (!message.tool_calls?.length) break;
+            messages.push({ role: "assistant", content: message.content ?? "", tool_calls: message.tool_calls });
+            for (const call of message.tool_calls) {
+              let input: unknown = null;
+              try { input = JSON.parse(call.function.arguments); } catch { /* checked by propose */ }
+              const result = await propose(call.function.name, input);
+              messages.push({ role: "tool", tool_call_id: call.id, content: result.content });
+            }
           }
-          reply = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim() || reply;
-          if (response.stop_reason !== "tool_use") break;
+        } catch (error) {
+          throw new Stop(502, error instanceof Error ? error.message : "The model couldn't answer.");
+        }
+      } else {
+        // Keys made at organisation level need the workspace named on every request.
+        const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
+        const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
+        const messages: Anthropic.Beta.BetaMessageParam[] = [
+          ...history.map((t) => ({ role: t.role, content: t.text })),
+          { role: "user", content: userTurn },
+        ];
+        try {
+          for (let turn = 0; turn < 4; turn++) {
+            if (turn > 0) say({ t: "reset" });
+            const stream = client.beta.messages.stream({
+              model: model.id,
+              max_tokens: 16000,
+              system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+              tools: TOOLS,
+              messages,
+              output_config: { effort: "low" }, // chat: short, latency-sensitive
+              betas: ["server-side-fallback-2026-07-01"],
+              fallbacks: "default", // a declined request re-runs on Anthropic's recommended fallback
+            });
+            stream.on("text", (text) => say({ t: "delta", text }));
+            // A refusal mid-answer switches to the fallback model; what was written before it is dropped (reset here, and
+            // the blocks before the fallback marker are left out below).
+            stream.on("streamEvent", (event) => {
+              if (event.type === "content_block_start" && (event.content_block as { type: string }).type === "fallback") say({ t: "reset" });
+            });
+            const response = await stream.finalMessage();
+            const marker = response.content.findLastIndex((b) => (b as { type: string }).type === "fallback");
+            const content = marker < 0 ? response.content : response.content.slice(marker + 1);
+            calls++;
+            inputTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0) + (response.usage.cache_read_input_tokens ?? 0);
+            outputTokens += response.usage.output_tokens;
+            usd += claudeUsageCost(model, response.usage);
 
-          messages.push({ role: "assistant", content: response.content });
-          const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
-          for (const block of response.content) {
-            if (block.type !== "tool_use") continue;
-            const result = await propose(block.name, block.input);
-            results.push({ type: "tool_result", tool_use_id: block.id, content: result.content, ...(result.isError ? { is_error: true } : {}) });
+            if (response.stop_reason === "refusal") {
+              reply = "I can't help with that one.";
+              break;
+            }
+            reply = content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim() || reply;
+            if (response.stop_reason !== "tool_use") break;
+
+            messages.push({ role: "assistant", content });
+            const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+            for (const block of content) {
+              if (block.type !== "tool_use") continue;
+              const result = await propose(block.name, block.input);
+              results.push({ type: "tool_result", tool_use_id: block.id, content: result.content, ...(result.isError ? { is_error: true } : {}) });
+            }
+            messages.push({ role: "user", content: results });
           }
-          messages.push({ role: "user", content: results });
+        } catch (error) {
+          if (error instanceof Anthropic.AuthenticationError) throw new Stop(502, "The Anthropic API key on this server isn't valid.");
+          if (error instanceof Anthropic.RateLimitError) throw new Stop(429, "Claude is busy right now. Try again in a moment.");
+          if (error instanceof Anthropic.BadRequestError) {
+            // Anthropic's own reason; it never contains the key or the owner's data.
+            console.error("anthropic 400", error.message);
+            throw new Stop(502, `Claude rejected the request: ${error.message}`);
+          }
+          if (error instanceof Anthropic.APIError) throw new Stop(502, `Claude returned an error (${error.status}).`);
+          throw error;
         }
-      } catch (error) {
-        if (error instanceof Anthropic.AuthenticationError) return json(502, { error: "The Anthropic API key on this server isn't valid." });
-        if (error instanceof Anthropic.RateLimitError) return json(429, { error: "Claude is busy right now. Try again in a moment." });
-        if (error instanceof Anthropic.BadRequestError) {
-          // Anthropic's own reason; it never contains the key or the owner's data.
-          console.error("anthropic 400", error.message);
-          return json(502, { error: `Claude rejected the request: ${error.message}` });
-        }
-        if (error instanceof Anthropic.APIError) return json(502, { error: `Claude returned an error (${error.status}).` });
-        throw error;
       }
-    }
-  } finally {
-    if (calls > 0) {
-      await admin.from("model_usage").insert({
-        owner_id: user.id, feature: "chat", model: model.id, input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: usd,
-      });
+    } finally {
+      if (calls > 0) {
+        await admin.from("model_usage").insert({
+          owner_id: user!.id, feature: "chat", model: model.id, input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: usd,
+        });
+      }
     }
   }
 
+  if (parsed.stream) {
+    const encoder = new TextEncoder();
+    const events = new ReadableStream({
+      async start(controller) {
+        // The app may leave mid-answer (quit, Wi-Fi): keep going quietly so the turn's cost is still recorded.
+        const send = (event: Record<string, unknown>) => {
+          try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)); } catch { /* nobody listening */ }
+        };
+        try {
+          await run(send);
+          send({ t: "done", reply: reply || "Done.", proposed });
+        } catch (error) {
+          if (!(error instanceof Stop)) console.error("chat", error);
+          send({ t: "error", error: error instanceof Stop ? error.message : "Blink couldn't answer." });
+        }
+        try { controller.close(); } catch { /* already closed by the app leaving */ }
+      },
+    });
+    return new Response(events, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
+  }
+
+  try {
+    await run(() => {});
+  } catch (error) {
+    if (error instanceof Stop) return json(error.status, { error: error.message });
+    throw error;
+  }
   return json(200, { reply: reply || "Done.", proposed });
 });

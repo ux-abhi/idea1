@@ -181,6 +181,12 @@ export function settle(t: Pick<Triage, "triage" | "reason" | "needs_reply">, fro
   return NO_REPLY.test(from) ? { ...t, needs_reply: false } : t;
 }
 
+/** One check's rows, split: new mail to insert, and earlier unsorted mail that the AI has now sorted (to update).
+ *  Earlier mail the AI still couldn't sort is left for the next check. */
+export function splitResort<T extends { uid: number; sorted: boolean }>(rows: T[], resort: number[]): { fresh: T[]; sortedAgain: T[] } {
+  return { fresh: rows.filter((r) => !resort.includes(r.uid)), sortedAgain: rows.filter((r) => resort.includes(r.uid) && r.sorted) };
+}
+
 export type SenderRule = { sender: string; verdict: "important" | "newsletter" };
 
 /** The owner's own verdict for a sender: an exact address first, then "@domain" (which also covers its subdomains). */
