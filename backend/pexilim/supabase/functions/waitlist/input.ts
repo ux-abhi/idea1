@@ -15,7 +15,7 @@ export function parseSignup(body: unknown): Signup | "bot" | string {
 }
 
 /** Only our site (and a local preview) may call this from a browser. */
-export const ORIGINS = ["https://blink.pexilim.com", "http://localhost:8765"];
+export const ORIGINS = ["https://www.blinkk.app", "https://blinkk.app", "http://localhost:8765"];
 export function corsFor(origin: string | null): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin && ORIGINS.includes(origin) ? origin : ORIGINS[0],
@@ -23,4 +23,13 @@ export function corsFor(origin: string | null): Record<string, string> {
     "Access-Control-Allow-Headers": "Content-Type",
     "Vary": "Origin",
   };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** { action: "confirm" | "leave", token: uuid } from the site's confirm and leave pages; null for anything else. */
+export function parseAction(body: unknown): { kind: "confirm" | "leave"; token: string } | null {
+  const { action, token } = (body ?? {}) as Record<string, unknown>;
+  if ((action !== "confirm" && action !== "leave") || typeof token !== "string" || !UUID.test(token.toLowerCase())) return null;
+  return { kind: action, token: token.toLowerCase() };
 }

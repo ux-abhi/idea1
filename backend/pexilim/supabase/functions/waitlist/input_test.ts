@@ -1,5 +1,5 @@
 // © Pexilim
-import { corsFor, parseSignup } from "./input.ts";
+import { corsFor, parseAction, parseSignup } from "./input.ts";
 
 Deno.test("signups need a real-looking email and consent; the honeypot catches bots", () => {
   const ok = parseSignup({ email: "  Sam@Example.COM ", consent: true, website: "" });
@@ -14,6 +14,13 @@ Deno.test("signups need a real-looking email and consent; the honeypot catches b
 });
 
 Deno.test("only our own site gets CORS", () => {
-  if (corsFor("https://blink.pexilim.com")["Access-Control-Allow-Origin"] !== "https://blink.pexilim.com") throw new Error("site");
-  if (corsFor("https://evil.example")["Access-Control-Allow-Origin"] !== "https://blink.pexilim.com") throw new Error("other");
+  if (corsFor("https://www.blinkk.app")["Access-Control-Allow-Origin"] !== "https://www.blinkk.app") throw new Error("site");
+  if (corsFor("https://evil.example")["Access-Control-Allow-Origin"] !== "https://www.blinkk.app") throw new Error("other");
+});
+
+Deno.test("confirm and leave need a real token", () => {
+  const id = "3f2a6c1e-8b4d-4e5f-9a7b-1c2d3e4f5a6b";
+  if (parseAction({ action: "confirm", token: id.toUpperCase() })?.token !== id) throw new Error("confirm");
+  if (parseAction({ action: "leave", token: id })?.kind !== "leave") throw new Error("leave");
+  if (parseAction({ action: "delete", token: id }) || parseAction({ action: "confirm", token: "x' or 1=1" }) || parseAction(null)) throw new Error("accepted junk");
 });

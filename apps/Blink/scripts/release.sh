@@ -33,7 +33,7 @@ STAGE="$OUT/dmg"
 mkdir -p "$STAGE"
 ditto "$APP" "$STAGE/Blink.app"
 ln -s /Applications "$STAGE/Applications"
-printf '[InternetShortcut]\nURL=https://blink.pexilim.com/install.html\n' > "$STAGE/How to open Blink.url"
+printf '[InternetShortcut]\nURL=https://www.blinkk.app/install.html\n' > "$STAGE/How to open Blink.url"
 DMG="$OUT/Blink-$VERSION.dmg"
 hdiutil create -volname "Blink $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG" -quiet
 shasum -a 256 "$DMG" | tee "$DMG.sha256"

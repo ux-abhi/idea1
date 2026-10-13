@@ -1,6 +1,6 @@
 # Going live (free, before the Apple Developer Program)
 
-Blink ships as a free DMG from **blink.pexilim.com**. It is ad-hoc signed, not notarized, so macOS asks once to **Open Anyway** (the site's install page shows how). Paying Apple's $99 later removes that step and adds automatic updates.
+Blink ships as a free DMG from **www.blinkk.app** (the product is called Blink; the domain has two k's). It is ad-hoc signed, not notarized, so macOS asks once to **Open Anyway** (the site's install page shows how). Paying Apple's $99 later removes that step and adds automatic updates.
 
 ## 1. Build the download
 ```
@@ -20,14 +20,19 @@ Today the helper (`functions/signin`) runs on the same Supabase project as your 
 4. In your Supabase OAuth app settings, change the redirect URL to `https://wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/signin/callback`.
 5. Set `BLINK_SIGNIN_HELPER = https:/$()/wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/signin` in `Config/Local.xcconfig`, rebuild, and remove the `BLINK_OAUTH_*` secrets and the `signin` function from your personal project.
 
-## Waitlist
-The site posts to `https://wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/waitlist` (`backend/pexilim/`). See who joined: Supabase › pexilim › Table Editor › `waitlist`. Each row has an `unsubscribe` id for the link in the launch email; delete a row when someone asks.
+## Waitlist (live on the `pexilim` project)
+The site posts to `https://wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/waitlist` (`backend/pexilim/`). Double opt-in: joining sends a confirmation email; the person confirms on `confirm.html` and can leave from any email on `leave.html` (a click on the page, so mail scanners that open links can't confirm or remove anyone). Unconfirmed signups are deleted after 30 days. See who joined: Supabase › pexilim › Table Editor › `waitlist` (`confirmed_at` set = confirmed).
 
-## 3. Put the site up (owner decides the host)
-The site is plain files in `marketing/site/` (no build step). Any static host works; Vercel or Cloudflare Pages are free.
-1. Upload `marketing/site/` and put the DMG at `downloads/Blink.dmg` (and its SHA-256 on the install page).
-2. Add a DNS record at your domain registrar: `blink.pexilim.com` as a CNAME to the host's address.
-3. Check the install page link from the DMG ("How to open Blink") opens.
+**To turn on the emails (owner, once):**
+1. Resend › Domains: add `blinkk.app` and add the DNS records it shows (in Vercel › Domains › blinkk.app › DNS if Vercel holds the domain). Wait for "Verified".
+2. Resend › API Keys: create a key with **Sending access**, limited to `blinkk.app`.
+3. Supabase › pexilim › Edge Functions › Secrets: add `RESEND_API_KEY` (that key) and `RESEND_FROM` = `Blink <hello@blinkk.app>`. Don't paste the key anywhere else. Emails start with the next signup; until then signups are stored without an email.
+
+## 3. Put the site up on Vercel (www.blinkk.app)
+The site is plain files in `marketing/site/` (no build step).
+1. Vercel › Add New › Project › import this repository, **Root Directory** `marketing/site`, Framework preset **Other**, no build command.
+2. Vercel › the project › Domains: add `www.blinkk.app` and `blinkk.app` (redirect to www).
+3. When the DMG is public, put it at `marketing/site/downloads/Blink.dmg` (the install page shows the button as soon as the file exists) and its SHA-256 on the install page.
 
 ## 4. Before the public launch
 - [ ] One full first-run on a fresh Supabase account (one-click setup end to end).

@@ -1,6 +1,6 @@
 # Blink website
 
-Static site for https://blink.pexilim.com. Plain HTML, CSS and JS: no build step, no framework. Not deployed yet.
+Static site for https://www.blinkk.app. Plain HTML, CSS and JS: no build step, no framework. Not deployed yet.
 
 ## Preview
 

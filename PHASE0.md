@@ -14,7 +14,7 @@
 | 7 Money | 🟡 In progress | Owner sets up the iPhone automation; 80/100% limit alerts; bank SMS (rare in Germany) |
 | 8 Polish | ⬜ Not started | Weekly review, learned rules, health page |
 | Onboarding and one-click server | 🟡 Built, not proven | One real end-to-end run with the registered OAuth app |
-| Launch (free DMG + site) | 🟡 Ready to publish | Owner: helper on its own project, DNS for blink.pexilim.com, host the site (docs/LAUNCH.md) |
+| Launch (free DMG + site) | 🟡 Ready to publish | Owner: helper on its own project, DNS for www.blinkk.app, host the site (docs/LAUNCH.md) |
 
 # Phase 0: foundation
 
