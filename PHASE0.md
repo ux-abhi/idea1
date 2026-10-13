@@ -172,3 +172,8 @@ Owner, 2026-10-12: stop the iPhone for now, pending the paid Apple Developer acc
 ## Audit gate for onboarding, one-click setup, money accounts and content tabs (2026-10-13)
 - [x] `/ponytail-debt`: 26 shortcuts, all with an upgrade trigger (two stale phase labels reworded).
 - [x] Backend `/ponytail-audit`: no must-fix; fixes in `20261013090000_audit_fixes.sql` (expired cards cleaned, spend-cap index, account names unique without case, server-side balance time, one-step default account), money function no longer ignores a failed account read, sign-in helper returns only fixed error words.
+- [x] App `/ponytail-audit`: 4 must-fix fixed (one-click setup asked for the keys at an encoded URL; amounts of 1,000+ became 0 and "1.250" became 1.25; setup could get stuck after a lost reply, now each migration is recorded in the server's own ledger in the same transaction; the owner's handle in placeholders). Also: sign-out session counter (no polling, no data across accounts), setup's last-step sign-in notice, notch notices queue, build fails if a dotfile would be bundled, one currency setting, draft images load off the main thread, no double sync after onboarding.
+- [x] Personal names, emails, employer and university removed from code, prompts and tests; the owner's mail priorities moved to the `MAIL_PRIORITIES` secret (set on the owner's server).
+- [x] `/ponytail-review` of the fixes: 1 must-fix (relaunch within 30 s showed an empty app) and 4 should-fix, all fixed.
+- [x] CI green (functions, swift, database, secrets); migration applied live; money, mail and signin redeployed; the next mail check ran OK.
+- [ ] Not done here: VoiceOver pass on the new screens (onboarding, money accounts, content tabs) and an Instruments 0 fps check (§36.7).
