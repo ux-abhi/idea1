@@ -355,11 +355,44 @@
         <h2 id="setup-title">Set up in three minutes.</h2>
         <p class="sub">No code, no terminal.</p>
       </div>
-      <ol class="steps">
-        <li><b>Download and open Blink.</b><span>When Blink is ready, we email you the link. The first time, macOS asks you to confirm in System Settings.</span></li>
-        <li><b>Sign in with Supabase.</b><span>Blink creates your free server and installs everything on it. Already have one? Paste its address instead.</span></li>
-        <li><b>Add a free key and your calendar.</b><span>Paste a free Groq key and allow Calendar. Your next meeting shows up in the notch.</span></li>
-      </ol>
+      <div class="flow" id="flow">
+        <span class="rail" aria-hidden="true"><i></i></span>
+        <ol class="steps">
+          <li class="step">
+            <div class="step-art art-dmg" aria-hidden="true">
+              <div class="dmg">
+                <span class="app"><img src="assets/apple-touch-icon.png" alt="" width="180" height="180">Blink</span>
+                <svg class="drag" viewBox="0 0 48 16"><path d="M2 8h40M36 2l6 6-6 6"/></svg>
+                <span class="app"><span class="folder"></span>Applications</span>
+              </div>
+            </div>
+            <b>Download and open Blink.</b>
+            <span>When Blink is ready, we email you the link. The first time, macOS asks you to confirm in System Settings.</span>
+          </li>
+          <li class="step">
+            <div class="step-art art-server" aria-hidden="true">
+              <span class="sb-btn">Sign in with Supabase</span>
+              <ul class="progress">
+                <li class="ok">Creating your server</li>
+                <li class="ok">Setting up your data</li>
+                <li class="ok">Installing Blink's brain</li>
+                <li class="wait">Locking it to you</li>
+              </ul>
+            </div>
+            <b>Sign in with Supabase.</b>
+            <span>Blink creates your free server and installs everything on it. Already have one? Paste its address instead.</span>
+          </li>
+          <li class="step">
+            <div class="step-art art-notch" aria-hidden="true">
+              <div class="mini-notch" style="--c:var(--mint)"><img src="assets/eyes-headsup.png" alt="" width="52" height="26">Thesis review in 10 min</div>
+              <div class="perm"><span>Groq key</span><span class="dots">••••••••</span></div>
+              <div class="perm"><span>Calendar</span><span class="on">Allowed</span></div>
+            </div>
+            <b>Add a free key and your calendar.</b>
+            <span>Paste a free Groq key and allow Calendar. Your next meeting shows up in the notch.</span>
+          </li>
+        </ol>
+      </div>
     </div>
   </section>
 
@@ -409,15 +442,22 @@
 </main>
 
 <footer class="site-foot">
+  <div class="foot-notch" aria-hidden="true"><span class="eyes-look"><img class="css-blink" src="assets/eyes-idle.png" alt="" width="320" height="160"></span></div>
   <div class="inner">
-    <p class="by"><b>Blink</b> by Pexilim</p>
-    <nav aria-label="Footer">
-      <a href="privacy.html">Privacy</a>
-      <a href="terms.html">Terms</a>
-      <a href="install.html">Install guide</a>
-      <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>
-    </nav>
+    <div class="foot-top">
+      <div class="foot-sign">
+        <p class="sign">Blink keeps an eye on your day, so you can get on with it.</p>
+        <a class="btn small" href="#waitlist">Join the waitlist</a>
+      </div>
+      <nav class="foot-cols" aria-label="Footer">
+        <div><h2 id="f-product">Product</h2><ul aria-labelledby="f-product"><li><a href="#features">Features</a></li><li><a href="install.html">Install guide</a></li></ul></div>
+        <div><h2 id="f-company">Company</h2><ul aria-labelledby="f-company"><li>Pexilim</li><li><a href="mailto:hello@pexilim.com">hello@pexilim.com</a></li></ul></div>
+        <div><h2 id="f-legal">Legal</h2><ul aria-labelledby="f-legal"><li><a href="privacy.html">Privacy</a></li><li><a href="terms.html">Terms</a></li></ul></div>
+      </nav>
+    </div>
+    <p class="copy"><small>© 2026 Pexilim</small></p>
   </div>
+  <p class="wordmark" aria-hidden="true">Blink</p>
 </footer>
 
 <script src="js/config.js"></script>

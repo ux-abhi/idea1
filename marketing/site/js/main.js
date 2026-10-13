@@ -26,7 +26,7 @@ if (!reduce) {
 
   const blink = () => {
     if (!document.hidden) {
-      for (const img of $$(".eyes-look img")) {
+      for (const img of $$(".eyes-look img:not(.css-blink)")) { // the footer's eyes blink in CSS
         img.animate([{ transform: "scaleY(1)" }, { transform: "scaleY(.08)" }, { transform: "scaleY(1)" }],
           { duration: 170, easing: "cubic-bezier(.4, 0, .2, 1)" });
       }
@@ -217,6 +217,12 @@ if (motion) {
   gsap.from("#hero-mac", { y: 70, autoAlpha: 0, duration: 1.2, delay: 0.35, ease: "power3.out" });
   gsap.from("#hero-notch .eyes-look img", { scaleY: 0.08, duration: 0.35, delay: 1.2, ease: "power2.out" });
 
+  // The lid opens on its hinge as the Mac comes up; the base stays put.
+  gsap.fromTo("#hero-mac .bezel", { rotationX: -24, transformPerspective: 2000, transformOrigin: "50% 100%" }, {
+    rotationX: 0, ease: "none",
+    scrollTrigger: { trigger: "#hero-mac", start: "top bottom", end: "top 20%", scrub: 0.6 },
+  });
+
   const notch = $("#hero-notch"), q = $(".notch-q", notch), a = $(".notch-a", notch);
   q.textContent = "";
   a.innerHTML = a.dataset.words.split(" ").map((w) => `<span style="opacity:0">${w}</span>`).join(" ");
@@ -234,6 +240,16 @@ if (motion) {
       },
     },
   });
+
+  // Section titles arrive word by word, once. The words stay one text run for screen readers.
+  for (const h of $$(".head h2, .end h2")) {
+    h.innerHTML = h.textContent.trim().split(/\s+/).map((w) => `<span class="word">${w}</span>`).join(" ");
+    gsap.from($$(".word", h), { opacity: 0, yPercent: 40, filter: "blur(6px)", duration: 0.7, stagger: 0.05, ease: "power3.out",
+      clearProps: "all", scrollTrigger: { trigger: h, start: "top 85%", once: true } });
+  }
+
+  // The film grows to full size as it comes up.
+  gsap.fromTo(".film-frame", { scale: 0.9 }, { scale: 1, ease: "none", scrollTrigger: { trigger: ".film-frame", start: "top bottom", end: "top 30%", scrub: 0.6 } });
 
   // Dark bands drop their notch into the next section, then Blink opens its eyes. Once each.
   for (const tab of $$(".notch-tab")) {
@@ -289,6 +305,35 @@ if (motion) {
 
   // Privacy: the links draw between the boxes.
   gsap.from("#diagram .link", { scaleX: 0, scaleY: 0, duration: 0.6, stagger: 0.25, delay: 0.4, ease: "power2.out", scrollTrigger: { trigger: "#diagram", start: "top 75%", once: true } });
+
+  // Setup: the rail draws as you read down it; each step's card rises as the rail gets there.
+  const mm = gsap.matchMedia();
+  mm.add({ wide: "(min-width: 821px)", narrow: "(max-width: 820px)" }, ({ conditions: c }) => {
+    gsap.fromTo("#flow .rail i", c.wide ? { scaleX: 0, scaleY: 1 } : { scaleY: 0, scaleX: 1 }, { scaleX: 1, scaleY: 1, ease: "none",
+      scrollTrigger: { trigger: "#flow", start: c.wide ? "top 80%" : "top 70%", end: c.wide ? "top 30%" : "bottom 70%", scrub: 0.5 } });
+  });
+  gsap.set(".step", { opacity: 0, y: 28, filter: "blur(8px)" });
+  ScrollTrigger.batch(".step", {
+    start: "top 85%", once: true,
+    onEnter: (steps) => gsap.to(steps, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.8, stagger: 0.15, ease: "power3.out", clearProps: "transform,filter" }),
+  });
+  // The installer ticks through its steps, and the meeting drops into the notch.
+  gsap.from(".art-server .progress li", { opacity: 0, x: -8, duration: 0.4, stagger: 0.25, delay: 0.5, ease: "power2.out",
+    scrollTrigger: { trigger: ".art-server", start: "top 80%", once: true } });
+  gsap.from(".art-notch .mini-notch", { yPercent: -100, duration: 0.6, delay: 0.6, ease: "power3.out",
+    scrollTrigger: { trigger: ".art-notch", start: "top 80%", once: true } });
+
+  // Footer: the name rises into the screen's bottom edge as the page ends.
+  gsap.fromTo(".wordmark", { yPercent: 45 }, { yPercent: 0, ease: "none", scrollTrigger: { trigger: ".site-foot", start: "top bottom", end: "bottom bottom", scrub: 0.6 } });
+
+  // The notches' eyes glance the way you scroll, then settle.
+  const glancers = $$(".brand-notch img, .notch-tab img, .foot-notch img");
+  let settle = 0;
+  ScrollTrigger.create({ start: 0, end: "max", onUpdate: (st) => {
+    for (const img of glancers) img.style.translate = `0 ${st.direction * 9}%`;
+    clearTimeout(settle);
+    settle = setTimeout(() => { for (const img of glancers) img.style.translate = ""; }, 260);
+  } });
 
   document.fonts?.ready.then(() => ScrollTrigger.refresh());
 }
