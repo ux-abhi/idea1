@@ -12,6 +12,9 @@ enable_signup = false
 enable_signup = false
 
 # These check the caller themselves: the mail schedule (cron secret) and the sign-in helper (a browser, before any login).
+[functions.capture]
+verify_jwt = false
+
 [functions.mail]
 verify_jwt = false
 

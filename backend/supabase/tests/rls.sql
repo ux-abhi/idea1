@@ -272,6 +272,23 @@ do $$ begin
   end;
 end $$;
 
+-- Capture tokens: the owner adds and removes their own, never edits one, and B never sees A's.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  insert into public.capture_token (name, token_hash) values ('iPhone', sha256('blk_test'::bytea));
+  begin
+    insert into public.capture_token (name, token_hash) values ('Short', '\x00');
+    raise exception 'a token hash that is not 32 bytes was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.capture_token set name = 'Changed';
+    raise exception 'a capture token was editable';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public.transaction (amount, note, category, source, merchant) values (4.20, 'Coffee', 'food', 'applepay', 'Café');
+end $$;
+
 -- Retention: old handled mail goes, recent and pending things stay; apps can't run the cleanup.
 reset role;
 insert into public.email_msg (owner_id, account, uidvalidity, uid, subject, status, triage, created_at)
@@ -317,6 +334,7 @@ do $$ begin
   assert (select count(*) from public.transaction) = 0, 'B must not see A''s spends';
   assert (select count(*) from public.budget) = 0, 'B must not see A''s budgets';
   assert (select count(*) from public.money_account) = 0, 'B must not see A''s accounts';
+  assert (select count(*) from public.capture_token) = 0, 'B must not see A''s capture tokens';
   assert (select count(*) from public.money_account_now) = 0, 'B must not see A''s balances';
   assert (select count(*) from public.social_account) = 0, 'B must not see A''s follower numbers';
   begin

@@ -92,7 +92,20 @@ export function uidWindow(found: number[], last: number | null, uidNext: number,
   return { take, last: take.length < pending.length ? take[take.length - 1] : Math.max(last, uidNext - 1, ...take) };
 }
 
-export type Triage = { uid: number; triage: "important" | "normal" | "newsletter"; reason: string; summary: string; needs_reply: boolean };
+export type Spend = { amount: number; merchant: string; category: string };
+export type Triage = { uid: number; triage: "important" | "normal" | "newsletter"; reason: string; summary: string; needs_reply: boolean; spend?: Spend };
+
+const SPEND_CATEGORIES = ["food", "groceries", "transport", "housing", "bills", "shopping", "health", "fun", "travel", "education", "other"];
+
+/** A paid amount the model read from a receipt, checked: euros only, positive, under a million, cents; else none.
+ *  shortcut: other currencies are skipped (the app shows one currency); keep them when a non-EUR owner appears. */
+export function parseSpend(m: Record<string, unknown>): Spend | undefined {
+  const amount = Number(m.spend_amount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount >= 1_000_000 || String(m.spend_currency).toUpperCase() !== "EUR") return undefined;
+  const merchant = typeof m.spend_merchant === "string" ? m.spend_merchant.replace(/\s+/g, " ").trim().slice(0, 200) : "";
+  const category = SPEND_CATEGORIES.includes(m.spend_category as string) ? m.spend_category as string : "other";
+  return { amount: Math.round(amount * 100) / 100, merchant: merchant || "Receipt", category };
+}
 
 /** The model's verdicts, checked: known UIDs only, known labels, short texts. */
 export function parseTriage(output: unknown, uids: number[]): Triage[] {
@@ -106,6 +119,7 @@ export function parseTriage(output: unknown, uids: number[]): Triage[] {
       reason: typeof reason === "string" ? reason.slice(0, 300) : "",
       summary: typeof summary === "string" ? summary.slice(0, 600) : "",
       needs_reply: needs_reply === true,
+      spend: parseSpend(m as Record<string, unknown>),
     }];
   });
 }

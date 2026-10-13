@@ -1,5 +1,5 @@
 // © Pexilim
-import { buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, ruleVerdict, parseSend, settle, uidWindow } from "./message.ts";
+import { parseSpend, buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, ruleVerdict, parseSend, settle, uidWindow } from "./message.ts";
 
 Deno.test("headers unfold and decode encoded words", () => {
   const h = parseHeaders("Subject: =?UTF-8?B?SW50ZXJ2aWV3IOKAkyBBY21l?=\r\nFrom: \"Wolfram\"\r\n <w@acme.example>\r\nTo: hello@example.com\r\n");
@@ -90,4 +90,14 @@ Deno.test("a burst of new mail is read oldest first across checks, none skipped"
 Deno.test("the reply comes from the whole address the mail went to, never a lookalike", () => {
   if (replyFrom("dab@x.com", "", "me@icloud.com", ["ab@x.com"]) !== "me@icloud.com") throw new Error("lookalike matched");
   if (replyFrom("Other <o@y.com>", "AB <AB@x.com>", "me@icloud.com", ["ab@x.com"]) !== "ab@x.com") throw new Error("cc not matched");
+});
+
+Deno.test("receipts become spends only when they're clear euro payments", () => {
+  const ok = parseSpend({ spend_amount: 12.989, spend_currency: "eur", spend_merchant: "  Amazon ", spend_category: "shopping" });
+  if (ok?.amount !== 12.99 || ok.merchant !== "Amazon" || ok.category !== "shopping") throw new Error(JSON.stringify(ok));
+  if (parseSpend({ spend_amount: 0, spend_currency: "EUR" }) || parseSpend({ spend_amount: 5, spend_currency: "USD" }) ||
+      parseSpend({ spend_amount: -5, spend_currency: "EUR" }) || parseSpend({ spend_amount: "x", spend_currency: "EUR" })) {
+    throw new Error("a non-spend was accepted");
+  }
+  if (parseSpend({ spend_amount: 3, spend_currency: "EUR", spend_category: "crypto" })?.category !== "other") throw new Error("category");
 });

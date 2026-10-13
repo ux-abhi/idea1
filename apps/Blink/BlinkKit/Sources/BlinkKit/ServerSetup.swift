@@ -258,10 +258,11 @@ public enum ServerSetup {
         }
     }
 
-    /// Which bundled functions go to an owner's server, and whether each checks the login itself (mail does).
+    /// Which bundled functions go to an owner's server, and whether Supabase checks a login first: mail (called by the
+    /// schedule) and capture (called with a capture token from the owner's iPhone) check their own keys instead.
     /// The sign-in helper and retired probes are Pexilim-only and never installed.
     public static func installable(_ names: [String]) -> [(slug: String, verifyJWT: Bool)] {
         names.filter { !$0.hasPrefix("_") && !["signin", "mail-probe"].contains($0) }.sorted()
-            .map { ($0, $0 != "mail") }
+            .map { ($0, !["mail", "capture"].contains($0)) }
     }
 }
