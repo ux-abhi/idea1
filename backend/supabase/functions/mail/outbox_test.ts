@@ -30,11 +30,11 @@ function fakeAdmin(rows: Row[]) {
   return { from: query } as unknown as SupabaseClient;
 }
 
-const payload = (sendAt: string) => ({ email_id: "e1", account: "icloud", from: "hello@pexilim.com", to: "w@tv.com", subject: "Re: Hi",
+const payload = (sendAt: string) => ({ email_id: "e1", account: "icloud", from: "hello@example.com", to: "w@tv.com", subject: "Re: Hi",
   body: "Thanks", in_reply_to: "<a@tv.com>", message_id: "<b@pexilim.com>", send_at: sendAt });
 
 function mailer(sent: string[]): Mailer {
-  return { owned: () => ["me@icloud.com", "hello@pexilim.com"], send: (_a, _f, to) => { sent.push(to); return Promise.resolve(); }, tidy: () => Promise.resolve() };
+  return { owned: () => ["me@icloud.com", "hello@example.com"], send: (_a, _f, to) => { sent.push(to); return Promise.resolve(); }, tidy: () => Promise.resolve() };
 }
 
 Deno.test("two runs at once send an approved mail exactly once, and a later one waits", async () => {

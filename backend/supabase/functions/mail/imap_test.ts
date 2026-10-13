@@ -24,8 +24,8 @@ function fakeServer(script: Record<string, string>): { transport: Transport; sen
 }
 
 Deno.test("fetch reads headers and text literals for each message", async () => {
-  const header = "From: =?UTF-8?B?VGVhbVZpZXdlcg==?= <jobs@teamviewer.com>\r\nSubject: Interview\r\n\r\n";
-  const body = "Hello Abhishek";
+  const header = "From: =?UTF-8?B?QWNtZQ==?= <jobs@acme.example>\r\nSubject: Interview\r\n\r\n";
+  const body = "Hello Sam";
   const { transport, sent } = fakeServer({
     UID: `* 1 FETCH (UID 42 INTERNALDATE "12-Oct-2026 10:00:00 +0000" BODY[HEADER.FIELDS (FROM TO)] {${header.length}}\r\n${header}` +
       ` BODY[TEXT]<0> {${body.length}}\r\n${body})\r\nTAG OK done\r\n`,
@@ -33,7 +33,7 @@ Deno.test("fetch reads headers and text literals for each message", async () => 
   const imap = new Imap(transport);
   const messages = await imap.fetch([42], 2000);
   if (!sent[0].includes("UID FETCH 42 (UID INTERNALDATE BODY.PEEK[HEADER.FIELDS")) throw new Error(sent[0]);
-  if (messages.length !== 1 || messages[0].uid !== 42 || !messages[0].header.includes("jobs@teamviewer.com") || messages[0].text !== body) {
+  if (messages.length !== 1 || messages[0].uid !== 42 || !messages[0].header.includes("jobs@acme.example") || messages[0].text !== body) {
     throw new Error(JSON.stringify(messages));
   }
 });

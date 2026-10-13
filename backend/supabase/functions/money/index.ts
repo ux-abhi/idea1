@@ -39,9 +39,11 @@ function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+const url = Deno.env.get("SUPABASE_URL")!;
+const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "POST only" });
-  const url = Deno.env.get("SUPABASE_URL")!;
   const auth = req.headers.get("Authorization") ?? "";
   const db = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
@@ -50,7 +52,9 @@ Deno.serve(async (req) => {
   const parsed = parseSortRequest(await req.json().catch(() => null));
   if (typeof parsed === "string") return json(400, { error: parsed });
 
-  const { data: accounts } = await db.from("money_account").select("id, name, kind, is_default");
+  // A failed read would quietly save spends with no account, so the balance would never go down.
+  const { data: accounts, error: accountsError } = await db.from("money_account").select("id, name, kind, is_default");
+  if (accountsError) return json(502, { error: "Couldn't read your accounts. Try again." });
   const fence = (s: string) => s.replaceAll("<", "‹");
   try {
     // "<" escaped so the note (and account names) can't close the fences.
@@ -60,7 +64,6 @@ Deno.serve(async (req) => {
       response_format: { type: "json_schema", json_schema: { name: "spends", strict: true, schema: SCHEMA } },
     });
     const entries = parseEntries(JSON.parse(message.content ?? "{}"), parsed.today, accounts ?? []);
-    const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
     await admin.from("model_usage").insert({ owner_id: user.id, feature: "money.sort", model: MODEL.id,
       input_tokens: usage.prompt_tokens ?? 0, output_tokens: usage.completion_tokens ?? 0,
       cost_usd: cost(MODEL, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0) });

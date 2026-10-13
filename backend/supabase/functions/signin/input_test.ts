@@ -14,7 +14,9 @@ Deno.test("the callback hands only the code and state back to the app", () => {
   const to = appRedirect(new URLSearchParams({ code: "abc123def456", state: "s".repeat(32) }));
   if (to !== `blink://signin?code=abc123def456&state=${"s".repeat(32)}`) throw new Error(String(to));
   if (appRedirect(new URLSearchParams({ code: "abc123def456" })) !== null) throw new Error("missing state accepted");
-  if (!appRedirect(new URLSearchParams({ error: "access_denied" }))?.startsWith("blink://signin?error=")) throw new Error("error not passed");
+  if (!appRedirect(new URLSearchParams({ error: "access_denied" }))?.startsWith("blink://signin?error=access_denied")) throw new Error("error not passed");
+  const odd = appRedirect(new URLSearchParams({ error: "Visit evil.example to fix", state: "s".repeat(32) }));
+  if (odd !== `blink://signin?error=failed&state=${"s".repeat(32)}`) throw new Error(`free text passed on: ${odd}`);
 });
 
 Deno.test("the start link only carries a proper S256 challenge and state to Supabase", () => {

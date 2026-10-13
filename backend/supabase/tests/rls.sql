@@ -133,7 +133,7 @@ end $$;
 
 -- Content: A drafts a post and sets a voice; a bad platform or status is refused.
 insert into public.content_piece (idea, platform, format, body, planned_for) values ('Launch week', 'x', 'thread', 'Day 1', '2026-10-14');
-insert into public.voice_profile (notes, never_say, page, brief) values ('Plain, short sentences', '{delve}', '@uxabhi on Instagram', '# Brief');
+insert into public.voice_profile (notes, never_say, page, brief) values ('Plain, short sentences', '{delve}', '@yourname on Instagram', '# Brief');
 do $$ begin
   begin
     insert into public.content_piece (idea, platform, format) values ('x', 'tiktok', 'post');
@@ -148,10 +148,10 @@ do $$ begin
 end $$;
 
 -- Page posts: A stores a post from their page; a non-Instagram URL or a bad handle is refused.
-insert into public.social_post (platform, handle, url, caption, likes) values ('instagram', 'uxabhi', 'https://www.instagram.com/p/abc/', 'Checkout tips', 120);
+insert into public.social_post (platform, handle, url, caption, likes) values ('instagram', 'yourname', 'https://www.instagram.com/p/abc/', 'Checkout tips', 120);
 do $$ begin
   begin
-    insert into public.social_post (platform, handle, url) values ('instagram', 'uxabhi', 'https://evil.example/p/1');
+    insert into public.social_post (platform, handle, url) values ('instagram', 'yourname', 'https://evil.example/p/1');
     raise exception 'non-Instagram url should have failed';
   exception when check_violation then null;
   end;
@@ -243,6 +243,23 @@ do $$ begin
   end;
   assert (select count(*) from public.transaction) = 2, 'A should see own spends';
   assert (select spent_since from public.money_account_now where name = 'Sparkasse') = 23.40, 'balance view adds up spends';
+  -- A spend entered before the balance was set is already in the bank's number: it must not count again.
+  insert into public.transaction (amount, note, category, account_id, created_at)
+    values (99, 'Before the balance', 'groceries', '00000000-0000-0000-0000-0000000000f1', now() - interval '1 day');
+  assert (select spent_since from public.money_account_now where name = 'Sparkasse') = 23.40, 'spends before balance_at are not counted';
+  -- The balance time is the server's, whatever the app sends.
+  insert into public.money_account (id, name, balance, balance_at)
+    values ('00000000-0000-0000-0000-0000000000f2', 'N26', 50, now() - interval '3 days');
+  assert (select balance_at from public.money_account where name = 'N26') = now(), 'balance_at comes from the server clock';
+  begin
+    insert into public.money_account (name) values ('sparkasse');
+    raise exception 'an account name differing only in case was accepted';
+  exception when unique_violation then null;
+  end;
+  perform public.set_default_account('00000000-0000-0000-0000-0000000000f2');
+  assert (select array_agg(name) from public.money_account where is_default) = array['N26'], 'one step moves the default';
+  perform public.set_default_account(gen_random_uuid());
+  assert (select array_agg(name) from public.money_account where is_default) = array['N26'], 'an unknown account leaves the default alone';
   begin
     insert into public.transaction (amount, note) values (-5, 'refund?');
     raise exception 'a negative spend was accepted';
@@ -265,7 +282,9 @@ insert into public.email_msg (owner_id, account, uidvalidity, uid, subject, stat
 insert into public.action (owner_id, kind, risk, payload, payload_hash, proposed_by, status, created_at)
   values ('00000000-0000-0000-0000-00000000000a', 'task.add', 'green', '{"title":"old pending"}', '\x00', 'blink', 'pending', now() - interval '200 days'),
          ('00000000-0000-0000-0000-00000000000a', 'task.add', 'green', '{"title":"old declined"}', '\x00', 'blink', 'declined', now() - interval '200 days'),
-         ('00000000-0000-0000-0000-00000000000a', 'mail.send', 'red', '{"message_id":"<far@future>"}', '\x00', 'blink', 'approved', now() - interval '200 days');
+         ('00000000-0000-0000-0000-00000000000a', 'mail.send', 'red', '{"message_id":"<far@future>"}', '\x00', 'blink', 'approved', now() - interval '200 days'),
+         ('00000000-0000-0000-0000-00000000000a', 'task.add', 'green', '{"title":"ignored and expired"}', '\x00', 'blink', 'pending', now() - interval '200 days');
+update public.action set expires_at = now() - interval '190 days' where payload->>'title' = 'ignored and expired';
 do $$ begin
   perform public.remove_old_rows();
   assert not exists (select 1 from public.email_msg where subject in ('Old and done', 'Old newsletter', 'Very old open')),
@@ -274,6 +293,7 @@ do $$ begin
   assert exists (select 1 from public.action where payload->>'title' = 'old pending'), 'pending cards are never removed';
   assert exists (select 1 from public.action where payload->>'message_id' = '<far@future>'), 'an approved (scheduled) send is never removed';
   assert not exists (select 1 from public.action where payload->>'title' = 'old declined'), 'finished cards after 180 days go';
+  assert not exists (select 1 from public.action where payload->>'title' = 'ignored and expired'), 'pending cards 180 days past expiry go';
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 do $$ begin

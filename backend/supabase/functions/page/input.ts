@@ -1,7 +1,7 @@
 // © Pexilim
 // The trust boundaries for reading the owner's page: the handle we ask Apify for, the posts it returns, and the analysis.
 
-/** "@uxabhi", "uxabhi" or "https://www.instagram.com/uxabhi/" → "uxabhi"; null if it isn't a valid handle. */
+/** "@yourname", "yourname" or "https://www.instagram.com/yourname/" → "yourname"; null if it isn't a valid handle. */
 export function parseHandle(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const text = input.trim();

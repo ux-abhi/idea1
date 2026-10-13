@@ -1,5 +1,5 @@
 // © Pexilim
-// The trust boundary for the sign-in helper: only well-formed codes, verifiers and refresh tokens are passed on.
+// The trust boundary for the sign-in helper: only well-formed codes and verifiers are passed on.
 
 /** An OAuth exchange the app may ask for: a fresh code with its PKCE verifier (Blink never refreshes; it uses the
  *  token once, for setup). */
@@ -19,8 +19,10 @@ export function parseExchange(body: unknown): Exchange | string {
 /** Where the browser goes after consent: back into the app, carrying only the one-time code and the app's state. */
 export function appRedirect(params: URLSearchParams): string | null {
   const code = params.get("code"), state = params.get("state"), error = params.get("error");
-  if (error) return `blink://signin?error=${encodeURIComponent(error.slice(0, 100))}`;
-  if (!code || !TOKENISH.test(code) || !state || !/^[A-Za-z0-9_-]{16,128}$/.test(state)) return null;
+  const goodState = !!state && /^[A-Za-z0-9_-]{16,128}$/.test(state);
+  // Only a fixed word goes back, never Supabase's (or a stranger's) text, with the state so the app can check it.
+  if (error) return `blink://signin?error=${error === "access_denied" ? "access_denied" : "failed"}${goodState ? `&state=${state}` : ""}`;
+  if (!code || !TOKENISH.test(code) || !goodState) return null;
   return `blink://signin?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
 }
 

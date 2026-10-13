@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
   ]);
   // Only the owner's own page, the handle saved in their Voice; the request can't name another account.
   const handle = parseHandle(voice?.page ?? "");
-  if (!handle) return json(400, { error: "Add your Instagram handle, like @uxabhi, in Content › Voice first." });
+  if (!handle) return json(400, { error: "Add your Instagram handle, like @yourname, in Content › Voice first." });
   // The daily limit is checked before Apify is paid, not after.
   const model = pickModel(profile?.model_prefs, "content", Deno.env.get("BLINK_CONTENT_MODEL"));
   const overCap = capProblem(model, profile?.settings, spend ?? []);

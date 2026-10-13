@@ -30,9 +30,9 @@ Deno.test("deliver logs in, sends one message and quits", async () => {
   const { transport, sent } = fakeServer(happy);
   const smtp = new Smtp(transport);
   await smtp.expect("EHLO blink", [250]); // reads the whole multi-line reply
-  await smtp.deliver({ user: "me@icloud.com", password: "pw", from: "hello@pexilim.com", to: "w@tv.com", message: new TextEncoder().encode("Subject: Hi\r\n\r\n.hidden\r\nbye") });
+  await smtp.deliver({ user: "me@icloud.com", password: "pw", from: "hello@example.com", to: "w@tv.com", message: new TextEncoder().encode("Subject: Hi\r\n\r\n.hidden\r\nbye") });
   const all = sent.join("");
-  if (!all.includes(`AUTH PLAIN ${btoa("\0me@icloud.com\0pw")}\r\n`) || !all.includes("MAIL FROM:<hello@pexilim.com>\r\n") ||
+  if (!all.includes(`AUTH PLAIN ${btoa("\0me@icloud.com\0pw")}\r\n`) || !all.includes("MAIL FROM:<hello@example.com>\r\n") ||
       !all.includes("RCPT TO:<w@tv.com>\r\n") || !all.includes("\r\n..hidden\r\nbye\r\n") || !all.endsWith("QUIT\r\n")) {
     throw new Error(JSON.stringify(sent));
   }
