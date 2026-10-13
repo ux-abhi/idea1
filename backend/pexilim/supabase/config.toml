@@ -1,0 +1,4 @@
+project_id = "pexilim"
+
+[functions.waitlist]
+verify_jwt = false

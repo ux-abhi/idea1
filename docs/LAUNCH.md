@@ -14,11 +14,14 @@ Before giving it to anyone: install the DMG on a second Mac or a second macOS us
 
 ## 2. Move the sign-in helper to its own project (owner, about 10 minutes)
 Today the helper (`functions/signin`) runs on the same Supabase project as your own Blink data. Before strangers use one-click setup, give it its own free project so their traffic never touches yours:
-1. supabase.com → New project, name `pexilim-signin` (no data lives in it).
-2. Deploy the helper: `npx supabase functions deploy signin --project-ref <new-ref> --no-verify-jwt --use-api` (from `backend/`).
+1. The project exists: `pexilim` (ref `wjhvqnynjkljiqdmnyhw`, Frankfurt), which already holds the waitlist (`backend/pexilim/`).
+2. Deploy the helper there: `npx supabase functions deploy signin --project-ref wjhvqnynjkljiqdmnyhw --no-verify-jwt --use-api` (from `backend/`).
 3. Add the secrets `BLINK_OAUTH_CLIENT_ID` and `BLINK_OAUTH_CLIENT_SECRET` to the new project (Edge Functions › Secrets), the same values as now.
-4. In your Supabase OAuth app settings, change the redirect URL to `https://<new-ref>.supabase.co/functions/v1/signin/callback`.
-5. Set `BLINK_SIGNIN_HELPER = https:/$()/<new-ref>.supabase.co/functions/v1/signin` in `Config/Local.xcconfig`, rebuild, and remove the `BLINK_OAUTH_*` secrets and the `signin` function from your personal project.
+4. In your Supabase OAuth app settings, change the redirect URL to `https://wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/signin/callback`.
+5. Set `BLINK_SIGNIN_HELPER = https:/$()/wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/signin` in `Config/Local.xcconfig`, rebuild, and remove the `BLINK_OAUTH_*` secrets and the `signin` function from your personal project.
+
+## Waitlist
+The site posts to `https://wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/waitlist` (`backend/pexilim/`). See who joined: Supabase › pexilim › Table Editor › `waitlist`. Each row has an `unsubscribe` id for the link in the launch email; delete a row when someone asks.
 
 ## 3. Put the site up (owner decides the host)
 The site is plain files in `marketing/site/` (no build step). Any static host works; Vercel or Cloudflare Pages are free.
