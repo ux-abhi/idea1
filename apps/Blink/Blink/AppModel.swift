@@ -124,6 +124,8 @@ final class AppModel {
         UserDefaults.standard.set(try? JSONEncoder().encode(Array(chat.suffix(20))), forKey: "chat")
     }
     private(set) var thinking = false
+    /// The answer so far while it streams in; it joins `chat` once finished (so history isn't saved on every word).
+    private(set) var streaming: String?
 
     /// The running Pomodoro phase or timer; kept on disk so it survives a restart.
     private(set) var timer: FocusTimer? = AppModel.savedTimer() {
@@ -807,18 +809,38 @@ final class AppModel {
         let history = chat
         chat.append(.init(role: .user, text: message))
         thinking = true
-        defer { thinking = false }
+        defer { thinking = false; streaming = nil }
         do {
             // Open reminders go along so Claude can propose finishing or deleting one (they stay on the Mac otherwise).
             let reminders = calendarAccess == .granted ? await calendarReader.openReminders() : []
-            let answer = try await server.chat(message, history: history, timeZone: TimeZone.current.identifier,
-                                               reminders: reminders, context: context)
-            chat.append(.init(role: .assistant, text: answer.reply))
-            if answer.proposed > 0 { await loadActions() }
+            var final: String?
+            streaming = ""
+            for try await event in server.chatStream(message, history: history, timeZone: TimeZone.current.identifier,
+                                                     reminders: reminders, context: context) {
+                switch event {
+                case .delta(let text): streaming = (streaming ?? "") + text
+                case .reset: streaming = "" // a new turn after a tool call: the earlier words were the model thinking aloud
+                case .done(let reply, let proposed):
+                    final = reply
+                    if proposed > 0 { await loadActions() }
+                case .failed(let problem):
+                    final = problem
+                    await loadActions() // an earlier turn may have proposed something before it failed
+                }
+            }
+            if let final {
+                chat.append(.init(role: .assistant, text: final))
+            } else {
+                // Ended without done or error (time limit, a dropped connection): say so, and pick up any proposals.
+                let partial = streaming ?? ""
+                chat.append(.init(role: .assistant, text: partial.isEmpty ? "Blink couldn't answer. Try again." : partial + " (cut off)"))
+                await loadActions()
+            }
         } catch let problem as BlinkServer.ChatProblem {
             chat.append(.init(role: .assistant, text: problem.message))
         } catch {
-            chat.append(.init(role: .assistant, text: "Can't reach your server right now. Try again in a moment."))
+            let signedOut = ServerProblem(error) == .signedOut
+            chat.append(.init(role: .assistant, text: signedOut ? "You've been signed out. Sign in again to continue." : "Can't reach your server right now. Try again in a moment."))
         }
     }
 
@@ -1193,6 +1215,22 @@ final class AppModel {
 
     var captureEndpoint: URL? { server.map { CaptureToken.endpoint(for: $0.config) } }
 
+    /// Limits reached (80%, then over) and last week's spending, said once each in the notch (Concerned eyes for limits).
+    private func tellMoneyNews() {
+        let defaults = UserDefaults.standard
+        let told = Set(defaults.stringArray(forKey: "money.told") ?? [])
+        let month = MoneyMath.month(of: HabitDay.key(.now))
+        let alerts = MoneyAlerts.crossed(spends, budgets: budgets, month: month, told: told)
+        let week = MoneyAlerts.lastWeek(spends, today: .now).flatMap { told.contains($0.key) ? nil : $0 }
+        guard !alerts.isEmpty || week != nil else { return }
+        // One notice for all of it: two set back to back could be seen as one.
+        let lines = alerts.prefix(2).map(\.text) + (alerts.isEmpty ? [week?.text].compactMap { $0 } : [])
+        announce(lines.joined(separator: " "), failed: !alerts.isEmpty)
+        // Only what was shown counts as said: a third limit comes on the next sync; the week waits for a day without alerts.
+        let said = alerts.prefix(2).map(\.key) + (alerts.isEmpty ? [week?.key].compactMap { $0 } : [])
+        defaults.set(MoneyAlerts.remember(told, adding: said, month: month), forKey: "money.told")
+    }
+
     func loadMoney() async {
         guard let server, email != nil else { return }
         do {
@@ -1205,6 +1243,7 @@ final class AppModel {
             (spends, budgets, accounts) = try await (spent, limits, list)
             // Optional: a server without the capture table yet (older install) still shows its money.
             captureTokens = (try? await server.captureTokens()) ?? []
+            tellMoneyNews()
         } catch {
             // Never show €0 as if nothing was spent.
             moneyProblem = "Can't load your spending right now. Check your connection."
@@ -1342,6 +1381,8 @@ final class AppModel {
     private var mailWatch: Task<Void, Never>?
 
     var importantMail: [EmailMessage] { emails.filter { $0.triage == .important } }
+    /// Someone wrote personally and expects an answer; not drafted or done yet.
+    var awaitingReply: [EmailMessage] { emails.filter { $0.needsReply && ($0.status == .new || $0.status == .seen) } }
 
     func loadMail() async {
         guard let server, email != nil else { return }

@@ -327,6 +327,7 @@ private struct AboutStep: View {
     let finish: () -> Void
     @State private var handle = ""
     @State private var saving = false
+    @State private var openAtLogin = true
 
     var body: some View {
         StepCard(title: "About you", subtitle: "So posts sound like you and Blink knows what you work on. You can skip this.") {
@@ -339,11 +340,14 @@ private struct AboutStep: View {
                 Label("Your AI key works. Chat, drafts and sorting are ready.", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green).font(.callout)
             }
+            #if os(macOS)
+            Toggle("Open Blink when I log in, so my day is ready on the first unlock", isOn: $openAtLogin)
+            #endif
             Text("Mail, money accounts and habits come later: Today shows what's left to set up.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Spacer()
-                Button("Skip", action: finish)
+                Button("Skip") { if openAtLogin { LoginItem.set(true) }; finish() }
                 Button {
                     Task {
                         saving = true
@@ -355,6 +359,7 @@ private struct AboutStep: View {
                             await model.saveVoice(voice)
                         }
                         saving = false
+                        if openAtLogin { LoginItem.set(true) }
                         finish()
                     }
                 } label: {

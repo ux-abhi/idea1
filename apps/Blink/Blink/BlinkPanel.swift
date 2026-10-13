@@ -61,8 +61,12 @@ struct BlinkPanel: View {
                             }
                         }
                         if model.thinking {
-                            HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Thinking…").foregroundStyle(.secondary) }
-                                .id("thinking")
+                            if let words = model.streaming, !words.isEmpty {
+                                Text(ChatPanel.markdown(words)).textSelection(.enabled).id("thinking")
+                            } else {
+                                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Thinking…").foregroundStyle(.secondary) }
+                                    .id("thinking")
+                            }
                         }
                         if !model.quickReplies.isEmpty && !model.thinking {
                             HStack {

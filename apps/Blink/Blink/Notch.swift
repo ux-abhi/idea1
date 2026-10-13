@@ -246,6 +246,13 @@ final class NotchController {
                 self?.evaluateCue()
             }
         }
+        // Started at login: the first unlock already happened, so the brief comes now (once a day, like on unlock). Only in
+        // the morning: Blink opened at 15:00 (an update, a restart) shouldn't say good morning.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3)) // let the window and the calendar settle first
+            guard Calendar.current.component(.hour, from: .now) < 12 else { return }
+            self?.morningBriefIfFirstToday()
+        }
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"),
                                                             object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.morningBriefIfFirstToday() }
@@ -259,6 +266,24 @@ final class NotchController {
     }
 
     // MARK: Speaking first
+
+    /// Once a day from 10:00: how many emails wait for a reply (opening the notch lists them, with Review).
+    private func replyDigest() {
+        let shown = UserDefaults.standard.string(forKey: "replyDigestShown")
+        let waiting = app.awaitingReply.count
+        guard ReplyDigest.due(now: .now, shownOn: shown, waiting: waiting), !model.briefing else { return }
+        UserDefaults.standard.set(HabitDay.key(.now), forKey: "replyDigestShown")
+        let text = ReplyDigest.text(waiting)
+        model.mood = .headsUp
+        model.peekNote = text
+        show(.peek, closingAfter: 8)
+        AccessibilityNotification.Announcement(text).post()
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            if self?.model.peekNote == text { self?.model.peekNote = nil }
+            self?.evaluateCue()
+        }
+    }
 
     /// The money nudge comes this long before the evening check-in (20:45 with the default 21:30, §21).
     private static let spendLead: TimeInterval = 45 * 60
@@ -305,7 +330,8 @@ final class NotchController {
         let eveningOpens = EveningCheck.opens(now: .now, evening: app.evening, wake: app.wake)
         let spendAt = eveningOpens.addingTimeInterval(-Self.spendLead)
         let candidates = [app.agenda.nextCueChange(after: .now, tasks: app.dueTasks),
-                          eveningOpens > .now ? eveningOpens : nil, spendAt > .now ? spendAt : nil, model.sleepyUntil].compactMap { $0 }
+                          eveningOpens > .now ? eveningOpens : nil, spendAt > .now ? spendAt : nil,
+                          ReplyDigest.nextTime(after: .now), model.sleepyUntil].compactMap { $0 }
         guard let next = candidates.min() else { return }
         cueWake = Task { [weak self] in
             // ContinuousClock keeps counting while the Mac sleeps, so an overdue cue fires on wake.
@@ -334,7 +360,7 @@ final class NotchController {
             show(.peek, closingAfter: 10)
             AccessibilityNotification.Announcement("Plan tomorrow?").post()
         }
-        if cue == nil, model.level == .rest { spendNudge(day: day) }
+        if cue == nil, model.level == .rest { spendNudge(day: day); replyDigest() }
         guard let cue else {
             if autoOpened && model.level == .open { close() }
             return
@@ -355,7 +381,7 @@ final class NotchController {
     }
 
     /// First unlock of the day: Good morning eyes and today's brief (§9.2).
-    /// shortcut: fires on screen unlock only, not when Blink launches at login; add once Blink is a login item (SMAppService).
+    /// Fires on screen unlock, and once when Blink starts (at login, if the owner turned that on).
     private func morningBriefIfFirstToday() {
         guard app.calendarAccess == .granted else { return }
         let today = Calendar.current.startOfDay(for: .now)
@@ -386,15 +412,22 @@ final class NotchController {
         }
     }
 
-    /// Puts the panel over the built-in display's notch, sized for the largest level.
+    /// Puts the panel over the built-in display's notch, sized for the largest level. With no notch anywhere (an external
+    /// display, or the lid closed), Blink draws its own small black notch at the top of the main screen's menu bar.
+    /// shortcut: one screen at a time (the notched one, else the menu bar screen); follow the active screen when asked.
     private func place() {
-        // shortcut: no-notch displays show nothing; add the menu bar icon and black pill (§36.2) with display contexts.
-        guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) else {
+        let notched = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 })
+        guard let screen = notched ?? NSScreen.screens.first else {
             panel?.orderOut(nil)
             return
         }
-        let side = (screen.auxiliaryTopLeftArea?.width ?? 0) + (screen.auxiliaryTopRightArea?.width ?? 0)
-        model.notchSize = CGSize(width: screen.frame.width - side, height: screen.safeAreaInsets.top)
+        if notched != nil {
+            let side = (screen.auxiliaryTopLeftArea?.width ?? 0) + (screen.auxiliaryTopRightArea?.width ?? 0)
+            model.notchSize = CGSize(width: screen.frame.width - side, height: screen.safeAreaInsets.top)
+        } else {
+            let menuBar = max(screen.frame.maxY - screen.visibleFrame.maxY, 24)
+            model.notchSize = CGSize(width: Self.drawnNotchWidth, height: menuBar)
+        }
         let size = CGSize(width: max(model.size(for: .rest).width, NotchModel.chatWidth),
                           height: model.notchSize.height + 8 + NotchModel.maxGlanceHeight + 20
                               + NotchModel.inputGap + NotchModel.inputHeight + 12)
@@ -406,6 +439,9 @@ final class NotchController {
         panel.setFrame(frame, display: true)
         panel.orderFrontRegardless()
     }
+
+    /// The notch Blink draws on screens without one: about a MacBook notch's width, over the empty middle of the menu bar.
+    private static let drawnNotchWidth: CGFloat = 185
 
     private func makePanel() -> NotchPanel {
         let panel = NotchPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -769,6 +805,24 @@ struct GlanceView: View {
                 }
             }
             if let app {
+                // Waiting for a reply, beyond the important ones shown above: one line, Review opens the Inbox.
+                let shownImportant = Set(app.importantMail.filter { $0.status != .drafted }.prefix(2).map(\.id))
+                let waiting = app.awaitingReply.filter { !shownImportant.contains($0.id) }
+                if !waiting.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrowshape.turn.up.left").foregroundStyle(.mint)
+                        Text(waiting.count == 1 ? "\(waiting[0].sender) is waiting for your reply" : "\(waiting.count) emails are waiting for your reply").lineLimit(1)
+                        Spacer(minLength: 8)
+                        Button("Review") {
+                            app.openPage = "inbox"
+                            NSApp.activate()
+                            NSApp.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                            done()
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.mint)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
                 // Planned for today but not approved yet: a nudge to review it.
                 ForEach(app.postsToday.filter { $0.status == .drafted }.prefix(1)) { piece in
                     HStack(spacing: 8) {
@@ -908,7 +962,11 @@ struct ChatPanel: View {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(app.chat.suffix(6)) { turn in line(turn).id(turn.id) }
                             if app.thinking {
-                                Text("Thinking…").font(.callout).foregroundStyle(.white.opacity(0.5)).id("thinking")
+                                if let words = app.streaming, !words.isEmpty {
+                                    line(.init(role: .assistant, text: words)).id("thinking")
+                                } else {
+                                    Text("Thinking…").font(.callout).foregroundStyle(.white.opacity(0.5)).id("thinking")
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -919,6 +977,7 @@ struct ChatPanel: View {
                     .onChange(of: app.chat.count) {
                         withAnimation { proxy.scrollTo(app.chat.last?.id, anchor: .bottom) }
                     }
+                    .onChange(of: app.streaming) { proxy.scrollTo("thinking", anchor: .bottom) }
                 }
             }
             if !app.quickReplies.isEmpty && !app.thinking {

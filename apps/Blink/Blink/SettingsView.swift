@@ -198,6 +198,8 @@ struct CalendarSettings: View {
 struct NotchSettings: View {
     @AppStorage(RestStyle.key) private var restStyle = RestStyle.ears
     @State private var mood = Mood.idle
+    @State private var openAtLogin = false
+    @State private var loginProblem: String?
 
     var body: some View {
         Form {
@@ -209,6 +211,15 @@ struct NotchSettings: View {
                 Text("Meetings and things that need you still appear in the notch, whichever you choose.")
                     .foregroundStyle(.secondary)
             }
+            Section("Startup") {
+                Toggle("Open Blink when you log in", isOn: Binding(get: { openAtLogin }, set: { on in
+                    loginProblem = LoginItem.set(on)
+                    openAtLogin = LoginItem.isOn
+                }))
+                if let loginProblem { Text(loginProblem).font(.caption).foregroundStyle(.orange) }
+                Text("Your morning brief then shows on the first unlock of the day.").font(.caption).foregroundStyle(.secondary)
+            }
+            .onAppear { openAtLogin = LoginItem.isOn }
             Section("Blink's eyes") {
                 // The notch's own size: the eyes scale with their frame, so a wide box makes them huge.
                 BlinkEyes(mood: mood)

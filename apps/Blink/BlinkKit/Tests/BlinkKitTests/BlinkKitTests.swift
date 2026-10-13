@@ -820,3 +820,64 @@ extension Tokens {
     try keychain.remove("session")
     #expect(try keychain.data(for: "session") == nil)
 }
+
+@Test func moneyAlertsAt80And100PercentOnceEach() throws {
+    let json = """
+    [{"id":"a","amount":170,"note":"Rewe","category":"groceries","spent_on":"2026-10-03"},
+     {"id":"b","amount":40,"note":"Lunch","category":"food","spent_on":"2026-10-04"},
+     {"id":"c","amount":65,"note":"Cinema","category":"fun","spent_on":"2026-10-05"},
+     {"id":"d","amount":500,"note":"Old","category":"food","spent_on":"2026-09-30"}]
+    """
+    let spends = try JSONDecoder().decode([Spend].self, from: Data(json.utf8))
+    let budgets = [Budget(category: .groceries, monthlyLimit: 200), Budget(category: .food, monthlyLimit: 250), Budget(category: .fun, monthlyLimit: 60)]
+    let alerts = MoneyAlerts.crossed(spends, budgets: budgets, month: "2026-10", told: [])
+    // Groceries 85% (warn), food 16% (quiet; September doesn't count), fun 108% (over, and not also an 80% alert).
+    #expect(alerts.map(\.key) == ["2026-10:groceries:80", "2026-10:fun:100"])
+    #expect(alerts.first?.text.contains("85%") == true && alerts.last?.over == true)
+    #expect(MoneyAlerts.crossed(spends, budgets: budgets, month: "2026-10", told: Set(alerts.map(\.key))).isEmpty)
+}
+
+@Test func lastWeekSummaryCoversMondayToSunday() throws {
+    var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "Europe/Berlin")!
+    let json = """
+    [{"id":"a","amount":30,"note":"Rewe","category":"groceries","spent_on":"2026-10-05"},
+     {"id":"b","amount":12,"note":"Lunch","category":"food","spent_on":"2026-10-11"},
+     {"id":"c","amount":99,"note":"This week","category":"fun","spent_on":"2026-10-12"},
+     {"id":"d","amount":99,"note":"Week before","category":"fun","spent_on":"2026-10-04"}]
+    """
+    let spends = try JSONDecoder().decode([Spend].self, from: Data(json.utf8))
+    // Tuesday 13 Oct: last week is Mon 5 – Sun 11 Oct.
+    let today = cal.date(from: DateComponents(year: 2026, month: 10, day: 13, hour: 9))!
+    let week = try #require(MoneyAlerts.lastWeek(spends, today: today, calendar: cal))
+    let total = Decimal(42).formatted(.currency(code: MoneyMath.currency))
+    #expect(week.text == "Last week: \(total). Groceries \(Decimal(30).formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0)))), \(SpendCategory.food.title) \(Decimal(12).formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0)))).")
+    #expect(MoneyAlerts.lastWeek([], today: today, calendar: cal) == nil)
+}
+
+@Test func replyDigestShowsOnceADayFromTen() {
+    var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "Europe/Berlin")!
+    let nine = cal.date(from: DateComponents(year: 2026, month: 10, day: 14, hour: 9, minute: 59))!
+    let ten = cal.date(from: DateComponents(year: 2026, month: 10, day: 14, hour: 10, minute: 0))!
+    #expect(!ReplyDigest.due(now: nine, shownOn: nil, waiting: 3, calendar: cal))
+    #expect(ReplyDigest.due(now: ten, shownOn: "2026-10-13", waiting: 3, calendar: cal))
+    #expect(!ReplyDigest.due(now: ten, shownOn: "2026-10-14", waiting: 3, calendar: cal))
+    #expect(!ReplyDigest.due(now: ten, shownOn: nil, waiting: 0, calendar: cal))
+    #expect(ReplyDigest.nextTime(after: nine, calendar: cal) == ten && ReplyDigest.nextTime(after: ten, calendar: cal) == nil)
+    #expect(ReplyDigest.text(1).contains("1 email is") && ReplyDigest.text(3).contains("3 emails are"))
+}
+
+@Test func chatStreamEventsParse() {
+    typealias E = BlinkServer.ChatEvent
+    #expect(E.parse(line: #"data: {"t":"delta","text":"Hi "}"#) == .delta("Hi "))
+    #expect(E.parse(line: #"data: {"t":"reset"}"#) == .reset)
+    #expect(E.parse(line: #"data: {"t":"done","reply":"Added.","proposed":1}"#) == .done(reply: "Added.", proposed: 1))
+    #expect(E.parse(line: #"data: {"t":"error","error":"No key."}"#) == .failed("No key."))
+    #expect(E.parse(line: "") == nil && E.parse(line: ": keep-alive") == nil && E.parse(line: #"data: {"t":"other"}"#) == nil)
+}
+
+@Test func moneyAlertMemoryStaysSmallAndCurrent() {
+    let old: Set<String> = ["2026-09:food:80", "week-2026-9", "week-2026-41", "week-2025-52", "2026-10:fun:100"]
+    let kept = MoneyAlerts.remember(old, adding: ["2026-10:groceries:80"], month: "2026-10")
+    // Last month's keys go; only the newest week (by number: 41 beats 9) stays.
+    #expect(kept == ["2026-10:fun:100", "2026-10:groceries:80", "week-2026-41"])
+}

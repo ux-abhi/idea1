@@ -686,30 +686,66 @@ public final class BlinkServer: Sendable {
         }
     }
 
-    public struct ChatReply: Decodable, Sendable {
-        public let reply: String
-        public let proposed: Int
-    }
-
     public struct ChatProblem: Error, Sendable { public let message: String }
 
-    /// Asks Blink on the owner's server; Claude's proposals arrive as Ask-First cards.
-    public func chat(_ message: String, history: [ChatTurn], timeZone: String,
-                     reminders: [AgendaReminder] = [], context: String? = nil) async throws -> ChatReply {
-        // ISO 8601 text: the function's default encoder would send dates as seconds since 2001, which the server refuses.
+    /// One event of a streamed answer (server-sent events from the chat function).
+    public enum ChatEvent: Equatable, Sendable {
+        case delta(String), reset, done(reply: String, proposed: Int), failed(String)
+
+        /// `data: {"t":"delta","text":"Hi"}` → .delta("Hi"); nil for anything else (blank lines, comments, unknown events).
+        public static func parse(line: String) -> ChatEvent? {
+            guard line.hasPrefix("data:"), let data = line.dropFirst(5).trimmingCharacters(in: .whitespaces).data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+            switch object["t"] as? String {
+            case "delta": return (object["text"] as? String).map(ChatEvent.delta)
+            case "reset": return .reset
+            case "done": return .done(reply: object["reply"] as? String ?? "Done.", proposed: object["proposed"] as? Int ?? 0)
+            case "error": return .failed(object["error"] as? String ?? "Blink couldn't answer.")
+            default: return nil
+            }
+        }
+    }
+
+    /// Asks Blink and streams the answer as it's written. Same request as `chat`, plus `stream: true`.
+    public func chatStream(_ message: String, history: [ChatTurn], timeZone: String,
+                           reminders: [AgendaReminder] = [], context: String? = nil) -> AsyncThrowingStream<ChatEvent, Error> {
         struct Reminder: Encodable { let id: String; let title: String; let due: String? }
         struct Body: Encodable {
-            let message: String; let history: [ChatTurn]; let timeZone: String; let reminders: [Reminder]; let context: String?
+            let message: String; let history: [ChatTurn]; let timeZone: String; let reminders: [Reminder]; let context: String?; let stream = true
         }
-        do {
-            return try await client.functions.invoke(
-                "chat", options: .init(body: Body(message: message, history: Self.recent(history), timeZone: timeZone,
-                                                  reminders: reminders.map { Reminder(id: $0.id, title: $0.title, due: $0.due?.ISO8601Format()) },
-                                                  context: context.map { String($0.prefix(4000)) })))
-        } catch let FunctionsError.httpError(_, data) {
-            // The function explains itself in words, e.g. a missing API key.
-            struct ErrorBody: Decodable { let error: String }
-            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't answer.")
+        let body = Body(message: message, history: Self.recent(history), timeZone: timeZone,
+                        reminders: reminders.map { Reminder(id: $0.id, title: $0.title, due: $0.due?.ISO8601Format()) },
+                        context: context.map { String($0.prefix(4000)) })
+        let endpoint = config.url.appending(path: "functions/v1/chat"), key = config.publishableKey, client = client
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let token = try await client.auth.session.accessToken
+                    var request = URLRequest(url: endpoint)
+                    request.httpMethod = "POST"
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    request.setValue(key, forHTTPHeaderField: "apikey")
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    request.httpBody = try JSONEncoder().encode(body)
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    guard status == 200 else {
+                        // Refused before streaming (no key, over the daily limit, signed out): the function says why in JSON.
+                        var data = Data()
+                        for try await byte in bytes { data.append(byte) }
+                        struct ErrorBody: Decodable { let error: String }
+                        throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't answer.")
+                    }
+                    for try await line in bytes.lines {
+                        if let event = ChatEvent.parse(line: line) { continuation.yield(event) }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
