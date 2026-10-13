@@ -30,6 +30,15 @@ None planned. DynamicNotchKit and rive-ios were considered and are not used: the
 
 Rule: only MIT, Apache-2.0, BSD, ISC or zlib in shipped code. GPL/AGPL projects (e.g. Boring Notch, Inbox Zero) are reference-only. See ARCHITECTURE.md §32.
 
+## Website (marketing/site, not part of the app)
+
+Loaded from public CDNs at page load, not bundled.
+
+| Component | Version | License | Source |
+|---|---|---|---|
+| GSAP core + ScrollTrigger (self-hosted in js/vendor) | 3.13.0 | GSAP Standard "no charge" license (free, including commercial use; not MIT) | https://gsap.com/standard-license |
+| Inter, Latin subset (self-hosted in assets/fonts) | v20 | SIL Open Font License 1.1 | https://github.com/rsms/inter |
+
 ## Development tools (not shipped)
 
 Claude Code skills in `.claude/skills/` help development and are never part of the app or backend. Their sources, pinned commits and licenses are listed in [SKILLS.md](SKILLS.md). License texts sit next to each skill.

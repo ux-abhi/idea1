@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blink privacy</title>
+  <meta name="description" content="Where Blink keeps your data: on your Mac, on your own server, and with the AI provider you pick. Pexilim stores nothing.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#000000">
+  <link rel="canonical" href="https://blink.pexilim.com/privacy.html">
+  <link rel="icon" href="assets/favicon.png" type="image/png">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-head">
+  <div class="inner">
+    <a class="brand" href="./" aria-label="Blink home"><img src="assets/eyes-idle.png" alt="" width="30" height="15">Blink</a>
+    <nav aria-label="Main">
+      <a href="./#ask">Features</a>
+      <a href="./#privacy">Privacy</a>
+      <a href="./#faq">FAQ</a>
+      <a href="install.html">Install guide</a>
+    </nav>
+    <a class="btn small" href="install.html#download">Download</a>
+  </div>
+</header>
+
+<main id="main" class="doc">
+  <h1>Privacy</h1>
+  <p class="lede">Blink keeps your data on your Mac and on a server in your own account. Pexilim, the company that makes Blink, doesn't store it and can't read it.</p>
+  <p class="updated">Last updated 13 October 2026</p>
+
+  <h2>The short version</h2>
+  <ul>
+    <li>Your clipboard, chat history and post images stay on your Mac.</li>
+    <li>Everything else Blink keeps is on <strong>your own Supabase server</strong>, in your account.</li>
+    <li>AI requests go from your server to the AI provider <strong>you</strong> pick, with <strong>your</strong> key.</li>
+    <li>Pexilim runs no database for Blink. The only thing we run is a tiny sign-in helper used once during setup, and it stores nothing.</li>
+    <li>No analytics, no tracking, no cookies, in the app or on this website.</li>
+  </ul>
+
+  <h2>Who holds what</h2>
+  <table class="who">
+    <tr><th scope="row">Your Mac</th><td>Clipboard history (your last 50 copies), chat history and post images. The clipboard is never sent to your server or to any AI. Items that password managers mark as concealed are never recorded. You can pause or clear the clipboard at any time.</td></tr>
+    <tr><th scope="row">Your server</th><td>Notes, tasks, reminders, habits, spaces, money entries and accounts, content ideas, drafts and post stats, mail summaries and your sender rules, and a log of the actions you approved (kept 180 days). Your AI keys and mail app passwords are stored there as secrets; Blink never shows them again. The server is a Supabase project in your account, run under your agreement with Supabase.</td></tr>
+    <tr><th scope="row">Your mail provider</th><td>Your server checks your mailbox and stores only short summaries, not full messages. Reply drafts are saved to your mailbox's Drafts folder. Mail is sent only after you approve it with Touch ID.</td></tr>
+    <tr><th scope="row">Your AI provider</th><td>When a task needs AI, your server sends what that task needs to the provider you chose (Anthropic for Claude, Groq, or OpenRouter), using your own key. If you turn them on, post images use Cloudflare and reading your own public Instagram page uses Apify, also with your keys. Each provider handles that data under your account's terms with them.</td></tr>
+    <tr><th scope="row">Pexilim</th><td>Only the sign-in helper, described below. No copy of your data, no admin access, no telemetry.</td></tr>
+  </table>
+
+  <h2>The sign-in helper</h2>
+  <p>When you choose “Sign in with Supabase” during setup, Supabase needs a secret that a Mac app can't keep safely. So Pexilim runs one small helper. It receives the one-time sign-in code from Supabase, adds our secret, and returns a short-lived access token to Blink on your Mac. It never asks for a long-lived token.</p>
+  <p>The helper's code doesn't store or log the code or the token. Blink keeps the token in memory only while it sets up your server, then drops it. Like any hosted service, the platform the helper runs on may record basic request details such as the time and the result. If you choose “I already have a server” instead, the helper isn't used at all.</p>
+
+  <h2>This website</h2>
+  <p>blink.pexilim.com is a set of static pages. It sets no cookies and runs no analytics or tracking. Everything it uses, the font, the animation library and the film, is served from this site itself, so no other company sees your visit. Like any web server, our host receives your IP address to send you the pages.</p>
+
+  <h2>If you email us</h2>
+  <p>If you write to <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>, we use your address and message only to reply. Ask us and we'll delete the conversation.</p>
+
+  <h2>Your control</h2>
+  <p>Because your data is on your own server, you decide what happens to it. You can export it, back it up or delete it from your Supabase account; deleting the project removes all of it. Clear the clipboard in Blink's settings. Pexilim has nothing to hand over or delete, because we don't hold it.</p>
+
+  <h2>iPhone</h2>
+  <p>Blink is Mac only today. When the iPhone app ships, it will need a notification relay, and we'll update this page before it does.</p>
+
+  <h2>Changes</h2>
+  <p>If we change how Blink handles data, we'll update this page and the date at the top.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about privacy: <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>.</p>
+</main>
+
+<footer class="site-foot">
+  <div class="inner">
+    <p class="by" style="margin:0"><b>Blink</b> by Pexilim</p>
+    <nav aria-label="Footer">
+      <a href="install.html">Install guide</a>
+      <a href="privacy.html" aria-current="page">Privacy</a>
+      <a href="terms.html">Terms</a>
+      <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install Blink</title>
+  <meta name="description" content="How to download, install and set up Blink, the free notch assistant for Mac.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#000000">
+  <link rel="canonical" href="https://blink.pexilim.com/install.html">
+  <link rel="icon" href="assets/favicon.png" type="image/png">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-head">
+  <div class="inner">
+    <a class="brand" href="./" aria-label="Blink home"><img src="assets/eyes-idle.png" alt="" width="30" height="15">Blink</a>
+    <nav aria-label="Main">
+      <a href="./#ask">Features</a>
+      <a href="./#privacy">Privacy</a>
+      <a href="./#faq">FAQ</a>
+      <a href="install.html" aria-current="page">Install guide</a>
+    </nav>
+    <a class="btn small" href="#download">Download</a>
+  </div>
+</header>
+
+<main id="main" class="doc">
+  <h1>Install Blink.</h1>
+  <p class="lede">Free, for MacBooks with a notch running macOS 26. It takes about three minutes.</p>
+
+  <div class="download-box" id="download">
+    <a class="btn" id="dmg-link" href="downloads/Blink.dmg" download>Download Blink.dmg</a>
+    <span class="size" id="dmg-size" hidden></span>
+  </div>
+
+  <div class="note warn">
+    <p><strong>One extra step, the first time.</strong> This build isn't notarized by Apple yet, so the first time you open Blink, macOS stops it until you confirm in System Settings. Step 4 shows how. We'll ship a notarized build soon; until then macOS asks once.</p>
+  </div>
+
+  <h2>Install</h2>
+  <ol class="steps-doc">
+    <li><b>Download Blink.dmg.</b>Use the button above. It lands in your Downloads folder.</li>
+    <li><b>Drag Blink into Applications.</b>Open Blink.dmg and drag the Blink icon onto the Applications folder. Then eject the disk image.</li>
+    <li><b>Open Blink.</b>Open your Applications folder and double-click Blink. macOS says it can't check Blink and doesn't open it. Click <span class="path">Done</span>, not Move to Trash.</li>
+    <li><b>Allow it in System Settings.</b>Open <span class="path">System Settings › Privacy &amp; Security</span> and scroll down to Security. Next to “Blink was blocked”, click <span class="path">Open Anyway</span>, enter your Mac password, then click <span class="path">Open Anyway</span> once more. You only do this the first time.</li>
+  </ol>
+
+  <h2>Set up</h2>
+  <p>Blink opens with a short setup. You need no code and no terminal.</p>
+  <ol class="steps-doc">
+    <li><b>Server.</b>Click <span class="path">Sign in with Supabase</span>. Blink creates a free Supabase project in your own account and installs everything it needs. If something interrupts it, it picks up where it stopped. Already run a Supabase server? Choose <span class="path">I already have a server</span> and paste its address and publishable key.</li>
+    <li><b>Account.</b>Create or sign in to the login on your own server. Each Mac is registered with your server, not with Pexilim.</li>
+    <li><b>Calendar.</b>Allow Calendar access. Your next meeting shows up in the notch.</li>
+    <li><b>About you.</b>Optional. Tell Blink a little about your day so its suggestions fit.</li>
+  </ol>
+  <p>For AI, paste a free Groq key during setup. Add a Claude or OpenRouter key later in <span class="path">Settings › Connections</span> if you want them. Keys are stored as secrets on your server and never shown again.</p>
+  <p>Then press <kbd>⌃⌥Space</kbd> to ask Blink anything, or <kbd>⌃⌥V</kbd> for your clipboard.</p>
+
+  <h2>Verify the download</h2>
+  <p>To check that your copy is exactly the one we published, open Terminal and run:</p>
+  <p><code>shasum -a 256 ~/Downloads/Blink.dmg</code></p>
+  <p>The result should match this line:</p>
+  <p><code id="dmg-sha">SHA-256: published here with the first release</code></p>
+
+  <h2>Remove Blink</h2>
+  <p>Quit Blink and move it from Applications to the Trash. Your data on your own server stays there until you delete it; deleting the Supabase project removes all of it.</p>
+
+  <h2>Need help?</h2>
+  <p>Write to <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>.</p>
+</main>
+
+<footer class="site-foot">
+  <div class="inner">
+    <p class="by" style="margin:0"><b>Blink</b> by Pexilim</p>
+    <nav aria-label="Footer">
+      <a href="install.html" aria-current="page">Install guide</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+      <a href="mailto:hello@pexilim.com">hello@pexilim.com</a>
+    </nav>
+  </div>
+</footer>
+<script src="js/install.js" defer></script>
+</body>
+</html>
