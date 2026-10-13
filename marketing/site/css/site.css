@@ -85,19 +85,28 @@ button { font: inherit; color: inherit; }
 /* ---------- Header ---------- */
 .site-head {
   position: sticky; top: 0; z-index: 50;
-  background: rgba(255, 255, 255, .92);
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  background: rgba(255, 255, 255, .72);
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
   border-bottom: 1px solid rgba(0, 0, 0, .07);
 }
 .site-head .inner { width: var(--page); margin: 0 auto; height: 60px; display: flex; align-items: center; gap: 28px; }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font: 700 21px/1 var(--display); font-stretch: 90%; letter-spacing: -.02em; text-decoration: none; }
-.brand-notch { width: 46px; height: 24px; margin-top: -14px; padding-top: 10px; box-sizing: content-box; background: var(--black); border-radius: 0 0 12px 12px; display: grid; place-items: center; }
-.brand-notch .eyes-look { width: 30px; }
+/* The notch in the menu bar: same shape as the dark bands' tabs, with Blink inside. */
+.head-notch {
+  position: absolute; left: 50%; top: 0; translate: -50% 0; width: 124px; height: 34px;
+  background: var(--black); border-radius: 0 0 16px 16px; display: grid; place-items: center;
+}
+.head-notch::before, .head-notch::after { content: ""; position: absolute; top: 0; width: 10px; height: 10px; }
+.head-notch::before { right: 100%; background: radial-gradient(circle at 0 100%, transparent 9.5px, var(--black) 10px); }
+.head-notch::after { left: 100%; background: radial-gradient(circle at 100% 100%, transparent 9.5px, var(--black) 10px); }
+.head-notch .eyes-look { width: 44px; margin-top: -2px; }
+@media (max-width: 480px) { .head-notch { width: 96px; height: 30px; } .head-notch .eyes-look { width: 36px; } .wide { display: none; } }
 .site-head nav { margin-left: auto; display: flex; gap: 26px; font-size: 15px; font-weight: 500; }
 .site-head nav a { color: #3A3A3F; text-decoration: none; }
 .site-head nav a:hover, .site-head nav a[aria-current] { color: var(--ink); }
-@media (max-width: 720px) { .site-head nav { display: none; } .site-head .btn { margin-left: auto; } }
+/* The nav hides before it would run under the centred notch. */
+@media (max-width: 900px) { .site-head nav { display: none; } .site-head .btn { margin-left: auto; } }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -136,17 +145,25 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
 .head { display: grid; gap: 18px; justify-items: start; margin-bottom: clamp(40px, 6vw, 64px); }
 .head h2 { max-width: 14em; }
 
-/* Dark bands hang a notch, with Blink inside, into the next section. */
 .band { position: relative; }
-.notch-tab {
-  position: absolute; left: 50%; top: 100%; translate: -50% 0; z-index: 3;
-  width: 150px; height: 40px; background: var(--black); border-radius: 0 0 22px 22px;
-  display: grid; place-items: center;
+
+/* ---------- Welcome (only with motion; js/intro-gate.js turns it on) ----------
+   A black screen over the page. Scrolling shrinks it (clip-path, scrubbed in main.js) into the menu bar's notch. */
+.intro { display: none; }
+.intro-on .intro {
+  --ix: 0px; --ib: 0px; --ir: 0px;
+  position: fixed; inset: 0; z-index: 60; pointer-events: none;
+  display: grid; place-items: center; background: var(--black); color: var(--white); text-align: center;
+  clip-path: inset(0 var(--ix) var(--ib) var(--ix) round 0 0 var(--ir) var(--ir));
 }
-.notch-tab::before, .notch-tab::after { content: ""; position: absolute; top: 0; width: 16px; height: 16px; }
-.notch-tab::before { right: 100%; background: radial-gradient(circle at 0 100%, transparent 15.5px, var(--black) 16px); }
-.notch-tab::after { left: 100%; background: radial-gradient(circle at 100% 100%, transparent 15.5px, var(--black) 16px); }
-.notch-tab .eyes-look { width: 58px; margin-top: -4px; }
+.intro-words { display: grid; justify-items: center; gap: 6px; }
+.intro-hi { margin: 0; display: flex; align-items: center; gap: .45em; font-size: clamp(22px, 2.4vw, 32px); font-weight: 400; letter-spacing: -.01em; }
+.intro-name { margin: 0; font: 700 clamp(72px, 11vw, 150px)/1 var(--display); font-stretch: 94%; letter-spacing: -.02em; }
+.intro-hi-words { display: block; }
+.intro-eyes { display: block; width: 2.4em; }
+.intro-scroll { position: absolute; left: 0; right: 0; bottom: 28px; margin: 0; display: grid; justify-items: center; gap: 4px; color: #8E8E93; font-size: 13px; }
+.intro-scroll svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; animation: nudge 1.8s var(--ease-out) infinite; }
+@keyframes nudge { 50% { translate: 0 4px; } }
 
 /* ---------- Hero ---------- */
 .hero {
@@ -159,6 +176,20 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
 /* Centred: the promise, what it does, the action, and one quiet line of facts. */
 .hero-head { text-align: center; display: grid; justify-items: center; }
 .hero h1 { max-width: 11em; }
+/* A notch with Blink's eyes, set in the headline like a word. */
+.h-notch {
+  display: inline-grid; place-items: center; width: 1.22em; height: .6em; vertical-align: .1em;
+  background: var(--black); border-radius: 0 0 .26em .26em; rotate: -5deg;
+  box-shadow: 0 .12em .3em -.08em rgba(10, 60, 140, .45);
+}
+.h-notch .eyes-look { width: .7em; }
+/* Blue highlighter under what matters. --hl is how far it has been drawn (main.js swipes it in). */
+mark.hl {
+  --hl: 100%; color: inherit; padding: 0 .06em; margin: 0 -.06em;
+  background: linear-gradient(transparent 58%, rgba(10, 132, 255, .28) 58%, rgba(10, 132, 255, .28) 92%, transparent 92%) no-repeat 0 0 / var(--hl) 100%;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+mark.hl.soft { color: var(--ink); background-image: linear-gradient(transparent 62%, rgba(10, 132, 255, .2) 62%); }
 .hero .lede { margin-top: 22px; max-width: 31em; }
 .cta-row { margin-top: 30px; display: flex; gap: 12px 16px; align-items: center; flex-wrap: wrap; }
 .hero .cta-row { justify-content: center; }
@@ -168,24 +199,45 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
 .mac { width: min(1080px, 100%); margin: clamp(48px, 7vw, 80px) auto 0; }
 /* The hero shows a short, whole screen (no fade): the notch is the subject, the buttons sit below on white. */
 .hero .mac { margin-top: clamp(36px, 4.5vw, 56px); }
-.hero .screen { aspect-ratio: 16 / 7; }
+.hero .screen { aspect-ratio: 16 / 10; }
 @media (max-width: 640px) { .hero .screen { aspect-ratio: 4 / 3; } .hero .menubar span:last-child { display: none; } }
 .hero .moments { margin-top: 28px; }
+/* On wider screens the moments become a glass dock on the Mac's screen, like the macOS Dock. */
+@media (min-width: 641px) {
+  .hero .moments {
+    width: fit-content; margin: calc(-84px - clamp(10px, 1.5vw, 18px)) auto 0; padding: 6px; gap: 4px; border-radius: 999px;
+    background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .22);
+    backdrop-filter: blur(18px) saturate(160%); -webkit-backdrop-filter: blur(18px) saturate(160%);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .5);
+  }
+  .hero .moment-btn { border: 0; background: transparent; color: rgba(255, 255, 255, .88); min-height: 38px; }
+  .hero .moment-btn:hover { background: rgba(255, 255, 255, .12); }
+  .hero .moment-btn[aria-pressed="true"] { background: var(--white); color: var(--black); }
+}
+/* A MacBook lid: slim black bezel, a thin aluminium edge, corners rounded at the top and nearly square at the hinge. */
 .bezel {
-  padding: clamp(6px, 1vw, 12px); border-radius: clamp(14px, 2.2vw, 28px);
-  background: var(--black); border: 1px solid #C7C7CC;
+  padding: clamp(5px, .75vw, 10px); border-radius: clamp(12px, 1.9vw, 24px) clamp(12px, 1.9vw, 24px) 4px 4px;
+  background: var(--black); border: 1.5px solid #B9BAC0; outline: 1px solid rgba(0, 0, 0, .08);
   box-shadow: 0 50px 100px -30px rgba(10, 60, 140, .35), 0 30px 60px -40px rgba(255, 140, 0, .4);
 }
 .screen {
   --p: 1; /* 0 notch at rest → 1 open; GSAP scrubs it */
   position: relative; container-type: inline-size; aspect-ratio: 16 / 10;
-  border-radius: clamp(8px, 1.3vw, 16px); overflow: hidden;
+  border-radius: clamp(7px, 1.1vw, 14px) clamp(7px, 1.1vw, 14px) 2px 2px; overflow: hidden;
   background:
     radial-gradient(80% 90% at 20% 0%, rgba(10, 132, 255, .6) 0%, transparent 65%),
     radial-gradient(60% 70% at 90% 85%, rgba(255, 159, 10, .45) 0%, transparent 70%),
     radial-gradient(90% 60% at 50% 110%, rgba(100, 210, 255, .2) 0%, transparent 70%),
     #040812;
 }
+/* The base: wider than the lid, aluminium, with the thumb notch for opening it. */
+.base {
+  position: relative; width: 112%; margin-left: -6%; height: clamp(10px, 1.5vw, 18px);
+  border-radius: 2px 2px 45% 45% / 2px 2px 100% 100%;
+  background: linear-gradient(#F2F2F4, #D1D2D6 55%, #A9AAB0);
+  box-shadow: 0 18px 30px -18px rgba(0, 0, 0, .45);
+}
+.base::before { content: ""; position: absolute; left: 50%; top: 0; width: 13%; height: 42%; translate: -50% 0; background: linear-gradient(#B4B5BA, #CFD0D4); border-radius: 0 0 12px 12px; }
 .menubar {
   position: absolute; inset: 0 0 auto; height: 3.4cqw; padding: 0 2cqw;
   display: flex; align-items: center; justify-content: space-between;
@@ -510,16 +562,16 @@ button.dot:active { transform: scale(.85); }
   .pex { flex-direction: column; text-align: center; }
 }
 
-/* ---------- Setup: three steps hang from one rail, like notches from a screen edge ---------- */
+/* ---------- Setup: three steps on one rail; the numbers sit on it ---------- */
 .flow { position: relative; padding-top: 30px; }
 .rail { position: absolute; left: 0; right: 0; top: 0; height: 2px; border-radius: 2px; background: var(--line); }
 .rail i { position: absolute; inset: 0; border-radius: inherit; background: var(--ink); transform-origin: left; }
 .steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); counter-reset: step; }
 .step { counter-increment: step; position: relative; display: flex; flex-direction: column; padding: 26px; border-radius: var(--r-tile); background: var(--mist); }
-/* The number is a notch hanging from the rail. */
+/* The number is a stop on the rail. */
 .step::before {
-  content: counter(step); position: absolute; left: 26px; top: -30px; display: grid; place-items: center; width: 44px; height: 30px;
-  background: var(--black); color: #fff; font-weight: 700; font-size: 15px; border-radius: 0 0 14px 14px;
+  content: counter(step); position: absolute; left: 26px; top: -44px; display: grid; place-items: center; width: 28px; height: 28px;
+  background: var(--bg); color: var(--ink); font: 650 14px/1 var(--display); border: 2px solid var(--ink); border-radius: 50%;
 }
 .step > b { display: block; font: 620 21px/1.2 var(--display); letter-spacing: -.005em; margin: 22px 0 6px; }
 .step > span { color: var(--muted); }
@@ -547,13 +599,13 @@ button.dot:active { transform: scale(.85); }
 .perm .dots { color: var(--muted); letter-spacing: .1em; }
 .perm .on { display: inline-flex; align-items: center; gap: 6px; }
 .perm .on::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
-/* Phones: the rail runs down the left and the notches hang sideways from it. */
+/* Phones: the rail runs down the left, the numbers on it. */
 @media (max-width: 820px) {
   .flow { padding: 0 0 0 30px; }
   .rail { right: auto; bottom: 0; width: 2px; height: auto; }
   .rail i { transform-origin: top; }
   .steps { grid-template-columns: minmax(0, 1fr); }
-  .step::before { left: -30px; top: 26px; width: 30px; height: 44px; border-radius: 0 14px 14px 0; }
+  .step::before { left: -44px; top: 26px; }
 }
 
 /* ---------- FAQ ---------- */
@@ -607,17 +659,9 @@ button.dot:active { transform: scale(.85); }
 .waitlist.done .wl-row, .waitlist.done .wl-consent, .waitlist.done .wl-fine, .waitlist.done .wl-submit { display: none; }
 .waitlist.done .wl-status { text-align: center; font-size: 19px; }
 
-/* ---------- Footer: a dark screen with the notch at its top edge and the name cropped at the bottom ---------- */
-.site-foot { position: relative; overflow: hidden; background: var(--gray6); color: #A1A1A6; padding: 112px 0 0; font-size: 15px; }
-.foot-notch {
-  position: absolute; left: 50%; top: 0; translate: -50% 0; width: 200px; height: 54px;
-  display: grid; place-items: center; background: var(--black); border-radius: 0 0 28px 28px;
-}
-.foot-notch::before, .foot-notch::after { content: ""; position: absolute; top: 0; width: 20px; height: 20px; }
-.foot-notch::before { right: 100%; background: radial-gradient(circle at 0 100%, transparent 19.5px, var(--black) 20px); }
-.foot-notch::after { left: 100%; background: radial-gradient(circle at 100% 100%, transparent 19.5px, var(--black) 20px); }
-.foot-notch .eyes-look { width: 78px; margin-top: -6px; }
-/* Blinks on its own, so it lives on the pages that run no script too. */
+/* ---------- Footer: a dark screen with the name cropped at the bottom ---------- */
+.site-foot { position: relative; overflow: hidden; background: var(--gray6); color: #A1A1A6; padding: 88px 0 0; font-size: 15px; }
+/* Blinks on its own, for the header notch on the pages that run no script. */
 .css-blink { animation: blink 7s 2s infinite; }
 @keyframes blink { 0%, 96%, 100% { transform: scaleY(1); } 98% { transform: scaleY(.08); } }
 .site-foot .inner { width: var(--page); margin: 0 auto; }
@@ -659,7 +703,7 @@ button.dot:active { transform: scale(.85); }
 .doc code { font: 500 .9em ui-monospace, Menlo, monospace; background: var(--mist); border-radius: 6px; padding: .1em .4em; word-break: break-all; }
 .doc ol.steps-doc { list-style: none; padding: 0; counter-reset: s; }
 .doc ol.steps-doc > li { counter-increment: s; position: relative; padding-left: 56px; margin-top: 28px; }
-.doc ol.steps-doc > li::before { content: counter(s); position: absolute; left: 0; top: -4px; width: 40px; height: 28px; border-radius: 0 0 12px 12px; background: var(--black); color: #fff; font-weight: 700; font-size: 14px; display: grid; place-items: center; }
+.doc ol.steps-doc > li::before { content: counter(s); position: absolute; left: 0; top: -2px; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--ink); color: var(--ink); font: 650 14px/1 var(--display); display: grid; place-items: center; }
 .doc ol.steps-doc b { color: var(--ink); display: block; font-size: 18px; margin-bottom: 4px; }
 .note { margin-top: 28px; padding: 18px 20px; border-radius: 20px; background: var(--mist); }
 .note.warn { box-shadow: inset 4px 0 0 var(--orange); }

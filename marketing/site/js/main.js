@@ -2,6 +2,7 @@
 // Every demo works without GSAP; motion runs only when GSAP loaded and the visitor allows motion.
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const motion = !reduce && window.gsap && window.ScrollTrigger;
+if (!motion) document.documentElement.classList.remove("intro-on"); // no GSAP: no welcome screen, the page as it is
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const POP = "cubic-bezier(.34, 1.56, .64, 1)";
@@ -274,13 +275,44 @@ if (motion) {
     return gsap.to(o, { n: text.length, duration: text.length * every, ease: "none", onUpdate: () => (el.textContent = text.slice(0, Math.round(o.n))) });
   };
 
-  // Hero: one orchestrated entrance, then the notch opens as you scroll.
-  gsap.from(".hero-in", { y: 24, autoAlpha: 0, filter: "blur(8px)", duration: 0.9, stagger: 0.08, ease: "power3.out" });
-  gsap.from("#hero-mac", { y: 70, autoAlpha: 0, duration: 1.2, delay: 0.35, ease: "power3.out" });
-  gsap.from("#hero-notch .eyes-look img", { scaleY: 0.08, duration: 0.35, delay: 1.2, ease: "power2.out" });
-
-  // Then the notch opens by itself: the first thing a visitor sees is Blink at work, not an empty screen.
-  gsap.fromTo(".screen", { "--p": 0 }, { "--p": 1, duration: 0.9, delay: 1.5, ease: "expo.inOut", onComplete: startMoments });
+  // Welcome → notch → page, scrubbed by the scroll while the hero holds still:
+  // the black screen shrinks into the menu bar's notch and Blink's eyes fly in with it; then the hero comes up
+  // under it, the Mac's notch opens and the highlights are drawn. Positions are measured, so any screen size lines up.
+  const intro = $("#intro"), headNotch = $(".head-notch"), introEyes = $(".intro-eyes", intro);
+  const header = $(".site-head");
+  const box = (el) => el.getBoundingClientRect();
+  gsap.set(".hero mark.hl", { "--hl": "0%" });
+  const welcome = gsap.timeline({
+    defaults: { ease: "none" },
+    scrollTrigger: {
+      trigger: ".hero", start: () => `top ${header.offsetHeight}px`, end: "+=150%", pin: true, scrub: 0.8,
+      invalidateOnRefresh: true,
+      onUpdate: (st) => { if (st.progress > 0.97) startMoments(); },
+    },
+  })
+    // The words lift, blur and fade; the eyes stay, they are about to fly.
+    .to(".intro-scroll", { autoAlpha: 0, duration: 0.1 }, 0)
+    .to(".intro-hi-words", { autoAlpha: 0, y: -24, filter: "blur(6px)", duration: 0.18 }, 0)
+    .to(".intro-name", { autoAlpha: 0, y: -24, filter: "blur(6px)", duration: 0.18 }, 0.06)
+    .to(intro, {
+      "--ix": () => `${box(headNotch).left}px`,
+      "--ib": () => `${innerHeight - box(headNotch).bottom}px`,
+      "--ir": "16px", duration: 0.5, ease: "power2.inOut",
+    }, 0.1)
+    .to(introEyes, {
+      x: () => { const a = box(introEyes), b = box($(".eyes-look", headNotch)); return b.left + b.width / 2 - (a.left + a.width / 2); },
+      y: () => { const a = box(introEyes), b = box($(".eyes-look", headNotch)); return b.top + b.height / 2 - (a.top + a.height / 2); },
+      scale: () => box($(".eyes-look", headNotch)).width / box(introEyes).width,
+      duration: 0.5, ease: "power2.inOut",
+    }, 0.1)
+    .set(intro, { autoAlpha: 0 }, 0.6)
+    .from(".hero-in", { y: 40, opacity: 0, filter: "blur(10px)", duration: 0.25, stagger: 0.04, ease: "power2.out" }, 0.5)
+    .from("#hero-mac, #hero-moments", { y: 120, scale: 0.94, opacity: 0, duration: 0.35, ease: "power2.out" }, 0.6)
+    .fromTo(".screen", { "--p": 0 }, { "--p": 1, duration: 0.15, ease: "power2.inOut" }, 0.82)
+    .to(".hero mark.hl", { "--hl": "100%", duration: 0.12, stagger: 0.06, ease: "power1.inOut" }, 0.8);
+  // Opacity, not autoAlpha, above: the hero stays in the accessibility tree. Keyboard users don't scroll, so the first
+  // Tab skips the welcome (the overlay would hide the focus ring).
+  addEventListener("focusin", () => { const st = welcome.scrollTrigger; if (st.progress < 1) scrollTo(0, st.end); }, { once: true });
 
   // Section titles arrive word by word, once. The words stay one text run for screen readers.
   for (const h of $$(".head h2, .end h2")) {
@@ -291,13 +323,6 @@ if (motion) {
 
   // The film grows to full size as it comes up.
   gsap.fromTo(".film-frame", { scale: 0.9 }, { scale: 1, ease: "none", scrollTrigger: { trigger: ".film-frame", start: "top bottom", end: "top 30%", scrub: 0.6 } });
-
-  // Dark bands drop their notch into the next section, then Blink opens its eyes. Once each.
-  for (const tab of $$(".notch-tab")) {
-    gsap.timeline({ scrollTrigger: { trigger: tab, start: "top 92%", once: true } })
-      .from(tab, { yPercent: -100, duration: 0.6, ease: "power3.out" })
-      .from($("img", tab), { scaleY: 0.08, duration: 0.3, ease: "power2.out" }, "-=0.1");
-  }
 
   // Bento: the tiles that enter together rise and unblur together, a short stagger apart.
   // Opacity, not autoAlpha, so demos not yet revealed stay reachable by Tab.
@@ -367,8 +392,8 @@ if (motion) {
   // Footer: the name rises into the screen's bottom edge as the page ends.
   gsap.fromTo(".wordmark", { yPercent: 45 }, { yPercent: 0, ease: "none", scrollTrigger: { trigger: ".site-foot", start: "top bottom", end: "bottom bottom", scrub: 0.6 } });
 
-  // The notches' eyes glance the way you scroll, then settle.
-  const glancers = $$(".brand-notch img, .notch-tab img, .foot-notch img");
+  // The header notch's eyes glance the way you scroll, then settle.
+  const glancers = $$(".head-notch img");
   let settle = 0;
   ScrollTrigger.create({ start: 0, end: "max", onUpdate: (st) => {
     for (const img of glancers) img.style.translate = `0 ${st.direction * 9}%`;
@@ -376,5 +401,6 @@ if (motion) {
     settle = setTimeout(() => { for (const img of glancers) img.style.translate = ""; }, 260);
   } });
 
-  document.fonts?.ready.then(() => ScrollTrigger.refresh());
+  // The pin adds space above the content after the browser jumped to #waitlist etc.; jump again once laid out.
+  document.fonts?.ready.then(() => { ScrollTrigger.refresh(); if (location.hash) $(location.hash)?.scrollIntoView(); });
 }

@@ -16,6 +16,7 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/site.css">
+  <script src="js/intro-gate.js"></script>
   <link rel="preload" as="image" href="assets/eyes-idle.png">
   <link rel="preload" as="font" type="font/woff2" href="assets/fonts/bricolage-latin.woff2" crossorigin>
 </head>
@@ -34,23 +35,34 @@
 
 <header class="site-head">
   <div class="inner">
-    <a class="brand" href="./" aria-label="Blink home"><span class="brand-notch"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span>Blink</a>
+    <a class="brand" href="./" aria-label="Blink home">Blink</a>
     <nav aria-label="Main">
       <a href="#features">Features</a>
       <a href="#privacy">Privacy</a>
       <a href="#faq">FAQ</a>
     </nav>
-    <a class="btn small" href="#waitlist">Join the waitlist</a>
+    <a class="btn small" href="#waitlist" aria-label="Join the waitlist"><span>Join<span class="wide"> the waitlist</span></span></a>
   </div>
+  <!-- The header is a menu bar with a notch, like the Mac's; the welcome screen shrinks into it. -->
+  <span class="head-notch" aria-hidden="true"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span>
 </header>
+
+<!-- Welcome: a black screen that, as you scroll, shrinks into the notch above (main.js). Decorative; the hero says the same. -->
+<div class="intro" id="intro" aria-hidden="true">
+  <div class="intro-words">
+    <p class="intro-hi"><span class="intro-hi-words">Welcome to</span><span class="intro-eyes"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span></p>
+    <p class="intro-name">Blink</p>
+  </div>
+  <p class="intro-scroll">Scroll to continue<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></p>
+</div>
 
 <main id="main">
 
   <!-- Hero (light) -->
   <section class="hero light" aria-labelledby="hero-title">
     <div class="wrap hero-head">
-      <h1 id="hero-title" class="hero-in">Your day, one glance&nbsp;up.</h1>
-      <p class="lede hero-in">Blink lives in your MacBook's notch. It tells you what's next, what matters in your inbox, and never acts without your OK.</p>
+      <h1 id="hero-title" class="hero-in">Your day, one <span class="h-notch" aria-hidden="true"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span> <mark class="hl">glance&nbsp;up.</mark></h1>
+      <p class="lede hero-in">Blink lives in your MacBook's notch. It tells you what's next, what matters in your inbox, and <mark class="hl soft">never acts without your OK</mark>.</p>
       <div class="cta-row hero-in">
         <a class="btn" href="#waitlist">Join the waitlist</a>
         <a class="btn ghost" href="#film" data-play-film>Watch the film</a>
@@ -77,6 +89,7 @@
             <div class="screen-keys" aria-hidden="true"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>Space</kbd></div>
           </div>
         </div>
+        <div class="base" aria-hidden="true"></div>
         <figcaption class="sr-only">A MacBook screen. Blink's eyes sit in the notch, which opens to show what matters right now: the next meeting, an important email, the clipboard, a spend and a habit.</figcaption>
       </figure>
       <div class="moments" id="hero-moments" role="group" aria-label="Show a moment in the notch"></div>
@@ -100,7 +113,6 @@
         </button>
       </div>
     </div>
-    <div class="notch-tab" aria-hidden="true"><div class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></div></div>
   </section>
 
   <!-- Everyday bento (mist): five tiles, one demo each -->
@@ -347,7 +359,6 @@
         <li><b>No tracking</b>No analytics in the app or on this site. Nothing reports back to Pexilim.</li>
       </ul>
     </div>
-    <div class="notch-tab" aria-hidden="true"><div class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></div></div>
   </section>
 
   <!-- Setup (light) -->
@@ -444,7 +455,6 @@
 </main>
 
 <footer class="site-foot">
-  <div class="foot-notch" aria-hidden="true"><span class="eyes-look"><img class="css-blink" src="assets/eyes-idle.png" alt="" width="320" height="160"></span></div>
   <div class="inner">
     <div class="foot-top">
       <div class="foot-sign">
