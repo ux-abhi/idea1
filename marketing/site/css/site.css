@@ -176,13 +176,6 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
 /* Centred: the promise, what it does, the action, and one quiet line of facts. */
 .hero-head { text-align: center; display: grid; justify-items: center; }
 .hero h1 { max-width: 11em; }
-/* A notch with Blink's eyes, set in the headline like a word. */
-.h-notch {
-  display: inline-grid; place-items: center; width: 1.22em; height: .6em; vertical-align: .1em;
-  background: var(--black); border-radius: 0 0 .26em .26em; rotate: -5deg;
-  box-shadow: 0 .12em .3em -.08em rgba(10, 60, 140, .45);
-}
-.h-notch .eyes-look { width: .7em; }
 /* Blue highlighter under what matters. --hl is how far it has been drawn (main.js swipes it in). */
 mark.hl {
   --hl: 100%; color: inherit; padding: 0 .06em; margin: 0 -.06em;
@@ -376,20 +369,22 @@ mark.hl.soft { color: var(--ink); background-image: linear-gradient(transparent 
 
 /* Ask (wide, dark): words and model picker left, the open notch right */
 .t-ask {
-  display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 28px; align-items: center;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 28px; align-items: center;
   background: radial-gradient(70% 80% at 100% 0%, rgba(10, 132, 255, .28), transparent 70%), linear-gradient(var(--gray5), var(--gray6));
 }
 .t-ask h3 { font-size: clamp(26.5px, 2.4vw, 33px); }
-.t-ask .tile-demo { margin: 0; }
-@media (max-width: 760px) { .t-ask { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
+/* The chat is the open notch: it hangs from the tile's top edge, eyes centred, like on the Mac. */
+.t-ask .tile-demo { margin: 0; align-self: start; margin-top: calc(-1 * clamp(20px, 2.2vw, 26px)); }
+@media (max-width: 760px) { .t-ask { grid-template-columns: minmax(0, 1fr); gap: 20px; } .t-ask .tile-demo { margin-top: 0; } .t-ask .chat { border-radius: 22px; } }
 .chat { border-radius: 0 0 26px 26px; background: var(--black); padding: 16px clamp(16px, 2vw, 22px) 20px; }
-.chat-top { display: flex; align-items: center; gap: 12px; color: #A1A1A6; font-size: 14px; }
+.chat-top { display: flex; justify-content: center; }
 .chat-top img { width: 48px; height: 24px; }
 .bubble-q { margin-top: 10px; font-size: 19px; font-weight: 600; letter-spacing: -.01em; }
 .bubble-a { margin-top: 8px; color: #D1D1D6; font-size: 16px; line-height: 1.45; min-height: 4.35em; }
-.models { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.chat .m-acts { font-size: 15px; }
+.models { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
 .model {
-  min-height: 36px; padding: 0 14px; border-radius: 999px; font-size: 14px; font-weight: 500;
+  min-height: 34px; padding: 0 13px; border-radius: 999px; font-size: 14px; font-weight: 500;
   background: rgba(0, 0, 0, .35); border: 1px solid var(--gray4); cursor: pointer;
   transition: border-color .2s, background-color .2s, transform .2s var(--ease-pop);
 }
@@ -418,15 +413,20 @@ mark.hl.soft { color: var(--ink); background-image: linear-gradient(transparent 
 .clip-list li[hidden] { display: none; }
 
 /* ⌘K */
+/* Both search boxes sit right under their text, so they line up side by side. */
+.t-clip .tile-demo, .t-search .tile-demo { margin-top: 0; }
 .palette .hits { margin-top: 8px; }
+.clip-list[data-none]::after, .hits[data-none]::after { content: "No matches"; display: block; padding: 18px 0; text-align: center; color: var(--muted); font-size: 14px; }
 .palette .row { padding: 7px 10px; }
 .palette .hit.on { background: rgba(10, 132, 255, .12); border-color: rgba(10, 132, 255, .45); }
 .palette .kind { color: var(--muted); font-size: 12px; }
-.typed { font-weight: 500; font-size: 16px; }
 
 /* Ask-First (dark) */
 .t-af { background: radial-gradient(80% 60% at 0% 100%, rgba(255, 69, 58, .22), transparent 70%), linear-gradient(var(--gray5), var(--gray6)); }
 .approve { text-align: center; }
+/* The reply waiting for the OK. */
+.draft { margin: 0 0 18px; padding: 12px 14px; border-radius: var(--r-inner); text-align: left; font-size: 14px; line-height: 1.4; color: #D1D1D6; background: rgba(0, 0, 0, .35); border: 1px solid var(--gray4); }
+.draft .to { display: block; margin-bottom: 2px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .approve .q { margin: 0 0 12px; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
 .touch { display: grid; justify-items: center; gap: 10px; }
 .touch button { position: relative; width: 76px; height: 76px; border-radius: 50%; border: 0; background: none; cursor: pointer; padding: 0; }

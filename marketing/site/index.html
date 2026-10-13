@@ -66,7 +66,7 @@
   <!-- Hero (light) -->
   <section class="hero light" aria-labelledby="hero-title">
     <div class="wrap hero-head">
-      <h1 id="hero-title" class="hero-in">Your day, one <span class="h-notch" aria-hidden="true"><span class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></span></span> <mark class="hl">glance&nbsp;up.</mark></h1>
+      <h1 id="hero-title" class="hero-in">Your day, one <mark class="hl">glance&nbsp;up.</mark></h1>
       <p class="lede hero-in">Blink lives in your MacBook's notch. It tells you what's next, what matters in your inbox, and <mark class="hl soft">never acts without your OK</mark>.</p>
       <div class="cta-row hero-in">
         <a class="btn" href="#waitlist">Join the waitlist</a>
@@ -135,19 +135,20 @@
         <article class="tile dark t-ask" id="ask" aria-labelledby="ask-title">
           <div class="tile-text">
             <h3 id="ask-title">Ask anything.</h3>
-            <p>Press <kbd>⌃⌥Space</kbd> and type. Blink answers right in the notch, powered by Claude or a free model on Groq.</p>
+            <p>Press <kbd>⌃⌥Space</kbd> and type. Blink answers in the notch, with the model you pick.</p>
             <div class="models" role="group" aria-label="Choose a model (demo)">
-              <button class="model" type="button" aria-pressed="true" data-note="Claude, with your own Anthropic key.">Claude Sonnet</button>
-              <button class="model" type="button" aria-pressed="false" data-note="A free model on Groq, with your free Groq key.">Llama 3.3 70B <small>Free</small></button>
-              <button class="model" type="button" aria-pressed="false" data-note="One of a few top models through your own OpenRouter credit.">Gemini 3.1 Pro</button>
+              <button class="model" type="button" aria-pressed="true" data-note="Claude, with your own Anthropic key.">Claude</button>
+              <button class="model" type="button" aria-pressed="false" data-note="A free model on Groq, with your free Groq key.">Llama 3.3 <small>Free</small></button>
+              <button class="model" type="button" aria-pressed="false" data-note="One of a few top models through your own OpenRouter credit.">Gemini 3.1</button>
             </div>
             <p class="model-note" id="model-note" aria-live="polite">Claude, with your own Anthropic key.</p>
           </div>
           <div class="tile-demo" id="ask-mock">
             <div class="chat">
-              <div class="chat-top"><img src="assets/eyes-idle.png" alt="" width="56" height="28">Ask Blink</div>
+              <div class="chat-top"><img src="assets/eyes-idle.png" alt="" width="56" height="28"></div>
               <div class="bubble-q">Plan my day around the thesis review.</div>
               <div class="bubble-a">Deep work on chapter 3 from 10 to 12, thesis review at 2, gym at 5:30. Want me to block the time?</div>
+              <div class="m-acts" aria-hidden="true"><span class="m-act">Block the time</span><span class="m-act alt">Not now</span></div>
             </div>
           </div>
         </article>
@@ -172,14 +173,16 @@
         <article class="tile t-clip" id="clipboard" aria-labelledby="clip-title">
           <div class="tile-text">
             <h3 id="clip-title">Everything you copy.</h3>
-            <p><kbd>⌃⌥V</kbd> searches your last 50 copies. Stays on your Mac; passwords are never kept.</p>
+            <p>Press <kbd>⌃⌥V</kbd> to search your last 50 copies. Passwords are never kept.</p>
           </div>
           <div class="tile-demo" id="clip-mock">
             <label class="field"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search the clipboard demo</span><input id="clip-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false"></label>
             <ul class="clip-list" id="clip-list">
               <li class="row" draggable="true"><span class="icon"><svg aria-hidden="true"><use href="#i-doc"/></svg></span><span class="grow"><span class="t">Q4 plan: launch on the 20th</span><span class="m">Text from Notes</span></span></li>
+              <li class="row" draggable="true"><span class="icon"><svg aria-hidden="true"><use href="#i-doc"/></svg></span><span class="grow"><span class="t">Meeting notes, 13 Oct</span><span class="m">Text from Notes</span></span></li>
               <li class="row" draggable="true"><span class="icon"><svg aria-hidden="true"><use href="#i-link"/></svg></span><span class="grow"><span class="t">example.com/invoice/2026-10</span><span class="m">Link from Safari</span></span></li>
               <li class="row" draggable="true"><span class="icon"><svg aria-hidden="true"><use href="#i-file"/></svg></span><span class="grow"><span class="t">Invoice_October.pdf</span><span class="m">File from Finder</span></span></li>
+              <li class="row" draggable="true"><span class="icon"><svg aria-hidden="true"><use href="#i-doc"/></svg></span><span class="grow"><span class="t">Invoice #2041, €240.00</span><span class="m">Text from Mail</span></span></li>
             </ul>
             <p class="sr-only" id="clip-count" aria-live="polite"></p>
           </div>
@@ -188,16 +191,20 @@
         <!-- ⌘K -->
         <article class="tile t-search" aria-labelledby="search-title">
           <div class="tile-text">
-            <h3 id="search-title">Find anything with <kbd>⌃⌥K</kbd>.</h3>
-            <p>Notes, tasks, reminders, posts and spaces, from the notch in any app. <kbd>⌘K</kbd> in the Blink window too.</p>
+            <h3 id="search-title">Find anything.</h3>
+            <p>Press <kbd>⌃⌥K</kbd> in any app to search notes, tasks, reminders and posts.</p>
           </div>
-          <div class="tile-demo palette" id="search-mock" aria-hidden="true">
-            <div class="field"><svg><use href="#i-search"/></svg><span class="typed" id="palette-typed">thesis</span></div>
-            <div class="hits">
-              <div class="row hit on"><span class="icon"><svg><use href="#i-note"/></svg></span><span class="grow t">Thesis outline</span><span class="kind">Note</span></div>
-              <div class="row hit"><span class="icon"><svg><use href="#i-check"/></svg></span><span class="grow t">Send draft to Prof. Weber</span><span class="kind">Task</span></div>
-              <div class="row hit"><span class="icon"><svg><use href="#i-bell"/></svg></span><span class="grow t">Thesis meeting, Fri 10:00</span><span class="kind">Reminder</span></div>
+          <div class="tile-demo palette" id="search-mock">
+            <label class="field"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search the Blink demo</span><input id="find-search" type="search" value="thesis" autocomplete="off" spellcheck="false"></label>
+            <div class="hits" id="find-list">
+              <div class="row hit on" data-k="thesis outline"><span class="icon"><svg aria-hidden="true"><use href="#i-note"/></svg></span><span class="grow t">Thesis outline</span><span class="kind">Note</span></div>
+              <div class="row hit" data-k="thesis weber draft"><span class="icon"><svg aria-hidden="true"><use href="#i-check"/></svg></span><span class="grow t">Send draft to Prof. Weber</span><span class="kind">Task</span></div>
+              <div class="row hit" data-k="thesis weber meeting"><span class="icon"><svg aria-hidden="true"><use href="#i-bell"/></svg></span><span class="grow t">Thesis meeting, Fri 10:00</span><span class="kind">Reminder</span></div>
+              <div class="row hit" data-k="thesis chapter"><span class="icon"><svg aria-hidden="true"><use href="#i-doc"/></svg></span><span class="grow t">Thesis, chapter 3</span><span class="kind">Space</span></div>
+              <div class="row hit" data-k="launch post blink" hidden><span class="icon"><svg aria-hidden="true"><use href="#i-doc"/></svg></span><span class="grow t">Launch post for Blink</span><span class="kind">Post</span></div>
+              <div class="row hit" data-k="launch q4 plan" hidden><span class="icon"><svg aria-hidden="true"><use href="#i-note"/></svg></span><span class="grow t">Q4 plan: launch on the 20th</span><span class="kind">Note</span></div>
             </div>
+            <p class="sr-only" id="find-count" aria-live="polite"></p>
           </div>
         </article>
 
@@ -205,10 +212,11 @@
         <article class="tile dark t-af" id="ask-first" aria-labelledby="af-title">
           <div class="tile-text">
             <h3 id="af-title">Never without your OK.</h3>
-            <p>Sending mail, publishing and anything with money need Touch ID.</p>
+            <p>Sending, posting and paying wait for your Touch ID.</p>
           </div>
           <div class="tile-demo approve">
-            <p class="q">Send reply to Prof. Weber?</p>
+            <div class="draft" aria-hidden="true"><span class="to">To Prof. Weber</span>Friday at 10 works. See you then.</div>
+            <p class="q">Send this reply?</p>
             <div class="touch" id="touch">
               <button type="button" id="touch-btn" aria-describedby="touch-label">
                 <span class="sr-only">Approve with Touch ID (demo)</span>

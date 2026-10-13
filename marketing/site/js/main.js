@@ -97,19 +97,77 @@ for (const row of $$(".row", mail)) {
   });
 }
 
-/* ---------- Clipboard: real search, real drag ---------- */
-const clipInput = $("#clip-search"), clipRows = $$("#clip-list li");
-const filterClips = () => {
-  const q = clipInput.value.trim().toLowerCase();
-  let shown = 0;
-  for (const li of clipRows) {
-    const hit = li.textContent.toLowerCase().includes(q);
-    li.hidden = !hit;
-    shown += hit;
-  }
-  $("#clip-count").textContent = q ? `${shown} of ${clipRows.length} match “${q}”.` : "";
+/* ---------- Clipboard and search: real search boxes (at most `max` rows show, so the tile never grows) ---------- */
+const finder = (input, rows, count, max, text = (r) => r.textContent) => {
+  const list = rows[0].parentElement;
+  // announce: only for the visitor's own typing; the auto-demo stays silent for screen readers.
+  const filter = (announce = true) => {
+    const q = input.value.trim().toLowerCase();
+    let shown = 0, matches = 0;
+    for (const r of rows) {
+      const m = text(r).toLowerCase().includes(q);
+      r.hidden = !(m && shown < max);
+      shown += !r.hidden;
+      matches += m;
+    }
+    if (announce) count.textContent = q ? `${matches} match “${q}”.` : "";
+    list.toggleAttribute("data-none", !shown);
+    return shown;
+  };
+  filter(false);
+  list.style.minHeight = `${list.offsetHeight}px`; // keep the height of a full list
+  input.addEventListener("input", () => filter());
+  return filter;
 };
-clipInput.addEventListener("input", filterClips);
+const clipInput = $("#clip-search"), clipRows = $$("#clip-list li");
+const filterClips = finder(clipInput, clipRows, $("#clip-count"), 3);
+
+const findInput = $("#find-search"), findRows = $$("#find-list .hit");
+const selectHit = (dir) => {
+  const shown = findRows.filter((r) => !r.hidden);
+  const at = shown.findIndex((r) => r.classList.contains("on"));
+  for (const r of findRows) r.classList.remove("on");
+  shown[dir === 0 ? 0 : (at + dir + shown.length) % shown.length]?.classList.add("on");
+};
+const filterFind = finder(findInput, findRows, $("#find-count"), 4, (r) => r.dataset.k);
+findInput.addEventListener("input", () => selectHit(0));
+findInput.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    selectHit(e.key === "ArrowDown" ? 1 : -1);
+    $("#find-count").textContent = $("#find-list .hit.on .t")?.textContent ?? "";
+  }
+});
+
+// While a tile is on screen, its box types a few searches by itself, like someone using it. Anything the visitor
+// does in the tile (click, drag, key, Tab in) stops it for good.
+const typeLoop = (input, words, apply, hold) => {
+  let alive = true, onScreen = false, timer = 0;
+  const stop = () => { alive = false; clearTimeout(timer); };
+  const tile = input.closest(".tile");
+  for (const type of ["pointerdown", "keydown", "focusin"]) tile.addEventListener(type, stop);
+  new IntersectionObserver(([e]) => (onScreen = e.isIntersecting), { threshold: 0.5 }).observe(tile);
+  const wait = (ms) => new Promise((r) => (timer = setTimeout(r, ms)));
+  const set = (v) => { if (alive) { input.value = v; apply(); } };
+  (async () => {
+    for (let i = 0; alive; i++) {
+      while (alive && (!onScreen || document.hidden)) await wait(400);
+      const w = words[i % words.length];
+      for (let n = input.value.length; n > 0 && alive; n--) { set(input.value.slice(0, n - 1)); await wait(45); }
+      await wait(250);
+      for (let n = 1; n <= w.length && alive; n++) { set(w.slice(0, n)); await wait(110); }
+      await (hold ? hold(wait, () => alive) : wait(2200));
+    }
+  })();
+};
+if (!reduce) {
+  typeLoop(clipInput, ["invoice", "notes", "pdf"], () => filterClips(false));
+  typeLoop(findInput, ["thesis", "weber", "launch"], () => { filterFind(false); selectHit(0); }, async (wait, alive) => {
+    await wait(700);
+    for (let k = 0; k < 2 && alive(); k++) { selectHit(1); await wait(650); } // ↓ ↓, as if with the arrow keys
+    await wait(900);
+  });
+}
 for (const li of clipRows) {
   li.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", $(".t", li).textContent));
 }
@@ -270,10 +328,7 @@ if (!motion) mail.classList.add("sorted"); // static fallback: show the sorted i
 if (motion) {
   gsap.registerPlugin(ScrollTrigger);
   const onEnter = (trigger, fn, start = "top 72%") => ScrollTrigger.create({ trigger, start, once: true, onEnter: fn });
-  const typeInto = (el, text, every = 0.05) => {
-    const o = { n: 0 };
-    return gsap.to(o, { n: text.length, duration: text.length * every, ease: "none", onUpdate: () => (el.textContent = text.slice(0, Math.round(o.n))) });
-  };
+
 
   // Welcome → notch → page, scrubbed by the scroll while the hero holds still:
   // the black screen shrinks into the menu bar's notch and Blink's eyes fly in with it; then the hero comes up
@@ -339,23 +394,6 @@ if (motion) {
 
   // Mail: the noise steps back, the one that matters comes forward.
   onEnter(mail, () => setTimeout(() => mail.classList.add("sorted"), 700), "top 65%");
-
-  // Clipboard and ⌘K type their searches, unless the visitor already did.
-  onEnter("#clip-mock", () => {
-    if (clipInput.value || document.activeElement === clipInput) return;
-    const word = "invoice", o = { n: 0 };
-    gsap.to(o, { n: word.length, duration: 0.7, delay: 0.6, ease: "none", onUpdate: () => {
-      if (document.activeElement === clipInput) return;
-      clipInput.value = word.slice(0, Math.round(o.n));
-      filterClips();
-    } });
-  });
-  const typed = $("#palette-typed"), hits = $$("#search-mock .hit");
-  typed.textContent = "";
-  gsap.set(hits, { autoAlpha: 0, y: 8 });
-  onEnter("#search-mock", () => {
-    gsap.timeline({ delay: 0.5 }).add(typeInto(typed, "thesis", 0.09)).to(hits, { autoAlpha: 1, y: 0, duration: 0.4, stagger: 0.06, ease: "power3.out" });
-  });
 
   // Showcase demos play once, when their panel first shows (Day when the section scrolls in).
   const dayIn = () => gsap.from("#day-mock .block", { scaleX: 0, duration: 0.7, delay: 0.15, stagger: 0.08, ease: "power3.out" });
