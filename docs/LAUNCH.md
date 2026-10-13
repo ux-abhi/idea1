@@ -20,13 +20,11 @@ Today the helper (`functions/signin`) runs on the same Supabase project as your 
 4. In your Supabase OAuth app settings, change the redirect URL to `https://wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/signin/callback`.
 5. Set `BLINK_SIGNIN_HELPER = https:/$()/wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/signin` in `Config/Local.xcconfig`, rebuild, and remove the `BLINK_OAUTH_*` secrets and the `signin` function from your personal project.
 
-## Waitlist (live on the `pexilim` project)
-The site posts to `https://wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/waitlist` (`backend/pexilim/`). Double opt-in: joining sends a confirmation email; the person confirms on `confirm.html` and can leave from any email on `leave.html` (a click on the page, so mail scanners that open links can't confirm or remove anyone). Unconfirmed signups are deleted after 30 days. See who joined: Supabase › pexilim › Table Editor › `waitlist` (`confirmed_at` set = confirmed).
-
-**To turn on the emails (owner, once):**
-1. Resend › Domains: add `blinkk.app` and add the DNS records it shows (in Vercel › Domains › blinkk.app › DNS if Vercel holds the domain). Wait for "Verified".
-2. Resend › API Keys: create a key with **Sending access**, limited to `blinkk.app`.
-3. Supabase › pexilim › Edge Functions › Secrets: add `RESEND_KEY` (that key) and `RESEND_FROM` = `Blink <hello@blinkk.app>`, the same two values as in the Vercel project. Don't paste the key anywhere else. Emails start with the next signup; until then signups are stored without an email.
+## Waitlist
+- The form posts to the site's own Vercel function `marketing/site/api/waitlist.mjs`. It stores the signup on the `pexilim` Supabase project (`backend/pexilim/`), which hands back the confirm and leave links only to that function (shared `MAILER_SECRET`, set on both sides), and it emails them through Resend with `RESEND_KEY` and `RESEND_FROM` from the Vercel project. The Resend key never leaves Vercel.
+- Double opt-in: the person confirms on `confirm.html` and can leave from any email on `leave.html` (a click on the page, so mail scanners that open links can't confirm or remove anyone). Unconfirmed signups are deleted after 30 days.
+- See who joined: Supabase › pexilim › Table Editor › `waitlist` (`confirmed_at` set = confirmed).
+- Owner, once: Resend › Domains › `blinkk.app` must show **Verified** (its DNS records go in Vercel › Domains › blinkk.app). `RESEND_KEY` and `RESEND_FROM` are set for Production only, so preview deployments store signups without emailing.
 
 ## 3. Put the site up on Vercel (www.blinkk.app)
 The site is plain files in `marketing/site/` (no build step).

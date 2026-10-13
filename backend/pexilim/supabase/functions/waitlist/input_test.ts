@@ -1,5 +1,5 @@
 // © Pexilim
-import { corsFor, parseAction, parseSignup } from "./input.ts";
+import { corsFor, parseAction, parseSignup, sameSecret } from "./input.ts";
 
 Deno.test("signups need a real-looking email and consent; the honeypot catches bots", () => {
   const ok = parseSignup({ email: "  Sam@Example.COM ", consent: true, website: "" });
@@ -23,4 +23,10 @@ Deno.test("confirm and leave need a real token", () => {
   if (parseAction({ action: "confirm", token: id.toUpperCase() })?.token !== id) throw new Error("confirm");
   if (parseAction({ action: "leave", token: id })?.kind !== "leave") throw new Error("leave");
   if (parseAction({ action: "delete", token: id }) || parseAction({ action: "confirm", token: "x' or 1=1" }) || parseAction(null)) throw new Error("accepted junk");
+});
+
+Deno.test("only the site's mailer gets the links", () => {
+  const secret = "s".repeat(64);
+  if (!sameSecret(secret, secret)) throw new Error("same");
+  if (sameSecret("t".repeat(64), secret) || sameSecret(null, secret) || sameSecret(secret, undefined) || sameSecret("short", "short")) throw new Error("accepted");
 });

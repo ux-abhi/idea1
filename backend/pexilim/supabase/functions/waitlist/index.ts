@@ -1,29 +1,16 @@
 // © Pexilim
-// The Blink waitlist (www.blinkk.app). Double opt-in: joining sends a confirmation email (Resend); the person confirms on
-// the site's confirm page, and can leave from any email. Answers the same whether an email is new or already listed (no
-// way to probe who signed up); a filled honeypot is quietly dropped. Public, so JWT checks are off.
+// The Blink waitlist (www.blinkk.app). Double opt-in: the site's own function (Vercel, marketing/site/api/waitlist.mjs,
+// where the Resend key lives) stores a signup here and gets back the new row's confirm and leave links to email; the
+// person confirms on the site's confirm page, and can leave from any email. Only that function, holding MAILER_SECRET,
+// ever sees the links, so nobody can confirm someone else's address. Answers the same whether an email is new or already
+// listed (no way to probe who signed up); a filled honeypot is quietly dropped. Public, so JWT checks are off.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
-import { confirmEmail } from "./email.ts";
-import { corsFor, parseAction, parseSignup } from "./input.ts";
+import { corsFor, parseAction, parseSignup, sameSecret } from "./input.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const SITE = "https://www.blinkk.app";
 // shortcut: one global limit (signups in the last 10 minutes) instead of per-visitor; add a per-IP hash if it's ever hit.
 const BURST = 100;
-
-/** Sends through Resend when its key is set (RESEND_KEY or RESEND_API_KEY, and RESEND_FROM such as
- *  "Blink <hello@blinkk.app>"; the same names as in the Vercel project). */
-async function send(to: string, mail: { subject: string; html: string; text: string }, leave: string): Promise<boolean> {
-  const key = Deno.env.get("RESEND_KEY") ?? Deno.env.get("RESEND_API_KEY"), from = Deno.env.get("RESEND_FROM");
-  if (!key || !from) return false;
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to, subject: mail.subject, html: mail.html, text: mail.text,
-      headers: { "List-Unsubscribe": `<${leave}>` } }),
-  });
-  if (!res.ok) console.error("resend", res.status, (await res.text()).slice(0, 200));
-  return res.ok;
-}
 
 Deno.serve(async (req) => {
   const cors = corsFor(req.headers.get("Origin"));
@@ -61,9 +48,9 @@ Deno.serve(async (req) => {
   const { data: row, error } = await admin.from("waitlist").insert(signup).select("confirm_token, unsubscribe").maybeSingle();
   if (error && error.code !== "23505") return json(502, { error: "Something went wrong. Try again in a minute." });
   // Already on the list: same answer, and no second email (a stranger can't make us mail someone over and over).
-  if (row) {
-    const leave = `${SITE}/leave.html?u=${row.unsubscribe}`;
-    await send(signup.email, confirmEmail(`${SITE}/confirm.html?t=${row.confirm_token}`, leave), leave);
+  // A new row, asked for by the site's mailer: hand it the links to email. Anyone else just gets "ok".
+  if (row && sameSecret(req.headers.get("x-blink-mailer"), Deno.env.get("MAILER_SECRET"))) {
+    return json(200, { ok: true, mail: { to: signup.email, confirm: `${SITE}/confirm.html?t=${row.confirm_token}`, leave: `${SITE}/leave.html?u=${row.unsubscribe}` } });
   }
   return json(200, { ok: true });
 });

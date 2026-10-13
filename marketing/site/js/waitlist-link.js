@@ -7,7 +7,7 @@
   const token = new URLSearchParams(location.search).get(button.dataset.param);
   if (!token) { status.textContent = button.dataset.missing; button.hidden = true; return; }
   button.addEventListener("click", async () => {
-    const url = window.BLINK_WAITLIST_URL;
+    const url = window.BLINK_WAITLIST_ACTIONS_URL;
     if (!url) { status.textContent = "Please email hello@pexilim.com."; return; }
     button.disabled = true;
     status.textContent = "One moment…";

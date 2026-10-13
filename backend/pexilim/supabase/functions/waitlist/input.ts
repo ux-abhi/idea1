@@ -33,3 +33,11 @@ export function parseAction(body: unknown): { kind: "confirm" | "leave"; token: 
   if ((action !== "confirm" && action !== "leave") || typeof token !== "string" || !UUID.test(token.toLowerCase())) return null;
   return { kind: action, token: token.toLowerCase() };
 }
+
+/** The site's mailer proves itself with a shared secret; compared in constant time, and never true when unset. */
+export function sameSecret(given: string | null, expected: string | undefined): boolean {
+  if (!given || !expected || expected.length < 32 || given.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < given.length; i++) diff |= given.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}

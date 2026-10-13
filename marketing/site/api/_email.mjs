@@ -1,14 +1,14 @@
 // © Pexilim
-// The waitlist emails, in the site's look: a black band with Blink's eyes, a light card, one blue button.
+// The waitlist emails, in the site's look (sent by api/waitlist.mjs): a black band with Blink's eyes, a light card, one blue button.
 // Tables and inline styles only, because mail apps ignore most CSS; a plain-text part goes with every HTML one.
 
 const SITE = "https://www.blinkk.app";
 const FONT = "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif";
 
-const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+const escape = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 /** One email: a headline, a few short paragraphs, one button, and the fine print with an unsubscribe link. */
-export function layout(opts: { preheader: string; title: string; paragraphs: string[]; button: { label: string; url: string }; unsubscribe: string }) {
+export function layout(opts) {
   const p = opts.paragraphs.map((t) =>
     `<p style="margin:0 0 16px;font:400 16px/1.55 ${FONT};color:#3a3a3c;">${escape(t)}</p>`).join("");
   const html = `<!doctype html>
@@ -45,7 +45,7 @@ export function layout(opts: { preheader: string; title: string; paragraphs: str
 }
 
 /** "Confirm you want Blink news", sent right after someone joins. */
-export function confirmEmail(confirmUrl: string, unsubscribeUrl: string) {
+export function confirmEmail(confirmUrl, unsubscribeUrl) {
   return {
     subject: "Confirm your spot on the Blink waitlist",
     ...layout({
