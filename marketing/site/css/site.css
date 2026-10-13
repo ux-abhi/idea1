@@ -68,6 +68,8 @@ body {
 }
 .light, .mist, .dark { background: var(--bg); color: var(--fg); }
 img, video, svg { display: block; max-width: 100%; }
+/* `hidden` must win over a component's own display (the film's play button is display:flex). */
+[hidden] { display: none !important; }
 a { color: var(--link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
 a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 2px solid var(--link); outline-offset: 3px; border-radius: 8px; }

@@ -36,8 +36,9 @@ if (!reduce) {
   setTimeout(blink, 1600);
 }
 
-/* ---------- Film: click to play, with sound ---------- */
+/* ---------- Film: click to play, with sound; the browser's controls pause it ---------- */
 const video = $("#film-video"), playBtn = $("#film-play");
+const playLabel = playBtn.querySelector("span:last-child");
 const playFilm = () => {
   playBtn.hidden = true;
   video.controls = true;
@@ -45,6 +46,17 @@ const playFilm = () => {
 };
 playBtn.addEventListener("click", playFilm);
 $("[data-play-film]").addEventListener("click", playFilm);
+// At the end: back to the poster with "Play again".
+video.addEventListener("ended", () => {
+  video.controls = false;
+  video.currentTime = 0;
+  playLabel.textContent = "Play again";
+  playBtn.hidden = false;
+});
+// Scrolled away while playing: pause (the controls resume it); sound shouldn't follow you down the page.
+new IntersectionObserver(([entry]) => {
+  if (!entry.isIntersecting && !video.paused) video.pause();
+}, { threshold: 0.25 }).observe(video);
 
 /* ---------- Moods ---------- */
 const moods = $$(".mood");
