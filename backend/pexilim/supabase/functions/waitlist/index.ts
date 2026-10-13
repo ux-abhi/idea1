@@ -11,9 +11,10 @@ const SITE = "https://www.blinkk.app";
 // shortcut: one global limit (signups in the last 10 minutes) instead of per-visitor; add a per-IP hash if it's ever hit.
 const BURST = 100;
 
-/** Sends through Resend when its key is set (RESEND_API_KEY, RESEND_FROM such as "Blink <hello@blinkk.app>"). */
+/** Sends through Resend when its key is set (RESEND_KEY or RESEND_API_KEY, and RESEND_FROM such as
+ *  "Blink <hello@blinkk.app>"; the same names as in the Vercel project). */
 async function send(to: string, mail: { subject: string; html: string; text: string }, leave: string): Promise<boolean> {
-  const key = Deno.env.get("RESEND_API_KEY"), from = Deno.env.get("RESEND_FROM");
+  const key = Deno.env.get("RESEND_KEY") ?? Deno.env.get("RESEND_API_KEY"), from = Deno.env.get("RESEND_FROM");
   if (!key || !from) return false;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },

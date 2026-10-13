@@ -26,7 +26,7 @@ The site posts to `https://wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/waitlis
 **To turn on the emails (owner, once):**
 1. Resend › Domains: add `blinkk.app` and add the DNS records it shows (in Vercel › Domains › blinkk.app › DNS if Vercel holds the domain). Wait for "Verified".
 2. Resend › API Keys: create a key with **Sending access**, limited to `blinkk.app`.
-3. Supabase › pexilim › Edge Functions › Secrets: add `RESEND_API_KEY` (that key) and `RESEND_FROM` = `Blink <hello@blinkk.app>`. Don't paste the key anywhere else. Emails start with the next signup; until then signups are stored without an email.
+3. Supabase › pexilim › Edge Functions › Secrets: add `RESEND_KEY` (that key) and `RESEND_FROM` = `Blink <hello@blinkk.app>`, the same two values as in the Vercel project. Don't paste the key anywhere else. Emails start with the next signup; until then signups are stored without an email.
 
 ## 3. Put the site up on Vercel (www.blinkk.app)
 The site is plain files in `marketing/site/` (no build step).
