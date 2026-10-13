@@ -31,6 +31,11 @@
   <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5"/><path d="m11.2 11.8 8.3-8.3M16.5 6.5l2.5 2.5M14 9l2 2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+  <symbol id="i-off" viewBox="0 0 24 24"><path d="M3 12s3.5-6.5 9-6.5S21 12 21 12s-3.5 6.5-9 6.5S3 12 3 12z"/><circle cx="12" cy="12" r="2.8"/><path d="M4 20 20 4"/></symbol>
+  <symbol id="i-mac" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="m4.5 7 7.5 6 7.5-6"/></symbol>
 </svg>
 
 <header class="site-head">
@@ -74,7 +79,8 @@
       <figure class="mac" id="hero-mac">
         <div class="bezel">
           <div class="screen">
-            <div class="menubar" aria-hidden="true"><span>Blink</span><span>Tue 13 Oct&nbsp;&nbsp;09:20</span></div>
+            <div class="menubar" aria-hidden="true"><span><b>Notes</b><span>File</span><span>Edit</span><span>View</span><span>Window</span></span><span>Tue 13 Oct&nbsp;&nbsp;09:20</span></div>
+            <div class="desk-win" aria-hidden="true"></div>
             <div class="notch" id="hero-notch">
               <div class="eyes-slot" aria-hidden="true"><div class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></div></div>
               <div class="notch-body">
@@ -335,28 +341,39 @@
     <div class="wrap">
       <div class="head">
         <h2 id="privacy-title">Your server. Your keys.</h2>
-        <p class="sub">Your notes, mail, money and keys live on a Supabase server in your own account, created for you in one click. AI requests go from there to the provider you picked, with your key. Pexilim stores none of it.</p>
+        <p class="sub">Everything lives on a server in your own account. Pexilim never sees it.</p>
       </div>
-      <div class="diagram-area" id="diagram">
-        <div class="diagram" role="img" aria-label="Diagram: your Mac talks to your own server. Your server talks to the AI provider you picked and to your mail provider. Pexilim is outside this loop.">
-          <div class="you-box">
-            <span class="tag">Yours</span>
-            <div class="node you"><b>Your Mac</b><span>Blink app, clipboard, chat history</span></div>
-            <div class="link"></div>
-            <div class="node you"><b>Your server</b><span>Supabase free tier, in your account. Notes, tasks, mail summaries, money, keys.</span></div>
-          </div>
-          <div class="link"></div>
-          <div class="node stack">
-            <div class="node"><b>Your AI provider</b><span>Claude, Groq or OpenRouter, with your key</span></div>
-            <div class="node"><b>Your mail</b><span>Read and sent by your server</span></div>
-          </div>
+
+      <!-- Where your data goes, drawn: Mac ↔ your server (with your keys) ↔ your AI and mail. -->
+      <div class="vault" id="diagram" role="img" aria-label="Your Mac talks only to your own server, which holds your keys. Your server calls the AI provider you picked, with your key, and reads your mail. Pexilim is not part of it and stores nothing.">
+        <div class="yours"><span>Yours</span></div>
+        <div class="v-node">
+          <div class="mini-mac"><div class="mm-screen"><i></i></div><div class="mm-base"></div></div>
+          <b>Your Mac</b><span>Clipboard and chats stay here</span>
         </div>
-        <div class="pex"><div class="node"><b>Pexilim</b></div><span>Runs only a tiny sign-in helper for the one-click setup. It stores nothing.</span></div>
+        <div class="wire"><i></i><i></i></div>
+        <div class="v-node">
+          <div class="rack">
+            <div class="unit"><i></i></div><div class="unit"><i></i></div><div class="unit"><i></i></div>
+            <span class="key"><svg><use href="#i-key"/></svg></span>
+          </div>
+          <b>Your server</b><span>Free Supabase, in your account</span>
+        </div>
+        <div class="wire"><i></i><i></i></div>
+        <div class="v-node">
+          <div class="providers">
+            <span>Claude</span><span>Groq</span><span>OpenRouter</span>
+            <span class="mail"><svg><use href="#i-mail"/></svg>Your mail</span>
+          </div>
+          <b>Your AI</b><span>Called with your key</span>
+        </div>
       </div>
+      <p class="pex"><span class="pex-chip">Pexilim</span>Not in the picture. Only a sign-in helper for setup, storing nothing.</p>
+
       <ul class="facts">
-        <li><b>Stays on your Mac</b>Clipboard history, chat history and post images.</li>
-        <li><b>Keys stay hidden</b>Stored as secrets on your server. Blink never shows them again.</li>
-        <li><b>No tracking</b>No analytics in the app or on this site. Nothing reports back to Pexilim.</li>
+        <li><svg aria-hidden="true"><use href="#i-mac"/></svg>Clipboard never leaves your Mac</li>
+        <li><svg aria-hidden="true"><use href="#i-lock"/></svg>Keys kept as secrets</li>
+        <li><svg aria-hidden="true"><use href="#i-off"/></svg>No analytics, no tracking</li>
       </ul>
     </div>
   </section>

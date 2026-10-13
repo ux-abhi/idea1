@@ -369,8 +369,13 @@ if (motion) {
   };
   intros.content = () => gsap.from("#content-mock .idea", { y: 16, opacity: 0, duration: 0.5, delay: 0.15, stagger: 0.07, ease: "power3.out", clearProps: "transform,opacity" });
 
-  // Privacy: the links draw between the boxes.
-  gsap.from("#diagram .link", { scaleX: 0, scaleY: 0, duration: 0.6, stagger: 0.25, delay: 0.4, ease: "power2.out", scrollTrigger: { trigger: "#diagram", start: "top 75%", once: true } });
+  // Privacy: the Mac, the server and the AI come up in order, then the wires draw between them.
+  gsap.timeline({ scrollTrigger: { trigger: "#diagram", start: "top 75%", once: true } })
+    .from("#diagram .v-node", { y: 24, opacity: 0, duration: 0.6, stagger: 0.18, ease: "power3.out" })
+    .from("#diagram .wire", matchMedia("(max-width: 820px)").matches   // the wires run down on phones
+      ? { scaleY: 0, transformOrigin: "top", duration: 0.5, stagger: 0.2, ease: "power2.out" }
+      : { scaleX: 0, transformOrigin: "left", duration: 0.5, stagger: 0.2, ease: "power2.out" }, 0.3)
+    .from("#diagram .key", { scale: 0, rotate: -90, duration: 0.5, ease: "back.out(2)" }, 0.7);
 
   // Setup: the rail draws as you read down it; each step's card rises as the rail gets there.
   const mm = gsap.matchMedia();
