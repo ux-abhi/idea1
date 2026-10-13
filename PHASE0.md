@@ -188,3 +188,12 @@ Owner, 2026-10-12: stop the iPhone for now, pending the paid Apple Developer acc
 - [x] Site in `marketing/site` (home, install guide with Open Anyway, privacy, terms); no third-party requests.
 - [x] `docs/LAUNCH.md`: the owner's steps (helper on its own project, DNS, hosting) and what $99 adds.
 - [ ] First install of the DMG on a second Mac or user account, through the whole first run.
+
+## Feature polish (2026-10-14)
+- [x] Mail: a batch the AI couldn't sort is marked unsorted and sorted on a later check (newest first, up to 10 a run, 3 days; mail gone from the inbox is let go). Reply digest: the notch lists mail waiting for a reply and peeks once a day from 10:00.
+- [x] Money: notch alerts at 80% and over 100% of a category's limit (once each a month) and last week's summary on the first sync of a new week.
+- [x] Start at login (owner's switch in onboarding and Settings); the morning brief also comes when Blink starts before noon.
+- [x] A drawn notch on screens without one (external display, lid closed). Not tested on such a screen yet.
+- [x] Chat streams word by word (Claude, Groq, OpenRouter; server-sent events), cut-off answers say so, a mid-answer refusal resets cleanly.
+- [x] `/ponytail-review`: 2 must-fix and 6 should-fix found and fixed. CI green; migration and functions live.
+- [ ] Owner: try chat streaming, a real login with "Open at login" on, and an external screen with the lid closed.
