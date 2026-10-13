@@ -214,6 +214,56 @@ touchBtn.addEventListener("click", () => {
   }, reduce ? 0 : 900);
 });
 
+/* ---------- Hero: the notch shows one moment of the day after another; the buttons under the Mac pick one ---------- */
+// Mood colours from tokens.json. Example people and places only, nothing personal.
+const MOMENTS = [
+  { tab: "Calendar", mood: "var(--blue-fill)", kind: "Next up", when: "in 10 min", q: "Design review with Sam",
+    a: "The call link is on your clipboard. Your notes from last week are open.", acts: ["Join call", "Snooze 5 min"] },
+  { tab: "Mail", mood: "var(--red)", kind: "Needs you", when: "2 min ago", q: "Your landlord replied",
+    a: "Wants to confirm the Friday visit. I drafted a yes; nothing is sent until you say so.", acts: ["Review draft", "Later"] },
+  { tab: "Clipboard", mood: "var(--mint)", kind: "Clipboard", when: "⌃⌥V", q: "“invoice” · 3 matches",
+    a: "INV-2041.pdf, copied yesterday at 16:02. Press Return to paste it.", acts: ["Paste", "Show all"] },
+  { tab: "Money", mood: "var(--orange)", kind: "Spent", when: "Apple Pay", q: "€12.40 at Café Lumen",
+    a: "Food is at 80% of this week's limit, with three days to go.", acts: ["OK", "Change category"] },
+  { tab: "Habits", mood: "var(--green)", kind: "Habit", when: "18:00", q: "Gym · day 6 in a row",
+    a: "You usually go at six. Your evening is free until eight.", acts: ["Done", "Skip today"] },
+];
+const heroNotch = $("#hero-notch"), momentEl = $(".moment", heroNotch), momentBar = $("#hero-moments");
+let momentAt = 0, picked = false;
+const fillMoment = (m) => {
+  heroNotch.style.setProperty("--mood", m.mood);
+  $(".m-kind", momentEl).textContent = m.kind;
+  $(".m-when", momentEl).textContent = m.when;
+  $(".notch-q", momentEl).textContent = m.q;
+  $(".notch-a", momentEl).textContent = m.a;
+  $$(".m-act", momentEl).forEach((el, i) => (el.textContent = m.acts[i]));
+};
+const showMoment = (i) => {
+  momentAt = i;
+  $$(".moment-btn", momentBar).forEach((b, j) => b.setAttribute("aria-pressed", String(j === i)));
+  if (!motion) return fillMoment(MOMENTS[i]);
+  gsap.timeline()
+    .to(momentEl, { autoAlpha: 0, y: -6, filter: "blur(4px)", duration: 0.18, ease: "power2.in", onComplete: () => fillMoment(MOMENTS[i]) })
+    .fromTo(momentEl, { y: 8 }, { autoAlpha: 1, y: 0, filter: "blur(0px)", duration: 0.4, ease: "power3.out" })
+    .fromTo($(".eyes-look img", heroNotch), { scaleY: 1 }, { scaleY: 0.08, duration: 0.08, yoyo: true, repeat: 1, ease: "power2.inOut" }, 0.05);
+};
+for (const [i, m] of MOMENTS.entries()) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "moment-btn"; b.style.setProperty("--mood", m.mood);
+  b.innerHTML = `<i aria-hidden="true"></i>${m.tab}`;
+  b.setAttribute("aria-pressed", String(i === 0));
+  // A pick stops the tour, so the visitor can read it.
+  b.addEventListener("click", () => { picked = true; momentBar.classList.remove("auto"); momentEl.setAttribute("aria-live", "polite"); if (i !== momentAt) showMoment(i); });
+  momentBar.append(b);
+}
+// The bar's CSS fill sets the pace (paused on hover and focus); when it is full, the next moment comes.
+momentBar.addEventListener("animationend", () => showMoment((momentAt + 1) % MOMENTS.length));
+// Off screen, the tour waits (no repaints nobody sees).
+new IntersectionObserver(([e]) => momentBar.classList.toggle("away", !e.isIntersecting)).observe($("#hero-mac"));
+function startMoments() { if (!reduce && !picked) momentBar.classList.add("auto"); }
+fillMoment(MOMENTS[0]);
+if (!motion) startMoments();
+
 /* ---------- Scroll motion (GSAP) ---------- */
 if (!motion) mail.classList.add("sorted"); // static fallback: show the sorted inbox
 if (motion) {
@@ -229,29 +279,8 @@ if (motion) {
   gsap.from("#hero-mac", { y: 70, autoAlpha: 0, duration: 1.2, delay: 0.35, ease: "power3.out" });
   gsap.from("#hero-notch .eyes-look img", { scaleY: 0.08, duration: 0.35, delay: 1.2, ease: "power2.out" });
 
-  // The lid opens on its hinge as the Mac comes up; the base stays put.
-  gsap.fromTo("#hero-mac .bezel", { rotationX: -24, transformPerspective: 2000, transformOrigin: "50% 100%" }, {
-    rotationX: 0, ease: "none",
-    scrollTrigger: { trigger: "#hero-mac", start: "top bottom", end: "top 20%", scrub: 0.6 },
-  });
-
-  const notch = $("#hero-notch"), q = $(".notch-q", notch), a = $(".notch-a", notch);
-  q.textContent = "";
-  a.innerHTML = a.dataset.words.split(" ").map((w) => `<span style="opacity:0">${w}</span>`).join(" ");
-  let answered = false;
-  gsap.fromTo(".screen", { "--p": 0 }, {
-    "--p": 1, ease: "power2.inOut",
-    scrollTrigger: {
-      trigger: "#hero-mac", start: "top 58%", end: "top 8%", scrub: 0.6,
-      onUpdate: (st) => {
-        if (answered || st.progress < 0.9) return;
-        answered = true;
-        gsap.timeline()
-          .add(typeInto(q, q.dataset.type))
-          .to($$("span", a), { opacity: 1, duration: 0.25, stagger: 0.06 }, "+=0.35");
-      },
-    },
-  });
+  // Then the notch opens by itself: the first thing a visitor sees is Blink at work, not an empty screen.
+  gsap.fromTo(".screen", { "--p": 0 }, { "--p": 1, duration: 0.9, delay: 1.5, ease: "expo.inOut", onComplete: startMoments });
 
   // Section titles arrive word by word, once. The words stay one text run for screen readers.
   for (const h of $$(".head h2, .end h2")) {

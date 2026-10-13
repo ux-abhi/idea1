@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Blink: your notch, now with a brain</title>
+  <title>Blink: your day, one glance up</title>
   <meta name="description" content="Blink is a free personal assistant for Mac that lives in your MacBook's notch. Mail, clipboard, search, your day, habits, money and content, on your own server with your own keys. Join the waitlist.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self' https://*.supabase.co; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#FFFFFF">
-  <meta property="og:title" content="Blink: your notch, now with a brain">
+  <meta property="og:title" content="Blink: your day, one glance up">
   <meta property="og:description" content="A free personal assistant that lives in your MacBook's notch. By Pexilim. Join the waitlist.">
   <meta property="og:image" content="https://www.blinkk.app/assets/blink-film-poster.jpg">
   <link rel="canonical" href="https://www.blinkk.app/">
@@ -47,37 +47,43 @@
 
   <!-- Hero (light) -->
   <section class="hero light" aria-labelledby="hero-title">
-    <div class="wrap">
-      <div class="hero-grid">
-        <h1 id="hero-title" class="hero-in">Your notch, now with a brain.</h1>
-        <div class="hero-side">
-          <p class="lede hero-in">Blink is a personal assistant that lives in your MacBook's notch. It reads your mail, keeps your clipboard, plans your day, and asks before it acts.</p>
-          <div class="cta-row hero-in">
-            <a class="btn" href="#waitlist">Join the waitlist</a>
-            <a class="btn ghost" href="#film" data-play-film>Watch the film</a>
-          </div>
-          <p class="cta-note hero-in">Free. For MacBooks with a notch on macOS 26.</p>
-        </div>
+    <div class="wrap hero-head">
+      <p class="eyebrow hero-in"><span class="eyebrow-dot" aria-hidden="true"></span>Free · for MacBooks with a notch · macOS 26</p>
+      <h1 id="hero-title" class="hero-in">Your day, one glance&nbsp;up.</h1>
+      <p class="lede hero-in">Blink lives in your MacBook's notch. It tells you what's next, what matters in your inbox, and never acts without your OK.</p>
+      <div class="cta-row hero-in">
+        <a class="btn" href="#waitlist">Join the waitlist</a>
+        <a class="btn ghost" href="#film" data-play-film>Watch the film</a>
       </div>
+      <ul class="trust hero-in" aria-label="Why Blink">
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg>Free, no account with us</li>
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg>Your own server and keys</li>
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg>Asks before it acts</li>
+      </ul>
+    </div>
 
+    <div class="wrap">
       <figure class="mac" id="hero-mac">
         <div class="bezel">
           <div class="screen">
             <div class="menubar" aria-hidden="true"><span>Blink</span><span>Tue 13 Oct&nbsp;&nbsp;09:20</span></div>
-            <div class="notch" id="hero-notch" aria-hidden="true">
-              <div class="eyes-slot"><div class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></div></div>
+            <div class="notch" id="hero-notch">
+              <div class="eyes-slot" aria-hidden="true"><div class="eyes-look"><img src="assets/eyes-idle.png" alt="" width="320" height="160"></div></div>
               <div class="notch-body">
-                <div class="notch-label">Ask Blink</div>
-                <div class="notch-q" data-type="What's left today?">What's left today?</div>
-                <div class="notch-a" data-words="Thesis review at 2 pm, gym at 6. Two emails need you.">Thesis review at 2 pm, gym at 6. Two emails need you.</div>
+                <div class="moment">
+                  <div class="notch-label"><i class="m-dot"></i><span class="m-kind">Next up</span><span class="m-when">in 10 min</span></div>
+                  <div class="notch-q">Design review with Sam</div>
+                  <div class="notch-a">The call link is on your clipboard. Your notes from last week are open.</div>
+                  <div class="m-acts"><span class="m-act">Join call</span><span class="m-act alt">Snooze 5 min</span></div>
+                </div>
               </div>
             </div>
             <div class="screen-keys" aria-hidden="true"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>Space</kbd></div>
           </div>
         </div>
-        <div class="base" aria-hidden="true"></div>
-        <figcaption class="sr-only">A MacBook screen. Blink's eyes sit in the notch; pressing Control-Option-Space opens a chat there. Asked "What's left today?", Blink answers "Thesis review at 2 pm, gym at 6. Two emails need you."</figcaption>
+        <figcaption class="sr-only">A MacBook screen. Blink's eyes sit in the notch, which opens to show what matters right now: the next meeting, an important email, the clipboard, a spend and a habit.</figcaption>
       </figure>
+      <div class="moments" id="hero-moments" role="group" aria-label="Show a moment in the notch"></div>
     </div>
   </section>
 

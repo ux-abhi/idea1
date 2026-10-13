@@ -147,20 +147,35 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
 
 /* ---------- Hero ---------- */
 .hero {
-  padding-top: clamp(56px, 9vh, 104px); padding-bottom: clamp(72px, 10vh, 120px); overflow: hidden;
+  padding-top: clamp(36px, 6vh, 72px); padding-bottom: clamp(56px, 8vh, 96px); overflow: hidden;
   background:
     radial-gradient(40% 50% at 8% 0%, rgba(10, 132, 255, .10), transparent 70%),
     radial-gradient(36% 46% at 96% 18%, rgba(255, 159, 10, .13), transparent 70%),
     var(--white);
 }
-.hero-grid { display: grid; gap: 28px 64px; align-items: end; }
-@media (min-width: 960px) { .hero-grid { grid-template-columns: 1.25fr 1fr; } }
-.hero h1 { max-width: 9.5em; }
-.cta-row { margin-top: 28px; display: flex; gap: 12px 16px; align-items: center; flex-wrap: wrap; }
-.cta-note { margin: 14px 0 0; color: var(--muted); font-size: 15px; }
+/* Centred: one line of proof, the promise, the action, three reasons to trust it. */
+.hero-head { text-align: center; display: grid; justify-items: center; }
+.hero h1 { max-width: 11em; margin-top: 20px; font-size: clamp(46px, 6.6vw, 92px); }
+.hero .lede { margin-top: 18px; max-width: 31em; }
+.eyebrow {
+  margin: 0; display: inline-flex; align-items: center; gap: 10px; padding: 7px 14px 7px 10px; border-radius: 999px;
+  font-size: 14px; font-weight: 500; color: var(--muted); background: rgba(255, 255, 255, .7); border: 1px solid var(--line);
+}
+.eyebrow-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px rgba(48, 209, 88, .18); }
+.cta-row { margin-top: 30px; display: flex; gap: 12px 16px; align-items: center; flex-wrap: wrap; }
+.hero .cta-row { justify-content: center; }
+.trust { list-style: none; margin: 26px 0 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px; color: var(--muted); font-size: 15px; }
+.trust li { display: inline-flex; align-items: center; gap: 7px; }
+.trust svg { width: 18px; height: 18px; fill: none; stroke: var(--green); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* The Mac. Everything inside .screen scales with its width (cqw). */
-.mac { width: min(1080px, 100%); margin: clamp(56px, 8vw, 96px) auto 0; }
+.mac { width: min(1080px, 100%); margin: clamp(48px, 7vw, 80px) auto 0; }
+/* The hero shows the top of the Mac only, so the notch is the subject; the screen fades into the page. */
+.hero .mac { margin-top: clamp(36px, 4.5vw, 56px); margin-bottom: -26%; -webkit-mask-image: linear-gradient(#000 40%, transparent 66%); mask-image: linear-gradient(#000 40%, transparent 66%); }
+@media (max-width: 640px) {
+  .hero .screen { aspect-ratio: 1 / 1; }
+  .hero .mac { margin-bottom: -16%; -webkit-mask-image: linear-gradient(#000 62%, transparent 94%); mask-image: linear-gradient(#000 62%, transparent 94%); }
+}
 .bezel {
   padding: clamp(6px, 1vw, 12px); border-radius: clamp(14px, 2.2vw, 28px);
   background: var(--black); border: 1px solid #C7C7CC;
@@ -176,12 +191,6 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
     radial-gradient(90% 60% at 50% 110%, rgba(100, 210, 255, .2) 0%, transparent 70%),
     #040812;
 }
-.base {
-  height: clamp(8px, 1.4vw, 16px); width: 108%; margin-left: -4%;
-  border-radius: 0 0 40% 40% / 0 0 100% 100%;
-  background: linear-gradient(#E5E5EA, #AEAEB2); position: relative;
-}
-.base::before { content: ""; position: absolute; left: 50%; top: 0; width: 14%; height: 45%; translate: -50% 0; background: #C7C7CC; border-radius: 0 0 10px 10px; }
 .menubar {
   position: absolute; inset: 0 0 auto; height: 3.4cqw; padding: 0 2cqw;
   display: flex; align-items: center; justify-content: space-between;
@@ -197,9 +206,30 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
 }
 .notch .eyes-slot { position: absolute; left: 50%; top: calc(var(--rest-h) / 2 + var(--p) * .9em); width: calc(9cqw + var(--p) * 1.6em); translate: -50% -50%; }
 .notch-body { padding: calc(var(--rest-h) + 1.6em) 1.6em 1.5em; opacity: clamp(0, (var(--p) - .55) * 2.4, 1); }
-.notch-label { color: #A1A1A6; font-size: .86em; }
+.notch-label { display: flex; align-items: center; gap: .5em; color: #A1A1A6; font-size: .86em; }
+.m-dot { width: .62em; height: .62em; border-radius: 50%; background: var(--mood, var(--blue-fill)); box-shadow: 0 0 .8em var(--mood, var(--blue-fill)); }
+.m-kind { color: var(--white); font-weight: 600; }
+.m-when { margin-left: auto; }
+.m-acts { margin-top: 1em; display: flex; gap: .5em; }
+.m-act { padding: .45em .9em; border-radius: 999px; background: var(--white); color: var(--black); font-size: .86em; font-weight: 600; }
+.m-act.alt { background: var(--gray5); color: var(--white); }
 .notch-q { margin-top: .5em; font-size: 1.25em; font-weight: 600; letter-spacing: -.01em; min-height: 1.3em; }
 .notch-a { margin-top: .55em; color: #D1D1D6; font-size: 1.08em; line-height: 1.4; min-height: 2.8em; }
+
+/* Under the Mac: pick a moment. The bar on the shown one fills while it is up, then the next one comes (main.js). */
+.moments { position: relative; z-index: 1; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.moment-btn {
+  position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--white); color: var(--fg);
+  font: 500 15px/1 var(--font); cursor: pointer; transition: background-color .2s, color .2s, transform .25s var(--ease-pop);
+}
+.moment-btn:active { transform: scale(.96); }
+.moment-btn i { width: 8px; height: 8px; border-radius: 50%; background: var(--mood); }
+.moment-btn[aria-pressed="true"] { background: var(--black); color: var(--white); border-color: var(--black); }
+.moment-btn::after { content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--mood); transform: scaleX(0); transform-origin: left; }
+.moments.auto .moment-btn[aria-pressed="true"]::after { animation: moment-fill 4.2s linear forwards; }
+.moments.auto:hover .moment-btn::after, .moments.auto:focus-within .moment-btn::after, .moments.away .moment-btn::after { animation-play-state: paused; }
+@keyframes moment-fill { to { transform: scaleX(1); } }
 .screen-keys { position: absolute; left: 50%; bottom: 7cqw; translate: -50% 0; display: flex; gap: 1cqw; opacity: clamp(0, 1 - var(--p) * 3, 1); font-size: max(9px, 1.6cqw); }
 .screen-keys kbd { padding: .45em .7em; border-radius: .5em; background: rgba(28, 28, 30, .7); color: #fff; border-color: var(--gray4); box-shadow: none; }
 
