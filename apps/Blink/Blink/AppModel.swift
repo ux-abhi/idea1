@@ -311,7 +311,7 @@ final class AppModel {
         agenda = .empty; allReminders = []; quickReplies = []
         content = []; voice = VoiceProfile(); contentProblem = nil
         ideas = []; questions = [:]; pageRead = nil; weekPlan = []; designed = []
-        spends = []; budgets = []; accounts = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
+        spends = []; budgets = []; accounts = []; captureTokens = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
         emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil
         modelPrefs = [:]; modelProblem = nil; dailyCap = nil; spaces = []; openPage = nil; keyStatus = nil
     }
@@ -1161,11 +1161,38 @@ final class AppModel {
 
     private(set) var spends: [Spend] = []
     private(set) var accounts: [MoneyAccount] = []
+    /// iPhones (Shortcuts automations) that send Apple Pay taps to the server.
+    private(set) var captureTokens: [CaptureToken] = []
     private(set) var budgets: [Budget] = []
     private(set) var moneyProblem: String?
     private(set) var sortingSpends = false
 
     /// This month and last, so the page can compare.
+    /// A new capture link for one iPhone; the token is shown once (only its hash is stored).
+    func makeCaptureLink(name: String) async -> String? {
+        guard let server, email != nil else { return nil }
+        do {
+            let token = try await server.makeCaptureToken(name: name)
+            captureTokens = (try? await server.captureTokens()) ?? captureTokens
+            return token
+        } catch {
+            moneyProblem = "Couldn't make a capture link. Check your connection."
+            return nil
+        }
+    }
+
+    func removeCaptureLink(_ token: CaptureToken) async {
+        guard let server else { return }
+        do {
+            try await server.deleteCaptureToken(token)
+            captureTokens.removeAll { $0.id == token.id }
+        } catch {
+            moneyProblem = "Couldn't remove that link. Check your connection."
+        }
+    }
+
+    var captureEndpoint: URL? { server.map { CaptureToken.endpoint(for: $0.config) } }
+
     func loadMoney() async {
         guard let server, email != nil else { return }
         do {
@@ -1176,6 +1203,8 @@ final class AppModel {
             async let limits = server.budgets()
             async let list = server.accounts()
             (spends, budgets, accounts) = try await (spent, limits, list)
+            // Optional: a server without the capture table yet (older install) still shows its money.
+            captureTokens = (try? await server.captureTokens()) ?? []
         } catch {
             // Never show €0 as if nothing was spent.
             moneyProblem = "Can't load your spending right now. Check your connection."

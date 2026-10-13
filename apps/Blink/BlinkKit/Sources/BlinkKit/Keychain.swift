@@ -50,9 +50,22 @@ public struct Keychain: Sendable {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecUseDataProtectionKeychain as String: true,
+            kSecUseDataProtectionKeychain as String: Self.dataProtection,
         ]
     }
+
+    /// The data-protection keychain needs an app ID (the `keychain-access-groups` entitlement, which only a team-signed
+    /// build may carry). The free, ad-hoc signed DMG has none, so it keeps items in the login keychain instead.
+    /// shortcut: two keychains for two kinds of build; each DMG update has a new ad-hoc signature, so macOS asks once for
+    /// the login password ("Always Allow"). Drop the login-keychain path once releases are Developer ID signed.
+    static let dataProtection: Bool = {
+        #if os(macOS)
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        return SecTaskCopyValueForEntitlement(task, "keychain-access-groups" as CFString, nil) != nil
+        #else
+        return true
+        #endif
+    }()
 }
 
 /// Lets supabase-swift keep its session in our Keychain with our accessibility class.

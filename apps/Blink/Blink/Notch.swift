@@ -88,6 +88,7 @@ final class NotchController {
     private var autoOpened = false
     private var hotkeys: [GlobalHotkey] = []
     private var eveningShown: String? // habit day the evening nudge last appeared
+    private var spendNudgeShown: String? // day the "anything I missed?" money nudge last appeared
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     init(app: AppModel, clipboard: ClipboardStore) {
@@ -259,14 +260,52 @@ final class NotchController {
 
     // MARK: Speaking first
 
+    /// The money nudge comes this long before the evening check-in (20:45 with the default 21:30, §21).
+    private static let spendLead: TimeInterval = 45 * 60
+
+    /// Once a day, in the 45 minutes before the evening check-in, if the owner keeps track of money: what was already
+    /// caught today (Apple Pay, receipts, typed), and a reminder that /spent adds the rest.
+    private func spendNudge(day: String) {
+        let opens = EveningCheck.opens(now: .now, evening: app.evening, wake: app.wake)
+        let usesMoney = !app.accounts.isEmpty || !app.captureTokens.isEmpty || !app.spends.isEmpty
+        guard usesMoney, spendNudgeShown != day, Date.now >= opens.addingTimeInterval(-Self.spendLead), Date.now < opens else { return }
+        // Apple Pay taps and receipts since the last sync are on the server: fetch them before saying what's caught.
+        // Marked shown only once it really shows, so a peek or an open notch at that moment just delays it.
+        Task { [weak self] in
+            await self?.app.loadMoney()
+            self?.showSpendNudge(day: day)
+        }
+    }
+
+    private func showSpendNudge(day: String) {
+        guard model.level == .rest, spendNudgeShown != day else { return }
+        spendNudgeShown = day
+        // The habit day, like the once-a-day guard: past midnight, "today" is still the evening before.
+        let today = app.spends.filter { $0.spentOn == day }
+        let total = today.reduce(Decimal.zero) { $0 + $1.amount }
+        let text = today.isEmpty
+            ? "Spent anything today? Type /spent 8 lunch"
+            : "Today \(total.formatted(.currency(code: MoneyMath.currency))): \(today.prefix(3).map(\.note).joined(separator: ", ")). Missed any? /spent"
+        model.mood = .headsUp
+        model.peekNote = text
+        show(.peek, closingAfter: 10)
+        AccessibilityNotification.Announcement(text).post()
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            if self?.model.peekNote == text { self?.model.peekNote = nil }
+            self?.evaluateCue() // back to the eyes the hour calls for
+        }
+    }
+
     private func scheduleCues() {
         cueWake?.cancel()
         let ids = Set(app.agenda.events.map(\.id) + app.agenda.dueItems(adding: app.dueTasks).map(\.id))
         spoken = spoken.filter { ids.contains($0.key) } // forget meetings that are gone
         evaluateCue()
         let eveningOpens = EveningCheck.opens(now: .now, evening: app.evening, wake: app.wake)
+        let spendAt = eveningOpens.addingTimeInterval(-Self.spendLead)
         let candidates = [app.agenda.nextCueChange(after: .now, tasks: app.dueTasks),
-                          eveningOpens > .now ? eveningOpens : nil, model.sleepyUntil].compactMap { $0 }
+                          eveningOpens > .now ? eveningOpens : nil, spendAt > .now ? spendAt : nil, model.sleepyUntil].compactMap { $0 }
         guard let next = candidates.min() else { return }
         cueWake = Task { [weak self] in
             // ContinuousClock keeps counting while the Mac sleeps, so an overdue cue fires on wake.
@@ -295,6 +334,7 @@ final class NotchController {
             show(.peek, closingAfter: 10)
             AccessibilityNotification.Announcement("Plan tomorrow?").post()
         }
+        if cue == nil, model.level == .rest { spendNudge(day: day) }
         guard let cue else {
             if autoOpened && model.level == .open { close() }
             return

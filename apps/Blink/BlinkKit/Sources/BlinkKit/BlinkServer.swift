@@ -514,6 +514,24 @@ public final class BlinkServer: Sendable {
         try await client.from("transaction").delete().eq("id", value: spend.id).execute()
     }
 
+    // MARK: Apple Pay capture
+
+    public func captureTokens() async throws -> [CaptureToken] {
+        try await client.from("capture_token").select("id, name, created_at, last_used_at").order("created_at").execute().value
+    }
+
+    /// Stores only the token's hash; returns the token, to show the owner once.
+    public func makeCaptureToken(name: String) async throws -> String {
+        struct Row: Encodable { let name: String, token_hash: String }
+        let made = CaptureToken.make()
+        try await client.from("capture_token").insert(Row(name: name, token_hash: made.hash)).execute()
+        return made.token
+    }
+
+    public func deleteCaptureToken(_ token: CaptureToken) async throws {
+        try await client.from("capture_token").delete().eq("id", value: token.id).execute()
+    }
+
     public func accounts() async throws -> [MoneyAccount] {
         try await client.from("money_account_now").select("id, name, kind, balance, balance_at, is_default, spent_since").order("created_at").execute().value
     }

@@ -781,8 +781,9 @@ extension Tokens {
     #expect(pkce.verifier.count >= 43 && pkce.challenge.count == 43 && !pkce.state.isEmpty)
     #expect(ServerSetup.region(for: "Asia/Kolkata") == "ap-south-1" && ServerSetup.region(for: "Europe/Berlin") == "eu-central-1")
     #expect(ServerSetup.region(for: "America/New_York") == "us-east-1")
-    let fns = ServerSetup.installable(["chat", "_shared", "signin", "mail", "money", "mail-probe"])
-    #expect(fns.map(\.slug) == ["chat", "mail", "money"] && fns.first { $0.slug == "mail" }?.verifyJWT == false)
+    let fns = ServerSetup.installable(["chat", "_shared", "signin", "mail", "money", "mail-probe", "capture"])
+    #expect(fns.map(\.slug) == ["capture", "chat", "mail", "money"])
+    #expect(fns.filter { !$0.verifyJWT }.map(\.slug) == ["capture", "mail"])
     // Queries stay queries (appending a "?" to the path would encode it, and Supabase would answer 404).
     let api = ServerSetup.Client(token: "t")
     #expect(api.url("projects/abc/api-keys", query: [URLQueryItem(name: "reveal", value: "true")]).absoluteString
@@ -797,4 +798,25 @@ extension Tokens {
     #expect(ServerSetup.Migration(fileName: "notes.txt") == nil && ServerSetup.Migration(fileName: "x'; drop table y;--.sql") == nil)
     let sql = m!.wrapped("create table t ();")
     #expect(sql.hasPrefix("begin;") && sql.hasSuffix("commit;") && sql.contains("values ('20261012130000', 'money_accounts')"))
+}
+
+@Test func captureTokensAreRandomAndOnlyTheirHashIsKept() {
+    let a = CaptureToken.make(), b = CaptureToken.make()
+    #expect(a.token != b.token && a.token.hasPrefix("blk_") && a.token.count == 47)
+    #expect(a.token.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" })
+    // SHA-256 of "abc", as Postgres bytea text.
+    #expect(CaptureToken.hash(of: "abc") == "\\xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    #expect(a.hash == CaptureToken.hash(of: a.token) && a.hash.count == 66)
+}
+
+@Test func keychainRoundTripsWithoutAnAppID() throws {
+    // Tests run unsigned, like the free DMG: no keychain-access-groups, so this exercises the login-keychain path.
+    #expect(Keychain.dataProtection == false)
+    let keychain = Keychain(service: "blink.tests.\(UUID().uuidString)")
+    try keychain.set(Data("secret".utf8), for: "session")
+    #expect(try keychain.data(for: "session") == Data("secret".utf8))
+    try keychain.set(Data("newer".utf8), for: "session")
+    #expect(try keychain.data(for: "session") == Data("newer".utf8))
+    try keychain.remove("session")
+    #expect(try keychain.data(for: "session") == nil)
 }

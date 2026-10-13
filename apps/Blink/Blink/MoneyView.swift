@@ -25,6 +25,7 @@ struct MoneyView: View {
             metrics(summary)
             DashCard("Add spending") { entry }
             AccountsCard(editing: $editingAccount)
+            ApplePayCard()
             charts(summary, today: today)
             DashCard("Categories and limits") { monthCard }
             DashCard("Latest") { latest }
