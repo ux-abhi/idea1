@@ -14,7 +14,7 @@
 | 7 Money | 🟡 In progress | Owner sets up the iPhone automation; 80/100% limit alerts; bank SMS (rare in Germany) |
 | 8 Polish | ⬜ Not started | Weekly review, learned rules, health page |
 | Onboarding and one-click server | 🟡 Built, not proven | One real end-to-end run with the registered OAuth app |
-| /meet (Google Calendar) | ✅ /meet proven with the owner's own Google app; one-click Connect Google built, not yet proven | One real one-click connect (Disconnect, then Connect Google); before public launch submit Google verification (100-user cap until then) |
+| /meet (Google Calendar) | ✅ Done: /meet and one-click Connect Google proven (2026-10-14) | Before public launch: submit Google verification (100-user cap until then) |
 | Launch (free DMG + site) | 🟡 Ready to publish | Sign-in helper moved to the pexilim project with an organization OAuth app (2026-10-14). Next: build the DMG, one fresh first run on a second macOS account |
 
 # Phase 0: foundation
