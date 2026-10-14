@@ -72,19 +72,21 @@ final class ServerInstaller {
     /// Something failed before the install began (the browser sign-in or the token).
     func fail(_ message: String) { problem = message }
 
-    /// Makes and sets up the server, creates the owner's login, then connects and signs in.
-    func install(token: String, email: String, password: String, groqKey: String, model: AppModel) async {
+    /// Makes and sets up the server, creates the owner's login (made up by Blink and kept in the Keychain, so there's no
+    /// password to invent), then connects and signs in. AI works without a key (Apple's on-device model).
+    func install(token: String, model: AppModel) async {
         guard !working else { return }
         working = true
         problem = nil
         defer { working = false }
         do {
+            let login = try model.setupLogin()
             do {
-                try await run(ServerSetup.Client(token: token), email: email, password: password, groqKey: groqKey, model: model)
+                try await run(ServerSetup.Client(token: token), email: login.email, password: login.password, model: model)
             } catch is ServerSetup.Gone {
                 // The saved project isn't this account's any more (deleted, or another Supabase account): start over once.
                 progress.reset()
-                try await run(ServerSetup.Client(token: token), email: email, password: password, groqKey: groqKey, model: model)
+                try await run(ServerSetup.Client(token: token), email: login.email, password: login.password, model: model)
             }
             progress.reset()
             step = nil
@@ -95,7 +97,7 @@ final class ServerInstaller {
         }
     }
 
-    private func run(_ api: ServerSetup.Client, email: String, password: String, groqKey: String, model: AppModel) async throws {
+    private func run(_ api: ServerSetup.Client, email: String, password: String, model: AppModel) async throws {
         // 1. The project (once: its ref is kept, so a retry continues with it).
         step = .create
         if progress.ref == nil {
@@ -149,7 +151,7 @@ final class ServerInstaller {
             try await api.deployFunction(ref, slug: function.slug, files: own + shared, verifyJWT: function.verifyJWT)
         }
 
-        // 5. The owner's login, then nobody else's; each schedule once; the free AI key if given.
+        // 5. The owner's login, then nobody else's; each schedule once.
         step = .lock
         let keys = try await api.keys(ref)
         if !progress.ownerCreated {
@@ -167,8 +169,6 @@ final class ServerInstaller {
             try await api.runSQL(ref, String(contentsOf: bundle.appending(path: "setup/cleanup_schedule.sql"), encoding: .utf8))
             progress.markDone("cleanupSchedule")
         }
-        let groq = groqKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !groq.isEmpty { try await api.setSecrets(ref, ["GROQ_API_KEY": groq]) }
 
         // The server is complete: nothing to resume from here on.
         progress.reset()

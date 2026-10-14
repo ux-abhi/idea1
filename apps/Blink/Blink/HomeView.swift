@@ -16,8 +16,13 @@ struct HomeView: View {
                 case .connected:
                     Label("Connected to \(host) as \(model.email ?? "you")", systemImage: "checkmark.circle")
                 case .unreachable:
-                    Label("Can't reach \(host) right now. Blink will try again when you open it.",
-                          systemImage: "wifi.exclamationmark")
+                    if let ref = model.pausedProject {
+                        Label("Your free server is asleep (Supabase pauses it after a week unused). Your data is safe.", systemImage: "moon.zzz")
+                        Link("Wake It Up", destination: URL(string: "https://supabase.com/dashboard/project/\(ref)")!)
+                    } else {
+                        Label("Can't reach \(host) right now. Blink will try again when you open it.",
+                              systemImage: "wifi.exclamationmark")
+                    }
                     Button("Try again") { Task { await model.refresh() } }
                 }
                 if let lastSync = model.lastSync {

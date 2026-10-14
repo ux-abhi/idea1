@@ -18,6 +18,10 @@ struct SignInView: View {
                 TextField("Email", text: $email)
                     .textContentType(.username)
                     .autocorrectionDisabled()
+                    // The login Blink made when it set up the server: nobody has to remember it.
+                    .onAppear {
+                        if email.isEmpty, password.isEmpty, let login = model.savedLogin { (email, password) = (login.email, login.password) }
+                    }
                     #if os(iOS)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)

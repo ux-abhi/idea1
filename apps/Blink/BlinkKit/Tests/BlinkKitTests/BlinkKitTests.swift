@@ -803,9 +803,32 @@ extension Tokens {
     // A key the provider refused doesn't count.
     #expect(SetupStep.all(keys: ["groq": "rejected", "anthropic": "missing"], calendarGranted: true, voicePage: "",
                           mailConnected: true, hasAccount: true, hasHabit: true).first { $0.id == .aiKey }?.done == false)
+    // With Apple's free on-device model, a key is an optional upgrade, never "missing"; non-posters get no Instagram step.
+    let noKeys = SetupStep.all(keys: ["groq": "missing", "anthropic": "missing"], calendarGranted: true, voicePage: "",
+                               mailConnected: true, hasAccount: true, hasHabit: true, onDeviceAI: true, content: false)
+    #expect(SetupStep.all(keys: ["groq": "missing", "anthropic": "missing"], calendarGranted: true, voicePage: "",
+                          mailConnected: false, hasAccount: true, hasHabit: true, onDeviceAI: true, content: false)
+        .first { $0.id == .aiKey }?.done == true)
+    // ...but mail sorting runs on the server, so with mail connected the key is still needed.
+    #expect(noKeys.first { $0.id == .aiKey }?.done == false && !noKeys.contains { $0.id == .handle })
     // While the key check hasn't answered, don't nag about keys.
     #expect(SetupStep.all(keys: nil, calendarGranted: true, voicePage: "", mailConnected: true, hasAccount: true, hasHabit: true)
         .first { $0.id == .aiKey }?.done == true)
+}
+
+@Test func setupLoginIsMadeOnceAndReused() throws {
+    let keychain = Keychain(service: "blink.tests.\(UUID().uuidString)")
+    #expect(SetupLogin.saved(in: keychain) == nil)
+    let first = try SetupLogin.make(in: keychain)
+    #expect(first.email.hasPrefix("owner-") && first.email.hasSuffix("@blinkk.app") && first.password.count >= 32)
+    let retry = try SetupLogin.make(in: keychain) // a retried install signs in with the same login
+    #expect(retry == first && SetupLogin.saved(in: keychain)! == first)
+    try keychain.remove("setup.login")
+}
+
+@Test func projectRefComesOnlyFromSupabaseHosts() {
+    #expect(BlinkServer.projectRef(URL(string: "https://abc123.supabase.co")!) == "abc123")
+    #expect(BlinkServer.projectRef(URL(string: "https://db.example.com")!) == nil)
 }
 
 @Test func setupProgressResumesAndResets() {

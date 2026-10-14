@@ -75,7 +75,7 @@ struct TodayView: View {
                                      detailColor: overdue > 0 ? .orange : .secondary))
             tile("inbox", MetricTile(title: "Important mail", text: "\(mail)", detail: mail == 0 ? "All caught up" : "New",
                                      detailColor: mail == 0 ? .green : .red))
-            tile("content", MetricTile(title: "Posts ready", text: "\(ready)", detail: ready == 0 ? "None waiting" : "To post"))
+            if model.showsContent { tile("content", MetricTile(title: "Posts ready", text: "\(ready)", detail: ready == 0 ? "None waiting" : "To post")) }
             tile("money", MetricTile(title: "Spent this month", value: month.total,
                                      detail: money.map { "\($0.formatted(.currency(code: MoneyMath.currency))) left at month end" } ?? "Add an account",
                                      detailColor: (money ?? 1) < 0 ? .red : .secondary))

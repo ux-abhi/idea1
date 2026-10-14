@@ -37,7 +37,35 @@ final class AppModel {
     var setupSteps: [SetupStep] {
         SetupStep.all(keys: keyStatus, calendarGranted: calendarAccess == .granted, voicePage: voice.page,
                       mailConnected: mailStates.contains { $0.lastError == nil }, hasAccount: !accounts.isEmpty,
-                      hasHabit: !habits.isEmpty)
+                      hasHabit: !habits.isEmpty, onDeviceAI: OnDeviceChat.problem == nil, content: showsContent)
+    }
+
+    /// The owner posts on social media: Content, its drafts and the Instagram step show. Asked at the end of setup;
+    /// installs from before that question keep it on.
+    var showsContent = UserDefaults.standard.object(forKey: "features.content") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showsContent, forKey: "features.content") }
+    }
+
+    // MARK: The login Blink makes on a server it sets up (no password to invent; see SetupLogin)
+
+    func setupLogin() throws -> (email: String, password: String) { try SetupLogin.make(in: keychain) }
+    var savedLogin: (email: String, password: String)? { SetupLogin.saved(in: keychain) }
+
+    /// The server's Supabase project when the free plan paused it (HTTP 540 after a week unused); nil otherwise.
+    private(set) var pausedProject: String?
+
+    /// Once, after setup: the notch shows the three shortcuts, one after another.
+    func showShortcutTips() {
+        #if os(macOS)
+        guard !UserDefaults.standard.bool(forKey: "tips.shortcuts") else { return }
+        UserDefaults.standard.set(true, forKey: "tips.shortcuts")
+        Task {
+            for tip in ["⌃⌥Space: ask Blink anything, right here", "⌃⌥V: everything you copied today", "⌃⌥K: find any note, task or reminder"] {
+                announce(tip)
+                try? await Task.sleep(for: .seconds(7))
+            }
+        }
+        #endif
     }
 
     /// True when no AI key works: chat and drafts can't run until one is added.
@@ -243,6 +271,7 @@ final class AppModel {
             lastSync = at
             UserDefaults.standard.set(at, forKey: "lastSync")
             status = .connected
+            pausedProject = nil
             // Creating the key shows no prompt; only signing a red approval asks for Touch ID.
             try? await server.enrollApprovalKeyIfNeeded()
             await reloadAgenda()
@@ -257,11 +286,13 @@ final class AppModel {
             // Once per launch, and again on each sync while no key works (one free, read-only ping per provider).
             if keyStatus == nil || aiKeyMissing { await loadKeyStatus() }
         } catch {
+            // A paused free server still answers (HTTP 540), so it fails as "other" or even "signed out": ask first.
+            pausedProject = await server.pausedProject()
             switch ServerProblem(error) {
-            case .signedOut:
+            case .signedOut where pausedProject == nil:
                 // Only for the account this sync was for; a newer sign-in isn't affected.
                 if session == mine { await endSession(notice: "You've been signed out. Sign in again to continue.") }
-            case .unreachable:
+            case .signedOut, .unreachable:
                 status = .unreachable
             case .wrongLogin, .other:
                 // shortcut: anything else is shown as unreachable; split out when sync adds real failure modes.

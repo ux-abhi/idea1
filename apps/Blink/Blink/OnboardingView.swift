@@ -39,7 +39,7 @@ struct OnboardingView: View {
                         case .server: ServerStep()
                         case .account: AccountStep()
                         case .calendar: CalendarStep { calendarSeen = true }
-                        case .about: AboutStep { done = true }
+                        case .about: AboutStep { done = true; model.showShortcutTips() }
                         }
                     }
                     .frame(maxWidth: 520)
@@ -182,14 +182,9 @@ private struct CreateServer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.webAuthenticationSession) private var webAuth
     @State private var installer = ServerInstaller()
-    @State private var email = ""
-    @State private var password = ""
-    @State private var groq = ""
     /// The browser sign-in is open; a second click would start a new attempt and void this one.
     @State private var signingIn = false
     let useExisting: () -> Void
-
-    private var ready: Bool { email.contains("@") && email.contains(".") && password.count >= 8 }
 
     var body: some View {
         if installer.working || installer.step != nil && installer.problem == nil {
@@ -213,15 +208,8 @@ private struct CreateServer: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Your Blink login").font(.headline)
-                TextField("Email", text: $email).textFieldStyle(.roundedBorder).textContentType(.username).autocorrectionDisabled()
-                SecureField("Password (at least 8 characters)", text: $password).textFieldStyle(.roundedBorder).textContentType(.newPassword)
-                if installer.progress.ownerCreated {
-                    Text("Your login was already made on the new server: type the same email and password as before.").font(.caption).foregroundStyle(.secondary)
-                }
-                Text("Free AI key (optional)").font(.headline).padding(.top, 4)
-                SecureField("Groq key, starts with gsk_", text: $groq).textFieldStyle(.roundedBorder)
-                Link("Get a free Groq key", destination: URL(string: "https://console.groq.com/keys")!).font(.caption)
+                Label("Blink creates your own private server and signs you in. No passwords to make up.", systemImage: "server.rack")
+                Label("Chat works right away, free and on this Mac. Mail sorting and drafts can use a free key later.", systemImage: "sparkles")
                 if let problem = installer.problem {
                     Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.callout)
                 }
@@ -234,7 +222,7 @@ private struct CreateServer: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
-                .disabled(!ready || signingIn)
+                .disabled(signingIn)
                 Text("Opens supabase.com to sign in or sign up for free. Blink then creates your server; we never see your Supabase account.")
                     .font(.caption).foregroundStyle(.secondary)
                 // Hidden while setup runs: switching away mid-install would hide its progress, not stop it.
@@ -250,7 +238,7 @@ private struct CreateServer: View {
         do {
             let callback = try await webAuth.authenticate(using: url, callbackURLScheme: "blink", preferredBrowserSession: nil)
             let token = try await installer.token(from: callback)
-            await installer.install(token: token, email: email.trimmingCharacters(in: .whitespaces), password: password, groqKey: groq, model: model)
+            await installer.install(token: token, model: model)
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             // Closing the sign-in window is not a problem worth a message.
         } catch {
@@ -328,14 +316,23 @@ private struct AboutStep: View {
     @State private var handle = ""
     @State private var saving = false
     @State private var openAtLogin = true
+    /// Off for a new install; an earlier choice (setup run again) is kept.
+    @State private var posts = UserDefaults.standard.object(forKey: "features.content") as? Bool ?? false
 
     var body: some View {
-        StepCard(title: "About you", subtitle: "So posts sound like you and Blink knows what you work on. You can skip this.") {
-            TextField("Instagram handle, e.g. @yourname", text: $handle)
-                .textFieldStyle(.roundedBorder)
-                .onAppear { if model.voice.page.contains("@") { handle = String(model.voice.page.split(separator: " ").first ?? "") } }
+        StepCard(title: "About you", subtitle: "So Blink shows what you'll use. You can change this later in Settings.") {
+            // Content (post ideas, drafts, stats) is for people who post; everyone else never sees it.
+            Toggle("I post on social media (Instagram, LinkedIn, X…)", isOn: $posts)
+            if posts {
+                TextField("Instagram handle, e.g. @yourname (optional)", text: $handle)
+                    .textFieldStyle(.roundedBorder)
+                    .onAppear { if model.voice.page.contains("@") { handle = String(model.voice.page.split(separator: " ").first ?? "") } }
+            }
             if model.aiKeyMissing {
                 NeedsSetup(step: model.setupSteps.first { $0.id == .aiKey }!, model: model)
+            } else if OnDeviceChat.problem == nil, model.keyStatus?["anthropic"] != "ok" {
+                Label("AI is ready: free and private, right on this Mac.", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green).font(.callout)
             } else if model.keyStatus != nil {
                 Label("Your AI key works. Chat, drafts and sorting are ready.", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green).font(.callout)
@@ -347,13 +344,14 @@ private struct AboutStep: View {
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Spacer()
-                Button("Skip") { if openAtLogin { LoginItem.set(true) }; finish() }
+                Button("Skip") { if openAtLogin { LoginItem.set(true) }; model.showsContent = posts; finish() }
                 Button {
                     Task {
                         saving = true
                         let h = handle.trimmingCharacters(in: .whitespaces)
                         // Only once this account loaded (connected): otherwise an empty Voice could replace the saved one.
-                        if !h.isEmpty, model.status == .connected, !model.voice.page.contains("@") {
+                        model.showsContent = posts
+                        if posts, !h.isEmpty, model.status == .connected, !model.voice.page.contains("@") {
                             var voice = model.voice
                             voice.page = "\(h.hasPrefix("@") ? h : "@" + h) on Instagram"
                             await model.saveVoice(voice)

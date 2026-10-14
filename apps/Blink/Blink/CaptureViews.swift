@@ -98,7 +98,7 @@ private struct CaptureSetup: View {
     }
 }
 
-private struct CopyRow: View {
+struct CopyRow: View {
     let label: String
     let value: String
     var secret = false

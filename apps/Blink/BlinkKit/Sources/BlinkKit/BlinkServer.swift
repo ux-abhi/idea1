@@ -361,6 +361,22 @@ public final class BlinkServer: Sendable {
         try await client.functions.invoke("connections", options: .init(body: [String: String]()))
     }
 
+    /// The Supabase project's ref when the free plan has paused it (Supabase answers 540 until the owner restores it),
+    /// nil when it isn't paused or can't be asked.
+    public func pausedProject() async -> String? {
+        var request = URLRequest(url: config.url.appending(path: "rest/v1/"), timeoutInterval: 10)
+        request.setValue(config.publishableKey, forHTTPHeaderField: "apikey")
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 540 else { return nil }
+        return Self.projectRef(config.url)
+    }
+
+    /// "abc123" from https://abc123.supabase.co; nil for a server on another domain.
+    public static func projectRef(_ url: URL) -> String? {
+        guard let host = url.host(), host.hasSuffix(".supabase.co") else { return nil }
+        return host.components(separatedBy: ".").first
+    }
+
     /// Keys and passwords saved from the app (names only; values are never readable back).
     public func savedKeys() async throws -> Set<String> {
         struct Row: Decodable { let name: String }

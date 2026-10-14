@@ -1,6 +1,7 @@
 // © Pexilim
 #if os(macOS)
 import BlinkKit
+import LocalAuthentication
 import SwiftUI
 
 /// Settings (⌘,), behind the same app lock as the window. Sections follow ARCHITECTURE §36.2;
@@ -55,11 +56,23 @@ enum RestStyle: String, CaseIterable, Identifiable {
 
 struct ServerSettings: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     @State private var confirmSwitch = false
     @State private var confirmRestart = false
+    @State private var shownPassword: String?
+    @State private var loginProblem: String?
 
     var body: some View {
         Form {
+            if let ref = model.pausedProject {
+                Section {
+                    Label("Your free server is asleep. Supabase pauses free servers after a week without use; your data is safe.",
+                          systemImage: "moon.zzz")
+                    Button("Wake It Up…") { openURL(URL(string: "https://supabase.com/dashboard/project/\(ref)")!) }
+                } footer: {
+                    Text("On the page that opens, click Restore. It takes a minute or two, then Blink connects again.")
+                }
+            }
             LabeledContent("Server", value: model.server?.config.host ?? "–")
             LabeledContent("Signed in as", value: model.email ?? "–")
             LabeledContent("Last sync") {
@@ -67,6 +80,30 @@ struct ServerSettings: View {
                     Text(lastSync, format: .relative(presentation: .named))
                 } else {
                     Text("Not yet")
+                }
+            }
+            // The login Blink made during setup: needed only to sign in on another Mac or after a reinstall.
+            // Only when it's the login of this server (a different server signed in by hand has its own).
+            if let login = model.savedLogin, model.email == nil || model.email == login.email {
+                Section {
+                    LabeledContent("Email") { Text(login.email).textSelection(.enabled) }
+                    LabeledContent("Password") {
+                        if let shownPassword {
+                            #if os(macOS)
+                            // Concealed, so it never lands in Blink's own clipboard history.
+                            CopyRow(label: "", value: shownPassword, secret: true)
+                            #else
+                            Text(shownPassword).font(.body.monospaced()).textSelection(.enabled)
+                            #endif
+                        } else {
+                            Button("Show…") { Task { await reveal(login.password) } }
+                        }
+                    }
+                    if let loginProblem { Text(loginProblem).foregroundStyle(.orange) }
+                } header: {
+                    Text("Your Blink login")
+                } footer: {
+                    Text("Blink made this when it set up your server, and fills it in when you sign in here. Save it in Passwords for another Mac; if it's ever lost, reset it in your Supabase dashboard › Authentication › Users.")
                 }
             }
             HStack {
@@ -90,6 +127,18 @@ struct ServerSettings: View {
             }
         } message: {
             Text("You'll be signed out here. Your data stays on \(model.server?.config.host ?? "this server").")
+        }
+    }
+
+    /// Shows the password only after Touch ID (or the Mac's password).
+    private func reveal(_ password: String) async {
+        let context = LAContext()
+        do {
+            _ = try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "show your Blink login")
+            shownPassword = password
+            loginProblem = nil
+        } catch {
+            loginProblem = (error as? LAError)?.code == .userCancel ? nil : "Couldn't confirm it's you."
         }
     }
 }
@@ -248,6 +297,12 @@ struct DaySettings: View {
                 DatePicker("Evening check-in", selection: binding(\.evening), displayedComponents: .hourAndMinute)
             } footer: {
                 Text("Your habit day ends when you wake up, so a late night still counts for the day before. The evening check-in opens in the notch at the second time.")
+            }
+            Section {
+                @Bindable var model = model
+                Toggle("I post on social media", isOn: $model.showsContent)
+            } footer: {
+                Text("Shows Content: post ideas and drafts in your voice, and how your posts do.")
             }
             Section("Keyboard shortcuts") {
                 LabeledContent("Ask Blink", value: "⌃⌥Space")

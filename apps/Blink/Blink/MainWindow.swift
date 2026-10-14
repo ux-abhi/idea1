@@ -80,7 +80,7 @@ struct MainWindow: View {
                     row(.calendar)
                     row(.notes)
                     row(.tasks)
-                    row(.content)
+                    if model.showsContent { row(.content) }
                     row(.money)
                 }
                 spacesSection
@@ -222,7 +222,8 @@ struct MainWindow: View {
     private var subtitle: String {
         switch model.status {
         case .checking: return "Syncing…"
-        case .unreachable: return "Can't reach \(model.server?.config.host ?? "your server")"
+        case .unreachable: return model.pausedProject != nil ? "Your free server is asleep: Settings › Server"
+                                                              : "Can't reach \(model.server?.config.host ?? "your server")"
         case .connected:
             guard let lastSync = model.lastSync else { return "Synced" }
             return "Synced \(lastSync.formatted(.relative(presentation: .named)))"
