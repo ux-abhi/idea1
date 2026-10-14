@@ -8,16 +8,16 @@ import SwiftUI
 struct MeetPanel: View {
     let app: AppModel
     let done: () -> Void
+    /// The draft as it was when the card was drawn: shown while closing the notch clears app.meetDraft, so the fields
+    /// never unwrap a nil mid-update (that crashed). Edits always go to app.meetDraft, the one copy.
+    let shown: AppModel.MeetDraft
     @State private var guestInput = ""
     @State private var problem: String?
     @FocusState private var focus: Field?
     private enum Field { case title, guest }
 
     var body: some View {
-        @Bindable var app = app
-        if let draft = Binding($app.meetDraft) {
-            card(draft)
-        }
+        card(Binding(get: { app.meetDraft ?? shown }, set: { if app.meetDraft != nil { app.meetDraft = $0 } }))
     }
 
     private func card(_ draft: Binding<AppModel.MeetDraft>) -> some View {

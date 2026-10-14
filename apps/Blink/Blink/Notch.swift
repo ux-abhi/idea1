@@ -687,8 +687,8 @@ struct NotchView: View {
 
     @ViewBuilder
     private func glance(statusLine: String, now: Date) -> some View {
-        if model.meeting && app.meetDraft != nil {
-            MeetPanel(app: app, done: close)
+        if model.meeting, let draft = app.meetDraft {
+            MeetPanel(app: app, done: close, shown: draft)
         } else if model.chatting {
             ChatPanel(app: app, input: model.input)
         } else if model.clipboarding {

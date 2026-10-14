@@ -117,7 +117,13 @@ Deno.serve(async (req) => {
       created = await fetch(`${calendar}/${eventId(action.id)}`, { headers: { Authorization: `Bearer ${access}` } });
     }
     const event = await created.json().catch(() => ({}));
-    if (!created.ok || typeof event.id !== "string") return retry("Google Calendar didn't create the meeting. Try again.");
+    if (!created.ok || typeof event.id !== "string") {
+      // Google's own reason, so the owner and the logs can see what to fix. Never holds tokens (they are only sent);
+      // it may name a guest address, which stays in the owner's own logs.
+      const reason = typeof event?.error?.message === "string" ? event.error.message.slice(0, 300) : `HTTP ${created.status}`;
+      console.error("calendar insert failed", created.status, reason);
+      return retry(`Google Calendar didn't create the meeting: ${reason}`);
+    }
     const result = {
       event_id: event.id,
       meet_url: typeof event.hangoutLink === "string" ? event.hangoutLink : null,
