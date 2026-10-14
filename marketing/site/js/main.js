@@ -348,7 +348,7 @@ if (motion) {
     // The words lift, blur and fade; the eyes stay, they are about to fly.
     .to(".intro-scroll", { autoAlpha: 0, duration: 0.1 }, 0)
     .to(".intro-hi-words", { autoAlpha: 0, y: -24, filter: "blur(6px)", duration: 0.18 }, 0)
-    .to(".intro-name", { autoAlpha: 0, y: -24, filter: "blur(6px)", duration: 0.18 }, 0.06)
+    .to(".intro-name, .intro-what", { autoAlpha: 0, y: -24, filter: "blur(6px)", duration: 0.18 }, 0.06)
     .to(intro, {
       "--ix": () => `${box(headNotch).left}px`,
       "--ib": () => `${innerHeight - box(headNotch).bottom}px`,

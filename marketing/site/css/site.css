@@ -161,6 +161,7 @@ section { padding: clamp(96px, 13vh, 152px) 0; }
 .intro-name { margin: 0; font: 700 clamp(72px, 11vw, 150px)/1 var(--display); font-stretch: 94%; letter-spacing: -.02em; }
 .intro-hi-words { display: block; }
 .intro-eyes { display: block; width: 2.4em; }
+.intro-what { margin: 14px 0 0; max-width: 22em; color: #A1A1A6; font-size: clamp(17px, 1.6vw, 21px); }
 .intro-scroll { position: absolute; left: 0; right: 0; bottom: 28px; margin: 0; display: grid; justify-items: center; gap: 4px; color: #8E8E93; font-size: 13px; }
 .intro-scroll svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; animation: nudge 1.8s var(--ease-out) infinite; }
 @keyframes nudge { 50% { translate: 0 4px; } }
