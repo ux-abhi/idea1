@@ -20,7 +20,7 @@ APP="$OUT/derived/Build/Products/Release/Blink.app"
 codesign --verify --deep --strict "$APP"
 # The download must be as protected as the Xcode build: sandboxed, with calendar access, and no debugging entitlement.
 ENT=$(codesign -d --entitlements - "$APP" 2>/dev/null)
-for key in app-sandbox network.client personal-information.calendars; do
+for key in app-sandbox network.client network.server personal-information.calendars; do
   echo "$ENT" | grep -q "com.apple.security.$key" || { echo "error: the build lacks com.apple.security.$key"; exit 1; }
 done
 if echo "$ENT" | grep -q get-task-allow; then echo "error: debugging entitlement in a release build"; exit 1; fi

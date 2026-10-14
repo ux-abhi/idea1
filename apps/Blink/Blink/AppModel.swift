@@ -1254,6 +1254,35 @@ final class AppModel {
         } catch { return "Couldn't disconnect. Check your connection and try again." }
     }
 
+    #if os(macOS)
+    /// One click: Google's page in the browser, the answer on 127.0.0.1, the token on the owner's server. Nil when done.
+    func connectGoogleOneClick() async -> String? {
+        guard let server, let client = GoogleSignIn.client else { return "Connect to your server first." }
+        do {
+            // Blink's client goes to the server like any key, so the server can refresh the token with it later.
+            try await server.saveKey("GOOGLE_DESKTOP_CLIENT_ID", value: client.id)
+            try await server.saveKey("GOOGLE_DESKTOP_CLIENT_SECRET", value: client.secret)
+        } catch {
+            // An older server doesn't know these key names yet.
+            return "Your server needs an update before Google can connect in one click. Update it in Settings › Server."
+        }
+        do {
+            let answer = try await GoogleSignIn.authorize(clientID: client.id)
+            defer { NSApp.activate() } // back from the browser, so the result (or the problem) is seen
+            googleAccount = try await server.googleExchange(code: answer.code, verifier: answer.verifier, redirect: answer.redirect)
+            return nil
+        } catch is CancellationError {
+            return nil
+        } catch let problem as GoogleSignIn.Problem {
+            return problem.message
+        } catch let problem as BlinkServer.ChatProblem {
+            return problem.message
+        } catch {
+            return "Couldn't connect Google. Check your connection and try again."
+        }
+    }
+    #endif
+
     /// Google's consent page, to open in the browser, or a problem to show.
     func googleConnectURL() async -> (url: URL?, problem: String?) {
         guard let server else { return (nil, "Connect to your server first.") }

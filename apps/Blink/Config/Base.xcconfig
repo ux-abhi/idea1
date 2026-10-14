@@ -27,6 +27,8 @@ CODE_SIGN_STYLE = Automatic
 ENABLE_APP_SANDBOX = YES
 CODE_SIGN_ENTITLEMENTS[sdk=macosx*] = Config/Blink-macOS.entitlements
 ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES
+// One-click Google: for a moment Blink listens on 127.0.0.1 only, for Google's answer (Google's method for desktop apps).
+ENABLE_INCOMING_NETWORK_CONNECTIONS = YES
 // Export… for post images: only folders the owner picks in the save panel.
 ENABLE_USER_SELECTED_FILES = readwrite
 ENABLE_RESOURCE_ACCESS_CALENDARS = YES
@@ -37,7 +39,8 @@ ENABLE_PREVIEWS = YES
 GENERATE_INFOPLIST_FILE = YES
 INFOPLIST_FILE = Config/Info.plist
 // "Sign in with Supabase" for one-click server setup: BLINK_SIGNIN_HELPER, set in Local.xcconfig (included above, so
-// it isn't defined again here); left unset, the app shows only "I already have a server".
+// it isn't defined again here); left unset, the app shows only "I already have a server". One-click Google:
+// BLINK_GOOGLE_CLIENT_ID / BLINK_GOOGLE_CLIENT_SECRET, also in Local.xcconfig; unset, owners use their own Google app.
 INFOPLIST_KEY_CFBundleDisplayName = $(APP_DISPLAY_NAME)
 INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.productivity
 INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = Blink reads your calendars to show your next meeting in the notch.

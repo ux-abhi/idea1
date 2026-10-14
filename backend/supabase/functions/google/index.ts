@@ -1,7 +1,9 @@
 // © Pexilim
-// Google Calendar for /meet (ARCHITECTURE §34). Runs on the owner's own server with the owner's own Google OAuth client
-// (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET secrets). Deployed with --no-verify-jwt because Google's redirect is a plain
-// browser request; the other routes check the caller themselves.
+// Google Calendar for /meet (ARCHITECTURE §34), on the owner's own server. Two ways to connect: one click with Blink's
+// built-in Desktop client (the Mac gets the code over 127.0.0.1 with PKCE, /exchange finishes here), or the owner's own
+// Web client (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET, /start + /callback). Deployed with --no-verify-jwt because Google's
+// redirect is a plain browser request; the other routes check the caller themselves.
+//   POST /google/exchange  One click: the Mac's code and PKCE verifier become a refresh token in Vault.
 //   POST /google/start     The app asks for Google's consent page; a one-time state ties the answer to this owner.
 //   GET  /google/callback  Google sends the browser here; the refresh token goes to Vault, never to a device.
 //   POST /google/disconnect Revokes Blink's access at Google, then deletes the token and the link.
@@ -10,7 +12,7 @@
 // shortcut: calls Google Calendar's REST API directly instead of the §34 connector gateway; move it behind the gateway
 // when a second Google feature (Gmail, Drive, calendar reads) needs the same connection.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
-import { consentURL, emailFromIdToken, eventBody, eventId, parseMeet } from "./input.ts";
+import { consentURL, emailFromIdToken, eventBody, eventId, parseExchange, parseMeet } from "./input.ts";
 import { secret } from "../_shared/secrets.ts";
 
 const json = (status: number, body: unknown) =>
@@ -39,9 +41,25 @@ Deno.serve(async (req) => {
     return error ? json(500, { error: "Couldn't disconnect. Try again." }) : json(200, { disconnected: true });
   }
 
-  const clientId = await secret("GOOGLE_CLIENT_ID"), clientSecret = await secret("GOOGLE_CLIENT_SECRET");
-  if (!clientId || !clientSecret) return json(503, { error: "Add your Google app's client ID and secret in Settings › Connections first." });
+  // The owner's own Web client, or Blink's built-in Desktop client; a token is refreshed with the one that made it.
+  const client = async (via: "own" | "blink") => {
+    const [id, sec] = via === "blink"
+      ? [await secret("GOOGLE_DESKTOP_CLIENT_ID"), await secret("GOOGLE_DESKTOP_CLIENT_SECRET")]
+      : [await secret("GOOGLE_CLIENT_ID"), await secret("GOOGLE_CLIENT_SECRET")];
+    return id && sec ? { id, secret: sec } : null;
+  };
+  const noOwnApp = "Add your Google app's client ID and secret in Settings › Connections first.";
   const callback = `${Deno.env.get("SUPABASE_URL")}/functions/v1/google/callback`;
+  // Google's answer to a code exchange: the refresh token, the account, and that calendar access was really granted.
+  const received = async (tokenRes: Response) => {
+    const tokens = await tokenRes.json().catch(() => ({}));
+    const account = emailFromIdToken(tokens.id_token);
+    // Each permission can be unticked on Google's page: without calendar events, /meet could never work.
+    const granted = typeof tokens.scope === "string" ? tokens.scope.split(" ") : [];
+    return tokenRes.ok && typeof tokens.refresh_token === "string" && account &&
+        granted.includes("https://www.googleapis.com/auth/calendar.events")
+      ? { token: tokens.refresh_token as string, account } : null;
+  };
 
   if (req.method === "GET" && url.pathname.endsWith("/callback")) {
     const code = url.searchParams.get("code"), state = url.searchParams.get("state");
@@ -53,22 +71,17 @@ Deno.serve(async (req) => {
       .eq("state_hash", bytea(await sha256(state))).gt("expires_at", new Date().toISOString()).select("owner_id");
     const owner = rows?.[0]?.owner_id;
     if (!owner) return page("This link has expired. Start again from Blink › Settings › Connections.", 400);
+    const own = await client("own");
+    if (!own) return page(noOwnApp, 503);
 
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    const got = await received(await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
-      body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: callback, grant_type: "authorization_code" }),
-    });
-    const tokens = await tokenRes.json().catch(() => ({}));
-    const account = emailFromIdToken(tokens.id_token);
-    // Each permission can be unticked on Google's page: without calendar events, /meet could never work.
-    const granted = typeof tokens.scope === "string" ? tokens.scope.split(" ") : [];
-    if (!tokenRes.ok || typeof tokens.refresh_token !== "string" || !account ||
-        !granted.includes("https://www.googleapis.com/auth/calendar.events")) {
-      return page("Google didn't give Blink calendar access. Start again from Blink and leave calendar access ticked.", 502);
-    }
-    const { error } = await admin.rpc("google_connect", { owner, account, token: tokens.refresh_token });
+      body: new URLSearchParams({ code, client_id: own.id, client_secret: own.secret, redirect_uri: callback, grant_type: "authorization_code" }),
+    }));
+    if (!got) return page("Google didn't give Blink calendar access. Start again from Blink and leave calendar access ticked.", 502);
+    const { error } = await admin.rpc("google_connect", { owner, account: got.account, token: got.token, via: "own" });
     if (error) return page("Couldn't save the connection on your server. Try again.", 500);
-    return page(`Google is connected (${account.replaceAll("<", "&lt;")}). You can close this tab and go back to Blink.`);
+    return page(`Google is connected (${got.account.replaceAll("<", "&lt;")}). You can close this tab and go back to Blink.`);
   }
 
   if (req.method !== "POST") return json(405, { error: "POST only" });
@@ -76,7 +89,24 @@ Deno.serve(async (req) => {
   const { data: { user } } = await admin.auth.getUser(jwt);
   if (!user) return json(401, { error: "signed out" });
 
+  if (url.pathname.endsWith("/exchange")) {
+    const blink = await client("blink");
+    if (!blink) return json(503, { error: "This copy of Blink can't connect Google in one click. Use your own Google app under Advanced." });
+    const exchange = parseExchange(await req.json().catch(() => null));
+    if (typeof exchange === "string") return json(400, { error: exchange });
+    const got = await received(await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      body: new URLSearchParams({ code: exchange.code, code_verifier: exchange.verifier, redirect_uri: exchange.redirect,
+                                  client_id: blink.id, client_secret: blink.secret, grant_type: "authorization_code" }),
+    }));
+    if (!got) return json(502, { error: "Google didn't give Blink calendar access. Try again and leave calendar access ticked." });
+    const { error } = await admin.rpc("google_connect", { owner: user.id, account: got.account, token: got.token, via: "blink" });
+    return error ? json(500, { error: "Couldn't save the connection on your server. Try again." }) : json(200, { account: got.account });
+  }
+
   if (url.pathname.endsWith("/start")) {
+    const own = await client("own");
+    if (!own) return json(503, { error: noOwnApp });
     const state = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
       .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
     await admin.from("google_oauth_state").delete().lt("expires_at", new Date().toISOString());
@@ -84,7 +114,7 @@ Deno.serve(async (req) => {
       state_hash: bytea(await sha256(state)), owner_id: user.id, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
     });
     if (error) return json(500, { error: "Couldn't start. Try again." });
-    return json(200, { url: consentURL(clientId, callback, state) });
+    return json(200, { url: consentURL(own.id, callback, state) });
   }
 
   if (url.pathname.endsWith("/meet")) {
@@ -104,6 +134,9 @@ Deno.serve(async (req) => {
 
     const token = (await admin.rpc("google_token", { owner: user.id })).data;
     if (typeof token !== "string") return json(412, { error: "Connect Google first, in Settings › Connections." });
+    const { data: link } = await admin.from("google_link").select("client").eq("owner_id", user.id).maybeSingle();
+    const creds = await client(link?.client === "blink" ? "blink" : "own");
+    if (!creds) return json(412, { error: "The Google app this connection was made with is missing. Connect Google again." });
 
     // Claimed before calling Google (approved → done, conditional), so two calls at once can't both go ahead.
     const { data: claimed } = await admin.from("action").update({ status: "done" })
@@ -118,7 +151,7 @@ Deno.serve(async (req) => {
 
     const refreshed = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
-      body: new URLSearchParams({ refresh_token: token, client_id: clientId, client_secret: clientSecret, grant_type: "refresh_token" }),
+      body: new URLSearchParams({ refresh_token: token, client_id: creds.id, client_secret: creds.secret, grant_type: "refresh_token" }),
     });
     const access = (await refreshed.json().catch(() => ({}))).access_token;
     if (!refreshed.ok || typeof access !== "string") return retry("Google signed Blink out. Connect Google again in Settings › Connections, then Create again.");

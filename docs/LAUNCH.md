@@ -26,7 +26,14 @@ Today the helper (`functions/signin`) runs on the same Supabase project as your 
 - See who joined: Supabase › pexilim › Table Editor › `waitlist` (`confirmed_at` set = confirmed).
 - Owner, once: Resend › Domains › `blinkk.app` must show **Verified** (its DNS records go in Vercel › Domains › blinkk.app). `RESEND_KEY` and `RESEND_FROM` are set for Production only, so preview deployments store signups without emailing.
 
-## Google Calendar for /meet (owner, about 10 minutes, once)
+## One-click Google for everyone (owner, about 5 minutes, once)
+Owners click Connect Google and Allow; nobody else makes a Google app. Blink ships Pexilim's Google client of the **Desktop** type (Google treats its secret as public, since it is inside every copy of the app).
+1. console.cloud.google.com › your Blink project › Google Auth Platform › **Clients** › **Create client** › Application type **Desktop app**, name "Blink for Mac". No redirect URI is needed (desktop clients use 127.0.0.1).
+2. Copy its Client ID and secret into `apps/Blink/Config/Local.xcconfig` as `BLINK_GOOGLE_CLIENT_ID` and `BLINK_GOOGLE_CLIENT_SECRET` (the file is git-ignored; don't paste them into chat). Rebuild.
+3. Settings › Connections › **Connect Google…** now opens Google in the browser and finishes by itself. Your own Web client still works under "Advanced".
+4. Before the public launch: Google Auth Platform › **Verification Center** › submit (home page, privacy policy, verified domain, a short /meet screen recording, and why Blink needs calendar events). Until then: up to 100 users and Google's "unverified app" screen.
+
+## Google Calendar for /meet with your own Google app (advanced)
 Blink creates Meet invites with your own Google OAuth app, so the access stays between Google and your server.
 1. Open console.cloud.google.com, create a project (e.g. "Blink"), then APIs & Services › Library › **Google Calendar API** › Enable.
 2. APIs & Services › OAuth consent screen: User type **External**, app name "Blink", your email as support and developer contact. Add the scope `.../auth/calendar.events`. Under Audience, add your Google address as a test user, then click **Publish app** (in Testing mode Google expires the access after 7 days; published but unverified works for up to 100 users, with a "Google hasn't verified this app" screen you click through once).

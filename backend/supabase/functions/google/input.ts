@@ -26,6 +26,17 @@ export function emailFromIdToken(idToken: unknown): string | null {
   }
 }
 
+/** The Mac's one-click answer: Google's code, the PKCE verifier, and the 127.0.0.1 address Google sent it to. */
+export function parseExchange(body: unknown): { code: string; verifier: string; redirect: string } | string {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const code = typeof b.code === "string" ? b.code : "", verifier = typeof b.verifier === "string" ? b.verifier : "";
+  const redirect = typeof b.redirect === "string" ? b.redirect : "";
+  if (!code || code.length > 2048) return "Google's code is missing.";
+  if (!/^[A-Za-z0-9\-._~]{43,128}$/.test(verifier)) return "The sign-in check is missing. Try again.";
+  if (!/^http:\/\/127\.0\.0\.1:\d{2,5}$/.test(redirect)) return "The sign-in address isn't this Mac's.";
+  return { code, verifier, redirect };
+}
+
 export interface Meet { title: string; start: Date; minutes: number; timeZone: string; guests: string[] }
 
 /** Same rule as the app's QuickCommand.isEmail, so the card never offers an address the server refuses after Touch ID. */

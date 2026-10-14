@@ -1,6 +1,6 @@
 // © Pexilim
 import { assertEquals } from "jsr:@std/assert@1";
-import { consentURL, emailFromIdToken, eventBody, eventId, parseMeet } from "./input.ts";
+import { consentURL, emailFromIdToken, eventBody, eventId, parseExchange, parseMeet } from "./input.ts";
 
 const now = new Date("2026-10-14T10:00:00Z");
 const good = { meet_title: "Design review", start: "2026-10-15T13:00:00Z", minutes: 30, time_zone: "Europe/Berlin",
@@ -28,6 +28,16 @@ Deno.test("the event asks for a Meet link with the action's id and ends after it
   assertEquals(body.end.dateTime, "2026-10-15T13:30:00.000Z");
   assertEquals(body.conferenceData.createRequest.requestId, "act-1");
   assertEquals(eventId("1B2c-3d"), "1b2c3d");
+});
+
+Deno.test("a one-click answer needs a code, a real PKCE verifier and this Mac's own address", () => {
+  const ok = { code: "4/abc", verifier: "a".repeat(43), redirect: "http://127.0.0.1:53123" };
+  assertEquals(parseExchange(ok), ok);
+  assertEquals(typeof parseExchange({ ...ok, redirect: "https://evil.example" }), "string");
+  assertEquals(typeof parseExchange({ ...ok, redirect: "http://127.0.0.1:53123/../x" }), "string");
+  assertEquals(typeof parseExchange({ ...ok, verifier: "short" }), "string");
+  assertEquals(typeof parseExchange({ ...ok, code: "" }), "string");
+  assertEquals(typeof parseExchange(null), "string");
 });
 
 Deno.test("the account email comes from the id token; anything else is refused", () => {

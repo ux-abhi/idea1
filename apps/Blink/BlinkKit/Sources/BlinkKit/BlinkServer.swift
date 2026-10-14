@@ -473,6 +473,19 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    /// One-click Google: the server exchanges Google's code (with the PKCE verifier) and keeps the token. Returns the account.
+    public func googleExchange(code: String, verifier: String, redirect: String) async throws -> String {
+        struct Reply: Decodable { let account: String }
+        do {
+            let reply: Reply = try await client.functions.invoke("google/exchange",
+                options: .init(body: ["code": code, "verifier": verifier, "redirect": redirect]))
+            return reply.account
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't connect Google.")
+        }
+    }
+
     public struct MeetResult: Decodable, Sendable {
         public let meetURL: URL?
         public let htmlLink: URL?

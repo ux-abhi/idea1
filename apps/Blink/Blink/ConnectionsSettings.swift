@@ -16,6 +16,8 @@ struct ConnectionsSettings: View {
     @State private var removing: Service?
     @State private var problem: String?
     @State private var disconnecting = false
+    @State private var connecting: Task<Void, Never>?
+    @State private var advanced = false
 
     struct Field: Hashable {
         let key: String, label: String, prompt: String
@@ -88,16 +90,21 @@ struct ConnectionsSettings: View {
                 }
             }
             Section {
-                row(googleApp)
                 LabeledContent {
                     if let account = model.googleAccount {
                         HStack {
                             Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green).help(account)
                             Button("Disconnect…", role: .destructive) { disconnecting = true }
                         }
+                    } else if let connecting {
+                        HStack {
+                            ProgressView().controlSize(.small).accessibilityLabel("Connecting Google")
+                            Text("Finish in your browser…").foregroundStyle(.secondary)
+                            Button("Cancel") { connecting.cancel() }
+                        }
                     } else {
-                        Button("Connect Google…") { Task { await connectGoogle() } }
-                            .disabled(status?["google_app"] != "ok")
+                        Button("Connect Google…") { connectGoogle() }
+                            .disabled(!oneClick && status?["google_app"] != "ok")
                     }
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
@@ -105,6 +112,12 @@ struct ConnectionsSettings: View {
                         Text(model.googleAccount.map { "\($0) · /meet creates Meet invites" } ?? "For /meet: Meet links and invites from the notch")
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                }
+                // Without Blink's built-in Google client, the owner's own Google app is the only way, so it shows up front.
+                if oneClick {
+                    DisclosureGroup("Advanced: use your own Google app", isExpanded: $advanced) { row(googleApp) }
+                } else {
+                    row(googleApp)
                 }
             } header: {
                 Text("Calendar")
@@ -197,10 +210,30 @@ struct ConnectionsSettings: View {
         await check()
     }
 
-    private func connectGoogle() async {
-        let (url, failure) = await model.googleConnectURL()
-        problem = failure
-        if let url { openURL(url) }
+    /// Blink's built-in Google client (one click), else the owner's own Google app.
+    private var oneClick: Bool {
+        #if os(macOS)
+        GoogleSignIn.client != nil
+        #else
+        false
+        #endif
+    }
+
+    private func connectGoogle() {
+        #if os(macOS)
+        if oneClick {
+            connecting = Task {
+                problem = await model.connectGoogleOneClick()
+                connecting = nil
+            }
+            return
+        }
+        #endif
+        Task {
+            let (url, failure) = await model.googleConnectURL()
+            problem = failure
+            if let url { openURL(url) }
+        }
     }
 
     private func word(_ s: String?) -> String {

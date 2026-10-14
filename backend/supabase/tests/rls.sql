@@ -507,4 +507,23 @@ do $$ begin
 end $$;
 reset role;
 
+-- One-click Google: only the server writes a Google link, whichever client made it.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  begin
+    perform public.google_connect('00000000-0000-0000-0000-00000000000a', 'a@example.com', 'tok', 'blink');
+    raise exception 'a client wrote its own Google link';
+  exception when insufficient_privilege then null;
+  end;
+  assert (select client from public.google_link) = 'own', 'links made before one-click count as the owner''s own app';
+end $$;
+reset role;
+do $$ begin
+  begin
+    perform public.google_connect('00000000-0000-0000-0000-00000000000a', 'a@example.com', 'tok', 'someone-else');
+    raise exception 'an unknown Google client was accepted';
+  exception when invalid_parameter_value then null;
+  end;
+end $$;
+
 select 'all RLS checks passed' as result;

@@ -5,5 +5,10 @@
 	<!-- Merged with the generated Info.plist. The sign-in helper's address comes from BLINK_SIGNIN_HELPER (Local.xcconfig). -->
 	<key>BlinkSigninHelper</key>
 	<string>$(BLINK_SIGNIN_HELPER)</string>
+	<!-- One-click Google: Blink's Desktop-type Google client, from Local.xcconfig. Empty means "use your own Google app". -->
+	<key>BlinkGoogleClientID</key>
+	<string>$(BLINK_GOOGLE_CLIENT_ID)</string>
+	<key>BlinkGoogleClientSecret</key>
+	<string>$(BLINK_GOOGLE_CLIENT_SECRET)</string>
 </dict>
 </plist>

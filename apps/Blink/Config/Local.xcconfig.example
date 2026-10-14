@@ -5,3 +5,7 @@ BUNDLE_ID_PREFIX = com.pexilim
 APP_DISPLAY_NAME = Blink
 // The sign-in helper for one-click server setup (functions/signin on the distributor's server). Empty hides the button.
 BLINK_SIGNIN_HELPER = https:/$()/YOUR-PROJECT.supabase.co/functions/v1/signin
+// One-click Google for /meet: the distributor's Google OAuth client of type "Desktop app" (Google treats its secret as
+// public; it ships inside the app). Empty: owners connect with their own Google app instead.
+BLINK_GOOGLE_CLIENT_ID =
+BLINK_GOOGLE_CLIENT_SECRET =
