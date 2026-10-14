@@ -824,7 +824,9 @@ final class AppModel {
             for tomorrow, or should I keep my usual day? Mention in a few words what tomorrow already holds. \
             Propose nothing until I answer.
             """)
-        quickReplies = ["Keep my usual day", "Add something", "Nothing else, I'm set"]
+        // The on-device model can't propose a plan yet (answers only), so it doesn't offer to.
+        quickReplies = model(for: "chat").id == AIModel.onDeviceID
+            ? ["Nothing else, I'm set"] : ["Keep my usual day", "Add something", "Nothing else, I'm set"]
     }
 
     /// A quick reply: "Nothing else" ends the check-in; the others continue the conversation.
@@ -848,12 +850,20 @@ final class AppModel {
     /// `context` is what's on screen (an open note, a Space); the server hands it to Claude as data, never as instructions.
     func ask(_ text: String, context: String? = nil) async {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let server, !message.isEmpty, !thinking else { return }
+        guard !message.isEmpty, !thinking else { return }
+        let onDevice = model(for: "chat").id == AIModel.onDeviceID
+        guard onDevice || server != nil else { return }
         quickReplies = []
         let history = chat
         chat.append(.init(role: .user, text: message))
         thinking = true
         defer { thinking = false; streaming = nil }
+        if onDevice {
+            let reply = await OnDeviceChat.answer(message, history: history, context: context, about: self) { self.streaming = $0 }
+            chat.append(.init(role: .assistant, text: reply))
+            return
+        }
+        guard let server else { return }
         do {
             // Open reminders go along so Claude can propose finishing or deleting one (they stay on the Mac otherwise).
             let reminders = calendarAccess == .granted ? await calendarReader.openReminders() : []
@@ -1725,12 +1735,22 @@ final class AppModel {
 
     var readyToPost: [ContentPiece] { content.filter { $0.status == .approved } }
 
+    /// Picked "Apple Intelligence · on this Mac" for chat. Kept on this device: the server's chat setting stays a server
+    /// model, because mail drafts read it.
+    private var onDevicePicked = UserDefaults.standard.bool(forKey: "chat.onDevice") {
+        didSet { UserDefaults.standard.set(onDevicePicked, forKey: "chat.onDevice") }
+    }
+
     func model(for feature: String) -> AIModel {
-        AIModel.all.first { $0.id == modelPrefs[feature] } ?? AIModel.all.first { $0.id == AIModel.defaultID }!
+        let id = AIModel.choose(feature: feature, serverPref: modelPrefs[feature], onDevicePicked: onDevicePicked,
+                                onDeviceReady: OnDeviceChat.problem == nil,
+                                claudeWorks: keyStatus.map { $0["anthropic"] == "ok" }, serverReachable: status != .unreachable)
+        return AIModel.all.first { $0.id == id }!
     }
 
     func setModel(_ id: String, for feature: String) async {
-        guard let server else { return }
+        if feature == "chat" { onDevicePicked = id == AIModel.onDeviceID }
+        guard id != AIModel.onDeviceID, let server else { return }
         let before = modelPrefs
         modelPrefs[feature] = id
         do {

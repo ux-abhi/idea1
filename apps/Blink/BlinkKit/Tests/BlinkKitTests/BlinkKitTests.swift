@@ -581,7 +581,27 @@ extension Tokens {
     let url = URL(filePath: #filePath).deletingLastPathComponent()
         .appending(path: "../../../../../backend/supabase/functions/_shared/models.ts").standardized
     let server = try String(contentsOf: url, encoding: .utf8)
-    for model in AIModel.all { #expect(server.contains("id: \"\(model.id)\""), "\(model.id) missing on the server") }
+    // The on-device model runs on the Mac, so it's the one model the server never calls.
+    for model in AIModel.all where model.id != AIModel.onDeviceID {
+        #expect(server.contains("id: \"\(model.id)\""), "\(model.id) missing on the server")
+    }
+    #expect(AIModel.all.first { $0.id == AIModel.onDeviceID }?.group == .onDevice)
+}
+
+@Test func onDeviceIsChosenOnlyWhenItShouldBe() {
+    func pick(_ feature: String = "chat", pref: String? = nil, picked: Bool = false, ready: Bool = true,
+              claude: Bool? = true, reachable: Bool = true) -> String {
+        AIModel.choose(feature: feature, serverPref: pref, onDevicePicked: picked, onDeviceReady: ready,
+                       claudeWorks: claude, serverReachable: reachable)
+    }
+    #expect(pick(picked: true) == AIModel.onDeviceID)                          // picked on this device
+    #expect(pick(picked: true, ready: false) == AIModel.defaultID)             // picked, but Apple Intelligence is off
+    #expect(pick("content", picked: true) == AIModel.defaultID)                // drafts never run on-device
+    #expect(pick(claude: false) == AIModel.onDeviceID)                         // new owner without a Claude key
+    #expect(pick(claude: nil) == AIModel.defaultID)                            // key status not known yet: the server
+    #expect(pick(claude: nil, reachable: false) == AIModel.onDeviceID)         // offline: still answers
+    #expect(pick(pref: "openai/gpt-oss-120b", claude: false) == "openai/gpt-oss-120b") // a saved server model wins
+    #expect(pick(pref: AIModel.onDeviceID, claude: true) == AIModel.defaultID) // an old on-device value on the server is ignored
 }
 
 @Test func modelShortNamesFitSmallPlaces() {
