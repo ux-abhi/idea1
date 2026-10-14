@@ -12,7 +12,8 @@ What's different from an Xcode build: no `keychain-access-groups` (only a team-s
 
 Before giving it to anyone: install the DMG on a second Mac or a second macOS user account, do **Open Anyway**, and run the whole first-run (Sign in with Supabase → Account → Calendar).
 
-## 2. Move the sign-in helper to its own project (owner, about 10 minutes)
+## 2. Move the sign-in helper to its own project ✅ done 2026-10-14
+The helper runs on `pexilim` with an **organization-level** Supabase OAuth app (PEXILIM › Settings › OAuth Apps, not a project's Auth OAuth apps): Organizations read; Projects, Database, Edge Functions, Secrets, Auth read and write; both authorization toggles off. The old copy and its secrets are removed from the personal Blink project. The steps below are kept for reference.
 Today the helper (`functions/signin`) runs on the same Supabase project as your own Blink data. Before strangers use one-click setup, give it its own free project so their traffic never touches yours:
 1. The project exists: `pexilim` (ref `wjhvqnynjkljiqdmnyhw`, Frankfurt), which already holds the waitlist (`backend/pexilim/`).
 2. Deploy the helper there: `npx supabase functions deploy signin --project-ref wjhvqnynjkljiqdmnyhw --no-verify-jwt --use-api` (from `backend/`).

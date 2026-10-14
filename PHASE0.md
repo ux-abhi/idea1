@@ -15,7 +15,7 @@
 | 8 Polish | ⬜ Not started | Weekly review, learned rules, health page |
 | Onboarding and one-click server | 🟡 Built, not proven | One real end-to-end run with the registered OAuth app |
 | /meet (Google Calendar) | ✅ /meet proven with the owner's own Google app; one-click Connect Google built, not yet proven | One real one-click connect (Disconnect, then Connect Google); before public launch submit Google verification (100-user cap until then) |
-| Launch (free DMG + site) | 🟡 Ready to publish | Owner: helper on its own project, DNS for www.blinkk.app, host the site (docs/LAUNCH.md) |
+| Launch (free DMG + site) | 🟡 Ready to publish | Sign-in helper moved to the pexilim project with an organization OAuth app (2026-10-14). Next: build the DMG, one fresh first run on a second macOS account |
 
 # Phase 0: foundation
 
