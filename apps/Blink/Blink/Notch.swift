@@ -245,6 +245,18 @@ final class NotchController {
             }
         }
 
+        // The on-device model prepared a meeting: show its /meet card in the open notch.
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await draft in Observations({ app.meetDraft }) {
+                guard let self else { return }
+                guard draft != nil, !self.model.meeting else { continue }
+                self.model.chatting = false
+                self.model.meeting = true
+                if self.model.level != .open { self.open() }
+            }
+        }
+
         // 7 / 30 / 100-day habit streaks: Celebrate for 3 s, then back to whatever the cues say (§7).
         Task { [weak self] in
             guard let app = self?.app else { return }

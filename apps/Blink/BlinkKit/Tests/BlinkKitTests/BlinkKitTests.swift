@@ -588,6 +588,15 @@ extension Tokens {
     #expect(AIModel.all.first { $0.id == AIModel.onDeviceID }?.group == .onDevice)
 }
 
+@Test func timesFromWordsAreReadOrRefused() {
+    let now = Date.now
+    #expect(TaskInput.when("in 10 minutes", now: now) == now.addingTimeInterval(600))
+    #expect(TaskInput.when("in 2 hours", now: now) == now.addingTimeInterval(7200))
+    #expect(TaskInput.when("tomorrow 9am", now: now).map { $0 > now } == true)
+    #expect(TaskInput.when("whenever", now: now) == nil)
+    #expect(TaskInput.when("yesterday 9am", now: now) == nil) // past: no alert that would never ring
+}
+
 @Test func onDeviceIsChosenOnlyWhenItShouldBe() {
     func pick(_ feature: String = "chat", pref: String? = nil, picked: Bool = false, ready: Bool = true,
               claude: Bool? = true, reachable: Bool = true) -> String {

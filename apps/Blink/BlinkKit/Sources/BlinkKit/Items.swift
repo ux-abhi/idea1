@@ -54,6 +54,15 @@ public struct BlinkItem: Codable, Identifiable, Equatable, Sendable {
 
 /// Reads a due date out of what the user types, e.g. "Send invoice tomorrow at 10" → ("Send invoice", tomorrow 10:00).
 public enum TaskInput {
+    /// When, from words alone ("tomorrow 4pm", "in 10 minutes", "in 2 hours"). Nil when they hold no time still ahead.
+    public static func when(_ words: String, now: Date = .now) -> Date? {
+        let w = words.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if let m = w.wholeMatch(of: /in (\d{1,3}) ?(min|mins|minute|minutes|h|hr|hrs|hour|hours)/), let n = Double(m.1) {
+            return now.addingTimeInterval(n * (m.2.hasPrefix("h") ? 3600 : 60))
+        }
+        return parse("x " + w, now: now).due
+    }
+
     public static func parse(_ text: String, now: Date = .now) -> (title: String, due: Date?) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue),

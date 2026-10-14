@@ -552,6 +552,7 @@ final class AppModel {
     struct UndoChip: Identifiable {
         let id = UUID()
         let text: String
+        var count = 1
         let undo: @MainActor () async -> Void
     }
 
@@ -559,7 +560,12 @@ final class AppModel {
     private(set) var undoChip: UndoChip?
 
     func offerUndo(_ text: String, undo: @escaping @MainActor () async -> Void) {
-        let chip = UndoChip(text: text, undo: undo)
+        // Several things done at once (one answer, quick commands in a row): one chip undoes them all.
+        let chip = if let earlier = undoChip {
+            UndoChip(text: "\(earlier.count + 1) things added", count: earlier.count + 1) { await earlier.undo(); await undo() }
+        } else {
+            UndoChip(text: text, undo: undo)
+        }
         undoChip = chip
         Task {
             try? await Task.sleep(for: .seconds(Tokens.Hold.undoChip))
@@ -824,7 +830,7 @@ final class AppModel {
             for tomorrow, or should I keep my usual day? Mention in a few words what tomorrow already holds. \
             Propose nothing until I answer.
             """)
-        // The on-device model can't propose a plan yet (answers only), so it doesn't offer to.
+        // The on-device model adds things one at a time; it doesn't plan a whole day, so it doesn't offer to.
         quickReplies = model(for: "chat").id == AIModel.onDeviceID
             ? ["Nothing else, I'm set"] : ["Keep my usual day", "Add something", "Nothing else, I'm set"]
     }
@@ -1142,7 +1148,9 @@ final class AppModel {
     // MARK: Quick commands (typed in the notch: "/task Pay rent friday 9am")
 
     /// Carries out a typed command at once, on this device, with Undo. No AI is involved.
-    func run(_ command: QuickCommand) async {
+    /// Does a command at once (with Undo). Returns a problem to show, or nil when it worked.
+    @discardableResult
+    func run(_ command: QuickCommand) async -> String? {
         let when: (Date?) -> String = { $0.map { " · \($0.formatted(.dateTime.weekday(.abbreviated).day().hour().minute()))" } ?? "" }
         switch command {
         case .task(let title, let due):
@@ -1154,7 +1162,7 @@ final class AppModel {
         case .remind(let title, let due):
             guard calendarAccess == .granted else {
                 saveProblem = "Turn on Reminders for Blink in System Settings › Privacy & Security › Reminders."
-                return
+                return saveProblem
             }
             do {
                 let id = try await calendarReader.addReminder(title, due: due)
@@ -1164,6 +1172,7 @@ final class AppModel {
                 }
             } catch {
                 saveProblem = "Couldn't add that reminder. Check that Reminders is allowed for Blink."
+                return saveProblem
             }
         case .note(let title):
             let note = create(.note, title: title)
@@ -1204,6 +1213,7 @@ final class AppModel {
                 chat.append(.init(role: .assistant, text: problem))
             }
         }
+        return nil
     }
 
     // MARK: Google Meet (/meet): an invite card in the notch, approved with Touch ID, created by the owner's server
