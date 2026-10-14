@@ -780,3 +780,43 @@ table.who th { color: var(--ink); font-weight: 600; width: 34%; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* ---------- Survey: one question at a time (js/survey.js), big tap targets, a progress bar ---------- */
+.survey { min-height: 70vh; }
+.survey-top { position: sticky; top: 60px; z-index: 5; padding: 14px 0 10px; background: var(--bg); }
+.survey-title { margin: 0 0 10px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.survey .bar { --p: 0%; height: 4px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.survey .bar i { display: block; height: 100%; width: var(--p); border-radius: inherit; background: var(--blue-fill);
+  transition: width .5s var(--ease-out); }
+.survey .q { border: 0; padding: 0; margin: 48px 0 0; min-width: 0; }
+.survey legend { font: 650 clamp(26px, 3.4vw, 36px)/1.15 var(--display); letter-spacing: -.015em; color: var(--fg);
+  padding: 0; margin-bottom: 22px; outline: none; }
+.survey legend label { cursor: text; }
+.survey .hint { display: block; margin-top: 8px; font: 400 16px var(--font); letter-spacing: 0; color: var(--muted); }
+.choices { display: grid; gap: 10px; max-width: 460px; }
+.choice { position: relative; display: block; }
+.choice input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.choice span {
+  display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; border-radius: 14px;
+  border: 1px solid var(--line); background: var(--surface); font-size: 17px; font-weight: 500;
+  transition: background-color .15s, border-color .15s, color .15s, transform .25s var(--ease-pop);
+}
+.choice:hover span { border-color: var(--blue-fill); }
+.choice kbd { min-width: 24px; text-align: center; font-size: 12px; }
+.choice input:checked + span { background: var(--ink); border-color: var(--ink); color: var(--white); animation: chip-pop .32s var(--ease-pop); }
+.choice input:checked + span kbd { background: rgba(255, 255, 255, .15); color: var(--white); border-color: transparent; }
+.choice input:focus-visible + span { outline: 2px solid var(--link); outline-offset: 2px; }
+@keyframes chip-pop { 40% { transform: scale(1.035); } }
+.survey textarea {
+  display: block; width: 100%; max-width: 560px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--fg); font: 400 18px/1.45 var(--font); resize: vertical;
+}
+.survey-nav { display: flex; align-items: center; gap: 12px; margin-top: 32px; }
+.survey-nav .key-hint { color: var(--muted); font-size: 14px; }
+@media (hover: none) { .survey-nav .key-hint, .choice kbd { display: none; } }
+#survey-status { font-weight: 600; min-height: 1.5em; }
+.survey-done { text-align: center; padding-top: 72px; outline: none; }
+.happy-eyes { display: inline-block; padding: 14px 26px 12px; background: var(--black); border-radius: 0 0 26px 26px; }
+.happy-eyes img { width: 96px; height: auto; }
+.survey-done h1 { margin-top: 28px; }
+@media (prefers-reduced-motion: reduce) { .choice input:checked + span { animation: none; } .survey .bar i { transition: none; } }

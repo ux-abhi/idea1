@@ -1,5 +1,5 @@
 // © Pexilim
-import { corsFor, parseAction, parseSignup, sameSecret } from "./input.ts";
+import { corsFor, parseAction, parseAnswer, parseSignup, sameSecret } from "./input.ts";
 
 Deno.test("signups need a real-looking email and consent; the honeypot catches bots", () => {
   const ok = parseSignup({ email: "  Sam@Example.COM ", consent: true, website: "" });
@@ -29,4 +29,21 @@ Deno.test("only the site's mailer gets the links", () => {
   const secret = "s".repeat(64);
   if (!sameSecret(secret, secret)) throw new Error("same");
   if (sameSecret("t".repeat(64), secret) || sameSecret(null, secret) || sameSecret(secret, undefined) || sameSecret("short", "short")) throw new Error("accepted");
+});
+
+Deno.test("survey answers keep only known choices, need a confirm code, and cap the note", () => {
+  const token = "12345678-1234-1234-1234-123456789abc";
+  const got = parseAnswer({ action: "answer", token: token.toUpperCase(), answers: {
+    slips: ["missed-emails", "missed-emails", "<script>", 4], uses: ["notion"], first: "meet", pay: "month-3-5",
+    beta: "yes", notch: true, note: `  ${"x".repeat(2000)}  ` } });
+  if (!got || got.token !== token) throw new Error("token");
+  if (JSON.stringify(got.answers.slips) !== '["missed-emails"]') throw new Error(JSON.stringify(got.answers.slips));
+  if (got.answers.first_feature !== "meet" || got.answers.pay !== "month-3-5" || got.answers.beta !== "yes") throw new Error("choices");
+  if (got.answers.note?.length !== 1000) throw new Error("note cap");
+  const odd = parseAnswer({ action: "answer", token, answers: { pay: "a million", beta: "sure", first: "teleport", notch: "yes" } });
+  if (!odd || odd.answers.pay !== null || odd.answers.beta !== null || odd.answers.first_feature !== null || odd.answers.notch !== null) {
+    throw new Error("unknown choices kept");
+  }
+  if (parseAnswer({ action: "answer", token: "nope", answers: {} }) !== null) throw new Error("bad token accepted");
+  if (parseAnswer({ action: "confirm", token }) !== null) throw new Error("other action");
 });

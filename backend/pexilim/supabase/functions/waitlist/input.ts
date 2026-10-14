@@ -34,6 +34,40 @@ export function parseAction(body: unknown): { kind: "confirm" | "leave"; token: 
   return { kind: action, token: token.toLowerCase() };
 }
 
+/** The survey's choices: anything else is dropped, so nothing but these words is ever stored. */
+export const CHOICES = {
+  slips: ["missed-emails", "late-meetings", "forgotten-tasks", "lost-copies", "overspending", "not-posting"],
+  uses: ["apple", "notion", "todoist", "ai-chat", "sticky-notes", "nothing"],
+  first: ["ask", "mail", "clipboard", "meet", "money", "habits", "posts"],
+  pay: ["free-only", "once-10-20", "once-20-40", "month-3-5", "month-5-10", "more"],
+} as const;
+
+export type Answers = {
+  slips: string[]; uses: string[]; first_feature: string | null; pay: string | null;
+  beta: "yes" | "maybe" | null; notch: boolean | null; note: string | null;
+};
+
+/** { action: "answer", token: uuid (from the confirm link), answers } from survey.html; null for anything else. */
+export function parseAnswer(body: unknown): { token: string; answers: Answers } | null {
+  const { action, token, answers } = (body ?? {}) as Record<string, unknown>;
+  if (action !== "answer" || typeof token !== "string" || !UUID.test(token.toLowerCase())) return null;
+  const a = (answers ?? {}) as Record<string, unknown>;
+  const many = (value: unknown, allowed: readonly string[]) =>
+    Array.isArray(value) ? [...new Set(value.filter((v): v is string => typeof v === "string" && allowed.includes(v)))] : [];
+  const one = (value: unknown, allowed: readonly string[]) => typeof value === "string" && allowed.includes(value) ? value : null;
+  const note = typeof a.note === "string" ? a.note.trim().slice(0, 1000) : "";
+  return {
+    token: token.toLowerCase(),
+    answers: {
+      slips: many(a.slips, CHOICES.slips), uses: many(a.uses, CHOICES.uses),
+      first_feature: one(a.first, CHOICES.first), pay: one(a.pay, CHOICES.pay),
+      beta: a.beta === "yes" || a.beta === "maybe" ? a.beta : null,
+      notch: typeof a.notch === "boolean" ? a.notch : null,
+      note: note || null,
+    },
+  };
+}
+
 /** The site's mailer proves itself with a shared secret; compared in constant time, and never true when unset. */
 export function sameSecret(given: string | null, expected: string | undefined): boolean {
   if (!given || !expected || expected.length < 32 || given.length !== expected.length) return false;

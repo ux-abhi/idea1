@@ -35,6 +35,12 @@
   <p class="lede">Confirm that you asked to hear from us, and we'll email you when Blink is ready to download.</p>
   <p><button class="btn" type="button" id="waitlist-link" data-action="confirm" data-param="t" data-done="You're on the list. We'll email you when Blink is ready." data-missing="This link is missing its code. Use the button in your email, or join again on the home page.">Confirm my email</button></p>
   <p id="waitlist-link-status" role="status" aria-live="polite"></p>
+  <!-- Shown once confirmed: the five quick questions, while the person is here and keen. -->
+  <div class="survey-cta" id="survey-cta" hidden>
+    <h2>Got one more minute?</h2>
+    <p>Five quick taps decide what we build first, and you can sign up to test Blink before anyone else.</p>
+    <p><a class="btn" id="survey-cta-link" href="survey.html">Help shape Blink</a></p>
+  </div>
 </main>
 
 <footer class="site-foot">

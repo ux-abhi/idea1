@@ -25,7 +25,7 @@ test("a new signup is emailed, and the browser never sees the links", async () =
   assert.deepEqual(await res.json(), { ok: true });
   assert.equal(calls[0].init.headers["x-blink-mailer"], "m".repeat(64));
   assert.deepEqual(JSON.parse(calls[0].init.body), { email: "sam@example.com", consent: true, website: "", source: "site" });
-  const sent = JSON.parse(calls[1].init.body);
+  const [sent] = JSON.parse(calls[1].init.body);
   assert.equal(sent.to, "sam@example.com");
   assert.ok(sent.html.includes("confirm.html?t=abc") && sent.text.includes("leave.html?u=def"));
 });

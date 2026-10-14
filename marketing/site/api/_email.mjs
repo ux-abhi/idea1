@@ -51,6 +51,21 @@ export function layout(opts) {
   return { html, text };
 }
 
+/** One email a few days after someone confirms, asking for the five quick questions (sent once, api/followup.mjs). */
+export function followupEmail(surveyUrl, unsubscribeUrl) {
+  return {
+    subject: "5 quick taps to shape Blink?",
+    ...layout({
+      preheader: "Under a minute. Your answers decide what we build first.",
+      title: "Can you help shape Blink?",
+      line: "Five quick taps, under a minute. Your answers decide what we build first, and you can sign up to test Blink early.",
+      button: { label: "Answer 5 quick questions", url: surveyUrl },
+      pills: [["#0a84ff", "Under a minute"], ["#30d158", "Beta spots open"], ["#ff9f0a", "Every answer read"]],
+      unsubscribe: unsubscribeUrl,
+    }),
+  };
+}
+
 /** "Confirm your spot", sent right after someone joins. */
 export function confirmEmail(confirmUrl, unsubscribeUrl) {
   return {
@@ -64,4 +79,25 @@ export function confirmEmail(confirmUrl, unsubscribeUrl) {
       unsubscribe: unsubscribeUrl,
     }),
   };
+}
+
+/** Sends emails through Resend in one batch call (up to 100; one call keeps under Resend's per-second limit), each with
+ *  its own leave link as List-Unsubscribe. Returns how many were sent; problems are logged, never thrown. */
+export async function sendMail(mails) {
+  const key = process.env.RESEND_KEY || process.env.RESEND_API_KEY, from = process.env.RESEND_FROM;
+  if (!key || !from) { console.error("mail: RESEND_KEY or RESEND_FROM missing; nothing sent"); return 0; }
+  if (!mails.length) return 0;
+  try {
+    const res = await fetch("https://api.resend.com/emails/batch", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify(mails.slice(0, 100).map(({ to, subject, html, text, leave }) =>
+        ({ from, to, reply_to: "hello@blinkk.app", subject, html, text, headers: { "List-Unsubscribe": `<${leave}>` } }))),
+    });
+    if (res.ok) return Math.min(mails.length, 100);
+    console.error("resend", res.status, (await res.text()).slice(0, 200));
+  } catch (error) {
+    console.error("resend", String(error).slice(0, 200));
+  }
+  return 0;
 }

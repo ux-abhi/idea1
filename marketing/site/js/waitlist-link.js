@@ -15,7 +15,17 @@
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: button.dataset.action, token }) });
       const body = await res.json().catch(() => ({}));
-      if (res.ok && body.ok) { status.textContent = button.dataset.done; button.hidden = true; return; }
+      if (res.ok && body.ok) {
+        status.textContent = button.dataset.done;
+        button.hidden = true;
+        // Confirmed: offer the five quick questions, with the same code (it proves who's answering).
+        const cta = document.getElementById("survey-cta");
+        if (cta && button.dataset.action === "confirm") {
+          document.getElementById("survey-cta-link").href = `survey.html?t=${encodeURIComponent(token)}`;
+          cta.hidden = false;
+        }
+        return;
+      }
       status.textContent = body.error || "That didn't work. Try again in a minute.";
     } catch {
       status.textContent = "Can't reach Blink's server. Check your connection and try again.";

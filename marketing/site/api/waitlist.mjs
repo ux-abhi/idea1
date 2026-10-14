@@ -2,22 +2,12 @@
 // The waitlist form posts here (same site, so no CORS). This stores the signup on Pexilim's Supabase project, which
 // answers this function alone (it holds MAILER_SECRET) with the confirm and leave links, then emails them through Resend
 // with the key that lives only in Vercel (RESEND_KEY, RESEND_FROM). The browser only ever gets "ok" or an error.
-import { confirmEmail } from "./_email.mjs";
+import { confirmEmail, sendMail } from "./_email.mjs";
 
 const UPSTREAM = process.env.WAITLIST_URL || "https://wjhvqnynjkljiqdmnyhw.supabase.co/functions/v1/waitlist";
 const json = (status, body) => Response.json(body, { status });
 
-async function send(mail) {
-  const key = process.env.RESEND_KEY || process.env.RESEND_API_KEY, from = process.env.RESEND_FROM;
-  if (!key || !from) { console.error("waitlist: RESEND_KEY or RESEND_FROM missing; signup stored without an email"); return; }
-  const { subject, html, text } = confirmEmail(mail.confirm, mail.leave);
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: mail.to, reply_to: "hello@blinkk.app", subject, html, text, headers: { "List-Unsubscribe": `<${mail.leave}>` } }),
-  });
-  if (!res.ok) console.error("resend", res.status, (await res.text()).slice(0, 200));
-}
+const send = (mail) => sendMail([{ to: mail.to, leave: mail.leave, ...confirmEmail(mail.confirm, mail.leave) }]);
 
 export async function POST(request) {
   const body = await request.json().catch(() => null);
