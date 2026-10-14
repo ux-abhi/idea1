@@ -28,8 +28,9 @@ Deno.serve(async (req) => {
     // Only what was answered: reopening the page later never blanks earlier answers, and skipping everything stores nothing.
     const given = Object.fromEntries(Object.entries(answer.answers).filter(([, v]) => v !== null && !(Array.isArray(v) && !v.length)));
     if (!Object.keys(given).length) return json(200, { ok: true });
-    const { data: person } = await admin.from("waitlist").select("id")
+    const { data: person, error: findError } = await admin.from("waitlist").select("id")
       .eq("confirm_token", answer.token).not("confirmed_at", "is", null).maybeSingle();
+    if (findError) return json(502, { error: "Something went wrong. Try again in a minute." });
     if (!person) return expired();
     const { error } = await admin.from("waitlist_answer")
       .upsert({ waitlist_id: person.id, ...given, updated_at: new Date().toISOString() });
@@ -62,6 +63,22 @@ Deno.serve(async (req) => {
 
   // From the site's confirm and leave pages (a real click, not a link scanner opening the email's link).
   const action = parseAction(body);
+  // The site's survey mailer, once someone presses Send: their answers and address, the first time only, so the site
+  // can thank a beta "yes" and tell the owner. Later sends of the same survey get nothing (no repeat emails).
+  if (action?.kind === "finished") {
+    if (!sameSecret(req.headers.get("x-blink-mailer"), Deno.env.get("MAILER_SECRET"))) return json(401, { error: "Not allowed" });
+    const { data: person, error: findError } = await admin.from("waitlist").select("id, email, unsubscribe")
+      .eq("confirm_token", action.token).not("confirmed_at", "is", null).maybeSingle();
+    if (findError) return json(502, { error: "Something went wrong. Try again in a minute." });
+    if (!person) return expired();
+    // shortcut: only the first Send mails, so a "maybe" changed to "yes" later gets no thank-you (it shows in the table);
+    // add a separate beta_mailed_at if that happens.
+    const { data: answers, error } = await admin.from("waitlist_answer").update({ finished_at: new Date().toISOString() })
+      .eq("waitlist_id", person.id).is("finished_at", null)
+      .select("slips, uses, first_feature, pay, beta, notch, note").maybeSingle();
+    if (error) return json(502, { error: "Something went wrong. Try again in a minute." });
+    return json(200, { ok: true, mail: answers ? { to: person.email, leave: `${SITE}/leave.html?u=${person.unsubscribe}`, answers } : null });
+  }
   if (action) {
     if (action.kind === "confirm") {
       const { data, error } = await admin.from("waitlist").update({ confirmed_at: new Date().toISOString() })

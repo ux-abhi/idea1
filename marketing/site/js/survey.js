@@ -86,6 +86,8 @@
     status.textContent = "Sending…";
     save();
     if (!(await saving)) { next.disabled = false; return; }
+    // Tells the site it's done (a beta "yes" gets a thank-you email); the answers are already safe, so a hiccup here is quiet.
+    fetch("/api/survey", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }).catch(() => {});
     bar.style.setProperty("--p", "100%");
     document.getElementById("survey-done-text").textContent = form.elements.beta.value === "yes"
       ? "You're on the beta list. We'll email you when your copy is ready."

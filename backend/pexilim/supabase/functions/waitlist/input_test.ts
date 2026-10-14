@@ -22,6 +22,7 @@ Deno.test("confirm and leave need a real token", () => {
   const id = "3f2a6c1e-8b4d-4e5f-9a7b-1c2d3e4f5a6b";
   if (parseAction({ action: "confirm", token: id.toUpperCase() })?.token !== id) throw new Error("confirm");
   if (parseAction({ action: "leave", token: id })?.kind !== "leave") throw new Error("leave");
+  if (parseAction({ action: "finished", token: id })?.kind !== "finished") throw new Error("finished");
   if (parseAction({ action: "delete", token: id }) || parseAction({ action: "confirm", token: "x' or 1=1" }) || parseAction(null)) throw new Error("accepted junk");
 });
 

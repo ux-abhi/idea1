@@ -66,6 +66,37 @@ export function followupEmail(surveyUrl, unsubscribeUrl) {
   };
 }
 
+/** The thank-you for a beta "yes" (api/survey.mjs). `who` is the person who'll write (MAIL_SIGNER in Vercel), or "We". */
+export function betaEmail(who, unsubscribeUrl) {
+  const name = who || "We";
+  return {
+    subject: "You're on the Blink beta list",
+    ...layout({
+      preheader: `${name} will email you soon to get you set up.`,
+      title: "Thank you for joining the beta.",
+      line: `We're bringing testers in one at a time, 1:1, so everyone gets a proper setup. ${name} will email you personally soon. Just reply if you have questions.`,
+      button: { label: "Meet Blink in 60 seconds", url: `${SITE}/#film` },
+      pills: [["#0a84ff", "1:1 setup"], ["#30d158", "Free while testing"], ["#ff9f0a", "Your feedback shapes it"]],
+      unsubscribe: unsubscribeUrl,
+    }),
+  };
+}
+
+/** A plain note to the owner (NOTIFY_EMAIL) when someone finishes the survey: their address and every answer. */
+export function ownerEmail(to, answers) {
+  const rows = [
+    ["Email", to], ["Beta", answers.beta ?? "–"], ["Notch MacBook", answers.notch == null ? "–" : answers.notch ? "yes" : "no"],
+    ["Would pay", answers.pay ?? "–"], ["First feature", answers.first_feature ?? "–"],
+    ["Slips", (answers.slips ?? []).join(", ") || "–"], ["Uses", (answers.uses ?? []).join(", ") || "–"], ["Note", answers.note ?? "–"],
+  ];
+  return {
+    subject: `${answers.beta === "yes" ? "New beta tester" : "New survey answer"}: ${to}`,
+    html: `<table style="font:14px/1.5 ${FONT};border-collapse:collapse">${rows.map(([k, v]) =>
+      `<tr><td style="padding:4px 14px 4px 0;color:#86868b;vertical-align:top">${k}</td><td style="padding:4px 0">${escape(String(v))}</td></tr>`).join("")}</table>`,
+    text: rows.map(([k, v]) => `${k}: ${v}`).join("\n"),
+  };
+}
+
 /** "Confirm your spot", sent right after someone joins. */
 export function confirmEmail(confirmUrl, unsubscribeUrl) {
   return {
@@ -92,7 +123,7 @@ export async function sendMail(mails) {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(mails.slice(0, 100).map(({ to, subject, html, text, leave }) =>
-        ({ from, to, reply_to: "hello@blinkk.app", subject, html, text, headers: { "List-Unsubscribe": `<${leave}>` } }))),
+        ({ from, to, reply_to: "hello@blinkk.app", subject, html, text, ...(leave && { headers: { "List-Unsubscribe": `<${leave}>` } }) }))),
     });
     if (res.ok) return Math.min(mails.length, 100);
     console.error("resend", res.status, (await res.text()).slice(0, 200));

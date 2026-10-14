@@ -27,10 +27,11 @@ export function corsFor(origin: string | null): Record<string, string> {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** { action: "confirm" | "leave", token: uuid } from the site's confirm and leave pages; null for anything else. */
-export function parseAction(body: unknown): { kind: "confirm" | "leave"; token: string } | null {
+/** { action: "confirm" | "leave" | "finished", token: uuid } from the site's confirm and leave pages, or its survey
+ *  mailer ("finished"); null for anything else. */
+export function parseAction(body: unknown): { kind: "confirm" | "leave" | "finished"; token: string } | null {
   const { action, token } = (body ?? {}) as Record<string, unknown>;
-  if ((action !== "confirm" && action !== "leave") || typeof token !== "string" || !UUID.test(token.toLowerCase())) return null;
+  if ((action !== "confirm" && action !== "leave" && action !== "finished") || typeof token !== "string" || !UUID.test(token.toLowerCase())) return null;
   return { kind: action, token: token.toLowerCase() };
 }
 
