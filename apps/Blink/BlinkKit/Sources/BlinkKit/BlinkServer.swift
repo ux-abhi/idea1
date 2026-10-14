@@ -430,6 +430,61 @@ public final class BlinkServer: Sendable {
             .select("id, kind, risk, payload, payload_hash").single().execute().value
     }
 
+    // MARK: Google Meet (/meet)
+
+    /// The connected Google account's email, or nil when Google isn't connected.
+    public func googleAccount() async throws -> String? {
+        struct Row: Decodable { let email: String }
+        let rows: [Row] = try await client.from("google_link").select("email").execute().value
+        return rows.first?.email
+    }
+
+    /// Google's consent page for this owner (valid 10 minutes). Opened in the browser; the server keeps the token.
+    public func googleConnectURL() async throws -> URL {
+        struct Reply: Decodable { let url: URL }
+        do {
+            let reply: Reply = try await client.functions.invoke("google/start", options: .init(body: [String: String]()))
+            return reply.url
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't start connecting Google.")
+        }
+    }
+
+    public struct MeetResult: Decodable, Sendable {
+        public let meetURL: URL?
+        public let htmlLink: URL?
+        enum CodingKeys: String, CodingKey { case meetURL = "meet_url", htmlLink = "html_link" }
+    }
+
+    /// Proposes exactly this meeting as a red action; it is created only after `approveRed` (Touch ID) and `createMeet`.
+    public func proposeMeet(title: String, start: Date, minutes: Int, timeZone: String, guests: [String]) async throws -> BlinkAction {
+        struct Payload: Encodable {
+            let title: String, summary: String, verb = "Invite"
+            let meet_title: String, start: String, minutes: Int, time_zone: String, guests: [String]
+        }
+        struct Row: Encodable { let kind = "meet.create", risk = "red", payload: Payload, payload_hash = "\\x00", proposed_by = "owner" }
+        let when = start.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute())
+        let payload = Payload(title: "Invite \(guests.joined(separator: ", ")) to “\(title)”", summary: "Google Meet, \(when), \(minutes) min",
+                              meet_title: title, start: start.ISO8601Format(), minutes: minutes, time_zone: timeZone, guests: guests)
+        return try await client.from("action").insert(Row(payload: payload))
+            .select("id, kind, risk, payload, payload_hash").single().execute().value
+    }
+
+    /// Why a meeting wasn't created. `spent`: the approval is used up, so a changed card needs a new one.
+    public struct MeetProblem: Error, Sendable { public let message: String; public let spent: Bool }
+
+    /// Creates the approved meeting in Google Calendar with a Meet link; Google emails the guests. Safe to retry.
+    public func createMeet(_ action: BlinkAction) async throws -> MeetResult {
+        do {
+            return try await client.functions.invoke("google/meet", options: .init(body: ["action_id": action.id]))
+        } catch let FunctionsError.httpError(code, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw MeetProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Google didn't create the meeting.",
+                              spent: code != 412 && code < 500)
+        }
+    }
+
     /// Asks the mail worker to send approved mail that is due now (the 5-minute schedule does it too).
     public func sendDueMail() async throws {
         _ = try await client.functions.invoke("mail", options: .init(body: ["action": "send"]))

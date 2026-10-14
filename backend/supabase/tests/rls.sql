@@ -402,4 +402,42 @@ do $$ begin
   delete from public.segment;
   assert (select segment_id from public.item) is null, 'deleting a space keeps its items';
 end $$;
+-- Google (/meet): the owner reads only their own link; nobody reads the token or the sign-in states from a client;
+-- a meeting invite is always red.
+reset role;
+insert into public.google_link (owner_id, email, token_secret)
+  values ('00000000-0000-0000-0000-00000000000a', 'a@example.com', gen_random_uuid());
+insert into public.google_oauth_state values ('\x01', '00000000-0000-0000-0000-00000000000a', now() + interval '10 minutes');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  assert (select count(*) from public.google_link) = 0, 'B must not see A''s Google link';
+  begin
+    perform public.google_token('00000000-0000-0000-0000-00000000000a');
+    raise exception 'a client read the Google token';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform count(*) from public.google_oauth_state;
+    raise exception 'a client read the Google sign-in states';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.google_link (owner_id, email, token_secret)
+      values ('00000000-0000-0000-0000-00000000000b', 'b@example.com', gen_random_uuid());
+    raise exception 'a client wrote a Google link';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.action (kind, risk, payload, payload_hash, proposed_by)
+      values ('meet.create', 'green', '{}', '\x00', 'blink');
+    raise exception 'a green meeting invite was accepted';
+  exception when check_violation then null;
+  end;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  assert (select email from public.google_link) = 'a@example.com', 'A sees own Google link';
+end $$;
+reset role;
+
 select 'all RLS checks passed' as result;

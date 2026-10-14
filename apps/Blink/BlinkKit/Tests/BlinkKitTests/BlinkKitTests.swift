@@ -611,6 +611,21 @@ extension Tokens {
     #expect(QuickCommand.suggestions(for: "/task pay").isEmpty)
 }
 
+@Test func meetCommandSplitsGuestsTimeAndTitle() throws {
+    let now = Date.now
+    guard case .meet(let title, let start, let guests)? =
+        QuickCommand.parse("/meet Design review with Sam@Example.com, lee@uni.edu tomorrow 3pm", now: now) else {
+        Issue.record("meet not parsed"); return
+    }
+    #expect(title == "Design review")
+    #expect(guests == ["sam@example.com", "lee@uni.edu"])
+    #expect(start.map { Calendar.current.isDate($0, inSameDayAs: Calendar.current.date(byAdding: .day, value: 1, to: now)!) } == true)
+    // Bare /meet opens an empty card.
+    #expect(QuickCommand.parse("/meet") == .meet(title: "", start: nil, guests: []))
+    #expect(QuickCommand.parse("/meet Lunch with sam@x.com and lee@y.com") == .meet(title: "Lunch", start: nil, guests: ["sam@x.com", "lee@y.com"]))
+    #expect(QuickCommand.isEmail("sam@uni.edu") && !QuickCommand.isEmail("sam@example.") && !QuickCommand.isEmail("a@b..c"))
+}
+
 @Test func laterOffersSensibleTimes() {
     let cal = Calendar(identifier: .gregorian)
     let morning = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 10))! // a Monday

@@ -344,6 +344,10 @@ final class AppModel {
         actionProblem = nil
         do {
             switch action.risk {
+            case .red where action.kind == "meet.create":
+                // Approved only on the /meet card, which shows the exact time and guests (like mail below).
+                try await server.setStatus("declined", for: action)
+                actionProblem = "Meetings are set up with /meet, where you can see the time and everyone invited."
             case .red where action.kind == "mail.send":
                 // Mail is sent only from the review sheet, which shows the exact recipient and text. A card shows only its
                 // title, which whoever inserted it chose, so it is never approved from here.
@@ -1175,6 +1179,9 @@ final class AppModel {
             if let problem = contentProblem { chat.append(.init(role: .assistant, text: problem)) }
         case .clear:
             clearChat()
+        case .meet(let title, let start, let guests):
+            meetDraft = MeetDraft(title: title, start: start ?? MeetDraft.nextSlot(), guests: guests)
+            Task { await loadGoogle() }
         case .spent(let text):
             // Typed on purpose in the notch: sorted and saved at once, with Undo (the Money page lets you check first).
             let drafts = await sortSpends(text)
@@ -1186,6 +1193,101 @@ final class AppModel {
             } else if let problem = moneyProblem {
                 chat.append(.init(role: .assistant, text: problem))
             }
+        }
+    }
+
+    // MARK: Google Meet (/meet): an invite card in the notch, approved with Touch ID, created by the owner's server
+
+    struct MeetDraft: Equatable {
+        var title: String
+        var start: Date
+        var minutes = 30
+        var guests: [String]
+
+        /// The next half hour, at least 10 minutes away.
+        static func nextSlot(after now: Date = .now) -> Date {
+            let half = 30 * 60.0
+            return Date(timeIntervalSinceReferenceDate: ((now.timeIntervalSinceReferenceDate + 10 * 60) / half).rounded(.up) * half)
+        }
+    }
+
+    /// The open /meet card; nil when none.
+    var meetDraft: MeetDraft?
+    private(set) var googleAccount: String?
+    /// Approved but not created yet (lost connection, Google hiccup): Create again retries this one, it doesn't ask twice.
+    private var approvedMeet: (draft: MeetDraft, action: BlinkAction)?
+    /// Touch ID or the server is working on a meeting; the notch stays open meanwhile.
+    private(set) var creatingMeet = false
+
+    func loadGoogle() async {
+        guard let server, email != nil else { return }
+        googleAccount = (try? await server.googleAccount()) ?? googleAccount
+    }
+
+    /// Google's consent page, to open in the browser, or a problem to show.
+    func googleConnectURL() async -> (url: URL?, problem: String?) {
+        guard let server else { return (nil, "Connect to your server first.") }
+        do { return (try await server.googleConnectURL(), nil) }
+        catch let problem as BlinkServer.ChatProblem { return (nil, problem.message) }
+        catch { return (nil, "Couldn't reach your server. Check your connection.") }
+    }
+
+    /// People from your mail, newest first, for the invite field.
+    var knownPeople: [(name: String, email: String)] {
+        var seen = Set<String>()
+        return emails.compactMap { mail in
+            let key = mail.senderKey
+            guard key.contains("@"), seen.insert(key).inserted else { return nil }
+            return (mail.fromName, key)
+        }
+    }
+
+    /// Proposes the meeting, asks for Touch ID, then the server creates it. Returns a problem to show, or nil when done.
+    func createMeet(_ draft: MeetDraft) async -> String? {
+        guard let server else { return "Connect to your server first." }
+        creatingMeet = true
+        defer { creatingMeet = false }
+        var proposed: BlinkAction?
+        do {
+            let action: BlinkAction
+            if let approved = approvedMeet, approved.draft == draft {
+                action = approved.action
+            } else {
+                // The card changed after an approval that didn't go through: retire that one, ask again for this one.
+                if let stale = approvedMeet { try? await server.setStatus("declined", for: stale.action); approvedMeet = nil }
+                let new = try await server.proposeMeet(title: draft.title, start: draft.start, minutes: draft.minutes,
+                                                       timeZone: TimeZone.current.identifier, guests: draft.guests)
+                proposed = new
+                try await server.approveRed(new)
+                proposed = nil
+                approvedMeet = (draft, new)
+                action = new
+            }
+            let result = try await server.createMeet(action)
+            approvedMeet = nil
+            meetDraft = nil
+            if let link = result.meetURL {
+                #if os(macOS)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(link.absoluteString, forType: .string)
+                #else
+                UIPasteboard.general.string = link.absoluteString
+                #endif
+            }
+            let when = draft.start.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+            announce("📹 Meet set for \(when)\(result.meetURL == nil ? "" : " · link copied")")
+            Task { await reloadAgenda() }
+            return nil
+        } catch {
+            // Not approved (cancelled or failed before Touch ID): drop the proposal so no card is left waiting.
+            if let proposed { try? await server.setStatus("declined", for: proposed) }
+            if let problem = error as? ApprovalKey.Problem { return problem == .cancelled ? nil : problem.message }
+            if let problem = error as? BlinkServer.MeetProblem {
+                if problem.spent { approvedMeet = nil }
+                return problem.message
+            }
+            if let problem = error as? BlinkServer.ChatProblem { return problem.message }
+            return "That didn't work. Check your connection and try again."
         }
     }
 

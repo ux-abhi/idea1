@@ -16,6 +16,8 @@ public enum QuickCommand: Equatable, Sendable {
     case spent(String)
     /// Clears the conversation on this Mac (cards waiting for approval stay).
     case clear
+    /// Opens the Google Meet invite card, filled with whatever was typed ("/meet Review sam@x.com fri 3pm").
+    case meet(title: String, start: Date?, guests: [String])
 
     /// Every command with an example, for the hint list.
     public static let all: [(name: String, example: String, about: String)] = [
@@ -27,6 +29,7 @@ public enum QuickCommand: Equatable, Sendable {
         ("/post", "/post 3 checkout mistakes that lose users", "Write drafts for your platforms"),
         ("/ideas", "/ideas video ideas for my page", "Post ideas for your page"),
         ("/spent", "/spent 8.50 lunch, 3 bus", "Add what you spent; Blink sorts it"),
+        ("/meet", "/meet Design review sam@example.com tomorrow 3pm", "Set up a Google Meet and invite people"),
         ("/clear", "/clear", "Clear this chat"),
     ]
 
@@ -61,9 +64,24 @@ public enum QuickCommand: Equatable, Sendable {
             return rest.contains(where: \.isNumber) ? .spent(rest) : nil
         case "/clear":
             return .clear
+        case "/meet":
+            // Emails are guests; a date is the start; what's left is the title.
+            let guests = rest.split(whereSeparator: { $0.isWhitespace || $0 == "," })
+                .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "<>;")) }
+                .filter(isEmail)
+            let words = rest.split(separator: " ").filter { word in !guests.contains { word.contains($0) } }
+            let parsed = TaskInput.parse(words.joined(separator: " "), now: now)
+            var title = parsed.title
+            while let joiner = [" with", " and"].first(where: { title.lowercased().hasSuffix($0) }) { title = String(title.dropLast(joiner.count)) }
+            return .meet(title: title.trimmingCharacters(in: .whitespaces), start: parsed.due, guests: guests.map { $0.lowercased() })
         default:
             return nil
         }
+    }
+
+    /// An address Google will take as a guest. Same rule as the server's (functions/google/input.ts EMAIL).
+    public static func isEmail(_ text: String) -> Bool {
+        text.wholeMatch(of: /[^\s@<>,;"]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}/) != nil
     }
 
     /// Commands that start with what's typed so far ("/re" → /remind), while the name isn't finished.

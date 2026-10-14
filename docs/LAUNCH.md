@@ -26,6 +26,14 @@ Today the helper (`functions/signin`) runs on the same Supabase project as your 
 - See who joined: Supabase › pexilim › Table Editor › `waitlist` (`confirmed_at` set = confirmed).
 - Owner, once: Resend › Domains › `blinkk.app` must show **Verified** (its DNS records go in Vercel › Domains › blinkk.app). `RESEND_KEY` and `RESEND_FROM` are set for Production only, so preview deployments store signups without emailing.
 
+## Google Calendar for /meet (owner, about 10 minutes, once)
+Blink creates Meet invites with your own Google OAuth app, so the access stays between Google and your server.
+1. Open console.cloud.google.com, create a project (e.g. "Blink"), then APIs & Services › Library › **Google Calendar API** › Enable.
+2. APIs & Services › OAuth consent screen: User type **External**, app name "Blink", your email as support and developer contact. Add the scope `.../auth/calendar.events`. Under Audience, add your Google address as a test user, then click **Publish app** (in Testing mode Google expires the access after 7 days; published but unverified works for up to 100 users, with a "Google hasn't verified this app" screen you click through once).
+3. APIs & Services › Credentials › Create credentials › OAuth client ID › **Web application**. Authorised redirect URI: `https://<your-project-ref>.supabase.co/functions/v1/google/callback`.
+4. Supabase › your Blink project › Edge Functions › Secrets: add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from that client. Never paste them into chat or code.
+5. Blink › Settings › Connections › **Connect Google…**, allow access in the browser, come back to Blink. Then type `/meet` in the notch.
+
 ## 3. Put the site up on Vercel (www.blinkk.app)
 The site is plain files in `marketing/site/` (no build step).
 1. Vercel › Add New › Project › import this repository, **Root Directory** `marketing/site`, Framework preset **Other**, no build command.

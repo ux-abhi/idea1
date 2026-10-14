@@ -348,6 +348,9 @@ struct UsageSettings: View {
 /// Are the keys on your server there and accepted? A free, read-only check per service; keys never reach this Mac.
 struct ConnectionsSettings: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var googleProblem: String?
     @State private var status: [String: String]?
     @State private var checking = false
     @State private var failed = false
@@ -362,6 +365,28 @@ struct ConnectionsSettings: View {
 
     var body: some View {
         Form {
+            Section {
+                LabeledContent {
+                    // shortcut: no Disconnect button; revoke at myaccount.google.com/permissions. Add one when owners ask.
+                    if let account = model.googleAccount {
+                        Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            .help(account)
+                    } else {
+                        Button("Connect Google…") { Task { await connectGoogle() } }
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Google Calendar")
+                        Text(model.googleAccount.map { "\($0) · /meet creates Meet invites" } ?? "For /meet: Meet links and invites from the notch")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let googleProblem { Text(googleProblem).foregroundStyle(.orange) }
+            } header: {
+                Text("Accounts")
+            } footer: {
+                Text("Blink asks Google only to create calendar events. Access stays on your server, and nothing is sent until you approve with Touch ID.")
+            }
             Section {
                 ForEach(services, id: \.key) { service in
                     LabeledContent {
@@ -390,6 +415,21 @@ struct ConnectionsSettings: View {
         }
         .formStyle(.grouped)
         .task { await check() }
+        .task { await model.loadGoogle() }
+        // Back from Google's page in the browser: show the new connection. (On the Mac, scenePhase stays active.)
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await model.loadGoogle() }
+        }
+        #else
+        .onChange(of: scenePhase) { if scenePhase == .active { Task { await model.loadGoogle() } } }
+        #endif
+    }
+
+    private func connectGoogle() async {
+        let (url, problem) = await model.googleConnectURL()
+        googleProblem = problem
+        if let url { openURL(url) }
     }
 
     private func check() async {

@@ -37,6 +37,8 @@ final class NotchModel {
     var clipboarding = false
     /// The open notch shows search (⌃⌥K): notes, tasks, reminders, posts and spaces.
     var searching = false
+    /// The open notch shows the /meet invite card.
+    var meeting = false
     /// What's typed in the chat bubble; the panel above previews a "/" command from it.
     var input = ""
     /// A one-line announcement for the peek (e.g. important mail), instead of the day's status line.
@@ -57,7 +59,7 @@ final class NotchModel {
         case .rest: return rest
         case .peek: return CGSize(width: max(rest.width, 320), height: rest.height + 36)
         // Eyes row, 8 pt gap, the measured content, 20 pt to breathe at the bottom.
-        case .open: return CGSize(width: max(rest.width, chatting || searching ? Self.chatWidth : Self.openWidth),
+        case .open: return CGSize(width: max(rest.width, chatting || searching || meeting ? Self.chatWidth : Self.openWidth),
                                   height: rest.height + 8 + min(glanceHeight, Self.maxGlanceHeight) + 20)
         }
     }
@@ -108,7 +110,8 @@ final class NotchController {
             NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: moved),
             NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { moved($0); return $0 },
             NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                if self?.model.level == .open { self?.close() }
+                // Not while Touch ID or the server works on a meeting: its sheet's buttons count as "outside".
+                if self?.model.level == .open, self?.app.creatingMeet == false { self?.close() }
             },
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self, self.model.level == .open else { return event }
@@ -117,7 +120,9 @@ final class NotchController {
                     return nil
                 }
                 // ⌘⏎ approves; never a bare ⏎ (§36.2).
-                if event.keyCode == 36, event.modifierFlags.contains(.command), !self.app.locked, let first = self.app.pending.first {
+                // Not on the /meet card, where ⌘⏎ is Create & Invite.
+                if event.keyCode == 36, event.modifierFlags.contains(.command), !self.app.locked, !self.model.meeting,
+                   let first = self.app.pending.first {
                     Task { await self.app.approve(first) }
                     return nil
                 }
@@ -515,6 +520,7 @@ final class NotchController {
         if model.level == .open && model.clipboarding { close(); return }
         model.chatting = false
         model.searching = false
+        model.meeting = false
         model.clipboarding = true
         if model.level == .open, let panel {
             panel.allowsKey = true
@@ -530,6 +536,7 @@ final class NotchController {
         if model.level == .open && model.searching { close(); return }
         model.chatting = false
         model.clipboarding = false
+        model.meeting = false
         model.searching = true
         if model.level == .open, let panel {
             panel.allowsKey = true
@@ -544,6 +551,7 @@ final class NotchController {
         if model.level == .open && model.chatting { close(); return }
         model.clipboarding = false
         model.searching = false
+        model.meeting = false
         model.chatting = true
         if model.level == .open, let panel {
             panel.allowsKey = true
@@ -617,6 +625,8 @@ final class NotchController {
         model.chatting = false
         model.clipboarding = false
         model.searching = false
+        model.meeting = false
+        app.meetDraft = nil
         model.evening = false
         panel.allowsKey = false
         // Hand the keyboard back to the app that had it (§36.2).
@@ -677,7 +687,9 @@ struct NotchView: View {
 
     @ViewBuilder
     private func glance(statusLine: String, now: Date) -> some View {
-        if model.chatting {
+        if model.meeting && app.meetDraft != nil {
+            MeetPanel(app: app, done: close)
+        } else if model.chatting {
             ChatPanel(app: app, input: model.input)
         } else if model.clipboarding {
             ClipboardPanel(store: clipboard, done: close)
@@ -1159,6 +1171,7 @@ struct CommandHint: View {
         case .ideas(let theme): theme.isEmpty ? "Ideas for your page" : "Ideas: \(theme)"
         case .spent(let text): "Spent: \(text)"
         case .clear: "Clear this chat"
+        case .meet(let title, _, _): title.isEmpty ? "New Google Meet" : "Meet: \(title)"
         }
     }
 
@@ -1173,6 +1186,7 @@ struct CommandHint: View {
         case .ideas: "lightbulb"
         case .spent: "eurosign.circle"
         case .clear: "trash"
+        case .meet: "video"
         }
     }
 
@@ -1188,6 +1202,9 @@ struct CommandHint: View {
         case .ideas: return "Six ideas for your page; Write turns one into drafts."
         case .spent: return "Blink sorts each amount into a category and saves it to Money, with Undo."
         case .clear: return "Removes this conversation from this Mac. Cards waiting for your OK stay."
+        case .meet(_, let start, let guests):
+            let when = start.map { $0.formatted(.dateTime.weekday(.wide).day().month().hour().minute()) } ?? "the next half hour"
+            return "Opens the invite card: \(when)\(guests.isEmpty ? "" : ", with \(guests.formatted())"). You check it, then Touch ID."
         }
     }
 }
@@ -1295,6 +1312,7 @@ struct SplitInput: View, Animatable {
         let message = notch.input
         notch.input = ""
         if let command = QuickCommand.parse(message) {
+            if case .meet = command { notch.chatting = false; notch.meeting = true } // the invite card takes the notch
             Task { await app.run(command) }
         } else {
             Task { await app.ask(message) }

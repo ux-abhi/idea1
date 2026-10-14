@@ -263,6 +263,6 @@ public enum ServerSetup {
     /// The sign-in helper and retired probes are Pexilim-only and never installed.
     public static func installable(_ names: [String]) -> [(slug: String, verifyJWT: Bool)] {
         names.filter { !$0.hasPrefix("_") && !["signin", "mail-probe"].contains($0) }.sorted()
-            .map { ($0, !["mail", "capture"].contains($0)) }
+            .map { ($0, !["mail", "capture", "google"].contains($0)) } // google: Google's redirect carries no JWT
     }
 }
