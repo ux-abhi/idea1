@@ -12,20 +12,21 @@ import { sendMail } from "./smtp.ts";
 import { type Mailer, sendDue, withTimeout } from "./outbox.ts";
 import { capProblem, compatible, cost, keepsSchema, lastDay, MODELS, type Model, pickModel } from "../_shared/models.ts";
 import { alreadyRecorded, CATEGORIES, localDay } from "../_shared/spend.ts";
+import { secret } from "../_shared/secrets.ts";
 
 type Account = { id: "gmail" | "icloud" | "uni"; host: string; smtp: string; smtpPort: number; user: string; password: string };
 
-function accounts(): Account[] {
+async function accounts(): Promise<Account[]> {
   const list: Account[] = [];
-  const gmail = Deno.env.get("GMAIL_ADDRESS"), gmailPass = Deno.env.get("GMAIL_APP_PASSWORD");
+  const gmail = (await secret("GMAIL_ADDRESS")), gmailPass = (await secret("GMAIL_APP_PASSWORD"));
   if (gmail && gmailPass) list.push({ id: "gmail", host: "imap.gmail.com", smtp: "smtp.gmail.com", smtpPort: 465, user: gmail.trim(), password: gmailPass.replace(/\s+/g, "") });
-  const icloud = Deno.env.get("ICLOUD_ADDRESS"), icloudPass = Deno.env.get("ICLOUD_APP_PASSWORD");
+  const icloud = (await secret("ICLOUD_ADDRESS")), icloudPass = (await secret("ICLOUD_APP_PASSWORD"));
   if (icloud && icloudPass) list.push({ id: "icloud", host: "imap.mail.me.com", smtp: "smtp.mail.me.com", smtpPort: 587, user: icloud.trim(), password: icloudPass.trim() });
   // A third IMAP mailbox (e.g. a university account): its host comes from UNI_IMAP_HOST (SMTP from UNI_SMTP_HOST, else the same).
-  const uni = Deno.env.get("UNI_ADDRESS"), uniPass = Deno.env.get("UNI_PASSWORD"), host = Deno.env.get("UNI_IMAP_HOST")?.trim();
+  const uni = (await secret("UNI_ADDRESS")), uniPass = (await secret("UNI_PASSWORD")), host = (await secret("UNI_IMAP_HOST"))?.trim();
   if (uni && uniPass && !host) console.error("UNI_ADDRESS is set but UNI_IMAP_HOST isn't: the third mailbox is skipped");
   if (uni && uniPass && host) {
-    list.push({ id: "uni", host, smtp: Deno.env.get("UNI_SMTP_HOST")?.trim() || host, smtpPort: 587, user: uni.trim(), password: uniPass });
+    list.push({ id: "uni", host, smtp: (await secret("UNI_SMTP_HOST"))?.trim() || host, smtpPort: 587, user: uni.trim(), password: uniPass });
   }
   return list;
 }
@@ -104,9 +105,9 @@ const DRAFT_SCHEMA = { type: "object", additionalProperties: false, required: ["
 /** One structured call on whichever provider the model belongs to. */
 async function generate(model: Model, system: string, user: string, schema: Record<string, unknown>, name: string) {
   if (model.provider === "claude") {
-    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+    const apiKey = (await secret("ANTHROPIC_API_KEY"));
     if (!apiKey) throw new Error("Add your Anthropic API key, or pick a Groq model in Settings.");
-    const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
+    const workspace = (await secret("ANTHROPIC_WORKSPACE_ID"));
     const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
     const response = await client.beta.messages.create({
       model: model.id, max_tokens: 8000,
@@ -202,7 +203,8 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
     let verdicts: ReturnType<typeof parseTriage> = [];
     if (parsed.length) {
       // Triage on the larger free Groq model when there is one (better judgement, still free); Claude Haiku otherwise.
-      const model = MODELS.find((m) => m.id === (Deno.env.get("GROQ_API_KEY") ? "openai/gpt-oss-120b" : "claude-haiku-5-5"))!;
+      const hasGroq = Boolean(await secret("GROQ_API_KEY"));
+      const model = MODELS.find((m) => m.id === (hasGroq ? "openai/gpt-oss-120b" : "claude-haiku-5-5"))!;
       try {
         const mail = parsed.map((p) => ({ uid: p.uid, from: `${p.from.name} <${p.from.address}>`, subject: p.subject, list_unsubscribe: p.newsletter, text: p.snippet }));
         const taught = rules.length ? `<owner_rules>${fence(rules.slice(0, 40))}</owner_rules>\n` : "";
@@ -282,8 +284,8 @@ async function existingDraft(account: Account, msg: Record<string, unknown>): Pr
 async function draft(admin: SupabaseClient, db: SupabaseClient, owner: string, id: string, note: string, reuse: boolean): Promise<{ mailbox: string; draft: Draft }> {
   const { data: msg } = await admin.from("email_msg").select("*").eq("id", id).eq("owner_id", owner).maybeSingle();
   if (!msg) throw new Error("That email isn't in Blink anymore.");
-  const account = accounts().find((a) => a.id === msg.account);
-  if (!account) throw new Error(`Add the ${({ gmail: "Gmail", icloud: "iCloud", uni: "uni" } as Record<string, string>)[msg.account] ?? msg.account} password to the server's secrets first.`);
+  const account = (await accounts()).find((a) => a.id === msg.account);
+  if (!account) throw new Error(`Add the ${({ gmail: "Gmail", icloud: "iCloud", uni: "uni" } as Record<string, string>)[msg.account] ?? msg.account} password in Blink › Settings › Connections first.`);
   if (reuse) {
     const earlier = await existingDraft(account, msg);
     if (earlier) return { mailbox: "Drafts", draft: earlier };
@@ -337,19 +339,19 @@ async function draft(admin: SupabaseClient, db: SupabaseClient, owner: string, i
   }
 }
 
-/** SMTP and the after-send tidy-up for the outbox, on this server's accounts. */
-const mailer: Mailer = {
+/** SMTP and the after-send tidy-up for the outbox, on this server's accounts (loaded once per request). */
+const mailerFor = (list: Account[]): Mailer => ({
   owned: (id) => {
-    const account = accounts().find((a) => a.id === id);
+    const account = list.find((a) => a.id === id);
     return account ? [account.user, ...aliases()] : null;
   },
   send: (id, from, to, message) => {
-    const account = accounts().find((a) => a.id === id)!;
+    const account = list.find((a) => a.id === id)!;
     return sendMail(account.smtp, account.smtpPort, { user: account.user, password: account.password, from, to, message });
   },
   // shortcut: assumes iCloud and uni don't file SMTP mail in Sent themselves; drop the copy if duplicates show up.
   tidy: async (id, message, messageId) => {
-    const account = accounts().find((a) => a.id === id)!;
+    const account = list.find((a) => a.id === id)!;
     const imap = await open(account);
     try {
       if (account.id !== "gmail") await imap.append(await imap.specialMailbox("\\Sent", account.id === "icloud" ? "Sent Messages" : "Sent"), message, "(\\Seen)");
@@ -358,7 +360,7 @@ const mailer: Mailer = {
       await imap.logout();
     }
   },
-};
+});
 
 /** Checks every mailbox at once, each with its own time limit; a failure is recorded on that mailbox only. */
 async function pollAll(admin: SupabaseClient, owner: string, list: Account[], record: boolean): Promise<Record<string, unknown>> {
@@ -391,7 +393,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "POST only" });
   const url = Deno.env.get("SUPABASE_URL")!;
   const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  const list = accounts();
+  const list = await accounts();
 
   // The schedule: a shared secret kept in Vault (setup/mail_schedule.sql), and the server's one owner (§33).
   const sent = req.headers.get("x-cron-secret");
@@ -401,7 +403,7 @@ Deno.serve(async (req) => {
     const { data: owners } = await admin.from("profile").select("owner_id").limit(2);
     if (owners?.length !== 1) return json(409, { error: "expected exactly one owner on this server" });
     // Approved sends first, so a slow mailbox can never hold them back.
-    const outbox = await sendDue(admin, owners[0].owner_id, mailer);
+    const outbox = await sendDue(admin, owners[0].owner_id, mailerFor(list));
     const results = await pollAll(admin, owners[0].owner_id, list, true);
     return json(200, { ...results, outbox });
   }
@@ -411,10 +413,10 @@ Deno.serve(async (req) => {
   const db = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
-  if (list.length === 0) return json(503, { error: "Add GMAIL_ADDRESS + GMAIL_APP_PASSWORD, ICLOUD_ADDRESS + ICLOUD_APP_PASSWORD and/or UNI_ADDRESS + UNI_PASSWORD to the server's secrets." });
+  if (list.length === 0) return json(503, { error: "Add GMAIL_ADDRESS + GMAIL_APP_PASSWORD, ICLOUD_ADDRESS + ICLOUD_APP_PASSWORD and/or UNI_ADDRESS + UNI_PASSWORD in Blink › Settings › Connections." });
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-  if (body.action === "send") return json(200, await sendDue(admin, user.id, mailer));
+  if (body.action === "send") return json(200, await sendDue(admin, user.id, mailerFor(list)));
   if (body.action === "draft") {
     if (typeof body.id !== "string" || !/^[0-9a-f-]{36}$/i.test(body.id)) return json(400, { error: "id must be an email id." });
     try {

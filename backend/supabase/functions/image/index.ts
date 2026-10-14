@@ -3,6 +3,7 @@
 // a text-free background for a carousel. The Mac draws any text on top. Returns the JPEG; nothing is stored here.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { DAILY_IMAGES, imagePrompt, parseImageRequest } from "./input.ts";
+import { secret } from "../_shared/secrets.ts";
 
 const MODEL = "@cf/black-forest-labs/flux-1-schnell";
 
@@ -12,8 +13,8 @@ function json(status: number, body: Record<string, unknown>): Response {
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "POST only" });
-  const token = Deno.env.get("CLOUDFLARE_API_TOKEN"), account = Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
-  if (!token || !account) return json(503, { error: "Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to this server's Edge Function secrets first." });
+  const token = (await secret("CLOUDFLARE_API_TOKEN")), account = (await secret("CLOUDFLARE_ACCOUNT_ID"));
+  if (!token || !account) return json(503, { error: "Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in Blink › Settings › Connections first." });
 
   const url = Deno.env.get("SUPABASE_URL")!;
   const auth = req.headers.get("Authorization") ?? "";

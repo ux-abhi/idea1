@@ -1224,6 +1224,16 @@ final class AppModel {
         googleAccount = (try? await server.googleAccount()) ?? googleAccount
     }
 
+    /// Revokes Blink's Google access and forgets it here. Returns a problem to show, or nil.
+    func disconnectGoogle() async -> String? {
+        guard let server else { return "Connect to your server first." }
+        do {
+            try await server.disconnectGoogle()
+            googleAccount = nil
+            return nil
+        } catch { return "Couldn't disconnect. Check your connection and try again." }
+    }
+
     /// Google's consent page, to open in the browser, or a problem to show.
     func googleConnectURL() async -> (url: URL?, problem: String?) {
         guard let server else { return (nil, "Connect to your server first.") }

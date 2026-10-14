@@ -2,6 +2,7 @@
 // Settings › Connections: is each key on this server present and accepted? Each check uses a free, read-only call
 // (a model list or an account lookup); keys never leave the server and nothing is spent.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { forgetSecrets, secret } from "../_shared/secrets.ts";
 
 type Status = "ok" | "missing" | "rejected" | "unreachable";
 
@@ -29,17 +30,19 @@ Deno.serve(async (req) => {
   const { data: { user } } = await db.auth.getUser((req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
 
-  const account = Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
-  const openrouterKey = Deno.env.get("OPENROUTER_API_KEY");
+  forgetSecrets(); // a key just saved in the app must count in this check
+  const account = (await secret("CLOUDFLARE_ACCOUNT_ID"));
+  const openrouterKey = (await secret("OPENROUTER_API_KEY"));
+  const workspace = await secret("ANTHROPIC_WORKSPACE_ID");
   const [anthropic, groq, apify, cloudflare, openrouter, credit] = await Promise.all([
-    check(Deno.env.get("ANTHROPIC_API_KEY"), (key) => fetch("https://api.anthropic.com/v1/models?limit=1", {
+    check((await secret("ANTHROPIC_API_KEY")), (key) => fetch("https://api.anthropic.com/v1/models?limit=1", {
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01",
-                 ...(Deno.env.get("ANTHROPIC_WORKSPACE_ID") ? { "anthropic-workspace-id": Deno.env.get("ANTHROPIC_WORKSPACE_ID")! } : {}) },
+                 ...(workspace ? { "anthropic-workspace-id": workspace } : {}) },
     })),
-    check(Deno.env.get("GROQ_API_KEY"), (key) => fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${key}` } })),
-    check(Deno.env.get("APIFY_TOKEN"), (key) => fetch("https://api.apify.com/v2/users/me", { headers: { Authorization: `Bearer ${key}` } })),
+    check((await secret("GROQ_API_KEY")), (key) => fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${key}` } })),
+    check((await secret("APIFY_TOKEN")), (key) => fetch("https://api.apify.com/v2/users/me", { headers: { Authorization: `Bearer ${key}` } })),
     account
-      ? check(Deno.env.get("CLOUDFLARE_API_TOKEN"), (key) => fetch(
+      ? check((await secret("CLOUDFLARE_API_TOKEN")), (key) => fetch(
           `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/ai/models/search?per_page=1`,
           { headers: { Authorization: `Bearer ${key}` } }))
       : Promise.resolve<Status>("missing"),
@@ -55,5 +58,12 @@ Deno.serve(async (req) => {
       } catch { return null; }
     })(),
   ]);
-  return json(200, { anthropic, groq, apify, cloudflare, openrouter, openrouter_credit: credit === null ? "" : String(credit) });
+  // Mail and the Google app: only whether they're set (logging in to each mailbox here would be slow and noisy).
+  const set = async (...names: string[]): Promise<Status> =>
+    (await Promise.all(names.map((n) => secret(n)))).every(Boolean) ? "ok" : "missing";
+  return json(200, {
+    anthropic, groq, apify, cloudflare, openrouter, openrouter_credit: credit === null ? "" : String(credit),
+    gmail: await set("GMAIL_ADDRESS", "GMAIL_APP_PASSWORD"), icloud: await set("ICLOUD_ADDRESS", "ICLOUD_APP_PASSWORD"),
+    uni: await set("UNI_ADDRESS", "UNI_PASSWORD", "UNI_IMAP_HOST"), google_app: await set("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"),
+  });
 });

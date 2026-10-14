@@ -8,6 +8,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule } from "./input.ts";
 import { capProblem, claudeUsageCost, compatibleStream, cost, lastDay, pickModel } from "../_shared/models.ts";
+import { secret } from "../_shared/secrets.ts";
 
 // Fixed, so it caches: the date and the owner's data go in the user turn, not here.
 const SYSTEM = `You are Blink, a personal assistant that lives in the owner's MacBook notch.
@@ -119,7 +120,7 @@ function json(status: number, body: Record<string, unknown>): Response {
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "POST only" });
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+  const apiKey = (await secret("ANTHROPIC_API_KEY")) ?? "";
 
   const url = Deno.env.get("SUPABASE_URL")!;
   const auth = req.headers.get("Authorization") ?? "";
@@ -151,7 +152,7 @@ Deno.serve(async (req) => {
   ]);
   const model = pickModel(profile.data?.model_prefs, "chat", Deno.env.get("BLINK_CHAT_MODEL"));
   if (model.provider === "claude" && !apiKey) {
-    return json(503, { error: "Add your Anthropic API key to this server's Edge Function secrets first, or pick a Groq model in Settings." });
+    return json(503, { error: "Add your Anthropic API key in Blink › Settings › Connections first, or pick a Groq model in Settings." });
   }
   const overCap = capProblem(model, profile.data?.settings, spend.data ?? []);
   if (overCap) return json(429, { error: overCap });
@@ -297,7 +298,7 @@ Deno.serve(async (req) => {
         }
       } else {
         // Keys made at organisation level need the workspace named on every request.
-        const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
+        const workspace = (await secret("ANTHROPIC_WORKSPACE_ID"));
         const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
         const messages: Anthropic.Beta.BetaMessageParam[] = [
           ...history.map((t) => ({ role: t.role, content: t.text })),

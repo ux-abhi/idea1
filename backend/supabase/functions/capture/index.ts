@@ -6,6 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { compatible, cost, MODELS } from "../_shared/models.ts";
 import { accountFor, CATEGORIES, type Category, guessCategory } from "../_shared/spend.ts";
 import { localDay, parseCapture, sha256, TOKEN } from "./input.ts";
+import { secret } from "../_shared/secrets.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const MODEL = MODELS.find((m) => m.id === "openai/gpt-oss-20b")!;
@@ -17,7 +18,7 @@ function json(status: number, body: Record<string, unknown>): Response {
 
 /** A shop the built-in list doesn't know: one tiny call on the free model (the shop name is data, fenced), else "other". */
 async function sortShop(owner: string, merchant: string): Promise<Category> {
-  if (!Deno.env.get("GROQ_API_KEY")) return "other";
+  if (!(await secret("GROQ_API_KEY"))) return "other";
   try {
     const { message, usage } = await compatible("groq", {
       model: MODEL.id, temperature: 0, max_completion_tokens: 200,

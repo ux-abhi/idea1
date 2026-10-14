@@ -6,6 +6,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseAnalysis, parseHandle, score, toRows } from "./input.ts";
 import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
+import { secret } from "../_shared/secrets.ts";
 
 const SYSTEM = `You read the owner's own recent Instagram posts (in <page_posts>, newest first, with likes, comments and views) and sum up:
 - voice.page: what the page is, in one line, starting with the @handle.
@@ -39,8 +40,8 @@ function json(status: number, body: Record<string, unknown>): Response {
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "POST only" });
-  const apifyToken = Deno.env.get("APIFY_TOKEN");
-  if (!apifyToken) return json(503, { error: "Add your Apify token (APIFY_TOKEN) to this server's Edge Function secrets first." });
+  const apifyToken = (await secret("APIFY_TOKEN"));
+  if (!apifyToken) return json(503, { error: "Add your Apify token (APIFY_TOKEN) in Blink › Settings › Connections first." });
 
   const url = Deno.env.get("SUPABASE_URL")!;
   const auth = req.headers.get("Authorization") ?? "";
@@ -115,9 +116,9 @@ Deno.serve(async (req) => {
       outputTokens = usage.completion_tokens ?? 0;
       usd = cost(model, inputTokens, outputTokens);
     } else {
-      const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+      const apiKey = (await secret("ANTHROPIC_API_KEY"));
       if (!apiKey) return json(503, { error: "Add your Anthropic API key, or pick a Groq model for content drafts in Settings." });
-      const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
+      const workspace = (await secret("ANTHROPIC_WORKSPACE_ID"));
       const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
       const response = await client.beta.messages.create({
         model: model.id, max_tokens: 8000,

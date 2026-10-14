@@ -1,0 +1,297 @@
+// © Pexilim
+import BlinkKit
+import SwiftUI
+
+/// Settings › Connections: every service Blink can use, added right here. Keys and passwords go to the owner's own
+/// server (Vault) and can't be read back; ones set as Supabase secrets keep working underneath.
+struct ConnectionsSettings: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var status: [String: String]?
+    @State private var saved: Set<String> = []
+    @State private var checking = false
+    @State private var failed = false
+    @State private var editing: Service?
+    @State private var removing: Service?
+    @State private var problem: String?
+    @State private var disconnecting = false
+
+    struct Field: Hashable {
+        let key: String, label: String, prompt: String
+        var secure = true
+        var optional = false
+    }
+
+    struct Service: Identifiable, Hashable {
+        let id: String           // the status key from the server's check
+        let name: String, use: String
+        let fields: [Field]
+        let getKey: URL?
+        let help: String
+    }
+
+    private let groups: [(title: String, services: [Service])] = [
+        ("AI", [
+            Service(id: "anthropic", name: "Claude (Anthropic)", use: "Chat, planning and drafts when Claude is picked",
+                    fields: [Field(key: "ANTHROPIC_API_KEY", label: "API key", prompt: "sk-ant-…"),
+                             Field(key: "ANTHROPIC_WORKSPACE_ID", label: "Workspace ID", prompt: "Only for organisation keys", secure: false, optional: true)],
+                    getKey: URL(string: "https://console.anthropic.com/settings/keys"), help: "Create a key in the Anthropic Console."),
+            Service(id: "groq", name: "Groq", use: "Free models and quick text edits",
+                    fields: [Field(key: "GROQ_API_KEY", label: "API key", prompt: "gsk_…")],
+                    getKey: URL(string: "https://console.groq.com/keys"), help: "Free. Sign in to Groq and create a key."),
+            Service(id: "openrouter", name: "OpenRouter", use: "GPT, Gemini, Kimi and DeepSeek through one key",
+                    fields: [Field(key: "OPENROUTER_API_KEY", label: "API key", prompt: "sk-or-…")],
+                    getKey: URL(string: "https://openrouter.ai/keys"), help: "Add a little credit, then create a key."),
+        ]),
+        ("Images and your page", [
+            Service(id: "cloudflare", name: "Cloudflare Workers AI", use: "Free post images",
+                    fields: [Field(key: "CLOUDFLARE_ACCOUNT_ID", label: "Account ID", prompt: "On your Cloudflare dashboard's right side", secure: false),
+                             Field(key: "CLOUDFLARE_API_TOKEN", label: "API token", prompt: "With the Workers AI permission")],
+                    getKey: URL(string: "https://dash.cloudflare.com/profile/api-tokens"), help: "Create a token with the “Workers AI” template."),
+            Service(id: "apify", name: "Apify", use: "Read My Page on the Content page",
+                    fields: [Field(key: "APIFY_TOKEN", label: "API token", prompt: "apify_api_…")],
+                    getKey: URL(string: "https://console.apify.com/settings/integrations"), help: "Copy your personal API token."),
+        ]),
+        ("Mail", [
+            Service(id: "gmail", name: "Gmail", use: "Sorts your mail; replies after Touch ID",
+                    fields: [Field(key: "GMAIL_ADDRESS", label: "Address", prompt: "you@gmail.com", secure: false),
+                             Field(key: "GMAIL_APP_PASSWORD", label: "App password", prompt: "16 letters from Google")],
+                    getKey: URL(string: "https://myaccount.google.com/apppasswords"),
+                    help: "Turn on 2-Step Verification, then create an app password named “Blink”."),
+            Service(id: "icloud", name: "iCloud Mail", use: "Sorts your mail; replies after Touch ID",
+                    fields: [Field(key: "ICLOUD_ADDRESS", label: "Address", prompt: "you@icloud.com", secure: false),
+                             Field(key: "ICLOUD_APP_PASSWORD", label: "App-specific password", prompt: "xxxx-xxxx-xxxx-xxxx")],
+                    getKey: URL(string: "https://account.apple.com"),
+                    help: "Apple Account › Sign-In and Security › App-Specific Passwords."),
+            Service(id: "uni", name: "Another mailbox", use: "A work or university account over IMAP",
+                    fields: [Field(key: "UNI_ADDRESS", label: "Address", prompt: "you@uni.edu", secure: false),
+                             Field(key: "UNI_PASSWORD", label: "Password", prompt: "Your mail password or app password"),
+                             Field(key: "UNI_IMAP_HOST", label: "IMAP server", prompt: "imap.example.edu", secure: false),
+                             Field(key: "UNI_SMTP_HOST", label: "SMTP server", prompt: "Leave empty if it's the same", secure: false, optional: true)],
+                    getKey: nil, help: "Your provider's help page lists the IMAP and SMTP server names."),
+        ]),
+    ]
+
+    private let googleApp = Service(
+        id: "google_app", name: "Your Google app", use: "Needed once before Connect Google",
+        fields: [Field(key: "GOOGLE_CLIENT_ID", label: "Client ID", prompt: "….apps.googleusercontent.com", secure: false),
+                 Field(key: "GOOGLE_CLIENT_SECRET", label: "Client secret", prompt: "GOCSPX-…")],
+        getKey: URL(string: "https://console.cloud.google.com/auth/clients"),
+        help: "A Web application client whose redirect URI is your server's /functions/v1/google/callback.")
+
+    var body: some View {
+        Form {
+            ForEach(groups, id: \.title) { group in
+                Section(group.title) {
+                    ForEach(group.services) { row($0) }
+                }
+            }
+            Section {
+                row(googleApp)
+                LabeledContent {
+                    if let account = model.googleAccount {
+                        HStack {
+                            Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green).help(account)
+                            Button("Disconnect…", role: .destructive) { disconnecting = true }
+                        }
+                    } else {
+                        Button("Connect Google…") { Task { await connectGoogle() } }
+                            .disabled(status?["google_app"] != "ok")
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Google Calendar")
+                        Text(model.googleAccount.map { "\($0) · /meet creates Meet invites" } ?? "For /meet: Meet links and invites from the notch")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Calendar")
+            } footer: {
+                Text("Blink only creates the meetings you approve with Touch ID. The access stays on your server.")
+            }
+            Section {
+                HStack {
+                    Button("Check Again") { Task { await check() } }.disabled(checking)
+                    if checking { ProgressView().controlSize(.small) }
+                    if failed { Text("Couldn't reach your server.").foregroundStyle(.orange) }
+                    if let problem { Text(problem).foregroundStyle(.orange) }
+                }
+                if let credit = status?["openrouter_credit"], !credit.isEmpty {
+                    LabeledContent("OpenRouter credit left", value: "$\(credit)")
+                }
+            } footer: {
+                Text("Keys are stored encrypted on your own server and can't be read back, only replaced or removed. Each check is free and read-only.")
+            }
+        }
+        .formStyle(.grouped)
+        .task { await check() }
+        .task { await model.loadGoogle() }
+        // Back from Google's page in the browser: show the new connection. (On the Mac, scenePhase stays active.)
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await model.loadGoogle() }
+        }
+        #else
+        .onChange(of: scenePhase) { if scenePhase == .active { Task { await model.loadGoogle() } } }
+        #endif
+        .sheet(item: $editing) { service in
+            KeySheet(service: service, done: { editing = nil; Task { await check() } })
+        }
+        .confirmationDialog("Remove \(removing?.name ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Remove", role: .destructive) { if let removing { Task { await remove(removing) } } }
+        } message: {
+            Text("Blink stops using it. A key set as a Supabase secret, if there is one, applies again.")
+        }
+        .confirmationDialog("Disconnect Google?", isPresented: $disconnecting) {
+            Button("Disconnect", role: .destructive) { Task { problem = await model.disconnectGoogle() } }
+        } message: {
+            Text("Blink's access is revoked at Google and deleted from your server. /meet stops working until you connect again.")
+        }
+    }
+
+    private func row(_ service: Service) -> some View {
+        let state = status?[service.id]
+        let inApp = service.fields.contains { saved.contains($0.key) }
+        return LabeledContent {
+            HStack(spacing: 10) {
+                Label(word(state), systemImage: symbol(state)).foregroundStyle(tint(state)).labelStyle(.titleAndIcon)
+                Button(state == "ok" || inApp ? "Change…" : "Add…") { editing = service }
+                if inApp {
+                    Button("Remove", role: .destructive) { removing = service }
+                        .accessibilityLabel("Remove \(service.name)")
+                }
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(service.name)
+                Text(service.use + (state == "ok" && !inApp ? " · set on your server" : ""))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func check() async {
+        guard let server = model.server else { return }
+        checking = true
+        defer { checking = false }
+        do {
+            async let checked = server.connections()
+            async let names = server.savedKeys()
+            let (s, n) = try await (checked, names)
+            status = s
+            saved = n
+            model.updateKeyStatus(s)
+            failed = false
+        } catch { failed = true }
+    }
+
+    private func remove(_ service: Service) async {
+        guard let server = model.server else { return }
+        do {
+            for field in service.fields where saved.contains(field.key) { try await server.removeKey(field.key) }
+            problem = nil
+        } catch { problem = "Couldn't remove it. Try again." }
+        removing = nil
+        await check()
+    }
+
+    private func connectGoogle() async {
+        let (url, failure) = await model.googleConnectURL()
+        problem = failure
+        if let url { openURL(url) }
+    }
+
+    private func word(_ s: String?) -> String {
+        switch s {
+        case "ok": "Working"
+        case "missing": "Not added"
+        case "rejected": "Key rejected"
+        case "unreachable": "Can't reach"
+        default: "Checking…"
+        }
+    }
+
+    private func symbol(_ s: String?) -> String {
+        switch s {
+        case "ok": "checkmark.circle.fill"
+        case "missing": "minus.circle"
+        case "rejected": "xmark.octagon.fill"
+        case "unreachable": "wifi.exclamationmark"
+        default: "ellipsis.circle"
+        }
+    }
+
+    private func tint(_ s: String?) -> Color {
+        switch s {
+        case "ok": .green
+        case "rejected": .red
+        case "missing", "unreachable": .orange
+        default: .secondary
+        }
+    }
+}
+
+/// Adds or replaces one service's key(s). Empty optional fields are left as they are.
+private struct KeySheet: View {
+    @Environment(AppModel.self) private var model
+    let service: ConnectionsSettings.Service
+    let done: () -> Void
+    @State private var values: [String: String] = [:]
+    @State private var saving = false
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(service.name).font(.title2.weight(.semibold))
+            Text(service.use).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(service.help).font(.callout)
+                if let url = service.getKey { Link("Get it…", destination: url) }
+            }
+            Form {
+                ForEach(service.fields, id: \.key) { field in
+                    let binding = Binding(get: { values[field.key, default: ""] }, set: { values[field.key] = $0 })
+                    if field.secure {
+                        SecureField(field.label, text: binding, prompt: Text(field.prompt))
+                    } else {
+                        TextField(field.label, text: binding, prompt: Text(field.prompt))
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            if let problem { Text(problem).foregroundStyle(.orange).font(.callout) }
+            HStack {
+                Text("Saved encrypted on your server. It can't be shown again.").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel", role: .cancel, action: done).keyboardShortcut(.cancelAction)
+                Button("Save") { Task { await save() } }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(saving || !ready)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 460)
+        .onChange(of: problem) { if let problem { AccessibilityNotification.Announcement(problem).post() } }
+    }
+
+    private var ready: Bool {
+        service.fields.allSatisfy { $0.optional || !(values[$0.key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    private func save() async {
+        guard let server = model.server else { problem = "Connect to your server first."; return }
+        saving = true
+        defer { saving = false }
+        do {
+            for field in service.fields {
+                let value = (values[field.key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty { try await server.saveKey(field.key, value: value) }
+            }
+            done()
+        } catch {
+            problem = "Couldn't save. Check your connection and try again."
+        }
+    }
+}

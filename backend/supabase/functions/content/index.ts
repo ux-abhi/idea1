@@ -6,6 +6,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
 import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
+import { secret } from "../_shared/secrets.ts";
 
 // Fixed, so it caches. Our own short playbooks (§20); third-party skill text is never pasted here.
 const SYSTEM = `You write social posts for the owner, in their voice, from one idea. You write drafts only; the owner edits and posts.
@@ -119,7 +120,7 @@ function json(status: number, body: Record<string, unknown>): Response {
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "POST only" });
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+  const apiKey = (await secret("ANTHROPIC_API_KEY")) ?? "";
 
   const url = Deno.env.get("SUPABASE_URL")!;
   const auth = req.headers.get("Authorization") ?? "";
@@ -142,7 +143,7 @@ Deno.serve(async (req) => {
   ]);
   const model = pickModel(profile?.model_prefs, "content", Deno.env.get("BLINK_CONTENT_MODEL"));
   if (model.provider === "claude" && !apiKey) {
-    return json(503, { error: "Add your Anthropic API key to this server's Edge Function secrets first, or pick a Groq model in Settings." });
+    return json(503, { error: "Add your Anthropic API key in Blink › Settings › Connections first, or pick a Groq model in Settings." });
   }
   const overCap = capProblem(model, profile?.settings, spend ?? []);
   if (overCap) return json(429, { error: overCap });
@@ -196,7 +197,7 @@ Deno.serve(async (req) => {
       return json(502, { error: error instanceof Error ? error.message : "The model couldn't write drafts." });
     }
   } else {
-    const workspace = Deno.env.get("ANTHROPIC_WORKSPACE_ID");
+    const workspace = (await secret("ANTHROPIC_WORKSPACE_ID"));
     const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
     try {
       const response = await client.beta.messages.create({

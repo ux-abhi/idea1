@@ -440,4 +440,71 @@ do $$ begin
 end $$;
 reset role;
 
+-- Keys added in the app: only the server's owner (someone with a profile) writes, only known names, never read back.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');   -- B has no profile here
+do $$ begin
+  begin
+    perform public.set_server_key('GROQ_API_KEY', 'gsk_x');
+    raise exception 'a non-owner saved a key';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  begin
+    perform public.set_server_key('SUPABASE_SERVICE_ROLE_KEY', 'x');
+    raise exception 'an unknown key name was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    perform * from public.server_keys();
+    raise exception 'a client read the saved keys';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.google_disconnect('00000000-0000-0000-0000-00000000000a');
+    raise exception 'a client called the server-only disconnect';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.server_key (name, secret_id) values ('GROQ_API_KEY', gen_random_uuid());
+    raise exception 'a client wrote a key row directly';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+-- The owner saves, replaces and removes a key; the server reads it back; B sees nothing.
+do $$ begin
+  perform public.set_server_key('GROQ_API_KEY', ' gsk_one ');
+  perform public.set_server_key('GROQ_API_KEY', 'gsk_two');
+  assert (select count(*) from public.server_key) = 1, 'the owner sees one saved key name';
+end $$;
+reset role;
+set role service_role;
+do $$ begin
+  assert (select value from public.server_keys() where name = 'GROQ_API_KEY') = 'gsk_two', 'the server reads the latest value';
+end $$;
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  assert (select count(*) from public.server_key) = 0, 'B must not see saved key names';
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  perform public.remove_server_key('GROQ_API_KEY');
+  assert (select count(*) from public.server_key) = 0, 'removed key is gone';
+end $$;
+reset role;
+do $$ begin
+  assert (select count(*) from vault.secrets where name = 'blink-key:GROQ_API_KEY') = 0, 'its vault secret is gone too';
+end $$;
+set role anon;
+do $$ begin
+  begin
+    perform public.set_server_key('GROQ_API_KEY', 'x');
+    raise exception 'anon saved a key';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+
 select 'all RLS checks passed' as result;

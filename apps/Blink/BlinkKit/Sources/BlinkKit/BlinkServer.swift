@@ -361,6 +361,28 @@ public final class BlinkServer: Sendable {
         try await client.functions.invoke("connections", options: .init(body: [String: String]()))
     }
 
+    /// Keys and passwords saved from the app (names only; values are never readable back).
+    public func savedKeys() async throws -> Set<String> {
+        struct Row: Decodable { let name: String }
+        let rows: [Row] = try await client.from("server_key").select("name").execute().value
+        return Set(rows.map(\.name))
+    }
+
+    /// Saves one key or password to the server's Vault (only names the server knows are accepted).
+    public func saveKey(_ name: String, value: String) async throws {
+        try await client.rpc("set_server_key", params: ["key_name": name, "key_value": value]).execute()
+    }
+
+    /// Removes a key saved from the app; a dashboard secret with the same name, if any, applies again.
+    public func removeKey(_ name: String) async throws {
+        try await client.rpc("remove_server_key", params: ["key_name": name]).execute()
+    }
+
+    /// Revokes Blink's Google access at Google and deletes it from the server.
+    public func disconnectGoogle() async throws {
+        _ = try await client.functions.invoke("google/disconnect", options: .init(body: [String: String]()))
+    }
+
     private struct IDRow: Decodable { let id: String }
 
     // MARK: Mail (Phase 5)

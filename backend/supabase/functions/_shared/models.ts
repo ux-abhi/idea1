@@ -1,6 +1,7 @@
 // © Pexilim
 // Which AI writes what (ARCHITECTURE §19, §31): the owner picks a model per feature in Settings, stored in
 // profile.model_prefs. Only models on this list are ever called, whatever the stored value says.
+import { secret } from "./secrets.ts";
 
 export type Provider = "claude" | "groq" | "openrouter";
 export type Feature = "chat" | "content";
@@ -67,8 +68,8 @@ export async function compatible(provider: "groq" | "openrouter", body: Record<s
   usage: { prompt_tokens?: number; completion_tokens?: number };
 }> {
   const endpoint = ENDPOINTS[provider];
-  const key = Deno.env.get(endpoint.secret);
-  if (!key) throw new Error(`Add your ${endpoint.name} key (${endpoint.secret}) to this server's Edge Function secrets first.`);
+  const key = await secret(endpoint.secret);
+  if (!key) throw new Error(`Add your ${endpoint.name} key in Blink › Settings › Connections first.`);
   const response = await fetch(endpoint.url, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
@@ -114,8 +115,8 @@ export function foldChunks(chunks: unknown[]): { message: Message; usage: { prom
 /** Like `compatible`, but streamed: `onText` gets each piece of the answer as it's written. Same errors. */
 export async function compatibleStream(provider: "groq" | "openrouter", body: Record<string, unknown>, onText: (text: string) => void) {
   const endpoint = ENDPOINTS[provider];
-  const key = Deno.env.get(endpoint.secret);
-  if (!key) throw new Error(`Add your ${endpoint.name} key (${endpoint.secret}) to this server's Edge Function secrets first.`);
+  const key = await secret(endpoint.secret);
+  if (!key) throw new Error(`Add your ${endpoint.name} key in Blink › Settings › Connections first.`);
   const response = await fetch(endpoint.url, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },

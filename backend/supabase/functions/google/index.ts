@@ -4,12 +4,14 @@
 // browser request; the other routes check the caller themselves.
 //   POST /google/start     The app asks for Google's consent page; a one-time state ties the answer to this owner.
 //   GET  /google/callback  Google sends the browser here; the refresh token goes to Vault, never to a device.
+//   POST /google/disconnect Revokes Blink's access at Google, then deletes the token and the link.
 //   POST /google/meet      Creates the event with a Meet link and emails the guests, only for a red "meet.create"
 //                          action the owner approved with Touch ID, exactly as signed.
 // shortcut: calls Google Calendar's REST API directly instead of the §34 connector gateway; move it behind the gateway
 // when a second Google feature (Gmail, Drive, calendar reads) needs the same connection.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { consentURL, emailFromIdToken, eventBody, eventId, parseMeet } from "./input.ts";
+import { secret } from "../_shared/secrets.ts";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -24,10 +26,22 @@ const bytea = (bytes: Uint8Array) => "\\x" + Array.from(bytes, (b) => b.toString
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  const clientId = Deno.env.get("GOOGLE_CLIENT_ID"), secret = Deno.env.get("GOOGLE_CLIENT_SECRET");
-  if (!clientId || !secret) return json(503, { error: "Google isn't set up on your server yet. See Settings › Connections." });
-  const callback = `${Deno.env.get("SUPABASE_URL")}/functions/v1/google/callback`;
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+
+  // Disconnect works even when the Google app keys were removed: it needs only the owner's login.
+  if (req.method === "POST" && url.pathname.endsWith("/disconnect")) {
+    const { data: { user } } = await admin.auth.getUser((req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, ""));
+    if (!user) return json(401, { error: "signed out" });
+    const token = (await admin.rpc("google_token", { owner: user.id })).data;
+    // Best effort: an already-revoked token is fine; the copy on this server goes either way.
+    if (typeof token === "string") await fetch("https://oauth2.googleapis.com/revoke", { method: "POST", body: new URLSearchParams({ token }) }).catch(() => {});
+    const { error } = await admin.rpc("google_disconnect", { owner: user.id });
+    return error ? json(500, { error: "Couldn't disconnect. Try again." }) : json(200, { disconnected: true });
+  }
+
+  const clientId = await secret("GOOGLE_CLIENT_ID"), clientSecret = await secret("GOOGLE_CLIENT_SECRET");
+  if (!clientId || !clientSecret) return json(503, { error: "Add your Google app's client ID and secret in Settings › Connections first." });
+  const callback = `${Deno.env.get("SUPABASE_URL")}/functions/v1/google/callback`;
 
   if (req.method === "GET" && url.pathname.endsWith("/callback")) {
     const code = url.searchParams.get("code"), state = url.searchParams.get("state");
@@ -42,7 +56,7 @@ Deno.serve(async (req) => {
 
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
-      body: new URLSearchParams({ code, client_id: clientId, client_secret: secret, redirect_uri: callback, grant_type: "authorization_code" }),
+      body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: callback, grant_type: "authorization_code" }),
     });
     const tokens = await tokenRes.json().catch(() => ({}));
     const account = emailFromIdToken(tokens.id_token);
@@ -104,7 +118,7 @@ Deno.serve(async (req) => {
 
     const refreshed = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
-      body: new URLSearchParams({ refresh_token: token, client_id: clientId, client_secret: secret, grant_type: "refresh_token" }),
+      body: new URLSearchParams({ refresh_token: token, client_id: clientId, client_secret: clientSecret, grant_type: "refresh_token" }),
     });
     const access = (await refreshed.json().catch(() => ({}))).access_token;
     if (!refreshed.ok || typeof access !== "string") return retry("Google signed Blink out. Connect Google again in Settings › Connections, then Create again.");
