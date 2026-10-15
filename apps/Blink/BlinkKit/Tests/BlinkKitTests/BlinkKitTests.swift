@@ -226,6 +226,16 @@ extension Tokens {
         #expect(AgendaEvent(extID: "r", title: "R", start: at(9, 0), end: at(10, 0), location: "Room 4").joinURL == nil)
     }
 
+    @Test func doneMeetingsHideAndAreForgottenOnlyWhenOld() {
+        let live = event("Live", at(9, 0)), next = event("Next", at(11, 0))
+        let old = "eventkit|gone|\(at(9, 0, day: 10).timeIntervalSince1970)"
+        let loading = "eventkit|google|\(at(8, 30).timeIntervalSince1970)"
+        let result = Agenda.hidingDone([live, next], done: [live.id, old, loading, "junk"], now: at(9, 20))
+        #expect(result.shown == [next])
+        #expect(result.keep == [live.id, loading])          // still listed, or started under a day ago
+        #expect(Agenda.hidingDone([], done: [loading], now: at(9, 20)).keep == [loading]) // calendar not loaded yet
+    }
+
     @Test func meetLinksInNotesAndJoinUntilTheEnd() {
         let notes = "Agenda: https://docs.example.com/x\nJoin with Google Meet: https://meet.google.com/abc-defg-hij\nOr dial in"
         #expect(AgendaEvent.meetingLink(in: notes)?.absoluteString == "https://meet.google.com/abc-defg-hij")

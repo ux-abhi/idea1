@@ -173,7 +173,12 @@ final class AppModel {
     private(set) var timersEnded = 0
     private var timerWatch: Task<Void, Never>?
 
+    /// Today and the next days, minus meetings the owner marked done (those stay in the calendar and on the server).
     private(set) var agenda = Agenda.empty
+    /// Every event as the calendar has it; `agenda` shows these minus `doneMeetings`.
+    private(set) var calendarEvents: [AgendaEvent] = []
+    /// Meetings marked done in the notch (event ids, which include the start time), on this Mac only.
+    private(set) var doneMeetings = Set(UserDefaults.standard.stringArray(forKey: "meetings.done") ?? [])
     private(set) var calendarAccess = CalendarReader.access
     private let calendarReader = CalendarReader()
     private var watchingCalendar = false
@@ -349,7 +354,7 @@ final class AppModel {
         pending = []; activity = []; actionProblem = nil; undoChip = nil
         items = []; onServer = []; saveProblem = nil
         habits = []; habitAnswers = [:]
-        agenda = .empty; allReminders = []; quickReplies = []
+        agenda = .empty; calendarEvents = []; allReminders = []; quickReplies = []
         content = []; voice = VoiceProfile(); contentProblem = nil
         ideas = []; questions = [:]; pageRead = nil; weekPlan = []; designed = []
         spends = []; budgets = []; accounts = []; captureTokens = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
@@ -593,7 +598,7 @@ final class AppModel {
     func offerUndo(_ text: String, undo: @escaping @MainActor () async -> Void) {
         // Several things done at once (one answer, quick commands in a row): one chip undoes them all.
         let chip = if let earlier = undoChip {
-            UndoChip(text: "\(earlier.count + 1) things added", count: earlier.count + 1) { await earlier.undo(); await undo() }
+            UndoChip(text: "\(earlier.count + 1) changes", count: earlier.count + 1) { await earlier.undo(); await undo() }
         } else {
             UndoChip(text: text, undo: undo)
         }
@@ -1946,12 +1951,36 @@ final class AppModel {
         repeat {
             reloadAgain = false
             let window = CalendarReader.window(from: .now)
-            agenda = await calendarReader.agenda(in: window)
+            let read = await calendarReader.agenda(in: window)
+            calendarEvents = read.events
+            agenda = read
+            showMeetings()
             allReminders = await calendarReader.openReminders() // the Tasks page shows every open reminder
             guard let server, email != nil else { continue }
             // The device is the source of truth; a failed upload is simply retried by the next reload.
-            try? await server.uploadCalendar(agenda.events, window: window)
+            try? await server.uploadCalendar(calendarEvents, window: window)
         } while reloadAgain
+    }
+
+    /// Marks a meeting done (left early, or finished): it leaves the notch and Today until the calendar drops it. Undo-able.
+    func finishMeeting(_ event: AgendaEvent) {
+        doneMeetings.insert(event.id)
+        showMeetings()
+        offerUndo("Meeting done: \(event.title)") { [weak self] in self?.reopenMeeting(event) }
+    }
+
+    /// Brings a meeting marked done back (Undo, or "Not done" on the Calendar page after a wrong tap).
+    func reopenMeeting(_ event: AgendaEvent) {
+        doneMeetings.remove(event.id)
+        showMeetings()
+    }
+
+    /// Applies `doneMeetings` to the agenda, forgetting old ones (Agenda.hidingDone).
+    private func showMeetings() {
+        let result = Agenda.hidingDone(calendarEvents, done: doneMeetings, now: .now)
+        doneMeetings = result.keep
+        UserDefaults.standard.set(Array(doneMeetings), forKey: "meetings.done")
+        agenda.events = result.shown
     }
 
     // MARK: App lock

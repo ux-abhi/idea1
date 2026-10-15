@@ -221,6 +221,19 @@ extension Agenda {
     }
 }
 
+extension Agenda {
+    /// Meetings the owner marked done are hidden from `shown`. A done id is kept while the calendar still lists it or its
+    /// start was under a day ago, so a calendar that's still loading (Google after wake) never brings a done meeting back.
+    public static func hidingDone(_ events: [AgendaEvent], done: Set<String>, now: Date) -> (shown: [AgendaEvent], keep: Set<String>) {
+        let listed = Set(events.map(\.id))
+        let keep = done.filter { id in
+            // The id ends in the start time ("source|extID|seconds"); one that can't be read is dropped.
+            listed.contains(id) || (id.split(separator: "|").last.flatMap { Double($0) }.map { now.timeIntervalSince1970 - $0 < 86_400 } ?? false)
+        }
+        return (events.filter { !keep.contains($0.id) }, keep)
+    }
+}
+
 extension AgendaEvent {
     /// A meeting link from the event's URL (CalendarReader also fills it from a call link in the location or notes), or a
     /// location that is a web address.

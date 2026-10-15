@@ -223,7 +223,7 @@ struct CalendarSettings: View {
             switch model.calendarAccess {
             case .granted:
                 LabeledContent("Access", value: "Calendars and reminders")
-                LabeledContent("Next 14 days", value: "\(model.agenda.events.count) meetings")
+                LabeledContent("Next 14 days", value: "\(model.calendarEvents.count) meetings")
                 LabeledContent("Due today", value: "\(model.agenda.reminders.count) reminders")
             case .notAsked:
                 Button("Connect Calendar") { Task { await model.connectCalendar() } }

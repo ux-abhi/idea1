@@ -232,6 +232,7 @@ struct MainWindow: View {
 }
 
 struct EventRow: View {
+    @Environment(AppModel.self) private var model
     let event: AgendaEvent
     let now: Date
 
@@ -250,6 +251,9 @@ struct EventRow: View {
                 }
             }
             Spacer()
+            if model.doneMeetings.contains(event.id) {
+                Button("Not done") { model.reopenMeeting(event) }.buttonStyle(.bordered)
+            }
             if let url = event.joinURL {
                 Link("Join", destination: url).buttonStyle(.bordered)
             }
@@ -281,8 +285,9 @@ struct CalendarListView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let days = Dictionary(grouping: model.agenda.events) { Calendar.current.startOfDay(for: $0.start) }
-        let count = model.agenda.events.count
+        // Every meeting, done ones too (with "Not done"), so a wrong tap on Done can always be put right here.
+        let days = Dictionary(grouping: model.calendarEvents) { Calendar.current.startOfDay(for: $0.start) }
+        let count = model.calendarEvents.count
         DashPage("Calendar", summary: count == 0 ? "Next 14 days" : "\(count == 1 ? "1 meeting" : "\(count) meetings") in the next 14 days") {
             if model.calendarAccess != .granted {
                 DashCard { ConnectCalendarRow() }

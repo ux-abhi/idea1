@@ -346,7 +346,8 @@ final class NotchController {
 
     private func scheduleCues() {
         cueWake?.cancel()
-        let ids = Set(app.agenda.events.map(\.id) + app.agenda.dueItems(adding: app.dueTasks).map(\.id))
+        // Done meetings count as known, so Undo right after Done doesn't announce the meeting again.
+        let ids = Set(app.agenda.events.map(\.id) + app.doneMeetings + app.agenda.dueItems(adding: app.dueTasks).map(\.id))
         spoken = spoken.filter { ids.contains($0.key) } // forget meetings that are gone
         evaluateCue()
         let eveningOpens = EveningCheck.opens(now: .now, evening: app.evening, wake: app.wake)
@@ -929,14 +930,22 @@ struct GlanceView: View {
                         .monospacedDigit()
                         .foregroundStyle(.mint) // mood.headsUp: time
                     Text(event.title).lineLimit(1)
+                    if event.joinable(at: now) || event.start <= now { Spacer(minLength: 8) }
                     if event.joinable(at: now), let url = event.joinURL {
-                        Spacer(minLength: 8)
                         Button("Join") {
                             NSWorkspace.shared.open(url)
                             done()
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
+                    }
+                    // Once it has started: the owner can say it's over, so the notch stops counting "started 16 min ago".
+                    if event.start <= now, let app {
+                        Button("Done") { app.finishMeeting(event) }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .accessibilityLabel("Mark \(event.title) as done")
+                            .accessibilityInputLabels(["Done", "Mark \(event.title) as done"])
                     }
                 }
             }
