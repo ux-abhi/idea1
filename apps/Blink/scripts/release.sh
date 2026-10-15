@@ -35,7 +35,15 @@ ditto "$APP" "$STAGE/Blink.app"
 ln -s /Applications "$STAGE/Applications"
 printf '[InternetShortcut]\nURL=https://www.blinkk.app/install.html\n' > "$STAGE/How to open Blink.url"
 DMG="$OUT/Blink-$VERSION.dmg"
-hdiutil create -volname "Blink $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG" -quiet
+# The disk shows Blink's eyes when mounted: the app's icon as the volume icon (a writable image first, then compressed).
+RW="$OUT/rw.dmg"
+hdiutil create -volname "Blink $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDRW -ov "$RW" -quiet
+MOUNT=$(hdiutil attach "$RW" -nobrowse -noautoopen | awk -F'\t' '/\/Volumes\//{print $NF}')
+cp "$APP/Contents/Resources/AppIcon.icns" "$MOUNT/.VolumeIcon.icns"
+xcrun SetFile -a C "$MOUNT"
+hdiutil detach "$MOUNT" -quiet
+hdiutil convert "$RW" -format UDZO -ov -o "$DMG" -quiet
+rm -f "$RW"
 shasum -a 256 "$DMG" | tee "$DMG.sha256"
 # The site links to a fixed name; keep a copy under it.
 cp "$DMG" "$OUT/Blink.dmg"
