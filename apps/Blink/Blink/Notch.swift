@@ -136,6 +136,11 @@ final class NotchController {
             // Calendar, reminders and tasks all feed the cues.
             for await _ in Observations({ (app.agenda, app.items) }) { self?.scheduleCues() }
         }
+        // The owner can let screenshots and recordings show the notch (for a demo); hidden otherwise.
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await shown in Observations({ app.notchInRecordings }) { self?.panel?.sharingType = shown ? .readOnly : .none }
+        }
         // Locking closes the notch, so nothing shows past "Blink is locked".
         Task { [weak self] in
             guard let app = self?.app else { return }
@@ -476,7 +481,7 @@ final class NotchController {
         panel.isMovable = false
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
-        panel.sharingType = .none // hidden from screen capture and sharing (§36.1)
+        panel.sharingType = app.notchInRecordings ? .readOnly : .none // hidden from screen capture and sharing (§36.1) unless the owner allows it
         panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app, clipboard: clipboard,
                                                                       open: { [weak self] in self?.open() },
                                                                       plan: { [weak self] in self?.planTomorrow() },

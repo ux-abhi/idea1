@@ -42,6 +42,10 @@ final class AppModel {
 
     /// The owner posts on social media: Content, its drafts and the Instagram step show. Asked at the end of setup;
     /// installs from before that question keep it on.
+    /// Off by default: the notch hides from screenshots, recordings and screen sharing (§36.1). On for demo videos.
+    var notchInRecordings = UserDefaults.standard.bool(forKey: "notch.inRecordings") {
+        didSet { UserDefaults.standard.set(notchInRecordings, forKey: "notch.inRecordings") }
+    }
     var showsContent = UserDefaults.standard.object(forKey: "features.content") as? Bool ?? true {
         didSet { UserDefaults.standard.set(showsContent, forKey: "features.content") }
     }

@@ -424,6 +424,12 @@ struct PrivacySettings: View {
             } footer: {
                 Text("The last 50 things you copy, kept on this Mac only. Passwords copied from password managers are never kept.")
             }
+            Section {
+                @Bindable var model = model
+                Toggle("Show the notch in screenshots and recordings", isOn: $model.notchInRecordings)
+            } footer: {
+                Text("Off keeps your mail, money and tasks out of screenshots, recordings and screen sharing. Turn it on to record a demo, then off again.")
+            }
             Section("What leaves this Mac") {
                 Label("Your next 14 days of meetings: title, time, place and link", systemImage: "calendar")
                 Label("This Mac's name and your time zone", systemImage: "laptopcomputer")
