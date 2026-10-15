@@ -226,6 +226,20 @@ extension Tokens {
         #expect(AgendaEvent(extID: "r", title: "R", start: at(9, 0), end: at(10, 0), location: "Room 4").joinURL == nil)
     }
 
+    @Test func meetLinksInNotesAndJoinUntilTheEnd() {
+        let notes = "Agenda: https://docs.example.com/x\nJoin with Google Meet: https://meet.google.com/abc-defg-hij\nOr dial in"
+        #expect(AgendaEvent.meetingLink(in: notes)?.absoluteString == "https://meet.google.com/abc-defg-hij")
+        #expect(AgendaEvent.meetingLink(in: "Notes: https://docs.example.com/x") == nil)
+        #expect(AgendaEvent.meetingLink(in: "https://evilzoom.us/j/1") == nil)
+        #expect(AgendaEvent.meetingLink(in: "https://zoom.us.evil.com/j/1") == nil)
+        #expect(AgendaEvent.meetingLink(in: "Room B; https://teams.microsoft.com/l/meetup-join/1")?.host() == "teams.microsoft.com")
+        let room = AgendaEvent(extID: "m", title: "M", start: at(9, 0), end: at(10, 0), location: "Room B")
+        #expect(room.joinable(at: at(8, 49)) == false)
+        #expect(room.joinable(at: at(8, 52)))
+        #expect(room.joinable(at: at(9, 16)))     // 16 min in: still joinable
+        #expect(room.joinable(at: at(10, 0)) == false)
+    }
+
     @Test func tasksAndRemindersDueSoonSpeakLikeMeetings() {
         let task = DueItem(id: "t1", title: "Pay rent", due: at(0, 38, day: 12))
         let agenda = Agenda(events: [], reminders: [AgendaReminder(id: "r1", title: "Call bank", due: at(17, 0, day: 12))])

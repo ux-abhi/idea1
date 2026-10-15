@@ -245,7 +245,7 @@ struct EventRow: View {
             .frame(minWidth: 52, alignment: .trailing)
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title).lineLimit(1)
-                if let location = event.location, event.joinURL == nil {
+                if let location = event.location, event.joinURL?.absoluteString != location.trimmingCharacters(in: .whitespaces) {
                     Text(location).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }

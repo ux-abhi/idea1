@@ -222,13 +222,33 @@ extension Agenda {
 }
 
 extension AgendaEvent {
-    /// A meeting link from the event's URL, or a location that is a web address.
+    /// A meeting link from the event's URL (CalendarReader also fills it from a call link in the location or notes), or a
+    /// location that is a web address.
     public var joinURL: URL? {
         if let url, url.scheme?.hasPrefix("http") == true { return url }
         guard let location, let url = URL(string: location.trimmingCharacters(in: .whitespaces)),
               url.scheme == "https" || url.scheme == "http" else { return nil }
         return url
     }
+
+    /// Join is offered from 10 minutes before the start until the meeting ends (not just the first minutes).
+    public func joinable(at now: Date) -> Bool {
+        start.timeIntervalSince(now) <= MeetingCue.headsUpLead && now < end
+    }
+
+    /// The first video-call link in some text, e.g. the Meet link Google Calendar puts in an invite's notes. Only known
+    /// call services count, so a random link in the notes never becomes a Join button.
+    public static func meetingLink(in text: String?) -> URL? {
+        guard let text, !text.isEmpty,
+              let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
+        return detector.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap(\.url).first { url in
+            guard url.scheme == "https", let host = url.host()?.lowercased() else { return false }
+            return meetingHosts.contains { host == $0 || host.hasSuffix("." + $0) }
+        }
+    }
+
+    static let meetingHosts = ["meet.google.com", "zoom.us", "teams.microsoft.com", "teams.live.com", "webex.com",
+                               "whereby.com", "meet.jit.si", "facetime.apple.com"]
 }
 
 /// Reads the device's calendars and reminders. An actor so EventKit stays off the main actor (§36.1).
@@ -317,7 +337,7 @@ public actor CalendarReader {
             guard !event.isAllDay, !declined, let start = event.startDate, let finish = event.endDate else { return nil }
             return AgendaEvent(extID: event.calendarItemExternalIdentifier ?? event.calendarItemIdentifier,
                                title: event.title ?? "Untitled", start: start, end: finish,
-                               location: event.location, url: event.url)
+                               location: event.location, url: event.url ?? AgendaEvent.meetingLink(in: event.location) ?? AgendaEvent.meetingLink(in: event.notes))
         }
 
         let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))

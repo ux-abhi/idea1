@@ -923,14 +923,13 @@ struct GlanceView: View {
                 Text("Nothing else on your calendar today.")
                     .foregroundStyle(.white.opacity(0.7))
             }
-            let joining = agenda.cue(now: now, tasks: tasks)?.event
             ForEach(events) { event in
                 HStack(spacing: 8) {
                     Text(event.start, format: .dateTime.hour().minute())
                         .monospacedDigit()
                         .foregroundStyle(.mint) // mood.headsUp: time
                     Text(event.title).lineLimit(1)
-                    if event == joining, let url = event.joinURL {
+                    if event.joinable(at: now), let url = event.joinURL {
                         Spacer(minLength: 8)
                         Button("Join") {
                             NSWorkspace.shared.open(url)
