@@ -874,7 +874,8 @@ struct GlanceView: View {
                                 .buttonStyle(.plain).foregroundStyle(.mint)
                                 .disabled(app.draftingMail.contains(message.id))
                         }
-                        Button("Done") { Task { await app.finish([message]) } }
+                        Button("Clear") { Task { await app.finish([message]) } }
+                            .help("Clear this mail from Blink. Anything you added from it stays.")
                             .buttonStyle(.plain).foregroundStyle(.mint)
                     }
                 }

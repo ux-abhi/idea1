@@ -6,7 +6,7 @@ import SwiftUI
 
 /// Inbox (Phase 5): mail the server checked and sorted, by mailbox, searchable. Important first; each section folds.
 /// Click a mail to read it on the right; tick several for Done or teaching at once; the keyboard works too
-/// (↑↓ move, Space opens, E done, R reply, I important, ⌘A selects all). Each mail's next steps (an event, a deadline,
+/// (↑↓ move, Space opens, E clears, R reply, I important, ⌘A selects all). Each mail's next steps (an event, a deadline,
 /// a to-do, a detail) become a calendar event, reminder, task or note with one tap.
 struct InboxView: View {
     @Environment(AppModel.self) private var model
@@ -97,7 +97,7 @@ struct InboxView: View {
                 MailReader(message: message, close: { reading = nil })
                     .inspectorColumnWidth(min: 320, ideal: 400, max: 560)
             } else {
-                ContentUnavailableView("Done", systemImage: "checkmark.circle", description: Text("This email is no longer in your inbox."))
+                ContentUnavailableView("Cleared", systemImage: "checkmark.circle", description: Text("This email is no longer in your inbox."))
             }
         }
         .sheet(item: $model.reviewing) { ReplyReviewSheet(review: $0) }
@@ -132,7 +132,8 @@ struct InboxView: View {
                     selected = picked.count == order.count ? [] : Set(order.map(\.id))
                 }
                 Spacer()
-                Button("Done") { Task { await model.finish(picked); selected = [] } }
+                Button("Clear") { Task { await model.finish(picked); selected = [] } }
+                    .help("Clear these from Blink's inbox. Anything you added from them stays.")
                 Menu("Teach Blink") {
                     Button("Mark Important", systemImage: "exclamationmark.circle") { teach(.important, picked) }
                     Button("Not Important", systemImage: "arrow.down.circle") { teach(.newsletter, picked) }
@@ -310,7 +311,8 @@ struct MailRow: View {
                     .disabled(model.draftingMail.contains(message.id))
                     Button("With a Note…") { writingNote = true }
                         .popover(isPresented: $writingNote, arrowEdge: .bottom) { notePopover }
-                    Button("Done") { Task { await model.finish([message]) } }
+                    Button("Clear") { Task { await model.finish([message]) } }
+                        .help("Clear this from Blink's inbox. Anything you added from it stays.")
                     Menu("More", systemImage: "ellipsis.circle") { moreItems }
                         .labelStyle(.iconOnly)
                         .menuStyle(.borderlessButton)
@@ -441,7 +443,8 @@ struct MailReader: View {
                 HStack(spacing: 10) {
                     Button(message.status == .drafted ? "Review & Send" : "Reply") { Task { await model.reviewReply(to: message) } }
                         .disabled(model.draftingMail.contains(message.id))
-                    Button("Done") { Task { await model.finish([message]); close() } }
+                    Button("Clear") { Task { await model.finish([message]); close() } }
+                        .help("Clear this from Blink's inbox. Anything you added from it stays.")
                     if let url = message.mailURL { Button("Open in Apple Mail") { NSWorkspace.shared.open(url) } }
                 }
                 .controlSize(.small)

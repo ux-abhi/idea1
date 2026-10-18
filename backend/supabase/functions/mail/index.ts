@@ -396,7 +396,7 @@ async function read(admin: SupabaseClient, owner: string, id: string): Promise<{
     const [full] = await imap.fetch([Number(msg.uid)], 60000);
     await imap.logout();
     if (!full) throw new Error("That email isn't in the inbox anymore. It may have been moved or deleted.");
-    return { text: plainText(full.text, parseHeaders(full.header), 20000) };
+    return { text: plainText(full.text, parseHeaders(full.header), 20000, true) };
   } catch (error) {
     imap.logout().catch(() => {});
     throw error;

@@ -53,8 +53,9 @@ export function parseAddress(value: string): { name: string; address: string } {
   return { name: "", address: bare.toLowerCase() };
 }
 
-/** A readable plain-text snippet from a (possibly cut-off) MIME body: the first text part, decoded, tags stripped. */
-export function plainText(body: string, headers: Headers, max = 1500): string {
+/** A readable plain-text snippet from a (possibly cut-off) MIME body: the first text part, decoded, tags stripped.
+ *  With `links`, an HTML link keeps its address ("Join meeting (https://…)"), so a button's link isn't lost. */
+export function plainText(body: string, headers: Headers, max = 1500, links = false): string {
   const type = headers["content-type"] ?? "text/plain";
   const boundary = type.match(/boundary="?([^";]+)"?/i)?.[1];
   let text = body;
@@ -69,7 +70,7 @@ export function plainText(body: string, headers: Headers, max = 1500): string {
     encoding = (partHeaders["content-transfer-encoding"] ?? "").toLowerCase();
     html = /text\/html/i.test(partHeaders["content-type"] ?? "");
     // Nested multipart (e.g. alternative inside mixed): go one level deeper.
-    if (/multipart\//i.test(partHeaders["content-type"] ?? "")) return plainText(text, partHeaders, max);
+    if (/multipart\//i.test(partHeaders["content-type"] ?? "")) return plainText(text, partHeaders, max, links);
   }
   if (encoding === "base64") {
     const clean = text.replace(/[^A-Za-z0-9+/=]/g, "");
@@ -77,6 +78,7 @@ export function plainText(body: string, headers: Headers, max = 1500): string {
   } else if (encoding === "quoted-printable") {
     text = new TextDecoder().decode(qpBytes(text));
   }
+  if (html && links) text = text.replace(/<a\s[^>]*?href\s*=\s*["'](https?:[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, "$2 ($1)");
   if (html) text = text.replace(/<(style|script)[\s\S]*?<\/\1>/gi, " ").replace(/<br\s*\/?>|<\/p>/gi, "\n").replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
   return text.replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, max);

@@ -1799,11 +1799,17 @@ final class AppModel {
                 mailProblem = "Turn on Calendars for Blink in System Settings › Privacy & Security › Calendars."
                 return
             }
+            // The call link (Webex, Zoom, Meet, Teams…) from the whole mail, so the notch offers Join on the day. Only known
+            // call services count; the mail is read now and not kept. No link (or no connection): the event is added anyway.
+            let body = try? await server?.readMail(message)
+            let join = AgendaEvent.meetingLink(in: body)
+            let notes = [from, join.map { "Join: \($0.absoluteString)" }, message.mailURL.map { "Open the mail: \($0.absoluteString)" }]
+                .compactMap { $0 }.joined(separator: "\n")
             do {
                 let id = try await calendarReader.addEvent(step.title, start: start, end: step.finish, allDay: step.allDay,
-                                                           location: step.where, notes: from, url: message.mailURL)
+                                                           location: step.where, notes: notes, url: join ?? message.mailURL)
                 await reloadAgenda()
-                offerUndo("Added to Calendar: \(step.title)\(when(start))") { [weak self] in
+                offerUndo("Added to Calendar: \(step.title)\(when(start))\(join == nil ? "" : " · with Join link")") { [weak self] in
                     do { try await self?.calendarReader.deleteEvent(id: id) } catch {
                         self?.mailProblem = "Couldn't remove that event. Delete it in Calendar."
                     }
@@ -1860,7 +1866,7 @@ final class AppModel {
         emails.removeAll { ids.contains($0.id) }
         do {
             try await server.setStatus(.done, ids: Array(ids))
-            offerUndo(messages.count == 1 ? "Done: \(messages[0].subject)" : "\(messages.count) emails done") { [weak self] in
+            offerUndo(messages.count == 1 ? "Cleared: \(messages[0].subject)" : "\(messages.count) emails cleared") { [weak self] in
                 guard let self else { return }
                 let back = before.filter { ids.contains($0.id) }
                 do {

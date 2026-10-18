@@ -127,3 +127,11 @@ Deno.test("next steps from a mail are checked: kinds, dates, lengths, at most 3"
   if (parseActions("nope").length) throw new Error("not a list");
   if (parseActions([{ kind: "event", title: "x", when: "2026-10-21T15:00", end: "", where: "https://acme-careers.example/login" }])[0].where !== "") throw new Error("a link as the place");
 });
+
+Deno.test("the reading text keeps an HTML button's link, the triage snippet doesn't", () => {
+  const h = { "content-type": "text/html; charset=utf-8" };
+  const html = `<p>Hi</p><a class="btn" href="https://acme.webex.com/meet/sam">Join meeting</a>`;
+  const read = plainText(html, h, 2000, true);
+  if (!read.includes("Join meeting (https://acme.webex.com/meet/sam)")) throw new Error(read);
+  if (plainText(html, h, 2000).includes("https://")) throw new Error("snippet kept the link");
+});
