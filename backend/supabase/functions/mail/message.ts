@@ -110,6 +110,7 @@ export function parseSpend(m: Record<string, unknown>): Spend | undefined {
   return { amount: Math.round(amount * 100) / 100, merchant: merchant || "Receipt", category };
 }
 
+const ORDER: MailAction["kind"][] = ["event", "deadline", "task", "note"];
 const LOCAL_TIME = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/;
 
 /** Next steps the model found in a mail, checked: known kinds, short one-line titles, local times ("2026-10-21" or
@@ -129,7 +130,9 @@ export function parseActions(value: unknown): MailAction[] {
     // A place, never a link: a mail must not be able to give Blink a "Join" button to its own page.
     const where = kind === "event" && !/:\/\/|www\./i.test(String(m.where)) ? line(m.where, 200) : "";
     return [{ kind, title, when, end, where }];
-  }).slice(0, 3);
+  })
+    // Events first, then deadlines, tasks, notes: the notch offers only the first one.
+    .sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)).slice(0, 3);
 }
 
 /** The model's verdicts, checked: known UIDs only, known labels, short texts. */

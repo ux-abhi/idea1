@@ -135,3 +135,13 @@ Deno.test("the reading text keeps an HTML button's link, the triage snippet does
   if (!read.includes("Join meeting (https://acme.webex.com/meet/sam)")) throw new Error(read);
   if (plainText(html, h, 2000).includes("https://")) throw new Error("snippet kept the link");
 });
+
+Deno.test("events come first, so the notch offers Add to Calendar", () => {
+  const got = parseActions([
+    { kind: "task", title: "Review slides", when: "2026-10-22", end: "", where: "" },
+    { kind: "note", title: "Ref 42", when: "", end: "", where: "" },
+    { kind: "event", title: "Bison AI meeting", when: "2026-10-23T10:00", end: "", where: "Webex" },
+  ]);
+  if (got.map((a) => a.kind).join() !== "event,task,note") throw new Error(got.map((a) => a.kind).join());
+  if (got[1].when !== "2026-10-22") throw new Error("a task keeps its due date");
+});

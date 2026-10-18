@@ -75,8 +75,11 @@ needs_reply: true only if a person wrote personally and expects the owner to ans
 "newsletter" (not important), each with an example subject. Judge similar mail from other senders the same way.
 actions: up to 3 next steps the owner may want to save from this mail; [] for newsletters and when there is nothing:
 - "event": a meeting, interview, appointment or exam at a stated date (and time). where: the place or video link name.
-- "deadline": something the owner must do or pay by a stated date (rent due, form by Friday).
-- "task": something the owner is asked to do, with no firm date ("send your passport copy").
+- "deadline": something the owner must pay or submit by a stated date (rent due, form by Friday).
+- "task": something the owner is asked to do ("send your passport copy", "review the slides"); when: its due date if the
+  mail gives one, else "".
+For a forwarded mail ("Fwd:", "Forwarded message"), read the forwarded message itself: its appointment, its tasks.
+A meeting, call or appointment is always an "event" (with its time if the mail gives one), listed first.
 - "note": a detail worth keeping: a booking or order number, a code to bring, an address. title: the detail itself.
 title: short and plain, like the owner would write it ("Interview with Acme", "Pay rent"). Only what the mail really says;
 never invent dates. when and end: local time as "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (no time zone), reading words like
@@ -217,7 +220,8 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
       .eq("account", account.id).eq("uidvalidity", box.uidValidity).eq("sorted", false)
       .gte("created_at", new Date(Date.now() - 3 * 86_400_000).toISOString()).order("created_at", { ascending: false }).limit(RESORT_BATCH);
     const resort = (unsorted ?? []).map((r) => Number(r.uid)).filter((uid) => !uids.includes(uid));
-    const fetched = await imap.fetch([...resort, ...uids], 1500);
+    // Enough of each mail to read past a forward's header lines to the appointment itself (the text is never stored).
+    const fetched = await imap.fetch([...resort, ...uids], 6000);
     // Unsorted mail that's no longer in the inbox (archived, deleted) can't be sorted: stop asking for it.
     const gone = resort.filter((uid) => !fetched.some((m) => m.uid === uid));
     if (gone.length) {
@@ -232,7 +236,7 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
       return {
         uid: m.uid, h, from, to: parseAddress(h.to ?? "").address, subject: (h.subject ?? "").slice(0, 998),
         received: m.date && !Number.isNaN(Date.parse(m.date)) ? new Date(m.date).toISOString() : null,
-        snippet: plainText(m.text, h, 500), newsletter: !!h["list-unsubscribe"],
+        snippet: plainText(m.text, h, 1500), newsletter: !!h["list-unsubscribe"],
       };
     });
 

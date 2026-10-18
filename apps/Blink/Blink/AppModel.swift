@@ -1785,8 +1785,14 @@ final class AppModel {
         guard !savedSteps.contains(key) else { return }
         // Claimed first, so a double tap (or the notch and the window at once) adds it only once.
         savedSteps.insert(key)
-        let from = message.sourceLine
         let when: (Date?) -> String = { $0.map { " · \($0.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))" } ?? "" }
+        // The call link (Webex, Zoom, Meet, Teams…) from the whole mail: an event gets it as its Join link, a task or note
+        // keeps it in its text. Only known call services count; the mail is read now and not kept. No link (or no
+        // connection): it's added anyway.
+        let join = step.kind == .deadline ? nil : AgendaEvent.meetingLink(in: try? await server?.readMail(message))
+        let from = [message.sourceLine + (message.receivedAt.map { " · \($0.formatted(date: .abbreviated, time: .shortened))" } ?? ""),
+                    join.map { "Join: \($0.absoluteString)" }, message.mailURL.map { "Open the mail: \($0.absoluteString)" }]
+            .compactMap { $0 }.joined(separator: "\n")
         switch step.kind {
         case .event:
             guard let start = step.start else {
@@ -1799,15 +1805,9 @@ final class AppModel {
                 mailProblem = "Turn on Calendars for Blink in System Settings › Privacy & Security › Calendars."
                 return
             }
-            // The call link (Webex, Zoom, Meet, Teams…) from the whole mail, so the notch offers Join on the day. Only known
-            // call services count; the mail is read now and not kept. No link (or no connection): the event is added anyway.
-            let body = try? await server?.readMail(message)
-            let join = AgendaEvent.meetingLink(in: body)
-            let notes = [from, join.map { "Join: \($0.absoluteString)" }, message.mailURL.map { "Open the mail: \($0.absoluteString)" }]
-                .compactMap { $0 }.joined(separator: "\n")
             do {
                 let id = try await calendarReader.addEvent(step.title, start: start, end: step.finish, allDay: step.allDay,
-                                                           location: step.where, notes: notes, url: join ?? message.mailURL)
+                                                           location: step.where, notes: from, url: join ?? message.mailURL)
                 await reloadAgenda()
                 offerUndo("Added to Calendar: \(step.title)\(when(start))\(join == nil ? "" : " · with Join link")") { [weak self] in
                     do { try await self?.calendarReader.deleteEvent(id: id) } catch {
@@ -1842,7 +1842,10 @@ final class AppModel {
                 return
             }
         case .task, .note:
-            let item = create(step.kind == .task ? .task : .note, title: step.title, body: from, due: step.kind == .task ? step.start : nil)
+            // A note says when it's about, if the mail gave a date; a day-only task is due at 9:00 that morning.
+            let about = step.kind == .note ? step.start.map { "When\(when($0))\n" } ?? "" : ""
+            let item = create(step.kind == .task ? .task : .note, title: step.title, body: about + from,
+                              due: step.kind == .task ? (step.allDay ? step.start.flatMap { Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: $0) } : step.start) : nil)
             offerUndo("\(step.kind == .task ? "Task added" : "Saved to Notes"): \(step.title)") { [weak self] in
                 guard let self, let current = self.items.first(where: { $0.id == item.id }) else { return }
                 await self.delete(current)
