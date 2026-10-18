@@ -364,10 +364,9 @@ struct MailRow: View {
 struct NextStepChips: View {
     @Environment(AppModel.self) private var model
     let message: EmailMessage
-    var limit = 3
 
     var body: some View {
-        let steps = Array(message.nextSteps.prefix(limit).enumerated())
+        let steps = Array(message.nextSteps.enumerated())
         if !steps.isEmpty {
             HStack(spacing: 6) {
                 ForEach(steps, id: \.offset) { index, step in

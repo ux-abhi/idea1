@@ -76,7 +76,7 @@ enum OnDeviceChat {
     /// The owner's day, kept short for the small model: one line per item, titles cleaned and capped.
     private static func day(_ app: AppModel) -> String {
         let now = Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute())
-        let events = app.agenda.events.prefix(12).map {
+        let events = app.agenda.today(now: .now).prefix(12).map {
             "- \($0.start.formatted(date: .omitted, time: .shortened))–\($0.end.formatted(date: .omitted, time: .shortened)) \(clean($0.title))"
         }
         let tasks = app.openTasks.prefix(12).map { task in

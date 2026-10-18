@@ -128,9 +128,11 @@ struct PrepareMeeting: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        // Only addresses the owner typed: text on screen must never put an outside guest on a real invite.
+        // Only addresses the owner typed, as whole words: text on screen must never put an outside guest on a real invite
+        // (not even "am@gmail.com" hiding inside "sam@gmail.com").
+        let typed = Set(asked.split(whereSeparator: { " ,;<>()\n".contains($0) }).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".!?:")) })
         let guests = arguments.guests.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-            .filter { QuickCommand.isEmail($0) && asked.contains($0) }
+            .filter { QuickCommand.isEmail($0) && typed.contains($0) }
         await app.run(.meet(title: OnDeviceTools.title(arguments.title), start: OnDeviceTools.when(arguments.when).date, guests: guests))
         return "Opened the invite card. The owner checks it, adds anyone missing, and sends it with Touch ID."
     }

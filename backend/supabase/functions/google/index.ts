@@ -14,6 +14,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { consentURL, emailFromIdToken, eventBody, eventId, parseExchange, parseMeet } from "./input.ts";
 import { secret } from "../_shared/secrets.ts";
+import { isServerOwner } from "../_shared/owner.ts";
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -34,6 +35,7 @@ Deno.serve(async (req) => {
   if (req.method === "POST" && url.pathname.endsWith("/disconnect")) {
     const { data: { user } } = await admin.auth.getUser((req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, ""));
     if (!user) return json(401, { error: "signed out" });
+    if (!(await isServerOwner(admin, user.id))) return json(403, { error: "Only this server's owner can change Google." });
     const token = (await admin.rpc("google_token", { owner: user.id })).data;
     // Best effort: an already-revoked token is fine; the copy on this server goes either way.
     if (typeof token === "string") await fetch("https://oauth2.googleapis.com/revoke", { method: "POST", body: new URLSearchParams({ token }) }).catch(() => {});
@@ -88,6 +90,7 @@ Deno.serve(async (req) => {
   const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const { data: { user } } = await admin.auth.getUser(jwt);
   if (!user) return json(401, { error: "signed out" });
+  if (!(await isServerOwner(admin, user.id))) return json(403, { error: "Only this server's owner can use Google." });
 
   if (url.pathname.endsWith("/exchange")) {
     const blink = await client("blink");
@@ -176,7 +179,9 @@ Deno.serve(async (req) => {
       meet_url: typeof event.hangoutLink === "string" ? event.hangoutLink : null,
       html_link: typeof event.htmlLink === "string" ? event.htmlLink : null,
     };
-    await admin.from("action").update({ result }).eq("id", action.id);
+    // The meeting exists and guests are invited: the owner gets the link even if saving it here fails.
+    const { error: saveError } = await admin.from("action").update({ result }).eq("id", action.id);
+    if (saveError) console.error("meet result not saved", saveError.message);
     return json(200, result);
   }
 

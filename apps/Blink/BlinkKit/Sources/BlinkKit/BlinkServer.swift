@@ -578,19 +578,31 @@ public final class BlinkServer: Sendable {
         return !rows.isEmpty
     }
 
-    /// The owner says what this mail is; the sender rule makes all later mail from them follow suit.
-    public func teach(_ verdict: SenderVerdict, for email: EmailMessage) async throws {
+    /// A sender rule as it was before `teach` changed it, so Undo can put it back.
+    public struct SenderRule: Codable, Sendable { let sender: String, verdict: String, example: String? }
+
+    /// The owner says what this mail is; the sender rule makes all later mail from them follow suit. Returns the rule
+    /// it replaced, if there was one.
+    @discardableResult
+    public func teach(_ verdict: SenderVerdict, for email: EmailMessage) async throws -> SenderRule? {
         struct Rule: Encodable { let sender: String, verdict: String, example: String }
+        let earlier: [SenderRule] = try await client.from("mail_sender_rule").select("sender, verdict, example")
+            .eq("sender", value: email.senderKey).execute().value
         try await client.from("email_msg").update(["triage": verdict.rawValue])
             .eq("from_addr", value: email.senderKey).neq("status", value: "done").execute()
         try await client.from("mail_sender_rule")
             .upsert(Rule(sender: email.senderKey, verdict: verdict.rawValue, example: String(email.subject.prefix(300))), onConflict: "owner_id,sender")
             .execute()
+        return earlier.first
     }
 
-    /// Undoes `teach`: drops the sender rule and puts each mail back as it was sorted before.
-    public func forget(senderKey: String, restoring emails: [EmailMessage]) async throws {
-        try await client.from("mail_sender_rule").delete().eq("sender", value: senderKey).execute()
+    /// Undoes `teach`: puts back the sender's earlier rule (or drops the new one) and each mail as it was sorted before.
+    public func forget(senderKey: String, restoring emails: [EmailMessage], rule: SenderRule? = nil) async throws {
+        if let rule {
+            try await client.from("mail_sender_rule").upsert(rule, onConflict: "owner_id,sender").execute()
+        } else {
+            try await client.from("mail_sender_rule").delete().eq("sender", value: senderKey).execute()
+        }
         for email in emails {
             try await client.from("email_msg").update(["triage": email.triage.rawValue]).eq("id", value: email.id).execute()
         }

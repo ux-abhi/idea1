@@ -81,10 +81,13 @@ Deno.serve(async (req) => {
   }
   if (action) {
     if (action.kind === "confirm") {
+      // Only the first click counts: opening the link again later never moves the confirm date.
       const { data, error } = await admin.from("waitlist").update({ confirmed_at: new Date().toISOString() })
-        .eq("confirm_token", action.token).select("id").maybeSingle();
+        .eq("confirm_token", action.token).is("confirmed_at", null).select("id").maybeSingle();
       if (error) return json(502, { error: "Something went wrong. Try again in a minute." });
-      return data ? json(200, { ok: true }) : json(404, { error: "This link has expired. Join again on the site." });
+      if (data) return json(200, { ok: true });
+      const { data: already } = await admin.from("waitlist").select("id").eq("confirm_token", action.token).maybeSingle();
+      return already ? json(200, { ok: true }) : json(404, { error: "This link has expired. Join again on the site." });
     }
     const { error } = await admin.from("waitlist").delete().eq("unsubscribe", action.token);
     return error ? json(502, { error: "Something went wrong. Try again in a minute." }) : json(200, { ok: true });
@@ -104,10 +107,19 @@ Deno.serve(async (req) => {
 
   const { data: row, error } = await admin.from("waitlist").insert(signup).select("confirm_token, unsubscribe").maybeSingle();
   if (error && error.code !== "23505") return json(502, { error: "Something went wrong. Try again in a minute." });
-  // Already on the list: same answer, and no second email (a stranger can't make us mail someone over and over).
   // A new row, asked for by the site's mailer: hand it the links to email. Anyone else just gets "ok".
-  if (row && sameSecret(req.headers.get("x-blink-mailer"), Deno.env.get("MAILER_SECRET"))) {
-    return json(200, { ok: true, mail: { to: signup.email, confirm: `${SITE}/confirm.html?t=${row.confirm_token}`, leave: `${SITE}/leave.html?u=${row.unsubscribe}` } });
+  const mailer = sameSecret(req.headers.get("x-blink-mailer"), Deno.env.get("MAILER_SECRET"));
+  const links = (r: { confirm_token: string; unsubscribe: string }) =>
+    ({ to: signup.email, confirm: `${SITE}/confirm.html?t=${r.confirm_token}`, leave: `${SITE}/leave.html?u=${r.unsubscribe}` });
+  if (row && mailer) return json(200, { ok: true, mail: links(row) });
+  // Already on the list: same answer. Not confirmed yet (the first email may never have arrived): the links again, at
+  // most once an hour, so a stranger can't make us mail someone over and over.
+  if (!row && mailer) {
+    const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    const { data: again } = await admin.from("waitlist").update({ mailed_at: new Date().toISOString() })
+      .eq("email", signup.email).is("confirmed_at", null).or(`mailed_at.is.null,mailed_at.lt.${hourAgo}`).lt("created_at", hourAgo)
+      .select("confirm_token, unsubscribe").maybeSingle();
+    if (again) return json(200, { ok: true, mail: links(again) });
   }
   return json(200, { ok: true });
 });

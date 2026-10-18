@@ -25,6 +25,7 @@ export async function POST(request) {
   }
   const answer = await upstream.json().catch(() => ({}));
   if (!upstream.ok) return json(upstream.status === 429 ? 429 : upstream.status === 400 ? 400 : 502, { error: answer.error || "Something went wrong. Try again in a minute." });
-  if (answer.mail) await send(answer.mail);
+  // No email went out: say so, so the person tries again instead of waiting for a link that never comes.
+  if (answer.mail && !(await send(answer.mail))) return json(502, { error: "We couldn't send your confirmation email. Try again in a minute." });
   return json(200, { ok: true });
 }

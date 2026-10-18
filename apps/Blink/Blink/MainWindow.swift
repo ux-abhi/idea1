@@ -258,7 +258,7 @@ struct EventRow: View {
                 Link("Join", destination: url).buttonStyle(.bordered)
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }
 

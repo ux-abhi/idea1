@@ -352,7 +352,9 @@ final class NotchController {
     private func scheduleCues() {
         cueWake?.cancel()
         // Done meetings count as known, so Undo right after Done doesn't announce the meeting again.
-        let ids = Set(app.agenda.events.map(\.id) + app.doneMeetings + app.agenda.dueItems(adding: app.dueTasks).map(\.id))
+        // Due items are spoken as "<id>@<due>" (MeetingCue.id), so keep those keys, not the plain ids.
+        let ids = Set(app.agenda.events.map(\.id) + app.doneMeetings
+                      + app.agenda.dueItems(adding: app.dueTasks).map { "\($0.id)@\(Int($0.due.timeIntervalSince1970))" })
         spoken = spoken.filter { ids.contains($0.key) } // forget meetings that are gone
         evaluateCue()
         let eveningOpens = EveningCheck.opens(now: .now, evening: app.evening, wake: app.wake)

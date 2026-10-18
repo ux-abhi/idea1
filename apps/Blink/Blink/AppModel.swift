@@ -602,7 +602,7 @@ final class AppModel {
     func offerUndo(_ text: String, undo: @escaping @MainActor () async -> Void) {
         // Several things done at once (one answer, quick commands in a row): one chip undoes them all.
         let chip = if let earlier = undoChip {
-            UndoChip(text: "\(earlier.count + 1) changes", count: earlier.count + 1) { await earlier.undo(); await undo() }
+            UndoChip(text: "\(earlier.count + 1) changes", count: earlier.count + 1) { await undo(); await earlier.undo() } // newest first
         } else {
             UndoChip(text: text, undo: undo)
         }
@@ -1761,12 +1761,15 @@ final class AppModel {
         let triage: EmailMessage.Triage = verdict == .important ? .important : .newsletter
         for j in emails.indices where emails[j].senderKey == message.senderKey { emails[j].triage = triage }
         do {
-            try await server.teach(verdict, for: emails[i])
+            let earlier = try await server.teach(verdict, for: emails[i])
             offerUndo(verdict == .important ? "Mail from \(message.sender) will show as important" : "Mail from \(message.sender) won't show as important") { [weak self] in
                 guard let self else { return }
+                // Only this sender's mail goes back to how it was sorted; anything changed since stays.
                 let changed = before.filter { $0.senderKey == message.senderKey }
-                emails = before
-                try? await server.forget(senderKey: message.senderKey, restoring: changed)
+                for old in changed { if let j = emails.firstIndex(where: { $0.id == old.id }) { emails[j].triage = old.triage } }
+                do { try await server.forget(senderKey: message.senderKey, restoring: changed, rule: earlier) } catch {
+                    mailProblem = "Couldn't undo that. Check your connection."
+                }
             }
         } catch {
             emails = before
@@ -1789,7 +1792,7 @@ final class AppModel {
         // The call link (Webex, Zoom, Meet, Teams…) from the whole mail: an event gets it as its Join link, a task or note
         // keeps it in its text. Only known call services count; the mail is read now and not kept. No link (or no
         // connection): it's added anyway.
-        let join = step.kind == .deadline ? nil : AgendaEvent.meetingLink(in: try? await server?.readMail(message))
+        let join = step.kind == .event || step.kind == .task ? AgendaEvent.meetingLink(in: try? await server?.readMail(message)) : nil
         let from = [message.sourceLine + (message.receivedAt.map { " · \($0.formatted(date: .abbreviated, time: .shortened))" } ?? ""),
                     join.map { "Join: \($0.absoluteString)" }, message.mailURL.map { "Open the mail: \($0.absoluteString)" }]
             .compactMap { $0 }.joined(separator: "\n")

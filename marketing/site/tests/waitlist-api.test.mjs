@@ -41,3 +41,11 @@ test("already listed: no email; errors pass through without detail", async () =>
   fakeNetwork({ status: 500, body: {} });
   assert.equal((await post({ email: "x@example.com", consent: true })).status, 502);
 });
+
+test("when the confirmation email can't be sent, the visitor is told to try again", async () => {
+  globalThis.fetch = async (url) => String(url).includes("resend.com")
+    ? new Response("down", { status: 500 })
+    : Response.json({ ok: true, mail: { to: "sam@example.com", confirm: "https://www.blinkk.app/confirm.html?t=a", leave: "https://www.blinkk.app/leave.html?u=b" } });
+  const res = await post({ email: "sam@example.com", consent: true, website: "", source: "site" });
+  assert.equal(res.status, 502);
+});

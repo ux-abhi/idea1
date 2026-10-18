@@ -304,7 +304,8 @@ public actor CalendarReader {
         let event = EKEvent(eventStore: store)
         event.title = title
         event.startDate = start
-        event.endDate = end ?? start.addingTimeInterval(allDay ? 86_400 : 3600)
+        // A calendar day, not 24 hours: the clock-change day is 23 or 25 hours long.
+        event.endDate = end ?? (allDay ? Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start : start.addingTimeInterval(3600))
         event.isAllDay = allDay
         if !location.isEmpty { event.location = location }
         event.notes = notes
@@ -369,7 +370,8 @@ public actor CalendarReader {
             guard !event.isAllDay, !declined, let start = event.startDate, let finish = event.endDate else { return nil }
             return AgendaEvent(extID: event.calendarItemExternalIdentifier ?? event.calendarItemIdentifier,
                                title: event.title ?? "Untitled", start: start, end: finish,
-                               location: event.location, url: event.url ?? AgendaEvent.meetingLink(in: event.location) ?? AgendaEvent.meetingLink(in: event.notes))
+                               location: event.location, url: AgendaEvent.meetingLink(in: event.url?.absoluteString) ?? AgendaEvent.meetingLink(in: event.location)
+                                ?? AgendaEvent.meetingLink(in: event.notes) ?? event.url)
         }
 
         let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))

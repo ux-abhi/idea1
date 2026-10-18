@@ -13,6 +13,7 @@ import { type Mailer, sendDue, withTimeout } from "./outbox.ts";
 import { capProblem, compatible, cost, keepsSchema, lastDay, MODELS, type Model, pickModel } from "../_shared/models.ts";
 import { alreadyRecorded, CATEGORIES, localDay } from "../_shared/spend.ts";
 import { secret } from "../_shared/secrets.ts";
+import { isServerOwner } from "../_shared/owner.ts";
 
 type Account = { id: "gmail" | "icloud" | "uni"; host: string; smtp: string; smtpPort: number; user: string; password: string };
 
@@ -26,7 +27,7 @@ async function accounts(): Promise<Account[]> {
   const uni = (await secret("UNI_ADDRESS")), uniPass = (await secret("UNI_PASSWORD")), host = (await secret("UNI_IMAP_HOST"))?.trim();
   if (uni && uniPass && !host) console.error("UNI_ADDRESS is set but UNI_IMAP_HOST isn't: the third mailbox is skipped");
   if (uni && uniPass && host) {
-    list.push({ id: "uni", host, smtp: (await secret("UNI_SMTP_HOST"))?.trim() || host, smtpPort: 587, user: uni.trim(), password: uniPass });
+    list.push({ id: "uni", host, smtp: (await secret("UNI_SMTP_HOST"))?.trim() || host, smtpPort: 587, user: uni.trim(), password: uniPass.trim() });
   }
   return list;
 }
@@ -147,7 +148,9 @@ async function generate(model: Model, system: string, user: string, schema: Reco
   }
   const strict = keepsSchema(model);
   const { message, usage } = await compatible(model.provider, {
-    model: model.id, temperature: 0.2, max_completion_tokens: 3000,
+    model: model.id, temperature: 0.2, max_completion_tokens: 8000,
+    // gpt-oss thinks before answering and that counts against the limit: keep it short so the JSON isn't cut off.
+    ...(model.id.startsWith("openai/gpt-oss") ? { reasoning_effort: "low" } : {}),
     messages: [{ role: "system", content: system }, { role: "user", content: strict ? user : `${user}\nReply with JSON only, shaped like: ${JSON.stringify(schema.properties)}.` }],
     response_format: strict ? { type: "json_schema", json_schema: { name, strict: true, schema } } : { type: "json_object" },
   });
@@ -155,7 +158,7 @@ async function generate(model: Model, system: string, user: string, schema: Reco
 }
 
 /** How many unsorted mails one check sorts again, so one run stays well inside the time limit. */
-const RESORT_BATCH = 10;
+const RESORT_BATCH = 4;
 
 const fence = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c");
 
@@ -214,7 +217,8 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
     // First check (or the mailbox was rebuilt): the last two days. Otherwise everything after the last UID handled.
     const since = new Date(Date.now() - 2 * 86_400_000).toUTCString().split(" ").slice(1, 4).join("-");
     const found = await imap.uidSearch(fresh ? `SINCE ${since}` : `UID ${Number(state!.last_uid) + 1}:*`);
-    const { take: uids, last: lastUid } = uidWindow(found, fresh ? null : Number(state!.last_uid), box.uidNext);
+    // 8 at a time: with the longer snippets and next steps, a bigger batch can outgrow the free model's limits.
+    const { take: uids, last: lastUid } = uidWindow(found, fresh ? null : Number(state!.last_uid), box.uidNext, 8);
     // Mail stored unsorted on an earlier run (the AI was down): fetch it again and sort it now, a few at a time.
     const { data: unsorted } = fresh ? { data: [] } : await admin.from("email_msg").select("uid").eq("owner_id", owner)
       .eq("account", account.id).eq("uidvalidity", box.uidValidity).eq("sorted", false)
@@ -246,6 +250,14 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
       const hasGroq = Boolean(await secret("GROQ_API_KEY"));
       const model = MODELS.find((m) => m.id === (hasGroq ? "openai/gpt-oss-120b" : "claude-haiku-5-5"))!;
       try {
+        // Claude costs money: sorting stops at the owner's daily limit like everything else (the mail is kept unsorted
+        // and sorted on a later check, the same as when the model is down).
+        const [{ data: owned }, { data: usage }] = await Promise.all([
+          admin.from("profile").select("settings").eq("owner_id", owner).maybeSingle(),
+          admin.from("model_usage").select("model, cost_usd").eq("owner_id", owner).gte("at", lastDay()),
+        ]);
+        const overCap = capProblem(model, owned?.settings, usage ?? []);
+        if (overCap) throw new Error(overCap);
         const mail = parsed.map((p) => ({ uid: p.uid, from: `${p.from.name} <${p.from.address}>`, subject: p.subject, list_unsubscribe: p.newsletter,
           received: p.received ? localTime(new Date(p.received), zone) : "", text: p.snippet }));
         const now = `<now>${fence(`${localTime(new Date(), zone)} ${zone}`)}</now>\n`;
@@ -274,7 +286,9 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
         : settled;
       return {
         owner_id: owner, account: account.id, uidvalidity: box.uidValidity, uid: p.uid,
-        message_id: (p.h["message-id"] ?? "").slice(0, 998), from_name: p.from.name.slice(0, 300), from_addr: p.from.address.slice(0, 320),
+        message_id: (p.h["message-id"] ?? "").slice(0, 998), from_name: p.from.name.slice(0, 300),
+        // Lowercase, like the owner's sender rules: "Mark Important" matches John.Smith@Acme.com too.
+        from_addr: p.from.address.toLowerCase().slice(0, 320),
         to_addr: p.to.slice(0, 320), subject: p.subject, received_at: p.received,
         triage: v.triage, reason: v.reason, summary: found?.summary ?? "", needs_reply: v.needs_reply, sorted,
         // Bulk mail gets no next steps (after the owner's rules too): a newsletter can't put an "event" in front of them.
@@ -481,6 +495,7 @@ Deno.serve(async (req) => {
   const db = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
+  if (!(await isServerOwner(admin, user.id))) return json(403, { error: "Only this server's owner can use its mail." });
   if (list.length === 0) return json(503, { error: "Add GMAIL_ADDRESS + GMAIL_APP_PASSWORD, ICLOUD_ADDRESS + ICLOUD_APP_PASSWORD and/or UNI_ADDRESS + UNI_PASSWORD in Blink › Settings › Connections." });
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
