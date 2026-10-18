@@ -195,6 +195,13 @@ do $$ begin
     raise exception 'A changed a draft id';
   exception when insufficient_privilege then null;
   end;
+  -- Next steps are the worker's: the app can read them but not write them (a page can't plant an "event").
+  assert (select actions from public.email_msg where subject = 'Interview invite') = '[]'::jsonb, 'actions default to an empty list';
+  begin
+    update public.email_msg set actions = '[{"kind":"event"}]';
+    raise exception 'A could write mail actions';
+  exception when insufficient_privilege then null;
+  end;
   insert into public.mail_sender_rule (sender, verdict, example) values ('@glassdoor.com', 'newsletter', 'Jobs in Delhi');
   begin
     insert into public.mail_sender_rule (sender, verdict) values ('Boss@Example.com', 'important');

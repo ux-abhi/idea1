@@ -19,14 +19,20 @@ public struct EmailMessage: Codable, Identifiable, Equatable, Sendable {
     public let needsReply: Bool
     public var status: Status
     public let createdAt: Date
+    /// Next steps the mail worker found (nil from an older server).
+    public let actions: [MailAction]?
 
     enum CodingKeys: String, CodingKey {
-        case id, account, subject, triage, reason, summary, status
+        case id, account, subject, triage, reason, summary, status, actions
         case messageID = "message_id", fromName = "from_name", fromAddr = "from_addr", receivedAt = "received_at"
         case needsReply = "needs_reply", createdAt = "created_at"
     }
 
     public var sender: String { fromName.isEmpty ? fromAddr : fromName }
+    public var nextSteps: [MailAction] { actions ?? [] }
+
+    /// Where something made from this mail came from, so it can be found again ("From mail: Acme · Interview").
+    public var sourceLine: String { "From mail: \(sender) · \(subject)" }
 
     /// "Gmail", "iCloud", "University".
     public static func accountName(_ account: String) -> String {
@@ -43,6 +49,38 @@ public struct EmailMessage: Codable, Identifiable, Equatable, Sendable {
         let id = messageID.trimmingCharacters(in: CharacterSet(charactersIn: " <>"))
         guard !id.isEmpty, let encoded = "<\(id)>".addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return nil }
         return URL(string: "message://\(encoded)")
+    }
+}
+
+/// A next step found in a mail: an event, a deadline, a to-do or a detail to keep. Times are local wall-clock times
+/// ("2026-10-21T15:00" or a day "2026-10-21"), read in this Mac's time zone.
+public struct MailAction: Codable, Equatable, Sendable, Hashable {
+    public enum Kind: String, Codable, Sendable { case event, deadline, task, note }
+    public let kind: Kind
+    public let title: String
+    public let when: String
+    public let end: String
+    public let `where`: String
+
+    public init(kind: Kind, title: String, when: String = "", end: String = "", where place: String = "") {
+        (self.kind, self.title, self.when, self.end, self.where) = (kind, title, when, end, place)
+    }
+
+    /// True for a whole day ("2026-10-21"), false when a time is given.
+    public var allDay: Bool { !when.contains("T") }
+    public var start: Date? { Self.date(when) }
+    public var finish: Date? { Self.date(end) }
+
+    /// "2026-10-21T15:00" or "2026-10-21" as that wall-clock time in `calendar`'s zone; nil for anything else.
+    static func date(_ text: String, calendar: Calendar = .current) -> Date? {
+        let parts = text.split(whereSeparator: { "-T:".contains($0) }).map { Int($0) }
+        guard parts.count == 3 || parts.count == 5, text.count == (parts.count == 3 ? 10 : 16), !parts.contains(nil) else { return nil }
+        let n = parts.map { $0! }
+        let wanted = DateComponents(year: n[0], month: n[1], day: n[2], hour: parts.count == 5 ? n[3] : 0, minute: parts.count == 5 ? n[4] : 0)
+        guard let date = calendar.date(from: wanted) else { return nil }
+        // Reject rollovers like the 31st of a 30-day month.
+        let back = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        return back.year == wanted.year && back.month == wanted.month && back.day == wanted.day && back.hour == wanted.hour ? date : nil
     }
 }
 

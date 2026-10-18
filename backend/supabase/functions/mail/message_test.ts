@@ -1,5 +1,5 @@
 // © Pexilim
-import { parseSpend, splitResort, buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, ruleVerdict, parseSend, settle, uidWindow } from "./message.ts";
+import { parseActions, parseSpend, splitResort, buildDraft, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, ruleVerdict, parseSend, settle, uidWindow } from "./message.ts";
 
 Deno.test("headers unfold and decode encoded words", () => {
   const h = parseHeaders("Subject: =?UTF-8?B?SW50ZXJ2aWV3IOKAkyBBY21l?=\r\nFrom: \"Wolfram\"\r\n <w@acme.example>\r\nTo: hello@example.com\r\n");
@@ -107,4 +107,23 @@ Deno.test("unsorted mail is sorted again on a later check, never inserted twice"
   const { fresh, sortedAgain } = splitResort(rows, [1, 3]);
   if (JSON.stringify(fresh.map((r) => r.uid)) !== "[2,9]") throw new Error(`fresh ${JSON.stringify(fresh)}`);
   if (JSON.stringify(sortedAgain.map((r) => r.uid)) !== "[1]") throw new Error(`again ${JSON.stringify(sortedAgain)}`);
+});
+
+Deno.test("next steps from a mail are checked: kinds, dates, lengths, at most 3", () => {
+  const got = parseActions([
+    { kind: "event", title: "Interview with Acme", when: "2026-10-21T15:00", end: "2026-10-21T16:00", where: "Zoom" },
+    { kind: "deadline", title: "Pay rent", when: "2026-10-20", end: "", where: "ignored" },
+    { kind: "event", title: "No date", when: "", end: "", where: "" },          // dropped: an event needs a date
+    { kind: "deadline", title: "Bad date", when: "next week", end: "", where: "" }, // dropped
+    { kind: "run_script", title: "rm -rf", when: "", end: "", where: "" },      // dropped: unknown kind
+    { kind: "task", title: "  Send\npassport   copy ", when: "2026-13-45", end: "", where: "" },
+    { kind: "note", title: "Booking ref LH4XK2", when: "", end: "", where: "" },
+  ]);
+  if (got.length !== 3) throw new Error(`kept ${got.length}`);
+  if (got[0].end !== "2026-10-21T16:00" || got[0].where !== "Zoom") throw new Error("event");
+  if (got[1].where !== "" || got[1].when !== "2026-10-20") throw new Error("deadline");
+  if (got[2].title !== "Send passport copy" || got[2].when !== "") throw new Error("task title or bad date");
+  if (parseActions([{ kind: "event", title: "x", when: "2026-10-21T15:00", end: "2026-10-21T14:00" }])[0].end !== "") throw new Error("end before start");
+  if (parseActions("nope").length) throw new Error("not a list");
+  if (parseActions([{ kind: "event", title: "x", when: "2026-10-21T15:00", end: "", where: "https://acme-careers.example/login" }])[0].where !== "") throw new Error("a link as the place");
 });

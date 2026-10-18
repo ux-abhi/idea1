@@ -93,7 +93,8 @@ export function uidWindow(found: number[], last: number | null, uidNext: number,
 }
 
 export type Spend = { amount: number; merchant: string; category: string };
-export type Triage = { uid: number; triage: "important" | "normal" | "newsletter"; reason: string; summary: string; needs_reply: boolean; spend?: Spend };
+export type MailAction = { kind: "event" | "deadline" | "task" | "note"; title: string; when: string; end: string; where: string };
+export type Triage = { uid: number; triage: "important" | "normal" | "newsletter"; reason: string; summary: string; needs_reply: boolean; spend?: Spend; actions: MailAction[] };
 
 const SPEND_CATEGORIES = ["food", "groceries", "transport", "housing", "bills", "shopping", "health", "fun", "travel", "education", "other"];
 
@@ -105,6 +106,28 @@ export function parseSpend(m: Record<string, unknown>): Spend | undefined {
   const merchant = typeof m.spend_merchant === "string" ? m.spend_merchant.replace(/\s+/g, " ").trim().slice(0, 200) : "";
   const category = SPEND_CATEGORIES.includes(m.spend_category as string) ? m.spend_category as string : "other";
   return { amount: Math.round(amount * 100) / 100, merchant: merchant || "Receipt", category };
+}
+
+const LOCAL_TIME = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/;
+
+/** Next steps the model found in a mail, checked: known kinds, short one-line titles, local times ("2026-10-21" or
+ *  "2026-10-21T15:00", no zone: the app reads them in the owner's time zone), at most 3. Events and deadlines need a
+ *  date. They're suggestions the owner taps; nothing runs by itself. */
+export function parseActions(value: unknown): MailAction[] {
+  if (!Array.isArray(value)) return [];
+  const line = (v: unknown, max: number) => typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "";
+  const time = (v: unknown) => typeof v === "string" && LOCAL_TIME.test(v.trim()) && !Number.isNaN(Date.parse(v.trim())) ? v.trim() : "";
+  return value.flatMap((a) => {
+    const m = (a ?? {}) as Record<string, unknown>;
+    const kind = m.kind as MailAction["kind"];
+    const title = line(m.title, 120), when = time(m.when);
+    if (!["event", "deadline", "task", "note"].includes(kind) || !title) return [];
+    if ((kind === "event" || kind === "deadline") && !when) return [];
+    const end = kind === "event" && time(m.end) > when ? time(m.end) : "";
+    // A place, never a link: a mail must not be able to give Blink a "Join" button to its own page.
+    const where = kind === "event" && !/:\/\/|www\./i.test(String(m.where)) ? line(m.where, 200) : "";
+    return [{ kind, title, when, end, where }];
+  }).slice(0, 3);
 }
 
 /** The model's verdicts, checked: known UIDs only, known labels, short texts. */
@@ -120,6 +143,7 @@ export function parseTriage(output: unknown, uids: number[]): Triage[] {
       summary: typeof summary === "string" ? summary.slice(0, 600) : "",
       needs_reply: needs_reply === true,
       spend: parseSpend(m as Record<string, unknown>),
+      actions: parseActions((m as Record<string, unknown>).actions),
     }];
   });
 }

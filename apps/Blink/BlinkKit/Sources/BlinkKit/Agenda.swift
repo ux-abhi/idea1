@@ -235,13 +235,10 @@ extension Agenda {
 }
 
 extension AgendaEvent {
-    /// A meeting link from the event's URL (CalendarReader also fills it from a call link in the location or notes), or a
-    /// location that is a web address.
+    /// A link to a known call service (Meet, Zoom, Teams…) from the event's URL (CalendarReader also fills it from the
+    /// notes) or its location. Any other web address is never a Join button: invites and mail come from strangers.
     public var joinURL: URL? {
-        if let url, url.scheme?.hasPrefix("http") == true { return url }
-        guard let location, let url = URL(string: location.trimmingCharacters(in: .whitespaces)),
-              url.scheme == "https" || url.scheme == "http" else { return nil }
-        return url
+        Self.meetingLink(in: url?.absoluteString) ?? Self.meetingLink(in: location)
     }
 
     /// Join is offered from 10 minutes before the start until the meeting ends (not just the first minutes).
@@ -287,9 +284,11 @@ public actor CalendarReader {
     }
 
     /// Creates a reminder in the default list; returns its identifier for the action's result (undo later).
-    public func addReminder(_ title: String, due: Date?, calendar: Calendar = .current) throws -> String {
+    public func addReminder(_ title: String, due: Date?, notes: String? = nil, url: URL? = nil, calendar: Calendar = .current) throws -> String {
         let reminder = EKReminder(eventStore: store)
         reminder.title = title
+        reminder.notes = notes
+        reminder.url = url
         reminder.calendar = store.defaultCalendarForNewReminders()
         if let due {
             reminder.dueDateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: due)
@@ -299,6 +298,26 @@ public actor CalendarReader {
     }
 
     public struct ReminderGone: Error {}
+
+    /// Adds an event to the default calendar (the owner's own; no guests); returns its identifier for Undo.
+    public func addEvent(_ title: String, start: Date, end: Date?, allDay: Bool, location: String, notes: String, url: URL?) throws -> String {
+        let event = EKEvent(eventStore: store)
+        event.title = title
+        event.startDate = start
+        event.endDate = end ?? start.addingTimeInterval(allDay ? 86_400 : 3600)
+        event.isAllDay = allDay
+        if !location.isEmpty { event.location = location }
+        event.notes = notes
+        event.url = url
+        event.calendar = store.defaultCalendarForNewEvents
+        try store.save(event, span: .thisEvent, commit: true)
+        return event.calendarItemIdentifier
+    }
+
+    public func deleteEvent(id: String) throws {
+        guard let event = store.calendarItem(withIdentifier: id) as? EKEvent else { throw ReminderGone() }
+        try store.remove(event, span: .thisEvent, commit: true)
+    }
 
     /// Every incomplete reminder (any date, at most `limit`), for chat: Claude can then propose finishing or deleting one.
     public func openReminders(limit: Int = 50, calendar: Calendar = .current) async -> [AgendaReminder] {

@@ -408,7 +408,7 @@ public final class BlinkServer: Sendable {
     public func emails() async throws -> [EmailMessage] {
         func page(newsletters: Bool, limit: Int) async throws -> [EmailMessage] {
             let query = client.from("email_msg")
-                .select("id, account, message_id, from_name, from_addr, subject, received_at, triage, reason, summary, needs_reply, status, created_at")
+                .select("id, account, message_id, from_name, from_addr, subject, received_at, triage, reason, summary, needs_reply, status, created_at, actions")
                 .neq("status", value: "done")
                 .gte("created_at", value: Date.now.addingTimeInterval(-7 * 86_400).ISO8601Format())
             return try await (newsletters ? query.eq("triage", value: "newsletter") : query.neq("triage", value: "newsletter"))
@@ -426,7 +426,26 @@ public final class BlinkServer: Sendable {
     }
 
     public func setStatus(_ status: EmailMessage.Status, of email: EmailMessage) async throws {
-        try await client.from("email_msg").update(["status": status.rawValue]).eq("id", value: email.id).execute()
+        try await setStatus(status, ids: [email.id])
+    }
+
+    /// One update for many mails (bulk Done, and its Undo).
+    public func setStatus(_ status: EmailMessage.Status, ids: [String]) async throws {
+        guard !ids.isEmpty else { return }
+        try await client.from("email_msg").update(["status": status.rawValue]).in("id", values: ids).execute()
+    }
+
+    /// The full text of one mail for the reading pane, fetched from the mailbox now (the server never stores it).
+    public func readMail(_ email: EmailMessage) async throws -> String {
+        struct Body: Encodable { let action = "read"; let id: String }
+        struct Reply: Decodable { let text: String }
+        do {
+            let reply: Reply = try await client.functions.invoke("mail", options: .init(body: Body(id: email.id)))
+            return reply.text
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't open that email.")
+        }
     }
 
     /// Checks the mailboxes now (the server also does every 5 minutes).

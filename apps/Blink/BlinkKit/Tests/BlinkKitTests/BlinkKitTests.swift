@@ -224,6 +224,23 @@ extension Tokens {
         let zoom = AgendaEvent(extID: "z", title: "Z", start: at(9, 0), end: at(10, 0), location: " https://zoom.us/j/1 ")
         #expect(zoom.joinURL?.host() == "zoom.us")
         #expect(AgendaEvent(extID: "r", title: "R", start: at(9, 0), end: at(10, 0), location: "Room 4").joinURL == nil)
+        #expect(AgendaEvent(extID: "p", title: "P", start: at(9, 0), end: at(10, 0), location: "https://acme-careers.example/login").joinURL == nil)
+        #expect(AgendaEvent(extID: "u", title: "U", start: at(9, 0), end: at(10, 0), url: URL(string: "https://evil.example/j")).joinURL == nil)
+    }
+
+    @Test func mailNextStepsReadLocalTimes() throws {
+        var berlin = Calendar(identifier: .gregorian)
+        berlin.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        let at = try #require(MailAction.date("2026-10-21T15:00", calendar: berlin))
+        #expect(berlin.dateComponents([.hour, .minute, .day], from: at) == DateComponents(day: 21, hour: 15, minute: 0))
+        #expect(MailAction.date("2026-10-21", calendar: berlin) == berlin.startOfDay(for: at))
+        #expect(MailAction.date("2026-09-31", calendar: berlin) == nil)    // no such day
+        #expect(MailAction.date("next week", calendar: berlin) == nil)
+        #expect(MailAction.date("", calendar: berlin) == nil)
+        #expect(MailAction(kind: .deadline, title: "Pay rent", when: "2026-10-20").allDay)
+        #expect(!MailAction(kind: .event, title: "Interview", when: "2026-10-21T15:00").allDay)
+        let decoded = try JSONDecoder().decode(MailAction.self, from: Data(#"{"kind":"note","title":"Ref LH4XK2","when":"","end":"","where":""}"#.utf8))
+        #expect(decoded.kind == .note && decoded.title == "Ref LH4XK2")
     }
 
     @Test func doneMeetingsHideAndAreForgottenOnlyWhenOld() {

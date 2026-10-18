@@ -535,8 +535,8 @@ final class AppModel {
     }
 
     @discardableResult
-    func create(_ type: BlinkItem.Kind, title: String, due: Date? = nil, space: String? = nil) -> BlinkItem {
-        let item = BlinkItem(id: UUID().uuidString.lowercased(), type: type, title: title, dueAt: due, spaceID: space)
+    func create(_ type: BlinkItem.Kind, title: String, body: String = "", due: Date? = nil, space: String? = nil) -> BlinkItem {
+        let item = BlinkItem(id: UUID().uuidString.lowercased(), type: type, title: title, body: body, dueAt: due, spaceID: space)
         items.insert(item, at: 0)
         unsaved.insert(item.id)
         Task { await save(item.id) }
@@ -1771,6 +1771,112 @@ final class AppModel {
         } catch {
             emails = before
             mailProblem = "Couldn't save that. Check your connection."
+        }
+    }
+
+    // shortcut: session-only, so a step saved before a relaunch can be added again; persist when duplicates are reported.
+    /// Next steps already saved this session ("<mail id>#<index>"), so a chip shows "Added" instead of adding twice.
+    private(set) var savedSteps: Set<String> = []
+
+    /// Turns a next step from a mail into the real thing, at once and with Undo (§36.4 green tier): an event in the
+    /// owner's own calendar (never with guests), a reminder, a task or a note. Each one says which mail it came from.
+    func save(_ step: MailAction, from message: EmailMessage, index: Int) async {
+        let key = "\(message.id)#\(index)"
+        guard !savedSteps.contains(key) else { return }
+        // Claimed first, so a double tap (or the notch and the window at once) adds it only once.
+        savedSteps.insert(key)
+        let from = message.sourceLine
+        let when: (Date?) -> String = { $0.map { " · \($0.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))" } ?? "" }
+        switch step.kind {
+        case .event:
+            guard let start = step.start else {
+                savedSteps.remove(key)
+                mailProblem = "That date doesn't exist on the calendar. Add the event yourself."
+                return
+            }
+            guard calendarAccess == .granted else {
+                savedSteps.remove(key)
+                mailProblem = "Turn on Calendars for Blink in System Settings › Privacy & Security › Calendars."
+                return
+            }
+            do {
+                let id = try await calendarReader.addEvent(step.title, start: start, end: step.finish, allDay: step.allDay,
+                                                           location: step.where, notes: from, url: message.mailURL)
+                await reloadAgenda()
+                offerUndo("Added to Calendar: \(step.title)\(when(start))") { [weak self] in
+                    do { try await self?.calendarReader.deleteEvent(id: id) } catch {
+                        self?.mailProblem = "Couldn't remove that event. Delete it in Calendar."
+                    }
+                    self?.savedSteps.remove(key)
+                    await self?.reloadAgenda()
+                }
+            } catch {
+                savedSteps.remove(key)
+                mailProblem = "Couldn't add that to your calendar. Check that Calendars is allowed for Blink."
+                return
+            }
+        case .deadline:
+            guard calendarAccess == .granted else {
+                savedSteps.remove(key)
+                mailProblem = "Turn on Reminders for Blink in System Settings › Privacy & Security › Reminders."
+                return
+            }
+            // A day-only deadline reminds at 9:00 that morning, so it actually rings.
+            let due = step.allDay ? step.start.flatMap { Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: $0) } : step.start
+            do {
+                let id = try await calendarReader.addReminder(step.title, due: due, notes: from, url: message.mailURL)
+                await reloadAgenda()
+                offerUndo("Reminder added: \(step.title)\(when(due))") { [weak self] in
+                    await self?.writeReminder { try await self?.calendarReader.deleteReminder(id: id) }
+                    self?.savedSteps.remove(key)
+                }
+            } catch {
+                savedSteps.remove(key)
+                mailProblem = "Couldn't add that reminder. Check that Reminders is allowed for Blink."
+                return
+            }
+        case .task, .note:
+            let item = create(step.kind == .task ? .task : .note, title: step.title, body: from, due: step.kind == .task ? step.start : nil)
+            offerUndo("\(step.kind == .task ? "Task added" : "Saved to Notes"): \(step.title)") { [weak self] in
+                guard let self, let current = self.items.first(where: { $0.id == item.id }) else { return }
+                await self.delete(current)
+                self.savedSteps.remove(key)
+            }
+        }
+    }
+
+    /// The full text for the reading pane; marks the mail seen. Throws a message to show.
+    func read(_ message: EmailMessage) async throws -> String {
+        guard let server else { throw CancellationError() }
+        if message.status == .new { await setStatus(.seen, of: message) }
+        return try await server.readMail(message)
+    }
+
+    /// Done for one mail or many at once (bulk), with one Undo that puts them all back as they were.
+    func finish(_ messages: [EmailMessage]) async {
+        guard let server, !messages.isEmpty else { return }
+        let ids = Set(messages.map(\.id))
+        let before = emails
+        emails.removeAll { ids.contains($0.id) }
+        do {
+            try await server.setStatus(.done, ids: Array(ids))
+            offerUndo(messages.count == 1 ? "Done: \(messages[0].subject)" : "\(messages.count) emails done") { [weak self] in
+                guard let self else { return }
+                let back = before.filter { ids.contains($0.id) }
+                do {
+                    for status in Set(back.map(\.status)) {
+                        try await server.setStatus(status, ids: back.filter { $0.status == status }.map(\.id))
+                    }
+                } catch {
+                    mailProblem = "Couldn't bring those emails back. Check your connection."
+                }
+                // Only these come back; anything done or arrived since stays as it is now.
+                emails = (emails.filter { !ids.contains($0.id) } + back)
+                    .sorted { ($0.receivedAt ?? $0.createdAt) > ($1.receivedAt ?? $1.createdAt) }
+            }
+        } catch {
+            emails = before
+            mailProblem = "Couldn't update those emails. Check your connection."
         }
     }
 

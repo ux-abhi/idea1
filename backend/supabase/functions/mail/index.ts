@@ -72,7 +72,18 @@ spend_category: food (eating out, delivery), groceries, transport, housing, bill
 subscriptions), shopping, health, fun, travel, education, other.
 needs_reply: true only if a person wrote personally and expects the owner to answer. Never for automated mail.
 <owner_rules>, if given, are the owner's own corrections: senders (an address or @domain) they marked "important" or
-"newsletter" (not important), each with an example subject. Judge similar mail from other senders the same way.`;
+"newsletter" (not important), each with an example subject. Judge similar mail from other senders the same way.
+actions: up to 3 next steps the owner may want to save from this mail; [] for newsletters and when there is nothing:
+- "event": a meeting, interview, appointment or exam at a stated date (and time). where: the place or video link name.
+- "deadline": something the owner must do or pay by a stated date (rent due, form by Friday).
+- "task": something the owner is asked to do, with no firm date ("send your passport copy").
+- "note": a detail worth keeping: a booking or order number, a code to bring, an address. title: the detail itself.
+title: short and plain, like the owner would write it ("Interview with Acme", "Pay rent"). Only what the mail really says;
+never invent dates. when and end: local time as "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" (no time zone), reading words like
+"tomorrow" or "Thursday" from the mail's own received time; "" when unknown. end only for events, else "". If the mail
+gives a time in another time zone (e.g. "10:00 PT"), convert it to the owner's time zone in <now>. where: a place or
+"Zoom"/"Google Meet", never a web address.
+<now> is the owner's local date and time and time zone.`;
 
 const TRIAGE_SCHEMA = {
   type: "object", additionalProperties: false, required: ["messages"],
@@ -81,12 +92,22 @@ const TRIAGE_SCHEMA = {
       type: "array",
       items: {
         type: "object", additionalProperties: false,
-        required: ["uid", "triage", "reason", "summary", "needs_reply", "spend_amount", "spend_currency", "spend_merchant", "spend_category"],
+        required: ["uid", "triage", "reason", "summary", "needs_reply", "spend_amount", "spend_currency", "spend_merchant", "spend_category", "actions"],
         properties: {
           uid: { type: "integer" }, triage: { type: "string", enum: ["important", "normal", "newsletter"] },
           reason: { type: "string" }, summary: { type: "string" }, needs_reply: { type: "boolean" },
           spend_amount: { type: "number" }, spend_currency: { type: "string" }, spend_merchant: { type: "string" },
           spend_category: { type: "string", enum: [...CATEGORIES] },
+          actions: {
+            type: "array",
+            items: {
+              type: "object", additionalProperties: false, required: ["kind", "title", "when", "end", "where"],
+              properties: {
+                kind: { type: "string", enum: ["event", "deadline", "task", "note"] },
+                title: { type: "string" }, when: { type: "string" }, end: { type: "string" }, where: { type: "string" },
+              },
+            },
+          },
         },
       },
     },
@@ -135,6 +156,19 @@ const RESORT_BATCH = 10;
 
 const fence = (value: unknown) => JSON.stringify(value).replaceAll("<", "\\u003c");
 
+/** The owner's time zone from their profile, if the runtime knows it; else UTC. */
+function validZone(zone: unknown): string {
+  try {
+    if (typeof zone === "string" && zone) { new Intl.DateTimeFormat("en", { timeZone: zone }); return zone; }
+  } catch { /* unknown zone */ }
+  return "UTC";
+}
+
+/** "2026-10-18 13:45 Fri" in a time zone, for the model to read "tomorrow" and "Thursday" against. */
+const localTime = (date: Date, zone: string) =>
+  `${date.toLocaleString("sv-SE", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} ` +
+  date.toLocaleDateString("en-US", { timeZone: zone, weekday: "short" });
+
 /** Receipts and card debits in this batch become spends (source email), unless the same payment is already in Money
  *  (e.g. it was an Apple Pay tap). The owner sees them in Money and can change or delete them. Errors never stop mail. */
 async function recordSpends(admin: SupabaseClient, owner: string, account: string, uidValidity: number,
@@ -163,10 +197,12 @@ async function recordSpends(admin: SupabaseClient, owner: string, account: strin
 
 /** New mail since the last check, triaged and stored (summaries only). Returns how many arrived and how many matter. */
 async function poll(admin: SupabaseClient, owner: string, account: Account): Promise<{ found: number; important: number; resorted?: number }> {
-  const [{ data: state }, { data: ruleRows }] = await Promise.all([
+  const [{ data: state }, { data: ruleRows }, { data: profile }] = await Promise.all([
     admin.from("mail_state").select("uidvalidity, last_uid").eq("owner_id", owner).eq("account", account.id).maybeSingle(),
     admin.from("mail_sender_rule").select("sender, verdict, example").eq("owner_id", owner).order("updated_at", { ascending: false }).limit(300),
+    admin.from("profile").select("timezone").eq("owner_id", owner).maybeSingle(),
   ]);
+  const zone = validZone(profile?.timezone);
   const rules = (ruleRows ?? []) as (SenderRule & { example: string })[];
   const imap = await open(account);
   try {
@@ -206,12 +242,14 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
       const hasGroq = Boolean(await secret("GROQ_API_KEY"));
       const model = MODELS.find((m) => m.id === (hasGroq ? "openai/gpt-oss-120b" : "claude-haiku-5-5"))!;
       try {
-        const mail = parsed.map((p) => ({ uid: p.uid, from: `${p.from.name} <${p.from.address}>`, subject: p.subject, list_unsubscribe: p.newsletter, text: p.snippet }));
+        const mail = parsed.map((p) => ({ uid: p.uid, from: `${p.from.name} <${p.from.address}>`, subject: p.subject, list_unsubscribe: p.newsletter,
+          received: p.received ? localTime(new Date(p.received), zone) : "", text: p.snippet }));
+        const now = `<now>${fence(`${localTime(new Date(), zone)} ${zone}`)}</now>\n`;
         const taught = rules.length ? `<owner_rules>${fence(rules.slice(0, 40))}</owner_rules>\n` : "";
         // The owner's own priorities (a server secret they write, e.g. their employer, university, clients); never in code.
         const priorities = Deno.env.get("MAIL_PRIORITIES")?.trim();
         const mine = priorities ? `<owner_priorities>${fence(priorities.slice(0, 2000))}</owner_priorities>\n` : "";
-        const result = await generate(model, TRIAGE_SYSTEM, `${mine}${taught}<mail>${fence(mail)}</mail>`, TRIAGE_SCHEMA, "triage");
+        const result = await generate(model, TRIAGE_SYSTEM, `${now}${mine}${taught}<mail>${fence(mail)}</mail>`, TRIAGE_SCHEMA, "triage");
         verdicts = parseTriage(JSON.parse(result.text), parsed.map((p) => p.uid));
         await admin.from("model_usage").insert({ owner_id: owner, feature: "mail.triage", model: model.id,
           input_tokens: result.inputTokens, output_tokens: result.outputTokens, cost_usd: cost(model, result.inputTokens, result.outputTokens) });
@@ -235,13 +273,19 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
         message_id: (p.h["message-id"] ?? "").slice(0, 998), from_name: p.from.name.slice(0, 300), from_addr: p.from.address.slice(0, 320),
         to_addr: p.to.slice(0, 320), subject: p.subject, received_at: p.received,
         triage: v.triage, reason: v.reason, summary: found?.summary ?? "", needs_reply: v.needs_reply, sorted,
+        // Bulk mail gets no next steps (after the owner's rules too): a newsletter can't put an "event" in front of them.
+        actions: v.triage === "newsletter" ? [] : found?.actions ?? [],
       };
     });
     const { fresh: newRows, sortedAgain } = splitResort(rows, resort);
-    if (newRows.length) await admin.from("email_msg").upsert(newRows, { onConflict: "owner_id,account,uidvalidity,uid", ignoreDuplicates: true });
+    if (newRows.length) {
+      // A failed insert must stop here: moving the cursor on would skip these mails for good.
+      const { error } = await admin.from("email_msg").upsert(newRows, { onConflict: "owner_id,account,uidvalidity,uid", ignoreDuplicates: true });
+      if (error) throw new Error(`Couldn't save new mail: ${error.message}`);
+    }
     // Re-sorted ones: fill in what the AI says now (only while still unsorted, so nothing the owner changed is touched).
     for (const r of sortedAgain) {
-      await admin.from("email_msg").update({ triage: r.triage, reason: r.reason, summary: r.summary, needs_reply: r.needs_reply, sorted: true })
+      await admin.from("email_msg").update({ triage: r.triage, reason: r.reason, summary: r.summary, needs_reply: r.needs_reply, actions: r.actions, sorted: true })
         .eq("owner_id", owner).eq("account", account.id).eq("uidvalidity", box.uidValidity).eq("uid", r.uid).eq("sorted", false);
     }
     // Only mail that isn't spam or bulk (after the owner's own rules): a fake "invoice" must not become a spend.
@@ -339,6 +383,26 @@ async function draft(admin: SupabaseClient, db: SupabaseClient, owner: string, i
   }
 }
 
+/** One stored mail's full text for the reading pane: fetched from the mailbox now, sent to the owner's app, never stored. */
+async function read(admin: SupabaseClient, owner: string, id: string): Promise<{ text: string }> {
+  const { data: msg } = await admin.from("email_msg").select("account, uidvalidity, uid").eq("id", id).eq("owner_id", owner).maybeSingle();
+  if (!msg) throw new Error("That email isn't in Blink anymore.");
+  const account = (await accounts()).find((a) => a.id === msg.account);
+  if (!account) throw new Error("This mailbox isn't connected anymore.");
+  const imap = await open(account);
+  try {
+    const box = await imap.select("INBOX");
+    if (box.uidValidity !== Number(msg.uidvalidity)) throw new Error("The mailbox changed since this was read. Sync and try again.");
+    const [full] = await imap.fetch([Number(msg.uid)], 60000);
+    await imap.logout();
+    if (!full) throw new Error("That email isn't in the inbox anymore. It may have been moved or deleted.");
+    return { text: plainText(full.text, parseHeaders(full.header), 20000) };
+  } catch (error) {
+    imap.logout().catch(() => {});
+    throw error;
+  }
+}
+
 /** SMTP and the after-send tidy-up for the outbox, on this server's accounts (loaded once per request). */
 const mailerFor = (list: Account[]): Mailer => ({
   owned: (id) => {
@@ -417,6 +481,14 @@ Deno.serve(async (req) => {
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   if (body.action === "send") return json(200, await sendDue(admin, user.id, mailerFor(list)));
+  if (body.action === "read") {
+    if (typeof body.id !== "string" || !/^[0-9a-f-]{36}$/i.test(body.id)) return json(400, { error: "id must be an email id." });
+    try {
+      return json(200, await withTimeout(read(admin, user.id, body.id), 30_000, "The mail server didn't answer in time."));
+    } catch (error) {
+      return json(502, { error: error instanceof Error ? error.message.slice(0, 300) : "Couldn't open that email." });
+    }
+  }
   if (body.action === "draft") {
     if (typeof body.id !== "string" || !/^[0-9a-f-]{36}$/i.test(body.id)) return json(400, { error: "id must be an email id." });
     try {

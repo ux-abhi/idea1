@@ -856,13 +856,26 @@ struct GlanceView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "envelope.badge").foregroundStyle(.red)
                         Text("\(message.sender): \(message.reason.isEmpty ? message.subject : message.reason)").lineLimit(1)
+                            .onTapGesture { if let url = message.mailURL { NSWorkspace.shared.open(url); done() } }
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityAction(named: "Open in Apple Mail") { if let url = message.mailURL { NSWorkspace.shared.open(url); done() } }
+                            .help("Open in Apple Mail")
                         Spacer(minLength: 8)
-                        Button("Draft") { Task { await app.reviewReply(to: message, reuse: false) } }
-                            .buttonStyle(.plain).foregroundStyle(.mint)
-                            .disabled(app.draftingMail.contains(message.id))
-                        if let url = message.mailURL {
-                            Button("Open") { NSWorkspace.shared.open(url); done() }.buttonStyle(.plain).foregroundStyle(.mint)
+                        // The mail's first next step ("Add to Calendar"), else Draft when someone waits for an answer.
+                        if let step = message.nextSteps.first {
+                            let saved = app.savedSteps.contains("\(message.id)#0")
+                            Button(saved ? "Added" : NextStepChips.verb(step.kind)) { Task { await app.save(step, from: message, index: 0) } }
+                                .buttonStyle(.plain).foregroundStyle(saved ? .green : .mint)
+                                .disabled(saved)
+                                .help(NextStepChips.text(step))
+                                .accessibilityLabel(saved ? "Added: \(step.title)" : "\(NextStepChips.verb(step.kind)): \(NextStepChips.text(step))")
+                        } else if message.needsReply {
+                            Button("Draft") { Task { await app.reviewReply(to: message, reuse: false) } }
+                                .buttonStyle(.plain).foregroundStyle(.mint)
+                                .disabled(app.draftingMail.contains(message.id))
                         }
+                        Button("Done") { Task { await app.finish([message]) } }
+                            .buttonStyle(.plain).foregroundStyle(.mint)
                     }
                 }
             }
