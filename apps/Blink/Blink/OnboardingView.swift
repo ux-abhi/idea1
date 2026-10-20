@@ -179,6 +179,51 @@ private struct ServerStep: View {
     }
 }
 
+/// The Sign in step's one click: sign in with Supabase, and Blink makes this server's login (or gives the existing one a
+/// fresh password kept in this Mac's Keychain) and signs in. No user to create by hand, no password to remember.
+private struct SupabaseSignIn: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.webAuthenticationSession) private var webAuth
+    @State private var installer = ServerInstaller()
+    @State private var signingIn = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                Task { await start() }
+            } label: {
+                if installer.working || signingIn {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text(installer.step == .lock ? "Making your login (about 30 seconds)…" : "Signing in…") }
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Label("Sign in with Supabase", systemImage: "person.badge.key").frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(installer.working || signingIn || ServerInstaller.helper == nil)
+            if let problem = installer.problem {
+                Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.callout)
+            }
+        }
+    }
+
+    private func start() async {
+        guard let url = installer.startURL() else { return }
+        signingIn = true
+        defer { signingIn = false }
+        do {
+            let callback = try await webAuth.authenticate(using: url, callbackURLScheme: "blink", preferredBrowserSession: nil)
+            let token = try await installer.token(from: callback)
+            await installer.signInToExisting(token: token, model: model)
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            // Closing the sign-in window is not a problem worth a message.
+        } catch {
+            installer.fail((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+        }
+    }
+}
+
 /// One click: sign in with Supabase, and Blink makes the server, sets it up and signs you in.
 private struct CreateServer: View {
     @Environment(AppModel.self) private var model
@@ -251,11 +296,10 @@ private struct CreateServer: View {
 
 private struct AccountStep: View {
     var body: some View {
-        StepCard(title: "Sign in", subtitle: "Use the email and password of your account on this server.") {
+        StepCard(title: "Sign in", subtitle: "One click with the Supabase account that owns this server (Blink keeps the login on this Mac, setting a new password if needed), or type your email and password.") {
+            SupabaseSignIn()
             SignInView()
                 .frame(minHeight: 230, maxHeight: 340)
-            Text("No account yet? Create one in Supabase › Authentication › Users › Add user, then sign in here.")
-                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }

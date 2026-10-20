@@ -47,6 +47,18 @@ struct SignInView: View {
         }
         .formStyle(.grouped)
         .onChange(of: problem) { if let problem { AccessibilityNotification.Announcement(problem).post() } }
+        // This Mac knows the login (Blink made it, or set it): sign straight in, nothing to type. Not right after the
+        // owner pressed Sign Out, so they can switch account. A failed try just leaves the form filled in.
+        .task {
+            // Only to the server this login was made for: never send it to another server that's been connected.
+            guard !model.signedOutOnPurpose, !working, let login = model.savedLogin,
+                  let host = model.savedLoginHost, host == model.server?.config.host else { return }
+            (email, password) = (login.email, login.password)
+            working = true
+            let failed = await model.signIn(email: login.email, password: login.password) != nil
+            working = false
+            if !failed { password = "" }
+        }
         .navigationTitle("Sign in")
     }
 

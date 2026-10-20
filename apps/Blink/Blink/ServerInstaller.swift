@@ -155,32 +155,10 @@ final class ServerInstaller {
         step = .lock
         let keys = try await api.keys(ref)
         if !progress.ownerCreated {
-            if let secret = keys.secret {
-                try await ServerSetup.createOwner(projectURL: projectURL, secretKey: secret, email: email, password: password)
-            } else {
-                // Supabase keeps the secret key from apps like Blink: open sign-ups (with no confirmation email) for this one
-                // login, then lock them below. The setting takes about 10 seconds to go live, so wait, then retry while busy.
-                try await api.openSignupsForOwner(ref)
-                do {
-                    try await Task.sleep(for: .seconds(15))
-                    var tries = 0
-                    while true {
-                        do {
-                            try await ServerSetup.signUpOwner(projectURL: projectURL, publishableKey: keys.publishable, email: email, password: password)
-                            break
-                        } catch is ServerSetup.Busy where tries < 8 {
-                            tries += 1
-                            try await Task.sleep(for: .seconds(5))
-                        }
-                    }
-                    try await api.confirmOwner(ref, email: email)
-                } catch {
-                    try? await api.closeSignups(ref)
-                    throw error is ServerSetup.Busy ? ServerSetup.Problem(message: "Your server was busy creating your login. Try again in a minute.") : error
-                }
-            }
+            try await Self.createLogin(api, ref: ref, projectURL: projectURL, keys: keys, email: email, password: password)
             progress.ownerCreated = true
         }
+        try? model.saveLogin(email: email, password: password, host: projectURL.host())
         try await api.closeSignups(ref)
         if !progress.done("mailSchedule") {
             let mail = try String(contentsOf: bundle.appending(path: "setup/mail_schedule.sql"), encoding: .utf8)
@@ -202,6 +180,84 @@ final class ServerInstaller {
         try await model.connect(url: projectURL.absoluteString, key: keys.publishable)
         if let failure = await model.signIn(email: email, password: password) {
             model.noteSignIn("Your server is ready. Sign in to finish: \(failure)")
+        }
+    }
+
+    /// The owner's login on a server, without the secret key when Supabase hides it from apps like Blink: open sign-ups
+    /// (with no confirmation email) for this one login; the caller locks them again. The setting takes about 10 seconds to
+    /// go live, so wait, then retry while the server is busy; then mark it confirmed.
+    static func createLogin(_ api: ServerSetup.Client, ref: String, projectURL: URL, keys: (publishable: String, secret: String?),
+                            email: String, password: String) async throws {
+        if let secret = keys.secret {
+            try await ServerSetup.createOwner(projectURL: projectURL, secretKey: secret, email: email, password: password)
+            return
+        }
+        try await api.openSignupsForOwner(ref)
+        do {
+            try await Task.sleep(for: .seconds(15))
+            var tries = 0
+            while true {
+                do {
+                    try await ServerSetup.signUpOwner(projectURL: projectURL, publishableKey: keys.publishable, email: email, password: password)
+                    break
+                } catch is ServerSetup.Busy where tries < 8 {
+                    tries += 1
+                    try await Task.sleep(for: .seconds(5))
+                }
+            }
+            try await api.confirmOwner(ref, email: email)
+        } catch {
+            try? await api.closeSignups(ref)
+            throw error is ServerSetup.Busy ? ServerSetup.Problem(message: "Your server was busy creating your login. Try again in a minute.") : error
+        }
+    }
+
+    /// "Sign in with Supabase" on the Sign in step, for a server that already exists (made on another Mac, or by hand):
+    /// no login yet → Blink makes one; its one owner login → a fresh password, kept in this Mac's Keychain. Then signs in.
+    func signInToExisting(token: String, model: AppModel) async {
+        guard !working, let server = model.server, let ref = BlinkServer.projectRef(server.config.url) else { return }
+        working = true
+        problem = nil
+        defer { working = false }
+        let api = ServerSetup.Client(token: token)
+        do {
+            let logins: [String]
+            do { logins = try await api.loginEmails(ref) } catch let error as ServerSetup.Problem where error.message.contains("403") || error.message.contains("404") {
+                throw ServerSetup.Problem(message: "This server isn't in the Supabase account you signed in with. Sign in with the account that owns it.")
+            }
+            var email = "", password = ""
+            do {
+                switch logins.count {
+                case 0:
+                    (email, password) = try model.setupLogin()
+                    step = .lock
+                    try await Self.createLogin(api, ref: ref, projectURL: server.config.url, keys: try await api.keys(ref), email: email, password: password)
+                case 1:
+                    // shortcut: one password per owner, so signing in here can change another Mac's saved one (that Mac
+                    // stays signed in, and the same button brings it back). Upgrade with QR pairing (§36.5).
+                    if let saved = model.savedLogin, saved.email == logins[0], await model.signIn(email: saved.email, password: saved.password) == nil {
+                        (email, password) = saved
+                    } else {
+                        (email, password) = (logins[0], try SetupLogin.newPassword())
+                        try await api.setPassword(ref, email: email, password: password)
+                    }
+                default:
+                    throw ServerSetup.Problem(message: "This server has more than one login. Sign in below with yours.")
+                }
+            } catch {
+                // Sign-ups never stay open, whatever failed (a dropped connection mid-way included).
+                try? await api.closeSignups(ref)
+                throw error
+            }
+            // Every path, every time: cheap, and it closes sign-ups an earlier failed try may have left open.
+            try await api.closeSignups(ref)
+            try model.saveLogin(email: email, password: password, host: server.config.host)
+            step = .connect
+            if let failure = await model.signIn(email: email, password: password) { problem = failure }
+            step = nil
+        } catch {
+            step = nil
+            problem = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 

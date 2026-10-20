@@ -228,6 +228,12 @@ extension Tokens {
         #expect(AgendaEvent(extID: "u", title: "U", start: at(9, 0), end: at(10, 0), url: URL(string: "https://evil.example/j")).joinURL == nil)
     }
 
+    @Test func setPasswordSQLQuotesItsInputs() {
+        let sql = ServerSetup.Client.setPasswordSQL(email: "o'brien@example.com", password: "a'b+c/=")
+        #expect(sql.contains("where email = 'o''brien@example.com'"))
+        #expect(sql.contains("crypt('a''b+c/=', extensions.gen_salt('bf', 10))"))
+    }
+
     @Test func plainWordsWorkLikeSlashCommands() {
         let now = at(10, 0)
         if case .remind(let title, let due) = QuickCommand.parse("remind me to call Sam tomorrow 4pm", now: now) {

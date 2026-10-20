@@ -54,6 +54,16 @@ final class AppModel {
 
     func setupLogin() throws -> (email: String, password: String) { try SetupLogin.make(in: keychain) }
     var savedLogin: (email: String, password: String)? { SetupLogin.saved(in: keychain) }
+    func saveLogin(email: String, password: String, host: String?) throws {
+        try SetupLogin.save(email: email, password: password, host: host, in: keychain)
+    }
+    /// The server the saved login is for; Blink signs in by itself only there.
+    var savedLoginHost: String? { SetupLogin.savedHost(in: keychain) }
+    /// The owner pressed Sign Out: the Sign in screen then waits for them instead of signing straight back in (kept
+    /// across relaunches, so signing out sticks).
+    private(set) var signedOutOnPurpose = UserDefaults.standard.bool(forKey: "signedOutOnPurpose") {
+        didSet { UserDefaults.standard.set(signedOutOnPurpose, forKey: "signedOutOnPurpose") }
+    }
 
     /// The server's Supabase project when the free plan paused it (HTTP 540 after a week unused); nil otherwise.
     private(set) var pausedProject: String?
@@ -253,6 +263,11 @@ final class AppModel {
         do {
             self.email = try await server.signIn(email: email, password: password)
             signInNotice = nil
+            signedOutOnPurpose = false
+            // The saved login works here: note which server it's for, so it can sign in by itself next time.
+            if let saved = savedLogin, saved.email == email, saved.password == password, savedLoginHost == nil {
+                try? saveLogin(email: email, password: password, host: server.config.host)
+            }
             screen = .home // Home checks in when it appears
             return nil
         } catch {
@@ -326,6 +341,7 @@ final class AppModel {
     }
 
     func signOut() async {
+        signedOutOnPurpose = true
         await endSession(notice: nil)
     }
 

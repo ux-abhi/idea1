@@ -225,6 +225,30 @@ public enum ServerSetup {
             _ = try await request("projects/\(ref)/config/auth", method: "PATCH", json: Body())
         }
 
+        /// The logins on a server, oldest first (an existing Blink server has exactly one: its owner).
+        public func loginEmails(_ ref: String) async throws -> [String] {
+            struct Body: Encodable { let query: String }
+            struct Row: Decodable { let email: String? }
+            let data = try await request("projects/\(ref)/database/query", method: "POST",
+                                         json: Body(query: "select email from auth.users order by created_at limit 3"))
+            return try JSONDecoder().decode([Row].self, from: data).compactMap(\.email)
+        }
+
+        /// Gives an existing login a new password (for signing in on another Mac with one click). Only someone signed in
+        /// to the Supabase account that owns this server can do this, and they already control its database.
+        public func setPassword(_ ref: String, email: String, password: String) async throws {
+            try await runSQL(ref, Self.setPasswordSQL(email: email, password: password))
+        }
+
+        /// Quotes doubled; bcrypt at cost 10, the same as Supabase's own sign-in service.
+        static func setPasswordSQL(email: String, password: String) -> String {
+            let q = { (text: String) in text.replacingOccurrences(of: "'", with: "''") }
+            return """
+                update auth.users set encrypted_password = extensions.crypt('\(q(password))', extensions.gen_salt('bf', 10)),
+                  email_confirmed_at = coalesce(email_confirmed_at, now()) where email = '\(q(email))'
+                """
+        }
+
         /// Marks the owner's login confirmed (it's Blink's own made-up address, so no email could confirm it).
         public func confirmOwner(_ ref: String, email: String) async throws {
             let quoted = email.replacingOccurrences(of: "'", with: "''")

@@ -21,16 +21,35 @@ public enum SetupLogin {
         if let login = saved(in: keychain) { return login }
         let alphabet = Array("abcdefghijkmnopqrstuvwxyz23456789")
         let tag = String((0..<8).map { _ in alphabet.randomElement()! })
+        let login = (email: "owner-\(tag)@blinkk.app", password: try newPassword())
+        try save(email: login.email, password: login.password, in: keychain)
+        return login
+    }
+
+    /// A long random password nobody has to type.
+    public static func newPassword() throws -> String {
         var bytes = [UInt8](repeating: 0, count: 24)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
             throw ServerSetup.Problem(message: "Couldn't make a secure password on this Mac. Try again.")
         }
-        let login = (email: "owner-\(tag)@blinkk.app", password: Data(bytes).base64EncodedString())
+        return Data(bytes).base64EncodedString()
+    }
+
+    /// The server this login belongs to (its host), once known: Blink signs in by itself only there.
+    public static func savedHost(in keychain: Keychain) -> String? {
+        guard let data = try? keychain.data(for: account), let login = try? JSONDecoder().decode([String: String].self, from: data) else { return nil }
+        return login["host"]
+    }
+
+    /// Keeps a login in this Mac's Keychain (also used when Blink sets a fresh password on an existing server), with the
+    /// server it's for when known.
+    public static func save(email: String, password: String, host: String? = nil, in keychain: Keychain) throws {
+        var login = ["email": email, "password": password]
+        login["host"] = host
         do {
-            try keychain.set(JSONEncoder().encode(["email": login.email, "password": login.password]), for: account)
+            try keychain.set(JSONEncoder().encode(login), for: account)
         } catch {
             throw ServerSetup.Problem(message: "Couldn't save your login in the Keychain. Try again.")
         }
-        return login
     }
 }
