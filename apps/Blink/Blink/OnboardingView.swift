@@ -160,9 +160,11 @@ private struct ServerStep: View {
                     .frame(minHeight: 230, maxHeight: 340)
                 DisclosureGroup("Where do I find these?") {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("1. Open your project at supabase.com.")
-                        Text("2. Go to Project Settings › API Keys.")
-                        Text("3. Copy the Project URL and the publishable key (it starts with sb_publishable_).")
+                        Text("This is for a server Blink already set up (on another Mac, say). A new, empty project won't work: use “Create a new server for me” instead.")
+                            .foregroundStyle(.secondary)
+                        Text("1. Open your Blink project at supabase.com.")
+                        Text("2. Project URL: press Connect at the top of the project (or Project Settings › Data API), and copy the URL that ends in .supabase.co.")
+                        Text("3. Publishable key: Project Settings › API Keys, the key that starts with sb_publishable_.")
                     }
                     .font(.callout)
                     .padding(.top, 6)
