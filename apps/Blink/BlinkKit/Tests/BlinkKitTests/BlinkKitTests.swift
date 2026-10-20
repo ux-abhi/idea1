@@ -228,6 +228,29 @@ extension Tokens {
         #expect(AgendaEvent(extID: "u", title: "U", start: at(9, 0), end: at(10, 0), url: URL(string: "https://evil.example/j")).joinURL == nil)
     }
 
+    @Test func plainWordsWorkLikeSlashCommands() {
+        let now = at(10, 0)
+        if case .remind(let title, let due) = QuickCommand.parse("remind me to call Sam tomorrow 4pm", now: now) {
+            #expect(title == "call Sam")
+            #expect(due != nil)
+        } else { Issue.record("remind me to") }
+        if case .task(let title, _) = QuickCommand.parse("Task send invoice friday", now: now) { #expect(title == "send invoice") } else { Issue.record("task") }
+        #expect(QuickCommand.parse("note: idea for the header", now: now) == .note("idea for the header"))
+        #expect(QuickCommand.parse("timer 10 min", now: now) == .timer(minutes: 10))
+        #expect(QuickCommand.parse("set a timer for 25 minutes", now: now) == .timer(minutes: 25))
+        #expect(QuickCommand.parse("focus", now: now) == .focus)
+        #expect(QuickCommand.parse("spent 8.50 lunch", now: now) == .spent("8.50 lunch"))
+        if case .meet(let title, _, let guests) = QuickCommand.parse("meeting with sam@example.com tomorrow 3pm", now: now) {
+            #expect(guests == ["sam@example.com"])
+            #expect(!title.isEmpty)
+        } else { Issue.record("meeting") }
+        // Questions and ordinary chat still go to the AI.
+        #expect(QuickCommand.parse("what's my next task?", now: now) == nil)
+        #expect(QuickCommand.parse("tasks for today", now: now) == nil)
+        #expect(QuickCommand.parse("plan my afternoon", now: now) == nil)
+        #expect(QuickCommand.parse("noted, thanks", now: now) == nil)
+    }
+
     @Test func setupFindsThePublishableKeyEvenWhenSecretsAreHidden() throws {
         let hidden = try JSONDecoder().decode([ServerSetup.Client.Key].self, from: Data(#"""
         [{"name":"default","type":"publishable","api_key":"sb_publishable_abc"},{"name":"default","type":"secret","api_key":null}]

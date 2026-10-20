@@ -33,9 +33,36 @@ public enum QuickCommand: Equatable, Sendable {
         ("/clear", "/clear", "Clear this chat"),
     ]
 
-    /// The command for a finished line, or nil if it isn't one yet (still typing the name, or nothing after it).
-    public static func parse(_ text: String, now: Date = .now) -> QuickCommand? {
+    /// Plain words for the same actions, no "/" needed: "remind me to call Sam at 4pm", "task send invoice friday",
+    /// "note …", "timer 10 min", "focus", "spent 8.50 lunch", "meeting with sam@x.com tomorrow 3pm". Only clear openings
+    /// count, so a question ("what's my next task?") still goes to the AI. Returns the "/" form, or nil.
+    public static func slashForm(of text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.hasPrefix("/"), !trimmed.hasSuffix("?") else { return nil }
+        let lower = trimmed.lowercased()
+        // Longest openings first, so "remind me to" wins over "remind".
+        let openings: [(String, String)] = [
+            ("remind me to ", "/remind"), ("remind me about ", "/remind"), ("remind me ", "/remind"), ("reminder: ", "/remind"),
+            ("reminder ", "/remind"), ("remind ", "/remind"),
+            ("add a task to ", "/task"), ("add a task ", "/task"), ("add task ", "/task"), ("new task ", "/task"), ("task: ", "/task"),
+            ("task ", "/task"), ("todo: ", "/task"), ("todo ", "/task"), ("to do: ", "/task"),
+            ("note: ", "/note"), ("note ", "/note"), ("new note ", "/note"), ("jot down ", "/note"),
+            ("set a timer for ", "/timer"), ("start a timer for ", "/timer"), ("timer for ", "/timer"), ("timer: ", "/timer"), ("timer ", "/timer"),
+            ("spent ", "/spent"), ("i spent ", "/spent"), ("paid ", "/spent"),
+            ("schedule a meeting ", "/meet"), ("set up a meeting ", "/meet"), ("meeting with ", "/meet"), ("meet with ", "/meet"), ("meet ", "/meet"),
+        ]
+        if ["focus", "start focus", "focus mode", "pomodoro"].contains(lower) { return "/focus" }
+        guard let (opening, command) = openings.first(where: { lower.hasPrefix($0.0) }) else { return nil }
+        let rest = String(trimmed.dropFirst(opening.count))
+        // "meeting with Sam …" keeps "with Sam" in the title.
+        return "\(command) " + (opening.hasPrefix("meeting with") || opening.hasPrefix("meet with") ? "with " + rest : rest)
+    }
+
+    /// The command for a finished line, or nil if it isn't one yet (still typing the name, or nothing after it).
+    /// Plain words work too (see `slashForm`).
+    public static func parse(_ text: String, now: Date = .now) -> QuickCommand? {
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let slash = slashForm(of: trimmed) { trimmed = slash }
         guard trimmed.hasPrefix("/") else { return nil }
         let name = trimmed.prefix { !$0.isWhitespace }.lowercased()
         let rest = trimmed.dropFirst(name.count).trimmingCharacters(in: .whitespaces)

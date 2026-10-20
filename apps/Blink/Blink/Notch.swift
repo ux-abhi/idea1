@@ -485,7 +485,7 @@ final class NotchController {
         panel.acceptsMouseMovedEvents = true
         panel.sharingType = app.notchInRecordings ? .readOnly : .none // hidden from screen capture and sharing (§36.1) unless the owner allows it
         panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app, clipboard: clipboard,
-                                                                      open: { [weak self] in self?.open() },
+                                                                      open: { [weak self] in self?.openChat() },
                                                                       plan: { [weak self] in self?.planTomorrow() },
                                                                       close: { [weak self] in self?.close() }))
         return panel
@@ -572,6 +572,20 @@ final class NotchController {
         model.clipboarding = false
         model.searching = false
         model.meeting = false
+        model.chatting = true
+        if model.level == .open, let panel {
+            panel.allowsKey = true
+            panel.makeKey()
+        } else {
+            open()
+        }
+    }
+
+    /// A click on the notch: the chat, with the keyboard in its box (the day shows above it until something is asked).
+    /// Already open on the day view: switches to the chat. Cards like the Meet invite or the clipboard stay as they are.
+    func openChat() {
+        guard !showLockInstead(), !model.meeting, !model.clipboarding, !model.searching else { return }
+        if model.level == .open && model.chatting { return }
         model.chatting = true
         if model.level == .open, let panel {
             panel.allowsKey = true
@@ -709,8 +723,13 @@ struct NotchView: View {
     private func glance(statusLine: String, now: Date) -> some View {
         if model.meeting, let draft = app.meetDraft {
             MeetPanel(app: app, done: close, shown: draft)
+        } else if model.chatting && app.chat.isEmpty && model.input.isEmpty && app.ideas.isEmpty && !app.drafting && !app.thinkingOfIdeas && !app.thinking {
+            // Clicked open with nothing typed yet: the day, with the box below ready for a question or "remind me to…".
+            GlanceView(app: app, statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
+                       briefing: model.briefing, done: close,
+                       card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) })
         } else if model.chatting {
-            ChatPanel(app: app, input: model.input)
+            ChatPanel(app: app, input: model.input, pick: { [model] in model.input = $0 }, today: { [model] in model.chatting = false })
         } else if model.clipboarding {
             ClipboardPanel(store: clipboard, done: close)
         } else if model.searching {
@@ -1009,14 +1028,22 @@ struct GlanceView: View {
 /// proposed. Typing happens in the bubble below (SplitInput).
 struct ChatPanel: View {
     let app: AppModel
-    /// What's being typed below; a "/" command shows its preview here instead of the conversation.
+    /// What's being typed below; a "/" command (or plain words like "remind me to…") shows its preview here.
     var input = ""
+    /// Fills the box (a tapped "/" suggestion).
+    var pick: (String) -> Void = { _ in }
+    /// Back to the day view.
+    var today: () -> Void = {}
+
+    private var commandShown: Bool {
+        input.trimmingCharacters(in: .whitespaces).hasPrefix("/") || QuickCommand.parse(input) != nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             UndoChipRow(app: app)
             // Chat needs a working AI key; say so here, where it's tried, with the way to fix it. "/" commands still work.
-            if app.aiKeyMissing, !input.hasPrefix("/"), let step = app.setupSteps.first(where: { $0.id == .aiKey }) {
+            if app.aiKeyMissing, !commandShown, let step = app.setupSteps.first(where: { $0.id == .aiKey }) {
                 NeedsSetup(step: step, model: app)
             }
             if app.drafting || app.thinkingOfIdeas {
@@ -1026,21 +1053,24 @@ struct ChatPanel: View {
                 }
                 .font(.callout)
             }
-            if !app.ideas.isEmpty && !input.hasPrefix("/") {
+            if !app.ideas.isEmpty && !commandShown {
                 NotchIdeas(app: app)
-            } else if input.trimmingCharacters(in: .whitespaces).hasPrefix("/") {
-                CommandHint(input: input)
+            } else if commandShown {
+                CommandHint(input: input, pick: pick)
             } else if app.chat.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Ask Blink").font(.title3.weight(.semibold))
                     Text("“What's left today?” · “Plan my afternoon”")
                         .font(.callout).foregroundStyle(.white.opacity(0.55))
-                    Text("Quick actions, no AI: **/task** Send invoice fri 10am · **/remind** Call Sam 4pm · **/timer** 10")
+                    Text("Or just say it: “remind me to call Sam at 4pm” · “task send invoice friday” · “timer 10 min”")
                         .font(.callout).foregroundStyle(.white.opacity(0.55))
                 }
             } else {
                 if !app.thinking {
                     HStack {
+                        Button("Today", systemImage: "chevron.left", action: today)
+                            .buttonStyle(.plain).font(.caption).foregroundStyle(.white.opacity(0.55))
+                            .help("Back to your day")
                         Spacer()
                         Button("Clear") { app.clearChat() }
                             .buttonStyle(.plain).font(.caption).foregroundStyle(.white.opacity(0.55))
@@ -1171,6 +1201,8 @@ struct UndoChipRow: View {
 /// What a "/" command will do before Return: the parsed title and date, or the commands that match and an example.
 struct CommandHint: View {
     let input: String
+    /// Puts a command in the box when its row is clicked.
+    var pick: (String) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1189,16 +1221,22 @@ struct CommandHint: View {
                         .font(.callout).foregroundStyle(.orange)
                 }
                 ForEach(rows, id: \.name) { row in
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(row.name).font(.callout.monospaced().weight(.semibold)).foregroundStyle(.mint)
-                        Text("\(row.about), e.g. \(row.example)").font(.callout).foregroundStyle(.white.opacity(0.6))
+                    Button { pick(row.name + " ") } label: {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(row.name).font(.callout.monospaced().weight(.semibold)).foregroundStyle(.mint)
+                            Text("\(row.about), e.g. \(row.example)").font(.callout).foregroundStyle(.white.opacity(0.6))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(.rect)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(row.name): \(row.about)")
                 }
-                if !matches.isEmpty { Text("Tab to complete").font(.caption).foregroundStyle(.white.opacity(0.45)) }
+                if !matches.isEmpty { Text("Click one, or Tab to complete").font(.caption).foregroundStyle(.white.opacity(0.45)) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain) // the rows are buttons
     }
 
     private func title(_ command: QuickCommand) -> String {
@@ -1318,7 +1356,7 @@ struct SplitInput: View, Animatable {
 
     private var field: some View {
         HStack(spacing: 8) {
-            TextField("Ask Blink, or type / for quick actions", text: Bindable(notch).input)
+            TextField("Ask Blink, or “remind me to…”", text: Bindable(notch).input)
                 .textFieldStyle(.plain)
                 .font(.body)
                 .foregroundStyle(.white)
