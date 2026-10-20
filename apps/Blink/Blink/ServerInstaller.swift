@@ -155,7 +155,30 @@ final class ServerInstaller {
         step = .lock
         let keys = try await api.keys(ref)
         if !progress.ownerCreated {
-            try await ServerSetup.createOwner(projectURL: projectURL, secretKey: keys.secret, email: email, password: password)
+            if let secret = keys.secret {
+                try await ServerSetup.createOwner(projectURL: projectURL, secretKey: secret, email: email, password: password)
+            } else {
+                // Supabase keeps the secret key from apps like Blink: open sign-ups (with no confirmation email) for this one
+                // login, then lock them below. The setting takes about 10 seconds to go live, so wait, then retry while busy.
+                try await api.openSignupsForOwner(ref)
+                do {
+                    try await Task.sleep(for: .seconds(15))
+                    var tries = 0
+                    while true {
+                        do {
+                            try await ServerSetup.signUpOwner(projectURL: projectURL, publishableKey: keys.publishable, email: email, password: password)
+                            break
+                        } catch is ServerSetup.Busy where tries < 8 {
+                            tries += 1
+                            try await Task.sleep(for: .seconds(5))
+                        }
+                    }
+                    try await api.confirmOwner(ref, email: email)
+                } catch {
+                    try? await api.closeSignups(ref)
+                    throw error is ServerSetup.Busy ? ServerSetup.Problem(message: "Your server was busy creating your login. Try again in a minute.") : error
+                }
+            }
             progress.ownerCreated = true
         }
         try await api.closeSignups(ref)

@@ -228,6 +228,16 @@ extension Tokens {
         #expect(AgendaEvent(extID: "u", title: "U", start: at(9, 0), end: at(10, 0), url: URL(string: "https://evil.example/j")).joinURL == nil)
     }
 
+    @Test func setupFindsThePublishableKeyEvenWhenSecretsAreHidden() throws {
+        let hidden = try JSONDecoder().decode([ServerSetup.Client.Key].self, from: Data(#"""
+        [{"name":"default","type":"publishable","api_key":"sb_publishable_abc"},{"name":"default","type":"secret","api_key":null}]
+        """#.utf8))
+        #expect(ServerSetup.Client.publishable(in: hidden) == "sb_publishable_abc")
+        let legacy = try JSONDecoder().decode([ServerSetup.Client.Key].self, from: Data(#"[{"name":"anon","type":"legacy","api_key":"eyJ.anon"}]"#.utf8))
+        #expect(ServerSetup.Client.publishable(in: legacy) == "eyJ.anon")
+        #expect(ServerSetup.Client.publishable(in: []) == nil)
+    }
+
     @Test func mailNextStepsReadLocalTimes() throws {
         var berlin = Calendar(identifier: .gregorian)
         berlin.timeZone = TimeZone(identifier: "Europe/Berlin")!

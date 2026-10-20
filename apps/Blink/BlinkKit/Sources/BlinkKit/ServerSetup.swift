@@ -201,14 +201,34 @@ public enum ServerSetup {
             _ = try await request("projects/\(ref)/secrets", method: "POST", json: secrets.map { Secret(name: $0.key, value: $0.value) })
         }
 
-        /// The publishable key (for the apps) and a secret key (used once here, to create the owner's login).
-        public func keys(_ ref: String) async throws -> (publishable: String, secret: String) {
+        /// The publishable key (for the apps), and the secret key when Supabase reveals it (it doesn't to OAuth apps on
+        /// newer projects; setup then creates the login without it, see `openSignupsForOwner`).
+        public func keys(_ ref: String) async throws -> (publishable: String, secret: String?) {
             let keys = try JSONDecoder().decode([Key].self, from: try await request("projects/\(ref)/api-keys", query: [URLQueryItem(name: "reveal", value: "true")]))
-            guard let publishable = keys.first(where: { $0.type == "publishable" })?.api_key ?? keys.first(where: { $0.name == "anon" })?.api_key,
-                  let secret = keys.first(where: { $0.type == "secret" })?.api_key ?? keys.first(where: { $0.name == "service_role" })?.api_key else {
+            guard let publishable = Self.publishable(in: keys) else {
                 throw Problem(message: "Supabase didn't return the project's keys yet. Try again in a minute.")
             }
+            let secret = keys.first(where: { $0.type == "secret" && $0.api_key?.isEmpty == false })?.api_key
+                ?? keys.first(where: { $0.name == "service_role" && $0.api_key?.isEmpty == false })?.api_key
             return (publishable, secret)
+        }
+
+        static func publishable(in keys: [Key]) -> String? {
+            keys.first(where: { $0.type == "publishable" && $0.api_key?.isEmpty == false })?.api_key
+                ?? keys.first(where: { $0.name == "anon" && $0.api_key?.isEmpty == false })?.api_key
+        }
+
+        /// For a moment, lets the owner's login sign up on its own, with no confirmation email (the address is made up by
+        /// Blink): used when Supabase won't reveal the secret key. `closeSignups` locks it again right after.
+        public func openSignupsForOwner(_ ref: String) async throws {
+            struct Body: Encodable { let disable_signup = false, mailer_autoconfirm = true }
+            _ = try await request("projects/\(ref)/config/auth", method: "PATCH", json: Body())
+        }
+
+        /// Marks the owner's login confirmed (it's Blink's own made-up address, so no email could confirm it).
+        public func confirmOwner(_ ref: String, email: String) async throws {
+            let quoted = email.replacingOccurrences(of: "'", with: "''")
+            try await runSQL(ref, "update auth.users set email_confirmed_at = coalesce(email_confirmed_at, now()) where email = '\(quoted)'")
         }
 
         /// Turns off public sign-ups: only the owner's login exists on their server (§33).
@@ -217,6 +237,27 @@ public enum ServerSetup {
             _ = try await request("projects/\(ref)/config/auth", method: "PATCH", json: Body())
         }
     }
+
+    /// Creates the owner's login with the publishable key while sign-ups are briefly open (see `openSignupsForOwner`).
+    public static func signUpOwner(projectURL: URL, publishableKey: String, email: String, password: String,
+                                   session: URLSession = .shared) async throws {
+        var request = URLRequest(url: projectURL.appending(path: "auth/v1/signup"))
+        request.httpMethod = "POST"
+        request.setValue(publishableKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["email": email, "password": password])
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let text = String(data: data, encoding: .utf8) ?? ""
+        // Already there (a retry after a lost reply): that's the login we wanted.
+        if status == 422 || status == 400, text.localizedCaseInsensitiveContains("already") { return }
+        // Busy, or the no-email setting isn't live yet (Supabase then tries to send a confirmation and hits its limit).
+        if status == 429 || status >= 500 { throw Busy() }
+        guard (200..<300).contains(status) else { throw Problem(message: "Couldn't create your login: \(text.prefix(160))") }
+    }
+
+    /// The server isn't ready for the sign-up yet; try again in a few seconds.
+    public struct Busy: Error {}
 
     /// Creates the owner's login on their new server with the secret key, confirmed so they can sign in at once.
     public static func createOwner(projectURL: URL, secretKey: String, email: String, password: String,
