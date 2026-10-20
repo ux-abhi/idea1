@@ -123,9 +123,11 @@ public enum ServerSetup {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(status) else {
                 let detail = String(data: data, encoding: .utf8).map { String($0.prefix(200)) } ?? ""
+                // Which call and Supabase's own words, so a refusal can be traced (a missing permission vs. an expired sign-in).
+                let call = request.url?.path.split(separator: "/").suffix(2).joined(separator: "/") ?? ""
                 throw Problem(message: status == 401 || status == 403
-                              ? "Supabase didn't allow that. Sign in with Supabase again."
-                              : "Supabase answered \(status). \(detail)")
+                              ? "Supabase didn't allow that (\(status), \(call)). Sign in with Supabase again. \(detail)"
+                              : "Supabase answered \(status) (\(call)). \(detail)")
             }
             return data
         }
