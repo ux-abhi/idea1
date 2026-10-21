@@ -5,12 +5,17 @@ import Foundation
 /// functions/_shared/models.ts (the server falls back to Claude Opus for anything else); `onDeviceID` runs on the Mac.
 public struct AIModel: Identifiable, Hashable, Sendable {
     public enum Group: String, CaseIterable, Sendable {
-        case onDevice = "On this Mac (free, private)", claude = "Claude", best = "Best (OpenRouter credit)", free = "Free (Groq)"
+        case onDevice = "On this Mac (free, private)", claude = "Claude", best = "Best (OpenRouter credit)", free = "Free (Groq)", own = "Your own AI"
     }
     public let id: String
     public let name: String
     public let isFree: Bool
-    public var group: Group { id == Self.onDeviceID ? .onDevice : isFree ? .free : id.hasPrefix("claude-") ? .claude : .best }
+    public var group: Group {
+        id == Self.onDeviceID ? .onDevice : id == Self.customID ? .own : isFree ? .free : id.hasPrefix("claude-") ? .claude : .best
+    }
+
+    /// The owner's own AI service, added in Settings › Connections › Advanced (any OpenAI-compatible one).
+    public static let customID = "custom"
 
     /// Apple's on-device model (Apple Intelligence): chat only, answered on the Mac, no key, nothing leaves it.
     public static let onDeviceID = "apple-on-device"
@@ -29,6 +34,7 @@ public struct AIModel: Identifiable, Hashable, Sendable {
         AIModel(id: "google/gemini-3.1-pro-preview", name: "Gemini 3.1 Pro · Google's best", isFree: false),
         AIModel(id: "moonshotai/kimi-k3", name: "Kimi K3 · top Chinese model", isFree: false),
         AIModel(id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro · strong, very cheap", isFree: false),
+        AIModel(id: customID, name: "Your own AI · added in Connections", isFree: false),
     ]
 
     public static let defaultID = "claude-opus-5-5"

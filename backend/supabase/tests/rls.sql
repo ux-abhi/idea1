@@ -484,6 +484,10 @@ do $$ begin
   perform public.set_server_key('GROQ_API_KEY', ' gsk_one ');
   perform public.set_server_key('GROQ_API_KEY', 'gsk_two');
   assert (select count(*) from public.server_key) = 1, 'the owner sees one saved key name';
+  -- Your own AI's settings are allowed names too.
+  perform public.set_server_key('CUSTOM_AI_MODEL', 'mistral-large-latest');
+  perform public.remove_server_key('CUSTOM_AI_MODEL');
+  assert (select count(*) from public.server_key) = 1, 'a removed key name is gone';
 end $$;
 reset role;
 set role service_role;

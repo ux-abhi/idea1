@@ -18,6 +18,7 @@ struct ConnectionsSettings: View {
     @State private var disconnecting = false
     @State private var connecting: Task<Void, Never>?
     @State private var advanced = false
+    @State private var connectingApp: ConnectorApp?
 
     struct Field: Hashable {
         let key: String, label: String, prompt: String
@@ -33,8 +34,8 @@ struct ConnectionsSettings: View {
         let help: String
     }
 
-    private let groups: [(title: String, services: [Service])] = [
-        ("AI", [
+    /// Advanced: AI services by API key (the simple way is ChatGPT or Claude above, or the free on-device model).
+    private let aiKeys: [Service] = [
             Service(id: "anthropic", name: "Claude (Anthropic)", use: "Chat, planning and drafts when Claude is picked",
                     fields: [Field(key: "ANTHROPIC_API_KEY", label: "API key", prompt: "sk-ant-…"),
                              Field(key: "ANTHROPIC_WORKSPACE_ID", label: "Workspace ID", prompt: "Only for organisation keys", secure: false, optional: true)],
@@ -45,8 +46,15 @@ struct ConnectionsSettings: View {
             Service(id: "openrouter", name: "OpenRouter", use: "GPT, Gemini, Kimi and DeepSeek through one key",
                     fields: [Field(key: "OPENROUTER_API_KEY", label: "API key", prompt: "sk-or-…")],
                     getKey: URL(string: "https://openrouter.ai/keys"), help: "Add a little credit, then create a key."),
-        ]),
-        ("Images and your page", [
+            Service(id: "custom", name: "Your own AI", use: "Any OpenAI-compatible service: Mistral, Together, Perplexity, DeepInfra…",
+                    fields: [Field(key: "CUSTOM_AI_NAME", label: "Name", prompt: "e.g. Mistral", secure: false),
+                             Field(key: "CUSTOM_AI_URL", label: "API address", prompt: "https://api.mistral.ai/v1", secure: false),
+                             Field(key: "CUSTOM_AI_MODEL", label: "Model", prompt: "e.g. mistral-large-latest", secure: false),
+                             Field(key: "CUSTOM_AI_KEY", label: "API key", prompt: "From that service's dashboard")],
+                    getKey: nil, help: "The service's docs list its OpenAI-compatible API address (https, usually ending in /v1) and model names. Then pick “Your own AI” as the model in Settings › AI."),
+    ]
+
+    private let otherKeys: [Service] = [
             Service(id: "cloudflare", name: "Cloudflare Workers AI", use: "Free post images",
                     fields: [Field(key: "CLOUDFLARE_ACCOUNT_ID", label: "Account ID", prompt: "On your Cloudflare dashboard's right side", secure: false),
                              Field(key: "CLOUDFLARE_API_TOKEN", label: "API token", prompt: "With the Workers AI permission")],
@@ -54,8 +62,9 @@ struct ConnectionsSettings: View {
             Service(id: "apify", name: "Apify", use: "Read My Page on the Content page",
                     fields: [Field(key: "APIFY_TOKEN", label: "API token", prompt: "apify_api_…")],
                     getKey: URL(string: "https://console.apify.com/settings/integrations"), help: "Copy your personal API token."),
-        ]),
-        ("Mail", [
+    ]
+
+    private let mail: [Service] = [
             Service(id: "gmail", name: "Gmail", use: "Sorts your mail; replies after Touch ID",
                     fields: [Field(key: "GMAIL_ADDRESS", label: "Address", prompt: "you@gmail.com", secure: false),
                              Field(key: "GMAIL_APP_PASSWORD", label: "App password", prompt: "16 letters from Google")],
@@ -72,7 +81,6 @@ struct ConnectionsSettings: View {
                              Field(key: "UNI_IMAP_HOST", label: "IMAP server", prompt: "imap.example.edu", secure: false),
                              Field(key: "UNI_SMTP_HOST", label: "SMTP server", prompt: "Leave empty if it's the same", secure: false, optional: true)],
                     getKey: nil, help: "Your provider's help page lists the IMAP and SMTP server names."),
-        ]),
     ]
 
     private let googleApp = Service(
@@ -84,10 +92,29 @@ struct ConnectionsSettings: View {
 
     var body: some View {
         Form {
-            ForEach(groups, id: \.title) { group in
-                Section(group.title) {
-                    ForEach(group.services) { row($0) }
+            Section {
+                #if os(macOS)
+                connectRow(.chatGPT, about: "Use Blink inside ChatGPT, with your ChatGPT plan")
+                connectRow(.claude, about: "Use Blink inside Claude, with your Claude plan")
+                #endif
+                LabeledContent {
+                    let problem = OnDeviceChat.problem
+                    Label(problem == nil ? "Working" : "Off", systemImage: problem == nil ? "checkmark.circle.fill" : "minus.circle")
+                        .foregroundStyle(problem == nil ? Color.green : .secondary)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("On this Mac")
+                        Text(OnDeviceChat.problem ?? "Free, private answers in the notch (Apple Intelligence)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+            } header: {
+                Text("AI brain")
+            } footer: {
+                Text("The notch answers on this Mac for free. Connect ChatGPT or Claude to use Blink from there with the plan you already pay for. API keys are under Advanced.")
+            }
+            Section("Mail") {
+                ForEach(mail) { row($0) }
             }
             Section {
                 LabeledContent {
@@ -114,28 +141,29 @@ struct ConnectionsSettings: View {
                     }
                 }
                 // Without Blink's built-in Google client, the owner's own Google app is the only way, so it shows up front.
-                if oneClick {
-                    DisclosureGroup("Advanced: use your own Google app", isExpanded: $advanced) { row(googleApp) }
-                } else {
-                    row(googleApp)
-                }
+                if !oneClick { row(googleApp) }
             } header: {
                 Text("Calendar")
             } footer: {
                 Text("Blink only creates the meetings you approve with Touch ID. The access stays on your server.")
             }
-            #if os(macOS)
-            ConnectorSection()
-            #endif
             Section {
+                DisclosureGroup("Advanced: API keys and links", isExpanded: $advanced) {
+                    ForEach(aiKeys) { row($0) }
+                    if let credit = status?["openrouter_credit"], !credit.isEmpty {
+                        LabeledContent("OpenRouter credit left", value: "$\(credit)")
+                    }
+                    ForEach(otherKeys) { row($0) }
+                    if oneClick { row(googleApp) }
+                    #if os(macOS)
+                    ConnectorLinks()
+                    #endif
+                }
                 HStack {
                     Button("Check Again") { Task { await check() } }.disabled(checking)
                     if checking { ProgressView().controlSize(.small) }
                     if failed { Text("Couldn't reach your server.").foregroundStyle(.orange) }
                     if let problem { Text(problem).foregroundStyle(.orange) }
-                }
-                if let credit = status?["openrouter_credit"], !credit.isEmpty {
-                    LabeledContent("OpenRouter credit left", value: "$\(credit)")
                 }
             } footer: {
                 Text("Keys are stored encrypted on your own server and can't be read back, only replaced or removed. Each check is free and read-only.")
@@ -152,6 +180,9 @@ struct ConnectionsSettings: View {
         #else
         .onChange(of: scenePhase) { if scenePhase == .active { Task { await model.loadGoogle() } } }
         #endif
+        #if os(macOS)
+        .sheet(item: $connectingApp) { app in ConnectorSheet(app: app) { connectingApp = nil } }
+        #endif
         .sheet(item: $editing) { service in
             KeySheet(service: service, done: { editing = nil; Task { await check() } })
         }
@@ -166,6 +197,19 @@ struct ConnectionsSettings: View {
             Text("Blink's access is revoked at Google and deleted from your server. /meet stops working until you connect again.")
         }
     }
+
+    #if os(macOS)
+    private func connectRow(_ app: ConnectorApp, about: String) -> some View {
+        LabeledContent {
+            Button("Connect…") { connectingApp = app }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(app.rawValue)
+                Text(about).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+    #endif
 
     private func row(_ service: Service) -> some View {
         let state = status?[service.id]

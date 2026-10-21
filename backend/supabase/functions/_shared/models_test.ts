@@ -1,5 +1,5 @@
 // © Pexilim
-import { foldChunks, capProblem, claudeUsageCost, cost, pickModel } from "./models.ts";
+import { foldChunks, capProblem, claudeUsageCost, cost, customEndpoint, pickModel } from "./models.ts";
 
 Deno.test("only listed models are ever picked", () => {
   if (pickModel({ chat: "openai/gpt-oss-120b" }, "chat").provider !== "groq") throw new Error("valid choice ignored");
@@ -49,4 +49,11 @@ Deno.test("a streamed answer folds into one message, tool calls included", () =>
   if (message.tool_calls?.[0].function.name !== "propose_task" || message.tool_calls[0].function.arguments !== '{"title":"Gym"}') throw new Error(JSON.stringify(message.tool_calls));
   if (usage.completion_tokens !== 4) throw new Error("usage");
   if (foldChunks([{ choices: [{ delta: { content: "Hi" } }] }]).message.tool_calls) throw new Error("no calls expected");
+});
+
+Deno.test("your own AI: an https address becomes its chat endpoint; anything else is refused", () => {
+  if (customEndpoint("https://api.mistral.ai/v1/") !== "https://api.mistral.ai/v1/chat/completions") throw new Error("base");
+  if (customEndpoint("https://x.example/v1/chat/completions") !== "https://x.example/v1/chat/completions") throw new Error("full");
+  if (customEndpoint("http://localhost:11434/v1") !== null) throw new Error("plain http refused");
+  if (customEndpoint("not a url") !== null || customEndpoint(undefined) !== null) throw new Error("junk refused");
 });

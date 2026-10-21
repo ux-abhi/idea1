@@ -3,6 +3,7 @@
 // (a model list or an account lookup); keys never leave the server and nothing is spent.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import { forgetSecrets, secret } from "../_shared/secrets.ts";
+import { customEndpoint } from "../_shared/models.ts";
 
 type Status = "ok" | "missing" | "rejected" | "unreachable";
 
@@ -34,7 +35,8 @@ Deno.serve(async (req) => {
   const account = (await secret("CLOUDFLARE_ACCOUNT_ID"));
   const openrouterKey = (await secret("OPENROUTER_API_KEY"));
   const workspace = await secret("ANTHROPIC_WORKSPACE_ID");
-  const [anthropic, groq, apify, cloudflare, openrouter, credit] = await Promise.all([
+  const customChat = customEndpoint(await secret("CUSTOM_AI_URL"));
+  const [anthropic, groq, apify, cloudflare, openrouter, credit, custom] = await Promise.all([
     check((await secret("ANTHROPIC_API_KEY")), (key) => fetch("https://api.anthropic.com/v1/models?limit=1", {
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01",
                  ...(workspace ? { "anthropic-workspace-id": workspace } : {}) },
@@ -57,12 +59,16 @@ Deno.serve(async (req) => {
         return Number.isFinite(left) ? Math.max(0, Math.round(left * 100) / 100) : null;
       } catch { return null; }
     })(),
+    // The owner's own AI: its model list, the free check most OpenAI-compatible services offer.
+    customChat && (await secret("CUSTOM_AI_MODEL"))
+      ? check((await secret("CUSTOM_AI_KEY")), (key) => fetch(customChat.replace(/\/chat\/completions$/, "/models"), { headers: { Authorization: `Bearer ${key}` } }))
+      : Promise.resolve<Status>("missing"),
   ]);
   // Mail and the Google app: only whether they're set (logging in to each mailbox here would be slow and noisy).
   const set = async (...names: string[]): Promise<Status> =>
     (await Promise.all(names.map((n) => secret(n)))).every(Boolean) ? "ok" : "missing";
   return json(200, {
-    anthropic, groq, apify, cloudflare, openrouter, openrouter_credit: credit === null ? "" : String(credit),
+    anthropic, groq, apify, cloudflare, openrouter, custom, openrouter_credit: credit === null ? "" : String(credit),
     gmail: await set("GMAIL_ADDRESS", "GMAIL_APP_PASSWORD"), icloud: await set("ICLOUD_ADDRESS", "ICLOUD_APP_PASSWORD"),
     uni: await set("UNI_ADDRESS", "UNI_PASSWORD", "UNI_IMAP_HOST"), google_app: await set("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"),
   });

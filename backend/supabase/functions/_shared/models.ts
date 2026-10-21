@@ -3,7 +3,7 @@
 // profile.model_prefs. Only models on this list are ever called, whatever the stored value says.
 import { secret } from "./secrets.ts";
 
-export type Provider = "claude" | "groq" | "openrouter";
+export type Provider = "claude" | "groq" | "openrouter" | "custom";
 export type Feature = "chat" | "content";
 export type Model = {
   id: string;
@@ -29,6 +29,9 @@ export const MODELS: Model[] = [
   { id: "google/gemini-3.1-pro-preview", provider: "openrouter", inPerM: 2, outPerM: 12 },
   { id: "moonshotai/kimi-k3", provider: "openrouter", inPerM: 0.73, outPerM: 10 },
   { id: "deepseek/deepseek-v4-pro", provider: "openrouter", inPerM: 0.96, outPerM: 1.91 },
+  // The owner's own AI (Settings › Connections › Advanced): any OpenAI-compatible service, its model named in
+  // CUSTOM_AI_MODEL. Its price isn't known here, so it's counted at 0 (its own account has the real bill).
+  { id: "custom", provider: "custom", inPerM: 0, outPerM: 0 },
 ];
 
 const FALLBACK = "claude-opus-5-5";
@@ -56,6 +59,34 @@ const ENDPOINTS = {
   openrouter: { url: "https://openrouter.ai/api/v1/chat/completions", secret: "OPENROUTER_API_KEY", name: "OpenRouter" },
 };
 
+/** "https://api.mistral.ai/v1" (or the full …/chat/completions) → the chat endpoint; null unless it's https. */
+export function customEndpoint(base: string | undefined): string | null {
+  const trimmed = (base ?? "").trim().replace(/\/+$/, "");
+  try {
+    if (new URL(trimmed).protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+  return trimmed.endsWith("/chat/completions") ? trimmed : `${trimmed}/chat/completions`;
+}
+
+type Endpoint = { url: string; key: string; name: string; model?: string };
+
+/** Where an OpenAI-compatible call goes, with its key (and, for the owner's own AI, its model name). */
+async function endpointFor(provider: Exclude<Provider, "claude">): Promise<Endpoint> {
+  if (provider === "custom") {
+    const name = (await secret("CUSTOM_AI_NAME"))?.trim() || "Your own AI";
+    const url = customEndpoint(await secret("CUSTOM_AI_URL"));
+    const key = await secret("CUSTOM_AI_KEY"), model = (await secret("CUSTOM_AI_MODEL"))?.trim();
+    if (!url || !key || !model) throw new Error("Finish adding your own AI in Blink › Settings › Connections › Advanced (address, model and key).");
+    return { url, key, name, model };
+  }
+  const endpoint = ENDPOINTS[provider];
+  const key = await secret(endpoint.secret);
+  if (!key) throw new Error(`Add your ${endpoint.name} key in Blink › Settings › Connections first.`);
+  return { url: endpoint.url, key, name: endpoint.name };
+}
+
 /** Models that cost money per call (counted against the daily limit); Groq's free tier doesn't. */
 export const isPaid = (modelID: string) => (MODELS.find((m) => m.id === modelID)?.provider ?? "claude") !== "groq";
 
@@ -63,23 +94,21 @@ export const isPaid = (modelID: string) => (MODELS.find((m) => m.id === modelID)
 export const keepsSchema = (model: Model) => model.provider === "openrouter" || model.id.startsWith("openai/gpt-oss");
 
 /** One call to an OpenAI-compatible chat endpoint (Groq or OpenRouter). Throws a sentence the app can show. */
-export async function compatible(provider: "groq" | "openrouter", body: Record<string, unknown>): Promise<{
+export async function compatible(provider: Exclude<Provider, "claude">, body: Record<string, unknown>): Promise<{
   message: { content?: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] };
   usage: { prompt_tokens?: number; completion_tokens?: number };
 }> {
-  const endpoint = ENDPOINTS[provider];
-  const key = await secret(endpoint.secret);
-  if (!key) throw new Error(`Add your ${endpoint.name} key in Blink › Settings › Connections first.`);
+  const endpoint = await endpointFor(provider);
   const response = await fetch(endpoint.url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: { Authorization: `Bearer ${endpoint.key}`, "Content-Type": "application/json" },
+    body: JSON.stringify(endpoint.model ? { ...body, model: endpoint.model } : body),
   });
   if (response.status === 401) throw new Error(`The ${endpoint.name} key on this server isn't valid.`);
   if (response.status === 402) throw new Error(`Your ${endpoint.name} credit is used up. Top it up, or pick another model in Settings.`);
   if (response.status === 429) {
     throw new Error(provider === "groq" ? "The free Groq limit is used up for now. Try again later or switch model in Settings."
-                                         : "OpenRouter is busy right now. Try again in a moment.");
+                                         : `${endpoint.name} is busy right now. Try again in a moment.`);
   }
   if (response.status === 413) throw new Error(`That's too long for ${endpoint.name}. Pick Claude for this in Settings, or shorten it.`);
   if (!response.ok) {
@@ -113,20 +142,18 @@ export function foldChunks(chunks: unknown[]): { message: Message; usage: { prom
 }
 
 /** Like `compatible`, but streamed: `onText` gets each piece of the answer as it's written. Same errors. */
-export async function compatibleStream(provider: "groq" | "openrouter", body: Record<string, unknown>, onText: (text: string) => void) {
-  const endpoint = ENDPOINTS[provider];
-  const key = await secret(endpoint.secret);
-  if (!key) throw new Error(`Add your ${endpoint.name} key in Blink › Settings › Connections first.`);
+export async function compatibleStream(provider: Exclude<Provider, "claude">, body: Record<string, unknown>, onText: (text: string) => void) {
+  const endpoint = await endpointFor(provider);
   const response = await fetch(endpoint.url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, stream: true, stream_options: { include_usage: true } }),
+    headers: { Authorization: `Bearer ${endpoint.key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ...body, ...(endpoint.model ? { model: endpoint.model } : {}), stream: true, stream_options: { include_usage: true } }),
   });
   if (!response.ok || !response.body) {
     // The same sentences as the one-shot call, from its status checks.
     if (response.status === 401) throw new Error(`The ${endpoint.name} key on this server isn't valid.`);
     if (response.status === 402) throw new Error(`Your ${endpoint.name} credit is used up. Top it up, or pick another model in Settings.`);
-    if (response.status === 429) throw new Error(provider === "groq" ? "The free Groq limit is used up for now. Try again later or switch model in Settings." : "OpenRouter is busy right now. Try again in a moment.");
+    if (response.status === 429) throw new Error(provider === "groq" ? "The free Groq limit is used up for now. Try again later or switch model in Settings." : `${endpoint.name} is busy right now. Try again in a moment.`);
     console.error(provider, response.status, await response.text().catch(() => ""));
     throw new Error(`${endpoint.name} returned an error (${response.status}).`);
   }
