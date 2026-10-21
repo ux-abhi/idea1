@@ -300,12 +300,13 @@ public actor CalendarReader {
     }
 
     /// Creates a reminder in the default list; returns its identifier for the action's result (undo later).
-    public func addReminder(_ title: String, due: Date?, notes: String? = nil, url: URL? = nil, calendar: Calendar = .current) throws -> String {
+    public func addReminder(_ title: String, due: Date?, notes: String? = nil, url: URL? = nil, list: String? = nil,
+                            calendar: Calendar = .current) throws -> String {
         let reminder = EKReminder(eventStore: store)
         reminder.title = title
         reminder.notes = notes
         reminder.url = url
-        reminder.calendar = store.defaultCalendarForNewReminders()
+        reminder.calendar = try list.map { try reminderList(named: $0) } ?? store.defaultCalendarForNewReminders()
         if let due {
             reminder.dueDateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: due)
         }
@@ -314,6 +315,42 @@ public actor CalendarReader {
     }
 
     public struct ReminderGone: Error {}
+
+    /// The Reminders list a Space keeps its reminders in (named like the Space), made the first time it's needed, in
+    /// the same account as the default list so it syncs to the owner's iPhone.
+    public func reminderList(named name: String) throws -> EKCalendar {
+        if let list = store.calendars(for: .reminder).first(where: { $0.title == name }) { return list }
+        let list = EKCalendar(for: .reminder, eventStore: store)
+        list.title = name
+        guard let source = store.defaultCalendarForNewReminders()?.source ?? store.sources.first(where: { $0.sourceType == .local }) else {
+            throw ReminderGone()
+        }
+        list.source = source
+        try store.saveCalendar(list, commit: true)
+        return list
+    }
+
+    /// A Space was renamed: its Reminders list follows, so the two stay linked.
+    public func renameReminderList(from old: String, to new: String) throws {
+        guard old != new, let list = store.calendars(for: .reminder).first(where: { $0.title == old }) else { return }
+        list.title = new
+        try store.saveCalendar(list, commit: true)
+    }
+
+    /// Open reminders in one list (a Space's), soonest first; empty when the list doesn't exist yet.
+    public func reminders(inList name: String, calendar: Calendar = .current) async -> [AgendaReminder] {
+        guard Self.access == .granted, let list = store.calendars(for: .reminder).first(where: { $0.title == name }) else { return [] }
+        let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: [list])
+        return await withCheckedContinuation { continuation in
+            store.fetchReminders(matching: predicate) { found in
+                let mapped = (found ?? []).map {
+                    let due = AgendaReminder.due(from: $0.dueDateComponents, calendar: calendar)
+                    return AgendaReminder(id: $0.calendarItemIdentifier, title: $0.title ?? "Untitled", due: due.date, timed: due.timed)
+                }
+                continuation.resume(returning: mapped.sorted { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) })
+            }
+        }
+    }
 
     /// Adds an event to the default calendar (the owner's own; no guests); returns its identifier for Undo.
     public func addEvent(_ title: String, start: Date, end: Date?, allDay: Bool, location: String, notes: String, url: URL?) throws -> String {

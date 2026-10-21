@@ -15,12 +15,17 @@ struct TasksView: View {
     @State private var selected: Set<String> = []
     @State private var confirmDelete = false
     @AppStorage("addAsReminder") private var addAsReminder = false
+    @AppStorage("tasks.space") private var spaceFilter = "all"
 
     var body: some View {
         let entries = openEntries
         let habitsToday = model.habits.filter { model.isScheduledToday($0) }
         let doneToday = habitsToday.filter { model.answerToday($0) == .done }.count
         DashPage("Tasks & Habits", summary: "\(model.openTasks.count) open · \(habitsToday.isEmpty ? "no habits today" : "\(doneToday) of \(habitsToday.count) habits done")") {
+            SpaceFilter(selected: $spaceFilter)
+                .task(id: spaceFilter) {
+                    if let space = model.spaces.first(where: { $0.id == spaceFilter }) { await model.loadReminders(for: space) }
+                }
             DashCard("Tasks", trailing: entries.isEmpty ? nil : (selecting ? "Cancel" : "Select"),
                      action: { selecting.toggle(); selected = [] }) {
                 HStack(spacing: 8) {
@@ -167,8 +172,11 @@ struct TasksView: View {
 
     private var openEntries: [Entry] {
         let now = Date.now
-        let tasks = model.openTasks.map { Entry(kind: .task($0), id: $0.id, due: $0.dueAt, group: DueGroup.of($0.dueAt, now: now)) }
-        let reminders = model.allReminders.map {
+        // One Space: its tasks and the reminders in its own Reminders list.
+        let space = model.spaces.first { $0.id == spaceFilter }
+        let tasks = model.openTasks.filter { space == nil || $0.spaceID == space?.id }
+            .map { Entry(kind: .task($0), id: $0.id, due: $0.dueAt, group: DueGroup.of($0.dueAt, now: now)) }
+        let reminders = (space.map { model.spaceReminders[$0.id] ?? [] } ?? model.allReminders).map {
             Entry(kind: .reminder($0), id: $0.id, due: $0.due, group: DueGroup.of($0.due, now: now))
         }
         return (tasks + reminders).sorted { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
@@ -177,10 +185,13 @@ struct TasksView: View {
     private func add() {
         let parsed = TaskInput.parse(newTitle)
         guard !parsed.title.isEmpty else { return }
+        // With a Space picked above, what's added belongs to it (a reminder goes to its Reminders list).
+        let space = model.spaces.first { $0.id == spaceFilter }
         if addAsReminder {
-            Task { await model.run(.remind(title: parsed.title, due: parsed.due)) }
+            if let space { Task { await model.addReminder(parsed.title, due: parsed.due, to: space) } }
+            else { Task { await model.run(.remind(title: parsed.title, due: parsed.due)) } }
         } else {
-            model.create(.task, title: parsed.title, due: parsed.due)
+            model.create(.task, title: parsed.title, due: parsed.due, space: space?.id)
         }
         newTitle = ""
     }
@@ -448,6 +459,7 @@ struct NotesView: View {
     @Environment(AppModel.self) private var model
     @State private var selection: String?
     @State private var query = ""
+    @AppStorage("notes.space") private var spaceFilter = "all"
 
     var body: some View {
         HStack(spacing: 16) {
@@ -459,10 +471,12 @@ struct NotesView: View {
                 .padding(.horizontal, 4)
                 TextField("Search notes", text: $query)
                     .textFieldStyle(.roundedBorder)
+                SpaceFilter(selected: $spaceFilter)
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(model.notes.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
-                                                     || $0.body.localizedCaseInsensitiveContains(query) }) { note in
+                        ForEach(model.notes.filter { (spaceFilter == "all" || $0.spaceID == spaceFilter)
+                                                     && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
+                                                         || $0.body.localizedCaseInsensitiveContains(query)) }) { note in
                             Button { selection = note.id } label: {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(note.title.isEmpty ? "New note" : note.title).font(.headline).lineLimit(1)

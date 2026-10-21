@@ -32,6 +32,7 @@ struct SpaceView: View {
     @State private var renaming = false
     @State private var newTitle = ""
     @State private var confirmDelete = false
+    @AppStorage("space.addAsReminder") private var addAsReminder = false
 
     var body: some View {
         let mine = model.items.filter { $0.spaceID == space.id }
@@ -71,20 +72,32 @@ struct SpaceView: View {
                 }
             }
 
-            DashCard("Next up") {
-                AddField(placeholder: "Add a task to \(space.title), e.g. \"Draft homepage friday\"", text: $newTask) {
+            // One add bar for the Space: a task (Blink) or a reminder (Apple Reminders, in the Space's own list).
+            HStack(spacing: 10) {
+                Picker("Add as", selection: $addAsReminder) {
+                    Text("Task").tag(false)
+                    Text("Reminder").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                AddField(placeholder: addAsReminder ? "Remind me in \(space.title), e.g. \"Call the printer friday 10am\""
+                                                    : "Add a task to \(space.title), e.g. \"Draft homepage friday\"", text: $newTask) {
                     let parsed = TaskInput.parse(newTask)
                     guard !parsed.title.isEmpty else { return }
-                    model.create(.task, title: parsed.title, due: parsed.due, space: space.id)
+                    if addAsReminder {
+                        Task { await model.addReminder(parsed.title, due: parsed.due, to: space) }
+                    } else {
+                        model.create(.task, title: parsed.title, due: parsed.due, space: space.id)
+                    }
                     newTask = ""
                 }
-                if open.isEmpty {
-                    Text("No open tasks. Add one above, or right-click a task anywhere › Move to Space.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Divider()
-                    CardRows(items: open) { TaskRow(task: $0, showsSpace: false) }
-                }
+            }
+
+            let reminders = model.spaceReminders[space.id] ?? []
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 14) { tasksCard(open); remindersCard(reminders) }
+                VStack(spacing: 14) { tasksCard(open); remindersCard(reminders) }
             }
 
             DashCard("Notes", trailing: "New Note", action: {
@@ -93,18 +106,22 @@ struct SpaceView: View {
                 if notes.isEmpty {
                     Text("Meeting notes, ideas and drafts for this space show here.").foregroundStyle(.secondary)
                 } else {
-                    CardRows(items: notes) { note in
-                        Button { openNote(note.id) } label: {
-                            HStack {
-                                Image(systemName: "note.text").foregroundStyle(.secondary)
-                                Text(note.title.isEmpty ? "New note" : note.title).lineLimit(1)
-                                Spacer()
-                                Text(note.updatedAt, format: .relative(presentation: .named))
-                                    .font(.caption).foregroundStyle(.secondary)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 12)], spacing: 12) {
+                        ForEach(notes) { note in
+                            Button { openNote(note.id) } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(note.title.isEmpty ? "New note" : note.title).font(.headline).lineLimit(1)
+                                    Text(note.body.isEmpty ? " " : note.body).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+                                    Spacer(minLength: 0)
+                                    Text(note.updatedAt, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.tertiary)
+                                }
+                                .padding(12)
+                                .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
+                                .cardSurface(radius: Tokens.Radius.tile)
+                                .contentShape(.rect)
                             }
-                            .contentShape(.rect)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -119,6 +136,7 @@ struct SpaceView: View {
                 }
             }
         }
+        .task(id: space.id) { await model.loadReminders(for: space) }
         .toolbar {
             Menu {
                 Button("Rename…") { newTitle = space.title; renaming = true }
@@ -158,6 +176,38 @@ struct SpaceView: View {
         .onDisappear(perform: saveGoal)
     }
 
+    private func tasksCard(_ open: [BlinkItem]) -> some View {
+        DashCard("Tasks · \(open.count)") {
+            if open.isEmpty {
+                Text("No open tasks. Add one above, or right-click any task › Move to Space.").foregroundStyle(.secondary)
+            } else {
+                CardRows(items: open) { TaskRow(task: $0, showsSpace: false) }
+            }
+        }
+    }
+
+    private func remindersCard(_ reminders: [AgendaReminder]) -> some View {
+        DashCard("Reminders · \(reminders.count)") {
+            if reminders.isEmpty {
+                Text("Reminders added here go to a “\(space.title)” list in Apple Reminders, so they ring on your iPhone too.")
+                    .foregroundStyle(.secondary)
+            } else {
+                CardRows(items: reminders) { reminder in
+                    HStack(spacing: 10) {
+                        Button { Task { await model.complete(reminder, in: space) } } label: {
+                            Image(systemName: "circle").foregroundStyle(.orange)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Mark \(reminder.title) done")
+                        Text(reminder.title).lineLimit(1)
+                        Spacer()
+                        if let due = reminder.due { Text(Agenda.dueLabel(due)).font(.callout).foregroundStyle(.secondary) }
+                    }
+                }
+            }
+        }
+    }
+
     private func summary(open: Int, progress: (done: Int, total: Int)) -> String {
         var parts = [open == 1 ? "1 open task" : "\(open) open tasks"]
         if let due = space.dueAt { parts.append("due \(due.formatted(.dateTime.weekday(.abbreviated).day().month()))") }
@@ -194,6 +244,39 @@ struct ProgressRing: View {
         .accessibilityElement()
         .accessibilityLabel("Progress")
         .accessibilityValue(total == 0 ? "No tasks yet" : "\(done) of \(total) tasks done")
+    }
+}
+
+/// "All · ● Website · ● Visa": which Space a page shows. Hidden when there are no Spaces.
+struct SpaceFilter: View {
+    @Environment(AppModel.self) private var model
+    @Binding var selected: String
+
+    var body: some View {
+        if !model.spaces.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    chip("All", id: "all", color: nil)
+                    ForEach(model.spaces) { space in chip(space.title, id: space.id, color: Color.system(space.color)) }
+                }
+            }
+        }
+    }
+
+    private func chip(_ title: String, id: String, color: Color?) -> some View {
+        let on = selected == id
+        return Button { selected = id } label: {
+            HStack(spacing: 5) {
+                if let color { Circle().fill(color).frame(width: 7, height: 7) }
+                Text(title).lineLimit(1)
+            }
+            .font(.callout.weight(on ? .semibold : .regular))
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(on ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.05), in: .capsule)
+            .overlay(Capsule().strokeBorder(on ? Color.accentColor.opacity(0.5) : .clear))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 

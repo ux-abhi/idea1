@@ -132,10 +132,7 @@ private struct HeroCard: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RadialGradient(colors: [Color.gray.opacity(0.32), .black], center: .topLeading, startRadius: 0, endRadius: 520),
-            in: .rect(cornerRadius: Tokens.Radius.card + 6, style: .continuous)
-        )
+        .background { AmbientGlow().clipShape(.rect(cornerRadius: Tokens.Radius.card + 6, style: .continuous)) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(hero.value) \(hero.caption)")
     }
@@ -163,6 +160,34 @@ private struct HeroCard: View {
             }
         }
         .padding(12)
+    }
+}
+
+/// The black of the Today band with slow colour light drifting through it, like Blink's notch glow: warm orange, the
+/// accent blue and a touch of pink, mostly dark so the white text keeps its contrast. 20 frames a second while shown;
+/// still under Reduce Motion.
+private struct AmbientGlow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { context in
+            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate / 6
+            let drift = { (phase: Double) in Float(0.5 + 0.18 * sin(t + phase)) }
+            MeshGradient(
+                width: 3, height: 3,
+                points: [
+                    [0, 0], [drift(0), 0], [1, 0],
+                    [0, drift(1.7)], [drift(2.4), drift(3.1)], [1, drift(4.2)],
+                    [0, 1], [drift(5.0), 1], [1, 1],
+                ],
+                colors: [
+                    .black, .black, Color.orange.opacity(0.55),
+                    Color.blue.opacity(0.45), .black, .black,
+                    .black, Color.pink.opacity(0.35), Color.blue.opacity(0.3),
+                ]
+            )
+            .overlay(Color.black.opacity(0.25))
+        }
     }
 }
 

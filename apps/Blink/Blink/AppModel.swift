@@ -2016,12 +2016,49 @@ final class AppModel {
         guard let server, let index = spaces.firstIndex(where: { $0.id == space.id }) else { return }
         let before = spaces[index]
         spaces[index] = space
+        if before.title != space.title, calendarAccess == .granted {
+            try? await calendarReader.renameReminderList(from: before.title, to: space.title)
+        }
         do {
             try await server.save(space)
         } catch {
             if let i = spaces.firstIndex(where: { $0.id == space.id }) { spaces[i] = before }
             saveProblem = "Couldn't save the space. Check your connection and try again."
         }
+    }
+
+    // MARK: A Space's reminders (its own list in Apple Reminders, named like the Space)
+
+    /// Open reminders per Space id, loaded when its page shows.
+    private(set) var spaceReminders: [String: [AgendaReminder]] = [:]
+
+    func loadReminders(for space: Space) async {
+        guard calendarAccess == .granted else { return }
+        spaceReminders[space.id] = await calendarReader.reminders(inList: space.title)
+    }
+
+    /// A reminder in the Space's list (made the first time), with Undo; it syncs to the owner's iPhone like any other.
+    func addReminder(_ title: String, due: Date?, to space: Space) async {
+        guard calendarAccess == .granted else {
+            saveProblem = "Turn on Reminders for Blink in System Settings › Privacy & Security › Reminders."
+            return
+        }
+        do {
+            let id = try await calendarReader.addReminder(title, due: due, list: space.title)
+            await loadReminders(for: space)
+            await reloadAgenda()
+            offerUndo("Reminder added to \(space.title): \(title)") { [weak self] in
+                await self?.writeReminder { try await self?.calendarReader.deleteReminder(id: id) }
+                await self?.loadReminders(for: space)
+            }
+        } catch {
+            saveProblem = "Couldn't add that reminder. Check that Reminders is allowed for Blink."
+        }
+    }
+
+    func complete(_ reminder: AgendaReminder, in space: Space) async {
+        spaceReminders[space.id]?.removeAll { $0.id == reminder.id }
+        await complete(reminder)
     }
 
     /// Deletes the space; its tasks and notes stay, outside any space.

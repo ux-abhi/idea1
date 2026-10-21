@@ -182,6 +182,8 @@ struct MainWindow: View {
             if let space = model.spaces.first(where: { $0.id == id }) {
                 SpaceView(space: space, openNote: { note in
                     model.focusNoteID = note
+                    // Notes opens filtered to this Space, so its other notes stay in view.
+                    UserDefaults.standard.set(space.id, forKey: "notes.space")
                     page = .section(.notes)
                 })
                 .id(id)
