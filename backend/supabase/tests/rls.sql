@@ -533,4 +533,37 @@ do $$ begin
   end;
 end $$;
 
+-- Blink connector links: made only through create_mcp_token, seen and revoked only by their owner, never by anon.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ declare code text; begin
+  code := public.create_mcp_token();
+  assert length(code) = 64, 'a connector code is 64 hex characters';
+  assert (select count(*) from public.mcp_token) = 1, 'A sees their own connector link';
+  assert (select token_hash from public.mcp_token) = encode(sha256(convert_to(code, 'UTF8')), 'hex'), 'only the hash is stored';
+  begin
+    insert into public.mcp_token (token_hash) values (repeat('a', 64));
+    raise exception 'A wrote a connector hash directly';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  assert (select count(*) from public.mcp_token) = 0, 'B can''t see A''s connector links';
+  delete from public.mcp_token;
+end $$;
+reset role;
+do $$ begin
+  assert (select count(*) from public.mcp_token) = 1, 'B couldn''t revoke A''s link';
+end $$;
+set role anon;
+do $$ begin
+  begin
+    perform public.create_mcp_token();
+    raise exception 'anon made a connector link';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+
 select 'all RLS checks passed' as result;

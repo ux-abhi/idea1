@@ -326,10 +326,10 @@ public enum ServerSetup {
     }
 
     /// Which bundled functions go to an owner's server, and whether Supabase checks a login first: mail (called by the
-    /// schedule) and capture (called with a capture token from the owner's iPhone) check their own keys instead.
+    /// schedule), capture (a capture token from the owner's iPhone) and mcp (a connector link's code) check their own keys.
     /// The sign-in helper and retired probes are Pexilim-only and never installed.
     public static func installable(_ names: [String]) -> [(slug: String, verifyJWT: Bool)] {
         names.filter { !$0.hasPrefix("_") && !["signin", "mail-probe"].contains($0) }.sorted()
-            .map { ($0, !["mail", "capture", "google"].contains($0)) } // google: Google's redirect carries no JWT
+            .map { ($0, !["mail", "capture", "google", "mcp"].contains($0)) } // google: Google's redirect carries no JWT; mcp: its link code
     }
 }

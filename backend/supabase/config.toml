@@ -18,5 +18,9 @@ verify_jwt = false
 [functions.mail]
 verify_jwt = false
 
+# The Blink connector: Claude or ChatGPT call it with the secret code in its link, not a Supabase login.
+[functions.mcp]
+verify_jwt = false
+
 [functions.signin]
 verify_jwt = false

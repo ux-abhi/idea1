@@ -608,6 +608,31 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    // MARK: Blink connector (Claude, ChatGPT)
+
+    /// A connector link in use: when it was made and last used by Claude or ChatGPT.
+    public struct ConnectorLink: Decodable, Identifiable, Sendable {
+        public let id: String
+        public let createdAt: Date
+        public let lastUsedAt: Date?
+        enum CodingKeys: String, CodingKey { case id, createdAt = "created_at", lastUsedAt = "last_used_at" }
+    }
+
+    /// A new link to paste into Claude or ChatGPT as a custom connector. Shown once: the server keeps only its hash.
+    public func createConnectorLink() async throws -> URL {
+        let code: String = try await client.rpc("create_mcp_token").execute().value
+        return config.url.appending(path: "functions/v1/mcp/\(code)")
+    }
+
+    public func connectorLinks() async throws -> [ConnectorLink] {
+        try await client.from("mcp_token").select("id, created_at, last_used_at").order("created_at", ascending: false).execute().value
+    }
+
+    /// Turns every connector link off; Claude and ChatGPT lose access at once.
+    public func revokeConnectorLinks() async throws {
+        try await client.from("mcp_token").delete().neq("id", value: "00000000-0000-0000-0000-000000000000").execute()
+    }
+
     // MARK: Money (Phase 7, first slice)
 
     /// Spends from `since` ("2026-09-01") on, newest first.

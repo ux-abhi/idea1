@@ -124,6 +124,9 @@ struct ConnectionsSettings: View {
             } footer: {
                 Text("Blink only creates the meetings you approve with Touch ID. The access stays on your server.")
             }
+            #if os(macOS)
+            ConnectorSection()
+            #endif
             Section {
                 HStack {
                     Button("Check Again") { Task { await check() } }.disabled(checking)
