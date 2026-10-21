@@ -8,53 +8,6 @@ import SwiftUI
 
 private func double(_ d: Decimal) -> Double { NSDecimalNumber(decimal: d).doubleValue }
 
-/// Three rings, Activity style: meetings behind you, tasks done, habits done. Numbers beside them, no sentences.
-struct DayRings: View {
-    struct Ring: Identifiable {
-        let id: String
-        let done: Int
-        let total: Int
-        let tint: Color
-        var fraction: Double { total == 0 ? 0 : min(Double(done) / Double(total), 1) }
-    }
-
-    let rings: [Ring]
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: 18) {
-            ZStack {
-                ForEach(Array(rings.enumerated()), id: \.element.id) { index, ring in
-                    let size = 132 - CGFloat(index) * 30
-                    Circle().stroke(ring.tint.opacity(0.18), lineWidth: 11).frame(width: size, height: size)
-                    Circle()
-                        .trim(from: 0, to: ring.fraction)
-                        .stroke(ring.tint, style: StrokeStyle(lineWidth: 11, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: size, height: size)
-                        .animation(reduceMotion ? nil : .spring(duration: 0.8), value: ring.fraction)
-                }
-            }
-            .frame(width: 136, height: 136)
-            .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(rings) { ring in
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(ring.id).font(.caption).foregroundStyle(.secondary)
-                        Text(ring.total == 0 ? "—" : "\(ring.done)/\(ring.total)")
-                            .font(.system(.title3, design: .rounded).weight(.semibold))
-                            .foregroundStyle(ring.tint)
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(ring.id): \(ring.total == 0 ? "none today" : "\(ring.done) of \(ring.total)")")
-                }
-            }
-        }
-    }
-}
-
 /// The day's hours as one strip: meetings as blocks, tasks and reminders as dots, a line for now.
 struct DayStrip: View {
     let plan: DayPlan

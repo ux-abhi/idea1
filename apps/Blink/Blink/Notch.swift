@@ -26,7 +26,7 @@ final class NotchModel {
     static let inputHeight: CGFloat = 46
     var inputOut: Bool { level == .open && chatting }
     /// The tallest the open shape can get; the panel is sized for it.
-    static let maxGlanceHeight: CGFloat = 240
+    static let maxGlanceHeight: CGFloat = 210
     /// The morning brief is showing.
     var briefing = false
     /// The open notch shows the chat (⌃⌥Space) instead of the glance.
@@ -774,10 +774,14 @@ struct NotchView: View {
             case .rest:
                 EmptyView()
             case .peek:
-                Text(model.peekNote ?? (model.evening ? "Plan tomorrow?" : statusLine))
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.white)
-                    .transition(contentTransition)
+                HStack(spacing: 8) {
+                    // Working on something: the pixel light says so before any words.
+                    if app.thinking || app.drafting || app.thinkingOfIdeas { PixelLoader(tint: .blue, size: 14) }
+                    Text(model.peekNote ?? (app.thinking ? "Thinking" : app.drafting ? "Writing drafts" : model.evening ? "Plan tomorrow?" : statusLine))
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.white)
+                }
+                .transition(contentTransition)
             case .open:
                 // Taller than the notch can open (a busy day): it scrolls instead of cutting off the last rows.
                 Group {
@@ -871,7 +875,7 @@ struct GlanceView: View {
         // Reminders and tasks due today, after the meetings; four lines at most.
         let endOfToday = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) ?? now
         let due = Array(agenda.dueItems(adding: tasks).filter { $0.due < endOfToday }.prefix(max(0, 4 - events.count)))
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             if let card {
                 card
                 Divider().overlay(.white.opacity(0.2))
@@ -1095,7 +1099,11 @@ struct ChatPanel: View {
                                 if let words = app.streaming, !words.isEmpty {
                                     line(.init(role: .assistant, text: words)).id("thinking")
                                 } else {
-                                    Text("Thinking…").font(.callout).foregroundStyle(.white.opacity(0.5)).id("thinking")
+                                    HStack(spacing: 8) {
+                                        PixelLoader(tint: .blue)
+                                        Text("Thinking").font(.callout.weight(.medium)).foregroundStyle(.white.opacity(0.8))
+                                    }
+                                    .id("thinking")
                                 }
                             }
                         }
@@ -1887,3 +1895,32 @@ struct CardView: View {
     }
 }
 #endif
+
+
+/// A small grid of lights that ripples while Blink works, the notch's "Thinking" mark (calmer than a glow, readable at a
+/// glance). Still under Reduce Motion: a steady pattern.
+struct PixelLoader: View {
+    var tint: Color = .blue
+    var size: CGFloat = 16
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.09, paused: reduceMotion)) { context in
+            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate * 6
+            let cell = size / 4
+            Canvas { gc, _ in
+                for row in 0..<4 {
+                    for col in 0..<4 {
+                        // A wave that travels diagonally across the 4×4 grid.
+                        let phase = sin(t - Double(row + col) * 0.9)
+                        let alpha = reduceMotion ? ((row + col) % 2 == 0 ? 0.9 : 0.35) : 0.25 + 0.75 * max(0, phase)
+                        let rect = CGRect(x: Double(col) * cell + 0.6, y: Double(row) * cell + 0.6, width: cell - 1.2, height: cell - 1.2)
+                        gc.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(tint.opacity(alpha)))
+                    }
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
