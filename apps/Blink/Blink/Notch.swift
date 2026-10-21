@@ -1894,8 +1894,6 @@ struct CardView: View {
         }
     }
 }
-#endif
-
 
 /// A small grid of lights that ripples while Blink works, the notch's "Thinking" mark (calmer than a glow, readable at a
 /// glance). Still under Reduce Motion: a steady pattern.
@@ -1924,3 +1922,4 @@ struct PixelLoader: View {
         .accessibilityHidden(true)
     }
 }
+#endif
