@@ -1309,6 +1309,15 @@ struct SplitInput: View, Animatable {
     let notchWidth: CGFloat
     let width: CGFloat
     @FocusState private var focused: Bool
+    /// The box was clicked (or a pill was): it takes the whole bar and the pills step aside until it's empty again.
+    @State private var expanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Ready-made starts for the common actions; a click puts the words in the box, the rest is typed.
+    private static let pills: [(title: String, symbol: String, start: String)] = [
+        ("Task", "checklist", "task "), ("Remind", "bell", "remind me to "), ("Note", "note.text", "note: "),
+        ("Timer", "timer", "timer "), ("Meet", "video", "meeting with "),
+    ]
 
     var animatableData: Double {
         get { progress }
@@ -1364,12 +1373,35 @@ struct SplitInput: View, Animatable {
     }
 
     private var field: some View {
-        HStack(spacing: 8) {
-            TextField("Ask Blink, or “remind me to…”", text: Bindable(notch).input)
+        let open = expanded || !notch.input.isEmpty
+        return HStack(spacing: 8) {
+            if !open {
+                HStack(spacing: 6) {
+                    ForEach(Self.pills, id: \.title) { pill in
+                        Button {
+                            notch.input = pill.start
+                            expanded = true
+                            focused = true
+                        } label: {
+                            Label(pill.title, systemImage: pill.symbol)
+                                .font(.caption.weight(.medium))
+                                .padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(.white.opacity(0.1), in: .capsule)
+                                .foregroundStyle(.white.opacity(0.9))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Starts “\(pill.start.trimmingCharacters(in: .whitespaces))…”")
+                    }
+                }
+                .fixedSize()
+                .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+            TextField(open ? "Ask Blink, or “remind me to…”" : "Ask Blink…", text: Bindable(notch).input)
                 .textFieldStyle(.plain)
                 .font(.body)
                 .foregroundStyle(.white)
                 .focused($focused)
+                .simultaneousGesture(TapGesture().onEnded { expanded = true })
                 .onSubmit(send)
                 // Tab finishes a command name: "/re" → "/remind ".
                 .onKeyPress(.tab) {
@@ -1385,8 +1417,12 @@ struct SplitInput: View, Animatable {
             .disabled(!canSend)
             .accessibilityLabel("Send")
         }
-        .padding(.leading, 16)
+        .padding(.leading, open ? 16 : 8)
         .padding(.trailing, 8)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: open)
+        // Empty and left: back to the pills.
+        .onChange(of: focused) { _, now in if !now && notch.input.isEmpty { expanded = false } }
+        .onChange(of: notch.input) { _, text in if text.isEmpty && !focused { expanded = false } }
     }
 
     private var canSend: Bool {
