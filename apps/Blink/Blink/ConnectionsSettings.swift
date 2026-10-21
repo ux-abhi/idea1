@@ -93,10 +93,18 @@ struct ConnectionsSettings: View {
     var body: some View {
         Form {
             Section {
-                #if os(macOS)
-                connectRow(.chatGPT, about: "Use Blink inside ChatGPT, with your ChatGPT plan")
-                connectRow(.claude, about: "Use Blink inside Claude, with your Claude plan")
-                #endif
+                // shortcut: shown but not live until OpenAI gives Blink a Sign in with ChatGPT client ID (requested by the
+                // owner); then the button signs in and Blink's chat runs on the ChatGPT plan from this Mac.
+                LabeledContent {
+                    Button("Sign in with ChatGPT") {}
+                        .disabled(true)
+                        .help("Coming soon: waiting for OpenAI to approve Blink")
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("ChatGPT")
+                        Text("Use your ChatGPT plan as Blink's brain · coming soon").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 LabeledContent {
                     let problem = OnDeviceChat.problem
                     Label(problem == nil ? "Working" : "Off", systemImage: problem == nil ? "checkmark.circle.fill" : "minus.circle")
@@ -111,7 +119,7 @@ struct ConnectionsSettings: View {
             } header: {
                 Text("AI brain")
             } footer: {
-                Text("The notch answers on this Mac for free. Connect ChatGPT or Claude to use Blink from there with the plan you already pay for. API keys are under Advanced.")
+                Text("Blink answers on this Mac for free. Soon you can sign in with ChatGPT to use the plan you already pay for. API keys are under Advanced.")
             }
             Section("Mail") {
                 ForEach(mail) { row($0) }
@@ -156,6 +164,8 @@ struct ConnectionsSettings: View {
                     ForEach(otherKeys) { row($0) }
                     if oneClick { row(googleApp) }
                     #if os(macOS)
+                    connectRow(.chatGPT, about: "Use Blink from inside the ChatGPT app")
+                    connectRow(.claude, about: "Use Blink from inside the Claude app")
                     ConnectorLinks()
                     #endif
                 }
