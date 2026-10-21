@@ -222,6 +222,22 @@ extension Agenda {
 }
 
 extension Agenda {
+    /// One copy of each meeting: the same title at the same times in two calendars (an invite in iCloud and Google) shows once.
+    public static func uniqued(_ events: [AgendaEvent]) -> [AgendaEvent] {
+        var seen = Set<String>()
+        return events.filter { seen.insert("\($0.title.lowercased())|\($0.start.timeIntervalSince1970)|\($0.end.timeIntervalSince1970)").inserted }
+    }
+
+    /// "Fri 23 Oct, 18:00", or "Fri 1 Oct 2027" when it's another year and no time was set (a day-only date is midnight).
+    public static func dueLabel(_ date: Date, now: Date = .now, calendar: Calendar = .current) -> String {
+        var style = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month()
+        style.timeZone = calendar.timeZone
+        if !calendar.isDate(date, equalTo: now, toGranularity: .year) { style = style.year() }
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        if parts.hour != 0 || parts.minute != 0 { style = style.hour().minute() }
+        return date.formatted(style)
+    }
+
     /// Meetings the owner marked done are hidden from `shown`. A done id is kept while the calendar still lists it or its
     /// start was under a day ago, so a calendar that's still loading (Google after wake) never brings a done meeting back.
     public static func hidingDone(_ events: [AgendaEvent], done: Set<String>, now: Date) -> (shown: [AgendaEvent], keep: Set<String>) {
@@ -365,7 +381,7 @@ public actor CalendarReader {
         guard Self.access == .granted else { return .empty }
         let now = window.start
         let predicate = store.predicateForEvents(withStart: window.start, end: window.end, calendars: nil)
-        let events = store.events(matching: predicate).compactMap { event -> AgendaEvent? in
+        let found = store.events(matching: predicate).compactMap { event -> AgendaEvent? in
             let declined = event.attendees?.contains { $0.isCurrentUser && $0.participantStatus == .declined } ?? false
             guard !event.isAllDay, !declined, let start = event.startDate, let finish = event.endDate else { return nil }
             return AgendaEvent(extID: event.calendarItemExternalIdentifier ?? event.calendarItemIdentifier,
@@ -374,6 +390,7 @@ public actor CalendarReader {
                                 ?? AgendaEvent.meetingLink(in: event.notes) ?? event.url)
         }
 
+        let events = Agenda.uniqued(found)
         let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
         let reminderPredicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: endOfToday, calendars: nil)
         let reminders: [AgendaReminder] = await withCheckedContinuation { continuation in

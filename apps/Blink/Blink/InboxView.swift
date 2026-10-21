@@ -267,6 +267,10 @@ struct MailRow: View {
     var open: () -> Void = {}
     @State private var writingNote = false
     @State private var note = ""
+    @State private var hovering = false
+
+    /// Reply only where it makes sense: someone is waiting, it's important, or a draft is already written.
+    private var replyable: Bool { message.needsReply || message.triage == .important || message.status == .drafted }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -305,16 +309,20 @@ struct MailRow: View {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAction(named: "Read", open)
                 NextStepChips(message: message)
+                // Actions only when the row is in use (hovered, selected, open or busy): the list stays calm to read.
+                let inUse = hovering || focused || reading || selected || writingNote || model.draftingMail.contains(message.id)
                 HStack(spacing: 10) {
-                    Button {
-                        Task { await model.reviewReply(to: message) }
-                    } label: {
-                        if model.draftingMail.contains(message.id) { ProgressView().controlSize(.small) }
-                        else { Text(message.status == .drafted ? "Review & Send" : "Reply") }
+                    if replyable {
+                        Button {
+                            Task { await model.reviewReply(to: message) }
+                        } label: {
+                            if model.draftingMail.contains(message.id) { ProgressView().controlSize(.small) }
+                            else { Text(message.status == .drafted ? "Review & Send" : "Reply") }
+                        }
+                        .disabled(model.draftingMail.contains(message.id))
+                        Button("With a Note…") { writingNote = true }
+                            .popover(isPresented: $writingNote, arrowEdge: .bottom) { notePopover }
                     }
-                    .disabled(model.draftingMail.contains(message.id))
-                    Button("With a Note…") { writingNote = true }
-                        .popover(isPresented: $writingNote, arrowEdge: .bottom) { notePopover }
                     Button("Clear") { Task { await model.finish([message]) } }
                         .help("Clear this from Blink's inbox. Anything you added from it stays.")
                     Menu("More", systemImage: "ellipsis.circle") { moreItems }
@@ -326,9 +334,12 @@ struct MailRow: View {
                 }
                 .controlSize(.small)
                 .padding(.top, 2)
+                .opacity(inUse ? 1 : 0) // the space stays, so rows never jump; VoiceOver and the keyboard still reach them
+                .animation(.easeOut(duration: 0.12), value: inUse)
             }
         }
         .padding(6)
+        .onHover { hovering = $0 }
         .background(reading ? Color.accentColor.opacity(0.12) : focused ? Color.primary.opacity(0.06) : .clear, in: .rect(cornerRadius: 10))
         .accessibilityElement(children: .contain)
         .contextMenu { moreItems }

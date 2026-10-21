@@ -228,6 +228,16 @@ extension Tokens {
         #expect(AgendaEvent(extID: "u", title: "U", start: at(9, 0), end: at(10, 0), url: URL(string: "https://evil.example/j")).joinURL == nil)
     }
 
+    @Test func duplicateMeetingsShowOnceAndDueDatesSayTheYear() {
+        let a = event("TeamViewer Onboarding", at(12, 30)), b = event("teamviewer onboarding", at(12, 30)), c = event("Other", at(12, 30))
+        #expect(Agenda.uniqued([a, b, c]).map(\.title) == ["TeamViewer Onboarding", "Other"])
+        let now = at(10, 0)
+        let nextYear = cal.date(byAdding: .year, value: 1, to: cal.startOfDay(for: now))!
+        #expect(Agenda.dueLabel(nextYear, now: now, calendar: cal).contains(String(cal.component(.year, from: nextYear))))
+        #expect(!Agenda.dueLabel(nextYear, now: now, calendar: cal).contains("00:00"))
+        #expect(!Agenda.dueLabel(at(18, 0), now: now, calendar: cal).contains(String(cal.component(.year, from: now))))
+    }
+
     @Test func setPasswordSQLQuotesItsInputs() {
         let sql = ServerSetup.Client.setPasswordSQL(email: "o'brien@example.com", password: "a'b+c/=")
         #expect(sql.contains("where email = 'o''brien@example.com'"))

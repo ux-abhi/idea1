@@ -250,7 +250,7 @@ struct DueMenu: View {
     var body: some View {
         Button { showing = true } label: {
             if let due {
-                Text(due, format: .dateTime.weekday(.abbreviated).day().month().hour().minute())
+                Text(Agenda.dueLabel(due))
                     .foregroundStyle(highlight ? .orange : .secondary)
             } else {
                 Image(systemName: "calendar.badge.plus").foregroundStyle(.secondary)
