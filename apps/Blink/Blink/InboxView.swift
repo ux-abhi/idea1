@@ -377,11 +377,19 @@ struct MailReader: View {
                 }
             }
             HStack(spacing: 8) {
-                Button(message.status == .drafted ? "Review & Send" : "Reply") { Task { await model.reviewReply(to: message) } }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(model.draftingMail.contains(message.id))
-                Button("Reply with a Note…") { writingNote = true }
-                    .popover(isPresented: $writingNote, arrowEdge: .bottom) { notePopover }
+                // Replying only where someone reads it; the blue button only when someone is waiting for you.
+                if !message.isNoReply || message.status == .drafted {
+                    if message.needsReply || message.status == .drafted {
+                        Button(message.status == .drafted ? "Review & Send" : "Reply") { Task { await model.reviewReply(to: message) } }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(model.draftingMail.contains(message.id))
+                    } else {
+                        Button("Reply") { Task { await model.reviewReply(to: message) } }
+                            .disabled(model.draftingMail.contains(message.id))
+                    }
+                    Button("Reply with a Note…") { writingNote = true }
+                        .popover(isPresented: $writingNote, arrowEdge: .bottom) { notePopover }
+                }
                 if model.draftingMail.contains(message.id) { ProgressView().controlSize(.small) }
                 Spacer()
                 if let url = message.mailURL { Button("Open in Mail") { NSWorkspace.shared.open(url) }.buttonStyle(.link) }
@@ -416,8 +424,9 @@ struct MailReader: View {
     @ViewBuilder
     private func body(_ text: String?) -> some View {
         if let text {
-            Text(text.isEmpty ? "This email has no text." : text)
-                .font(.body).lineSpacing(3).textSelection(.enabled)
+            Text(text.isEmpty ? AttributedString("This email has no text.") : MailText.readable(text))
+                .font(.body).lineSpacing(4).textSelection(.enabled)
+                .tint(.blue)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if let problem {
             Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)

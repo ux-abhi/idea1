@@ -228,6 +228,19 @@ extension Tokens {
         #expect(AgendaEvent(extID: "u", title: "U", start: at(9, 0), end: at(10, 0), url: URL(string: "https://evil.example/j")).joinURL == nil)
     }
 
+    @Test func mailTextIsCalmToRead() {
+        let raw = "Say congrats https://www.linkedin.com/comm/messaging/compose?propUrn=urn%3Ali&trk=eml-1234\n\n\n\n---------------------\nBye"
+        let text = MailText.readable(raw)
+        let plain = String(text.characters)
+        #expect(plain.contains("linkedin.com ↗"))
+        #expect(!plain.contains("propUrn"))
+        #expect(!plain.contains("-----"))
+        #expect(!plain.contains("\n\n\n"))
+        #expect(text.runs.contains { $0.link?.host() == "www.linkedin.com" })
+        #expect(EmailMessage(id: "1", account: "gmail", messageID: "", fromName: "", fromAddr: "notifications-noreply@linkedin.com", subject: "",
+                             receivedAt: nil, triage: .normal, reason: "", summary: "", needsReply: false, status: .new, createdAt: .now, actions: nil).isNoReply)
+    }
+
     @Test func duplicateMeetingsShowOnceAndDueDatesSayTheYear() {
         let a = event("TeamViewer Onboarding", at(12, 30)), b = event("teamviewer onboarding", at(12, 30)), c = event("Other", at(12, 30))
         #expect(Agenda.uniqued([a, b, c]).map(\.title) == ["TeamViewer Onboarding", "Other"])

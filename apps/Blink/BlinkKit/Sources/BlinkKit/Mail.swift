@@ -126,3 +126,39 @@ extension EmailMessage {
     /// The rule key for this sender: the address itself, lowercased.
     public var senderKey: String { fromAddr.lowercased() }
 }
+
+extension EmailMessage {
+    /// Mail nobody reads replies to: no-reply senders and notification addresses.
+    public var isNoReply: Bool {
+        let local = fromAddr.lowercased().split(separator: "@").first.map(String.init) ?? ""
+        return ["noreply", "no-reply", "no_reply", "donotreply", "do-not-reply", "notifications", "notification", "mailer-daemon"]
+            .contains { local.contains($0) }
+    }
+}
+
+/// A mail's text made calm to read: every link shown as its site ("linkedin.com ↗") but still opening the full address,
+/// divider lines of dashes dropped, and runs of blank lines folded to one.
+public enum MailText {
+    public static func readable(_ text: String) -> AttributedString {
+        let lines = text.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { line in !(line.count >= 6 && line.allSatisfy { "-_=*~".contains($0) }) }
+        var tidy = lines.joined(separator: "\n")
+        while tidy.contains("\n\n\n") { tidy = tidy.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
+        tidy = tidy.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return AttributedString(tidy) }
+        var result = AttributedString()
+        var last = tidy.startIndex
+        for match in detector.matches(in: tidy, range: NSRange(tidy.startIndex..., in: tidy)) {
+            guard let range = Range(match.range, in: tidy), let url = match.url, url.scheme?.hasPrefix("http") == true else { continue }
+            result += AttributedString(String(tidy[last..<range.lowerBound]))
+            let site = (url.host() ?? "link").replacingOccurrences(of: "www.", with: "")
+            var link = AttributedString(" \(site) ↗ ")
+            link.link = url
+            result += link
+            last = range.upperBound
+        }
+        result += AttributedString(String(tidy[last...]))
+        return result
+    }
+}
