@@ -64,7 +64,7 @@ struct ReplyReviewSheet: View {
                     if sending { ProgressView().controlSize(.small) } else { Text(later ? "Schedule" : "Send") }
                 }
                 .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
+                .keyboardShortcut(.return, modifiers: .command) // never a bare Return: it sends mail
                 .disabled(!canSend || sending)
             }
         }

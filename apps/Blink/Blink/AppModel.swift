@@ -698,6 +698,22 @@ final class AppModel {
         await save(task.id)
     }
 
+    /// Deleting by hand (a task or note's Delete): gone at once, with Undo to bring it back as it was.
+    func deleteWithUndo(_ item: BlinkItem) async {
+        await delete(item)
+        guard !items.contains(where: { $0.id == item.id }) else { return } // the delete failed; nothing to undo
+        offerUndo("Deleted: \(item.title.isEmpty ? (item.type == .note ? "note" : "task") : item.title)") { [weak self] in
+            guard let self, let server else { return }
+            do {
+                try await server.restore(item)
+                items.insert(item, at: 0)
+                onServer.insert(item.id)
+            } catch {
+                saveProblem = "Couldn't bring it back. Check your connection."
+            }
+        }
+    }
+
     func delete(_ item: BlinkItem) async {
         guard let server, let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         items.remove(at: index)

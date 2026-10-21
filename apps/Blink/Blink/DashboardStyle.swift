@@ -31,6 +31,7 @@ struct DashPage<Content: View>: View {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
                     Text(summary).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 4)
@@ -63,10 +64,11 @@ struct DashCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             if let title {
                 HStack {
-                    Text(title).font(.headline)
+                    Text(title).font(.headline).accessibilityAddTraits(.isHeader)
                     Spacer()
                     if let trailing, let action {
-                        Button(trailing, action: action).buttonStyle(.plain).foregroundStyle(.secondary)
+                        // A link-styled button, so it reads as something to click, not a label.
+                        Button(trailing, action: action).buttonStyle(.link)
                     } else if let trailing {
                         Text(trailing).font(.callout).foregroundStyle(.secondary)
                     }

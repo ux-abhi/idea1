@@ -90,7 +90,7 @@ struct ConnectorSheet: View {
             link = made
             copy(made)
         } catch {
-            problem = "Couldn't make a link. Check your connection, or update your server (Settings › Server)."
+            problem = "Couldn't make a link. Check your connection and try again."
         }
     }
 }
@@ -100,15 +100,21 @@ struct ConnectorLinks: View {
     @Environment(AppModel.self) private var model
     @State private var links: [BlinkServer.ConnectorLink] = []
     @State private var problem: String?
+    @State private var confirming = false
 
     var body: some View {
         LabeledContent {
             if !links.isEmpty {
-                Button("Turn Off All", role: .destructive) { Task { await revoke() } }
+                Button("Turn Off All…", role: .destructive) { confirming = true }
+                    .confirmationDialog("Turn off all links?", isPresented: $confirming) {
+                        Button("Turn Off", role: .destructive) { Task { await revoke() } }
+                    } message: {
+                        Text("ChatGPT and Claude lose access to Blink at once. You can make a new link any time.")
+                    }
             }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text("ChatGPT and Claude links")
+                Text("Links for the ChatGPT and Claude apps")
                 Text(links.isEmpty ? "None yet" : links.map { $0.lastUsedAt.map { "used \($0.formatted(.relative(presentation: .named)))" } ?? "not used yet" }
                     .formatted(.list(type: .and)))
                     .font(.caption).foregroundStyle(.secondary)

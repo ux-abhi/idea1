@@ -45,9 +45,9 @@ enum RestStyle: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .ears: "Slim ears"
-        case .menuBar: "Menu bar icon only"
-        case .hidden: "Hidden until something happens"
+        case .ears: "Show Blink's eyes in the notch"
+        case .menuBar: "Hide the eyes, keep the menu bar icon"
+        case .hidden: "Hide everything until something happens"
         }
     }
 
@@ -403,6 +403,7 @@ struct UsageSettings: View {
 struct PrivacySettings: View {
     @Environment(AppModel.self) private var model
     @State private var clearingChat = false
+    @State private var clearingClipboard = false
     @AppStorage("lockAfter") private var lockAfter = AppLock.defaultRelockAfter
     @AppStorage(ClipboardStore.pausedKey) private var clipboardPaused = false
     @Environment(ClipboardStore.self) private var clipboard
@@ -417,8 +418,13 @@ struct PrivacySettings: View {
             }
             Section {
                 Toggle("Keep clipboard history", isOn: Binding(get: { !clipboardPaused }, set: { clipboardPaused = !$0 }))
-                Button("Clear Clipboard History (\(clipboard.history.items.count))", role: .destructive) { clipboard.clear() }
+                Button("Clear Clipboard History (\(clipboard.history.items.count))…", role: .destructive) { clearingClipboard = true }
                     .disabled(clipboard.history.items.isEmpty)
+                    .confirmationDialog("Clear your clipboard history?", isPresented: $clearingClipboard) {
+                        Button("Clear History", role: .destructive) { clipboard.clear() }
+                    } message: {
+                        Text("Everything you copied is removed from Blink. This can't be undone.")
+                    }
             } header: {
                 Text("Clipboard (⌃⌥V)")
             } footer: {

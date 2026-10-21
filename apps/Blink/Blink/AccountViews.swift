@@ -11,7 +11,7 @@ struct AccountsCard: View {
     var body: some View {
         DashCard("Accounts", trailing: "Add Account", action: { editing = .new }) {
             if model.accounts.isEmpty {
-                Text("Add your bank, savings, cash and card accounts with today's balance. Blink then shows how much you have, what's left at month end and how long it lasts. Spends come off the account you name (\"rewe 23.40 from N26\") or your default one.")
+                Text("Add your bank, savings, cash and card accounts with today's balance. Blink then shows how much you have, what's left at month end and how long it lasts. Spends come off the account you name (\"groceries 23.40 from Visa\") or your default one.")
                     .foregroundStyle(.secondary)
             }
             ForEach(model.accounts) { account in
@@ -35,6 +35,7 @@ private struct AccountRow: View {
     @Environment(AppModel.self) private var model
     let account: MoneyAccount
     let edit: () -> Void
+    @State private var deleting = false
 
     var body: some View {
         let now = MoneyMath.balance(of: account)
@@ -59,6 +60,11 @@ private struct AccountRow: View {
         .contentShape(.rect)
         .onTapGesture(perform: edit)
         .contextMenu { menu }
+        .confirmationDialog("Delete \(account.name)?", isPresented: $deleting) {
+            Button("Delete Account", role: .destructive) { Task { await model.deleteAccount(account) } }
+        } message: {
+            Text("Its balance goes. Spending you added stays, without an account.")
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(account.name), \(now.formatted(.currency(code: MoneyMath.currency)))\(account.isDefault ? ", default" : "")")
         .accessibilityAddTraits(.isButton)
@@ -71,7 +77,7 @@ private struct AccountRow: View {
         if !account.isDefault {
             Button("Make Default", systemImage: "star") { Task { await model.makeDefault(account) } }
         }
-        Button("Delete Account", systemImage: "trash", role: .destructive) { Task { await model.deleteAccount(account) } }
+        Button("Delete Account…", systemImage: "trash", role: .destructive) { deleting = true }
     }
 }
 
@@ -97,7 +103,7 @@ struct AccountEditor: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(account.map { "Balance of \($0.name)" } ?? "Add an Account").font(.headline)
             if account == nil {
-                TextField("Name, e.g. Sparkasse, N26, Cash", text: $name).textFieldStyle(.roundedBorder)
+                TextField("Name, e.g. Checking, Savings, Cash", text: $name).textFieldStyle(.roundedBorder)
                 Picker("Type", selection: $kind) {
                     ForEach(MoneyAccount.Kind.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
                 }

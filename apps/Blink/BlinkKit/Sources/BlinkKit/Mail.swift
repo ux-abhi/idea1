@@ -39,7 +39,7 @@ public struct EmailMessage: Codable, Identifiable, Equatable, Sendable {
         switch account {
         case "gmail": "Gmail"
         case "icloud": "iCloud"
-        case "uni": "University"
+        case "uni": "Other mailbox"
         default: account
         }
     }

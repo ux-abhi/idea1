@@ -38,11 +38,12 @@ struct SignInView: View {
                 Button {
                     Task { await signIn() }
                 } label: {
-                    if working { ProgressView().controlSize(.small) } else { Text("Sign in") }
+                    if working { ProgressView().controlSize(.small) } else { Text("Sign In") }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(email.isEmpty || password.isEmpty || working)
                 Button("Use a different server") { Task { await model.useDifferentServer() } }
+                    .buttonStyle(.borderless).font(.callout)
             }
         }
         .formStyle(.grouped)

@@ -23,7 +23,7 @@ struct HomeView: View {
                         Label("Can't reach \(host) right now. Blink will try again when you open it.",
                               systemImage: "wifi.exclamationmark")
                     }
-                    Button("Try again") { Task { await model.refresh() } }
+                    Button("Try Again") { Task { await model.refresh() } }
                 }
                 if let lastSync = model.lastSync {
                     LabeledContent("Last sync") { Text(lastSync, format: .relative(presentation: .named)) }

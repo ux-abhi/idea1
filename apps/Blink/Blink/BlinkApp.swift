@@ -35,7 +35,8 @@ struct BlinkApp: App {
 
         #if os(macOS)
         // VoiceOver can't reach the floating notch panel; the menu bar icon is its entry point (§36.2).
-        MenuBarExtra("Blink", systemImage: "eyes", isInserted: .constant(restStyle != .hidden)) {
+        // "Hidden" hides it too, except while VoiceOver is on: then it's the only way in.
+        MenuBarExtra("Blink", systemImage: "eyes", isInserted: .constant(restStyle != .hidden || NSWorkspace.shared.isVoiceOverEnabled)) {
             MenuBarContent(showNotch: { appDelegate.showNotch() }, ask: { appDelegate.askBlink() },
                            clipboard: { appDelegate.showClipboard() }, search: { appDelegate.showSearch() })
                 .environment(model)

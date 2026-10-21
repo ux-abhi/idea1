@@ -70,11 +70,15 @@ struct InboxView: View {
                 }
                 if !selected.isEmpty { bulkBar(order: order) }
                 if model.emails.isEmpty {
-                    EmptyCard(symbol: "envelope", title: model.mailStates.isEmpty ? "Mail isn't connected yet" : "Nothing new",
-                              message: model.mailStates.isEmpty
-                                ? "Add your mail passwords to your server's secrets (GMAIL_ADDRESS + GMAIL_APP_PASSWORD, ICLOUD_ADDRESS + ICLOUD_APP_PASSWORD, UNI_ADDRESS + UNI_PASSWORD), then press Check Now."
-                                : "Blink checks your mail every 5 minutes. Important mail shows here and in the notch.",
-                              actionTitle: "Check Now", action: { Task { await model.syncMail() } })
+                    if model.mailStates.isEmpty {
+                        EmptyCard(symbol: "envelope", title: "Connect your mail",
+                                  message: "Add Gmail, iCloud or another mailbox in Settings › Connections. Blink then checks it every 5 minutes.",
+                                  actionTitle: "Connect Mail…", action: { model.openSettings("connections") })
+                    } else {
+                        EmptyCard(symbol: "envelope", title: "Nothing new",
+                                  message: "Blink checks your mail every 5 minutes. Important mail shows here and in the notch.",
+                                  actionTitle: "Check Now", action: { Task { await model.syncMail() } })
+                    }
                 } else if shown.isEmpty {
                     ContentUnavailableView.search(text: query)
                 }
@@ -140,7 +144,7 @@ struct InboxView: View {
                     Text("Applies to all mail from these senders")
                 }
                 .fixedSize()
-                Button("Clear", systemImage: "xmark") { selected = [] }.labelStyle(.iconOnly).help("Clear the selection")
+                Button("Deselect All", systemImage: "xmark") { selected = [] }.labelStyle(.iconOnly).help("Deselect all")
             }
             .controlSize(.small)
         }
@@ -280,7 +284,7 @@ struct MailRow: View {
                     HStack(spacing: 6) {
                         Text(message.sender).font(message.status == .new ? .headline : .body.weight(.medium)).lineLimit(1)
                         if message.account == "uni" {
-                            Text("Uni").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                            Text("Other").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                                 .padding(.horizontal, 5).padding(.vertical, 1).background(.quaternary, in: .capsule)
                         }
                         if !message.reason.isEmpty {

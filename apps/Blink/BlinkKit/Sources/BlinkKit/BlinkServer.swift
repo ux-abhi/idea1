@@ -180,6 +180,12 @@ public final class BlinkServer: Sendable {
         try await client.from("item").update(["deleted_at": Date.now]).eq("id", value: item.id).execute()
     }
 
+    /// Undoes `delete` (it only marks the item deleted).
+    public func restore(_ item: BlinkItem) async throws {
+        struct Undelete: Encodable { let deleted_at: Date? = nil }
+        try await client.from("item").update(Undelete()).eq("id", value: item.id).execute()
+    }
+
     private struct ItemRow: Encodable {
         let id: String, type: String, title: String, body: String, status: String
         let due_at: Date?

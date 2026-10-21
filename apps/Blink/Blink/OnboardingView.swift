@@ -154,7 +154,7 @@ private struct ServerStep: View {
 
     var body: some View {
         StepCard(title: "Your own server",
-                 subtitle: "Blink keeps everything on your own free Supabase server, so your notes, mail and money stay private. Not even we can read them.") {
+                 subtitle: "Blink keeps your notes, mail and money in your own private space online. Not even we can read them.") {
             if manual {
                 ConnectView()
                     .frame(minHeight: 230, maxHeight: 340)
@@ -263,14 +263,14 @@ private struct CreateServer: View {
                 Button {
                     Task { await start() }
                 } label: {
-                    Label(installer.problem == nil ? "Sign in with Supabase" : "Try Again", systemImage: "person.badge.key")
+                    Label(installer.problem == nil ? "Create My Server" : "Try Again", systemImage: "server.rack")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
                 .disabled(signingIn)
-                Text("Opens supabase.com to sign in or sign up for free. Blink then creates your server; we never see your Supabase account.")
+                Text("Opens Supabase, the free service that hosts it. Sign in or sign up there; Blink does the rest. We never see your account.")
                     .font(.caption).foregroundStyle(.secondary)
                 // Hidden while setup runs: switching away mid-install would hide its progress, not stop it.
                 if !signingIn { Button("I already have a server", action: useExisting).buttonStyle(.borderless) }
@@ -295,11 +295,17 @@ private struct CreateServer: View {
 }
 
 private struct AccountStep: View {
+    @Environment(AppModel.self) private var model
+    /// Open when this Mac already knows the login, so it signs in by itself; otherwise folded under the one main button.
+    @State private var withEmail: Bool?
+
     var body: some View {
-        StepCard(title: "Sign in", subtitle: "One click with the Supabase account that owns this server (Blink keeps the login on this Mac, setting a new password if needed), or type your email and password.") {
+        StepCard(title: "Sign in", subtitle: "Sign in with the Supabase account that owns your server. Blink remembers it on this Mac.") {
             SupabaseSignIn()
-            SignInView()
-                .frame(minHeight: 230, maxHeight: 340)
+            DisclosureGroup("Sign in with email instead", isExpanded: Binding(get: { withEmail ?? (model.savedLogin != nil) }, set: { withEmail = $0 })) {
+                SignInView()
+                    .frame(minHeight: 200, maxHeight: 300)
+            }
         }
     }
 }

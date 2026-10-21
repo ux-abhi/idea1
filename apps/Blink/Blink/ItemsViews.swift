@@ -21,7 +21,7 @@ struct TasksView: View {
         let habitsToday = model.habits.filter { model.isScheduledToday($0) }
         let doneToday = habitsToday.filter { model.answerToday($0) == .done }.count
         DashPage("Tasks & Habits", summary: "\(model.openTasks.count) open · \(habitsToday.isEmpty ? "no habits today" : "\(doneToday) of \(habitsToday.count) habits done")") {
-            DashCard("Tasks", trailing: entries.isEmpty ? nil : (selecting ? "Done" : "Select"),
+            DashCard("Tasks", trailing: entries.isEmpty ? nil : (selecting ? "Cancel" : "Select"),
                      action: { selecting.toggle(); selected = [] }) {
                 HStack(spacing: 8) {
                     Picker("Add as", selection: $addAsReminder) {
@@ -226,7 +226,7 @@ struct TaskRow: View {
         .onChange(of: task.title) { title = task.title }
         .contextMenu {
             MoveToSpaceMenu(item: task)
-            Button("Delete", role: .destructive) { Task { await model.delete(task) } }
+            Button("Delete", role: .destructive) { Task { await model.deleteWithUndo(task) } }
         }
     }
 
@@ -332,10 +332,12 @@ struct HabitRow: View {
             } else if let answer = model.answerToday(habit) {
                 Menu {
                     Button("Done") { Task { await model.answer(habit, .done) } }
-                    Button("Not today") { Task { await model.answer(habit, .notToday) } }
+                    Button("Not Today") { Task { await model.answer(habit, .notToday) } }
+                        .help("Missed it today. No guilt, the streak just pauses.")
                     Button("Skip") { Task { await model.answer(habit, .skipped) } }
+                        .help("A planned rest day. It doesn't count against you.")
                     Divider()
-                    Button("Clear") { Task { await model.answer(habit, nil) } }
+                    Button("Reset Today") { Task { await model.answer(habit, nil) } }
                 } label: {
                     Label(word(answer), systemImage: symbol(answer))
                 }
@@ -345,8 +347,10 @@ struct HabitRow: View {
                 HStack(spacing: 6) {
                     Button("Done") { Task { await model.answer(habit, .done) } }
                         .buttonStyle(.borderedProminent)
-                    Button("Not today") { Task { await model.answer(habit, .notToday) } }
+                    Button("Not Today") { Task { await model.answer(habit, .notToday) } }
+                        .help("Missed it today. No guilt, the streak just pauses.")
                     Button("Skip") { Task { await model.answer(habit, .skipped) } }
+                        .help("A planned rest day. It doesn't count against you.")
                 }
                 .controlSize(.small)
             }
@@ -476,7 +480,7 @@ struct NotesView: View {
                             .buttonStyle(.plain)
                             .contextMenu {
                                 MoveToSpaceMenu(item: note)
-                                Button("Delete", role: .destructive) { Task { await model.delete(note) } }
+                                Button("Delete", role: .destructive) { Task { await model.deleteWithUndo(note) } }
                             }
                         }
                     }

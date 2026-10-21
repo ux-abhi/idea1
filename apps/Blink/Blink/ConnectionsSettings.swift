@@ -51,7 +51,7 @@ struct ConnectionsSettings: View {
                              Field(key: "CUSTOM_AI_URL", label: "API address", prompt: "https://api.mistral.ai/v1", secure: false),
                              Field(key: "CUSTOM_AI_MODEL", label: "Model", prompt: "e.g. mistral-large-latest", secure: false),
                              Field(key: "CUSTOM_AI_KEY", label: "API key", prompt: "From that service's dashboard")],
-                    getKey: nil, help: "The service's docs list its OpenAI-compatible API address (https, usually ending in /v1) and model names. Then pick “Your own AI” as the model in Settings › AI."),
+                    getKey: nil, help: "The service's docs list its OpenAI-compatible API address (https, usually ending in /v1) and model names. Then pick “Your own AI” in Settings › AI & Usage."),
     ]
 
     private let otherKeys: [Service] = [
@@ -76,9 +76,9 @@ struct ConnectionsSettings: View {
                     getKey: URL(string: "https://account.apple.com"),
                     help: "Apple Account › Sign-In and Security › App-Specific Passwords."),
             Service(id: "uni", name: "Another mailbox", use: "A work or university account over IMAP",
-                    fields: [Field(key: "UNI_ADDRESS", label: "Address", prompt: "you@uni.edu", secure: false),
+                    fields: [Field(key: "UNI_ADDRESS", label: "Address", prompt: "you@example.com", secure: false),
                              Field(key: "UNI_PASSWORD", label: "Password", prompt: "Your mail password or app password"),
-                             Field(key: "UNI_IMAP_HOST", label: "IMAP server", prompt: "imap.example.edu", secure: false),
+                             Field(key: "UNI_IMAP_HOST", label: "IMAP server", prompt: "imap.example.com", secure: false),
                              Field(key: "UNI_SMTP_HOST", label: "SMTP server", prompt: "Leave empty if it's the same", secure: false, optional: true)],
                     getKey: nil, help: "Your provider's help page lists the IMAP and SMTP server names."),
     ]
@@ -164,8 +164,8 @@ struct ConnectionsSettings: View {
                     ForEach(otherKeys) { row($0) }
                     if oneClick { row(googleApp) }
                     #if os(macOS)
-                    connectRow(.chatGPT, about: "Use Blink from inside the ChatGPT app")
-                    connectRow(.claude, about: "Use Blink from inside the Claude app")
+                    connectRow(.chatGPT, about: "Ask ChatGPT about your day, tasks and mail")
+                    connectRow(.claude, about: "Ask Claude about your day, tasks and mail")
                     ConnectorLinks()
                     #endif
                 }
@@ -199,7 +199,7 @@ struct ConnectionsSettings: View {
         .confirmationDialog("Remove \(removing?.name ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
             Button("Remove", role: .destructive) { if let removing { Task { await remove(removing) } } }
         } message: {
-            Text("Blink stops using it. A key set as a Supabase secret, if there is one, applies again.")
+            Text("Blink stops using this key.")
         }
         .confirmationDialog("Disconnect Google?", isPresented: $disconnecting) {
             Button("Disconnect", role: .destructive) { Task { problem = await model.disconnectGoogle() } }
@@ -214,7 +214,7 @@ struct ConnectionsSettings: View {
             Button("Connect…") { connectingApp = app }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(app.rawValue)
+                Text("Use Blink in \(app.rawValue)")
                 Text(about).font(.caption).foregroundStyle(.secondary)
             }
         }

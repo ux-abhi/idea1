@@ -237,18 +237,23 @@ private struct HeroCard: View {
         .accessibilityLabel("\(hero.value) \(hero.caption)")
     }
 
+    private func addTask() {
+        let parsed = TaskInput.parse(newTask)
+        guard !parsed.title.isEmpty else { return }
+        model.create(.task, title: parsed.title, due: parsed.due)
+        newTask = ""
+        adding = false
+    }
+
     private var quickTask: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("New task, e.g. \"Pay rent friday 9am\"", text: $newTask)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 280)
-                .onSubmit {
-                    let parsed = TaskInput.parse(newTask)
-                    guard !parsed.title.isEmpty else { return }
-                    model.create(.task, title: parsed.title, due: parsed.due)
-                    newTask = ""
-                    adding = false
-                }
+            HStack {
+                TextField("New task, e.g. \"Pay rent friday 9am\"", text: $newTask)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 280)
+                    .onSubmit(addTask)
+                Button("Add", action: addTask).disabled(TaskInput.parse(newTask).title.isEmpty)
+            }
             if let due = TaskInput.parse(newTask).due {
                 Label("Due \(due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))",
                       systemImage: "calendar").font(.caption).foregroundStyle(.secondary)

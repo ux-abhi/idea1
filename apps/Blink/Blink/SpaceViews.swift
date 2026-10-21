@@ -246,7 +246,7 @@ struct NewSpaceSheet: View {
 
     var body: some View {
         Form {
-            TextField("Name", text: $title, prompt: Text("e.g. Pexilim website"))
+            TextField("Name", text: $title, prompt: Text("e.g. Website launch"))
             TextField("Goal", text: $goal, prompt: Text("e.g. Launch by November"), axis: .vertical)
             Toggle("Due date", isOn: $hasDue)
             if hasDue { DatePicker("Due", selection: $due, displayedComponents: .date) }

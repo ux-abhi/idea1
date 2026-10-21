@@ -39,7 +39,7 @@ public struct SetupStep: Identifiable, Equatable, Sendable {
             content ? SetupStep(id: .handle, title: "Add your Instagram handle", detail: "Drafts in your voice and post stats",
                                 symbol: "at", action: "Add Handle", destination: "content", done: voicePage.contains("@")) : nil,
             SetupStep(id: .mail, title: "Connect mail", detail: "Important mail sorted for you",
-                      symbol: "envelope", action: "Connect", destination: "inbox", done: mailConnected),
+                      symbol: "envelope", action: "Connect", destination: "settings:connections", done: mailConnected),
             SetupStep(id: .money, title: "Add a bank account", detail: "See what you have and how long it lasts",
                       symbol: "building.columns", action: "Add Account", destination: "money", done: hasAccount),
             SetupStep(id: .habit, title: "Track a habit", detail: "Streaks that keep you going",

@@ -779,8 +779,17 @@ struct NotchView: View {
                     .foregroundStyle(.white)
                     .transition(contentTransition)
             case .open:
-                glance(statusLine: statusLine, now: now)
-                    .transition(contentTransition)
+                // Taller than the notch can open (a busy day): it scrolls instead of cutting off the last rows.
+                Group {
+                    if model.glanceHeight > NotchModel.maxGlanceHeight {
+                        ScrollView { glance(statusLine: statusLine, now: now) }
+                            .scrollIndicators(.automatic)
+                            .frame(height: NotchModel.maxGlanceHeight)
+                    } else {
+                        glance(statusLine: statusLine, now: now)
+                    }
+                }
+                .transition(contentTransition)
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
@@ -1072,10 +1081,10 @@ struct ChatPanel: View {
                             .buttonStyle(.plain).font(.caption).foregroundStyle(.white.opacity(0.55))
                             .help("Back to your day")
                         Spacer()
-                        Button("Clear") { app.clearChat() }
+                        Button("New Chat") { app.clearChat() }
                             .buttonStyle(.plain).font(.caption).foregroundStyle(.white.opacity(0.55))
-                            .help("Clear this chat (/clear)")
-                            .accessibilityLabel("Clear chat")
+                            .help("Start a new chat (/clear)")
+                            .accessibilityLabel("New chat")
                     }
                 }
                 ScrollViewReader { proxy in
@@ -1154,7 +1163,7 @@ struct NotchIdeas: View {
             HStack {
                 Text("Ideas for your page").font(.callout.weight(.semibold))
                 Spacer()
-                Button("Clear") { Task { await app.clearIdeas() } }.buttonStyle(.plain).foregroundStyle(.white.opacity(0.5))
+                Button("Clear Ideas") { Task { await app.clearIdeas() } }.buttonStyle(.plain).foregroundStyle(.white.opacity(0.5))
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
@@ -1211,7 +1220,7 @@ struct CommandHint: View {
                     .font(.title3.weight(.semibold))
                     .lineLimit(2)
                 Text(detail(command)).font(.callout).foregroundStyle(.white.opacity(0.7))
-                Text("Return to do it now").font(.caption).foregroundStyle(.white.opacity(0.45))
+                Text("Press Return to add it").font(.caption).foregroundStyle(.white.opacity(0.45))
             } else {
                 let name = input.trimmingCharacters(in: .whitespaces).prefix { !$0.isWhitespace }.lowercased()
                 let matches = QuickCommand.suggestions(for: input)
@@ -1570,6 +1579,8 @@ struct ClipboardPanel: View {
     @State private var selected = 0
     @FocusState private var focused: Bool
     @AppStorage(ClipboardStore.pausedKey) private var paused = false
+    /// Clearing asks twice (a tap, then "Clear All?"): dialogs don't sit well on the notch panel.
+    @State private var confirmingClear = false
 
     var body: some View {
         let items = Array(store.history.search(query).prefix(30))
@@ -1613,7 +1624,15 @@ struct ClipboardPanel: View {
                 Text("↑↓ and Return, click, or drag into any app").font(.caption).foregroundStyle(.white.opacity(0.4))
                 Spacer()
                 Button(paused ? "Resume" : "Pause") { paused.toggle() }.buttonStyle(.plain).font(.caption)
-                Button("Clear") { store.clear() }.buttonStyle(.plain).font(.caption).foregroundStyle(.orange)
+                Button(confirmingClear ? "Clear All?" : "Clear History") {
+                    if confirmingClear { store.clear(); confirmingClear = false } else { confirmingClear = true }
+                }
+                .buttonStyle(.plain).font(.caption.weight(confirmingClear ? .semibold : .regular)).foregroundStyle(.orange)
+                .task(id: confirmingClear) {
+                    guard confirmingClear else { return }
+                    try? await Task.sleep(for: .seconds(3))
+                    confirmingClear = false
+                }
             }
         }
         .font(.callout)
@@ -1694,7 +1713,7 @@ struct TimerCard: View {
                         HStack(alignment: .firstTextBaseline) {
                             Text(timer.label).font(.callout).foregroundStyle(.white.opacity(0.6))
                             if timer.kind == .focus || timer.kind == .shortBreak || timer.kind == .longBreak {
-                                Text("round \(timer.round % 4 + 1) of 4").font(.caption).foregroundStyle(.white.opacity(0.4))
+                                Text("Round \(timer.round % 4 + 1) of 4").font(.caption).foregroundStyle(.white.opacity(0.4))
                             }
                             Spacer()
                             if timer.isPaused { Text("Paused").font(.caption).foregroundStyle(.orange) }

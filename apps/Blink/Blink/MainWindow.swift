@@ -252,7 +252,7 @@ struct EventRow: View {
             }
             Spacer()
             if model.doneMeetings.contains(event.id) {
-                Button("Not done") { model.reopenMeeting(event) }.buttonStyle(.bordered)
+                Button("Mark Not Done") { model.reopenMeeting(event) }.buttonStyle(.bordered)
             }
             if let url = event.joinURL {
                 Link("Join", destination: url).buttonStyle(.bordered)
@@ -292,7 +292,7 @@ struct CalendarListView: View {
             if model.calendarAccess != .granted {
                 DashCard { ConnectCalendarRow() }
             } else if days.isEmpty {
-                EmptyCard(symbol: "calendar", title: "No meetings this week",
+                EmptyCard(symbol: "calendar", title: "No meetings in the next 14 days",
                           message: "Timed events from the calendars on this Mac show here for the next 14 days. All-day events and ones you've declined are left out.")
             } else {
                 ForEach(days.keys.sorted(), id: \.self) { day in

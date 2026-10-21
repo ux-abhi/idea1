@@ -68,7 +68,7 @@ private struct CaptureSetup: View {
                     Step(6, "Pay with Apple Pay. The spend appears in Money; change or delete it there.")
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                Text("Blink names the account from the card (a card called “N26 Mastercard” goes to your N26 account), else your default account.")
+                Text("Blink names the account from the card (a card called “Visa Debit” goes to your Visa account), else your default account.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("Blink makes a private link for this iPhone. Your iPhone sends each Apple Pay tap to your own server with it; nobody else sees your spending.")

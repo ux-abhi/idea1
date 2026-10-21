@@ -82,6 +82,7 @@ struct MeetPanel: View {
 
             HStack {
                 if let problem { Text(problem).font(.caption).foregroundStyle(.orange).lineLimit(2) }
+                else if let missing = missing(draft.wrappedValue) { Text(missing).font(.caption).foregroundStyle(.white.opacity(0.6)) }
                 Spacer()
                 if app.creatingMeet { ProgressView().controlSize(.small).accessibilityLabel("Creating meeting") }
                 Button("Create & Invite") { create(draft.wrappedValue) }
@@ -95,6 +96,14 @@ struct MeetPanel: View {
         .onAppear { focus = draft.wrappedValue.title.isEmpty ? .title : .guest }
         .onExitCommand(perform: done)
         .onChange(of: problem) { if let problem { AccessibilityNotification.Announcement(problem).post() } }
+    }
+
+    /// Why Create & Invite is off, in a few words (nil when it's ready).
+    private func missing(_ draft: AppModel.MeetDraft) -> String? {
+        if draft.title.trimmingCharacters(in: .whitespaces).isEmpty { return "Add a title" }
+        if draft.guests.isEmpty { return "Add at least one guest" }
+        if draft.start <= .now.addingTimeInterval(-5 * 60) { return "Pick a time that's still ahead" }
+        return nil
     }
 
     private func ready(_ draft: AppModel.MeetDraft) -> Bool {

@@ -56,7 +56,7 @@ struct ContentView: View {
                 if model.readingPage { ProgressView().controlSize(.small) } else { Label("Read My Page", systemImage: "text.viewfinder") }
             }
             .disabled(model.readingPage)
-            .help("Read your latest Instagram posts to learn your voice and what works (uses about $0.05 of Apify credit)")
+            .help("Read your latest Instagram posts to learn your voice and what works (costs about 5 cents)")
             Button { editingVoice = true } label: { Label("Voice", systemImage: "person.wave.2") }
                 .help("How you write")
         }
