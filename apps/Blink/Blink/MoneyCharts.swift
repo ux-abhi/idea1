@@ -37,7 +37,7 @@ struct MetricTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
+        .cardSurface(radius: Tokens.Radius.tile)
         .accessibilityElement(children: .combine)
     }
 }

@@ -20,27 +20,16 @@ struct TodayView: View {
             let now = context.date
             ScrollView {
                 VStack(spacing: 16) {
-                    ViewThatFits(in: .horizontal) {
-                        // Side by side at the same height, so the top of Today reads as one row.
-                        HStack(alignment: .top, spacing: 16) {
-                            HeroCard(now: now, showNotes: showNotes, adding: $addingTask, newTask: $newTask)
-                            DayRings(rings: rings(now)).frame(width: 300)
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                        VStack(spacing: 16) {
-                            HeroCard(now: now, showNotes: showNotes, adding: $addingTask, newTask: $newTask)
-                            DayRings(rings: rings(now))
-                        }
-                    }
-                    tiles(now)
+                    HeroCard(now: now, rings: rings(now), showNotes: showNotes, adding: $addingTask, newTask: $newTask)
+                    summaryLine(now)
                     // One getting-started card at a time: setup while something's left, then the tips.
                     let steps = model.setupSteps
                     if steps.contains(where: { !$0.done }) { SetupCard(steps: steps) }
                     else if !tourDone { TipsCard { tourDone = true } }
                     lists(now: now)
                 }
-                .padding(20)
-                .frame(maxWidth: 920)
+                .padding(24)
+                .frame(maxWidth: 880)
                 .frame(maxWidth: .infinity)
             }
             .background(BlinkCanvas())
@@ -64,60 +53,50 @@ struct TodayView: View {
         ]
     }
 
-    /// Four numbers you can click through: tasks, mail, posts, money.
-    private func tiles(_ now: Date) -> some View {
+    /// The day's signals on one quiet line, each a click away: tasks, mail, posts, money.
+    private func summaryLine(_ now: Date) -> some View {
         let overdue = model.openTasks.filter { ($0.dueAt ?? .distantFuture) < now }.count
         let due = model.openTasks.filter { $0.isDue(by: now) }.count
         let mail = model.importantMail.filter { $0.status == .new }.count
         let ready = model.readyToPost.count
         let today = HabitDay.key(now)
         let month = MoneyMath.summary(model.spends, today: today)
-        let money = model.accounts.isEmpty ? nil : MoneyMath.leftAtMonthEnd(total: MoneyMath.totalBalance(model.accounts), summary: month, today: today)
-        return HStack(alignment: .top, spacing: 12) {
-            tile("tasks", MetricTile(title: "Tasks due", text: "\(due)", detail: overdue > 0 ? "\(overdue) overdue" : nextDeadline(now) ?? "On track",
-                                     detailColor: overdue > 0 ? .orange : .secondary))
-            tile("inbox", MetricTile(title: "Important mail", text: "\(mail)", detail: mail == 0 ? "All caught up" : "New",
-                                     detailColor: mail == 0 ? .green : .red))
-            if model.showsContent { tile("content", MetricTile(title: "Posts ready", text: "\(ready)", detail: ready == 0 ? "None waiting" : "To post")) }
-            tile("money", MetricTile(title: "Spent this month", value: month.total,
-                                     detail: money.map { "\($0.formatted(.currency(code: MoneyMath.currency))) left at month end" } ?? "Add an account",
-                                     detailColor: (money ?? 1) < 0 ? .red : .secondary))
+        let left = model.accounts.isEmpty ? nil : MoneyMath.leftAtMonthEnd(total: MoneyMath.totalBalance(model.accounts), summary: month, today: today)
+        let money = month.total.formatted(.currency(code: MoneyMath.currency))
+        return HStack(spacing: 0) {
+            signal("tasks", "checklist", overdue > 0 ? "\(overdue) overdue" : due > 0 ? "\(due) due today" : "Tasks on track",
+                   tint: overdue > 0 ? .orange : .secondary)
+            Divider().frame(height: 22)
+            signal("inbox", "envelope", mail == 0 ? "No important mail" : "\(mail) important mail", tint: mail == 0 ? .secondary : .red)
+            if model.showsContent {
+                Divider().frame(height: 22)
+                signal("content", "megaphone", ready == 0 ? "No posts waiting" : "\(ready) post\(ready == 1 ? "" : "s") ready", tint: .secondary)
+            }
+            Divider().frame(height: 22)
+            signal("money", "creditcard", left.map { "\(money) spent · \($0.formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0)))) left" } ?? "\(money) spent",
+                   tint: (left ?? 1) < 0 ? .red : .secondary)
         }
-        .fixedSize(horizontal: false, vertical: true) // all four as tall as the tallest
+        .padding(.vertical, 6)
+        .cardSurface(radius: Tokens.Radius.tile)
     }
 
-    private func tile(_ page: String, _ content: MetricTile) -> some View {
-        Button { model.go(to: page) } label: { content }
-            .buttonStyle(.plain)
-            .accessibilityHint("Opens \(page.capitalized)")
-    }
-
-    private func nextDeadline(_ now: Date) -> String? {
-        guard let task = model.openTasks.filter({ ($0.dueAt ?? .distantPast) > now }).min(by: { $0.dueAt! < $1.dueAt! }),
-              let due = task.dueAt else { return nil }
-        return "Next: \(task.title), \(due.formatted(.dateTime.weekday(.abbreviated).hour().minute()))"
+    private func signal(_ page: String, _ symbol: String, _ text: String, tint: Color) -> some View {
+        Button { model.go(to: page) } label: {
+            Label(text, systemImage: symbol)
+                .font(.callout)
+                .foregroundStyle(tint == .secondary ? Color.primary : tint)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens \(page.capitalized)")
     }
 
     private func bestStreak() -> String? {
         guard let best = model.habits.map({ ($0, model.progress($0).streak) }).max(by: { $0.1 < $1.1 }), best.1 > 0 else { return nil }
         return "Best streak \(best.1) day\(best.1 == 1 ? "" : "s")"
-    }
-
-    private var weekCharts: some View {
-        let days = WeekBars.lastWeek()
-        // Habit days start at wake time, so their week ends on the habit day, not the calendar day.
-        let habitDays = WeekBars.lastWeek(now: model.habitToday)
-        let habitDone: [(day: String, value: Double)] = habitDays.map { day in
-            (day, Double(model.habitAnswers.values.filter { $0[day] == .done }.count))
-        }
-        let spent: [(day: String, value: Double)] = days.map { day in
-            (day, WeekBars.euros(model.spends.filter { $0.spentOn == day }.reduce(Decimal.zero) { $0 + $1.amount }))
-        }
-        return HStack(alignment: .top, spacing: 16) {
-            WeekBars(title: "Habits this week", days: habitDone, tint: .green)
-            WeekBars(title: "Spent this week", days: spent, tint: .accentColor,
-                     format: { $0.formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0))) })
-        }
     }
 
     // MARK: The day, then the lists
@@ -150,9 +129,6 @@ struct TodayView: View {
                 }
             }
         }
-        if let next = model.agenda.today(now: now).first {
-            NextMeetingCard(event: next, now: now)
-        }
         if let first = model.pending.first {
             DashCard("Waiting for you", trailing: model.pending.count > 1 ? "See all \(model.pending.count)" : nil,
                      action: showWaiting) {
@@ -160,7 +136,6 @@ struct TodayView: View {
             }
         }
         DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks, reminders: model.agenda.reminders, now: now), now: now)
-        weekCharts
         let habits = model.habits.filter { model.isScheduledToday($0) }
         if !habits.isEmpty {
             DashCard("Habits", trailing: bestStreak()) { CardRows(items: habits) { HabitRow(habit: $0) } }
@@ -202,6 +177,7 @@ struct TodayView: View {
 private struct HeroCard: View {
     @Environment(AppModel.self) private var model
     let now: Date
+    let rings: [DayRings.Ring]
     let showNotes: () -> Void
     // Owned by Today, so a layout change (narrow ↔ wide) doesn't lose a half-typed task.
     @Binding var adding: Bool
@@ -209,33 +185,49 @@ private struct HeroCard: View {
 
     var body: some View {
         let hero = model.agenda.hero(now: now, tasks: model.dueTasks)
-        VStack(spacing: 12) {
-            Text(now, format: .dateTime.weekday(.wide).day().month())
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.7))
-            Text(hero.value)
-                .font(.system(size: 52, weight: .semibold, design: .rounded)) // type.numbers
-                .monospacedDigit()
-                .foregroundStyle(.white)
-                .contentTransition(.numericText())
-            Text(hero.caption)
-                .font(.callout)
-                .foregroundStyle(.white.opacity(0.75))
-                .lineLimit(1)
-            HStack(spacing: 10) {
-                PillButton(title: "Note", symbol: "square.and.pencil") {
-                    model.focusNoteID = model.create(.note, title: "").id
-                    showNotes()
+        let next = model.agenda.today(now: now).first
+        HStack(alignment: .center, spacing: 28) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(now, format: .dateTime.weekday(.wide).day().month())
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.65))
+                Text(hero.value)
+                    .font(.system(size: 48, weight: .semibold, design: .rounded)) // type.numbers
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                Text(next.map { "\(hero.caption) · \($0.start.formatted(date: .omitted, time: .shortened))\($0.location.map { " · \($0)" } ?? "")" } ?? hero.caption)
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(1)
+                HStack(spacing: 10) {
+                    if let next, next.joinable(at: now), let url = next.joinURL {
+                        Link(destination: url) {
+                            Label("Join", systemImage: "video.fill").font(.callout.weight(.semibold))
+                                .padding(.horizontal, 14).padding(.vertical, 8)
+                                .background(.white, in: .capsule).foregroundStyle(.black)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    PillButton(title: "Note", symbol: "square.and.pencil") {
+                        model.focusNoteID = model.create(.note, title: "").id
+                        showNotes()
+                    }
+                    PillButton(title: "Task", symbol: "plus") { adding = true }
+                        .popover(isPresented: $adding, arrowEdge: .bottom) { quickTask }
                 }
-                PillButton(title: "Task", symbol: "plus") { adding = true }
-                    .popover(isPresented: $adding, arrowEdge: .bottom) { quickTask }
+                .padding(.top, 4)
             }
+            Spacer(minLength: 0)
+            DayRings(rings: rings)
+                .environment(\.colorScheme, .dark)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .padding(28)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RadialGradient(colors: [Color.gray.opacity(0.35), .black], center: .top, startRadius: 0, endRadius: 360),
-            in: .rect(cornerRadius: Tokens.Radius.notchOpen + 6, style: .continuous)
+            RadialGradient(colors: [Color.gray.opacity(0.32), .black], center: .topLeading, startRadius: 0, endRadius: 520),
+            in: .rect(cornerRadius: Tokens.Radius.card + 6, style: .continuous)
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(hero.value) \(hero.caption)")
@@ -282,47 +274,6 @@ private struct PillButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.white)
-    }
-}
-
-/// The one warm, rich card: the next meeting, with Join, and Blink watching it.
-private struct NextMeetingCard: View {
-    let event: AgendaEvent
-    let now: Date
-
-    var body: some View {
-        let minutes = Int((event.start.timeIntervalSince(now) / 60).rounded(.up))
-        HStack(alignment: .bottom) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Next meeting").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                Text(event.title).font(.title3.weight(.semibold)).lineLimit(2)
-                Text("\(event.start.formatted(date: .omitted, time: .shortened))–\(event.end.formatted(date: .omitted, time: .shortened))\(event.location.map { " · \($0)" } ?? "")")
-                    .font(.callout).foregroundStyle(.secondary).lineLimit(1)
-                if let url = event.joinURL {
-                    Link(destination: url) {
-                        Text(minutes > 0 ? "Join in \(minutes) min" : "Join now")
-                            .font(.callout.weight(.semibold))
-                            .padding(.horizontal, 14).padding(.vertical, 7)
-                            .background(.black, in: .capsule)
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 4)
-                }
-            }
-            Spacer()
-            BlinkEyes(mood: minutes <= 10 ? .headsUp : .idle)
-                .frame(width: 76, height: 44)
-                .background(.black, in: .rect(cornerRadius: 14, style: .continuous))
-                .accessibilityHidden(true)
-        }
-        .padding(18)
-        .background(
-            LinearGradient(colors: [.orange.opacity(0.22), .pink.opacity(0.12)], startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: .rect(cornerRadius: Tokens.Radius.notchOpen, style: .continuous)
-        )
-        .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen, style: .continuous))
-        .accessibilityElement(children: .combine)
     }
 }
 

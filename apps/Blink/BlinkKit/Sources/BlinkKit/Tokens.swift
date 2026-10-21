@@ -56,6 +56,8 @@ public enum Tokens {
     public enum Radius {
         public static let notchRest = 12.0
         public static let notchOpen = 28.0
+        public static let card = 22.0
+        public static let tile = 18.0
     }
 
     public enum Glow {

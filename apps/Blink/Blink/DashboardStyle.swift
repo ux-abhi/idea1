@@ -5,6 +5,18 @@ import SwiftUI
 
 /// Shared look for every window page (DESIGN.md Look v3): soft canvas, big rounded title, rounded cards.
 
+/// Every card in the window: a faint fill and a hairline edge, the same in light and dark, so pages read as one calm
+/// surface instead of heavy blocks.
+extension View {
+    func cardSurface(radius: Double = Tokens.Radius.card) -> some View {
+        background {
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+                .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+        }
+    }
+}
+
 /// The soft blue-grey canvas: the window background with a faint wash of the accent colour.
 struct BlinkCanvas: View {
     var body: some View {
@@ -76,9 +88,9 @@ struct DashCard<Content: View>: View {
             }
             content
         }
-        .padding(16)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
+        .cardSurface()
     }
 }
 
