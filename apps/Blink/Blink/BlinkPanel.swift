@@ -9,6 +9,7 @@ struct BlinkPanel: View {
     @Environment(AppModel.self) private var model
     let page: MainWindow.Page
     @State private var text = ""
+    @FocusState private var typing: Bool
 
     /// A chip: the words on it, what Blink is asked, and what's on screen (sent as data, not as part of the request).
     private struct Suggestion: Hashable {
@@ -85,10 +86,29 @@ struct BlinkPanel: View {
                 NeedsSetup(step: step, model: model).padding(.horizontal, 12).padding(.bottom, 8)
             }
             Divider()
+            // The same quick starts as the notch: a click puts the words in the box, the rest is typed.
+            if text.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Self.pills, id: \.title) { pill in
+                            Button { text = pill.start; typing = true } label: {
+                                Label(pill.title, systemImage: pill.symbol)
+                                    .font(.caption.weight(.medium))
+                                    .padding(.horizontal, 10).padding(.vertical, 5)
+                                    .background(.quaternary.opacity(0.6), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .padding(.top, 10)
+            }
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Ask Blink…", text: $text, axis: .vertical)
+                TextField("Ask Blink, or “remind me to…”", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...5)
+                    .focused($typing)
                     .onSubmit { send(text) }
                 Button { send(text) } label: { Image(systemName: "arrow.up.circle.fill").imageScale(.large) }
                     .buttonStyle(.plain)
@@ -126,10 +146,20 @@ struct BlinkPanel: View {
         .padding(12)
     }
 
+    private static let pills: [(title: String, symbol: String, start: String)] = [
+        ("Task", "checklist", "task "), ("Remind", "bell", "remind me to "), ("Note", "note.text", "note: "),
+        ("Timer", "timer", "timer "), ("Meet", "video", "meeting with "),
+    ]
+
     private func send(_ message: String, context: String? = nil) {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !model.thinking else { return }
         text = ""
+        // "remind me to…", "task …", "/timer 10": done at once with Undo, no AI needed.
+        if context == nil, let command = QuickCommand.parse(trimmed) {
+            Task { _ = await model.run(command) }
+            return
+        }
         // The server takes at most 2000 characters (functions/chat input.ts).
         Task { await model.ask(String(trimmed.prefix(1990)), context: context) }
     }
