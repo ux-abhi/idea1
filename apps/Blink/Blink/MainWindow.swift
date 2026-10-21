@@ -18,7 +18,7 @@ struct MainWindow: View {
             case .tasks: "Tasks & Habits"
             case .content: "Content"
             case .money: "Money"
-            case .waiting: "Waiting for you"
+            case .waiting: "Needs You"
             case .activity: "Activity"
             }
         }
@@ -98,7 +98,7 @@ struct MainWindow: View {
             .sheet(isPresented: $newSpace) {
                 NewSpaceSheet { page = .space($0) }
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 210)
+            .navigationSplitViewColumnWidth(min: 210, ideal: 230)
             .toolbar(removing: .sidebarToggle)
             // Settings in plain sight, not only behind ⌘,.
             .safeAreaInset(edge: .bottom) {

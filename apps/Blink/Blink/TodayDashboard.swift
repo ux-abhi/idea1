@@ -21,19 +21,22 @@ struct TodayView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     ViewThatFits(in: .horizontal) {
+                        // Side by side at the same height, so the top of Today reads as one row.
                         HStack(alignment: .top, spacing: 16) {
                             HeroCard(now: now, showNotes: showNotes, adding: $addingTask, newTask: $newTask)
-                            DayRings(rings: rings(now)).frame(width: 330)
+                            DayRings(rings: rings(now)).frame(width: 300)
                         }
+                        .fixedSize(horizontal: false, vertical: true)
                         VStack(spacing: 16) {
                             HeroCard(now: now, showNotes: showNotes, adding: $addingTask, newTask: $newTask)
                             DayRings(rings: rings(now))
                         }
                     }
                     tiles(now)
+                    // One getting-started card at a time: setup while something's left, then the tips.
                     let steps = model.setupSteps
                     if steps.contains(where: { !$0.done }) { SetupCard(steps: steps) }
-                    if !tourDone { TipsCard { tourDone = true } }
+                    else if !tourDone { TipsCard { tourDone = true } }
                     lists(now: now)
                 }
                 .padding(20)
@@ -70,7 +73,7 @@ struct TodayView: View {
         let today = HabitDay.key(now)
         let month = MoneyMath.summary(model.spends, today: today)
         let money = model.accounts.isEmpty ? nil : MoneyMath.leftAtMonthEnd(total: MoneyMath.totalBalance(model.accounts), summary: month, today: today)
-        return HStack(spacing: 12) {
+        return HStack(alignment: .top, spacing: 12) {
             tile("tasks", MetricTile(title: "Tasks due", text: "\(due)", detail: overdue > 0 ? "\(overdue) overdue" : nextDeadline(now) ?? "On track",
                                      detailColor: overdue > 0 ? .orange : .secondary))
             tile("inbox", MetricTile(title: "Important mail", text: "\(mail)", detail: mail == 0 ? "All caught up" : "New",
@@ -80,6 +83,7 @@ struct TodayView: View {
                                      detail: money.map { "\($0.formatted(.currency(code: MoneyMath.currency))) left at month end" } ?? "Add an account",
                                      detailColor: (money ?? 1) < 0 ? .red : .secondary))
         }
+        .fixedSize(horizontal: false, vertical: true) // all four as tall as the tallest
     }
 
     private func tile(_ page: String, _ content: MetricTile) -> some View {
@@ -329,8 +333,9 @@ private struct TipsCard: View {
     var body: some View {
         DashCard("Get to know Blink", trailing: "Got it", action: done) {
             VStack(alignment: .leading, spacing: 8) {
-                tip("⌃⌥Space", "Ask Blink in the notch. Type / for quick actions like “/task Send invoice fri 10am”.")
-                tip("Hover", "Move the pointer to the notch to peek; click to open it.")
+                tip("Click", "Click the notch to see your day and ask Blink anything.")
+                tip("Say it", "“Remind me to call Sam at 4pm”, “task send invoice friday”, “timer 10 min”: no / needed.")
+                tip("⌃⌥Space", "Open the notch chat from anywhere.")
                 tip("⌃⌥V", "Your clipboard history, with search. Drag items into any app.")
                 tip("⌘K", "Search notes, tasks, posts and spaces.")
                 tip("⌥⌘B", "The Blink panel on every page, with suggestions for that page.")

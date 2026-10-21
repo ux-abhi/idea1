@@ -17,7 +17,7 @@ struct ConnectionsSettings: View {
     @State private var problem: String?
     @State private var disconnecting = false
     @State private var connecting: Task<Void, Never>?
-    @State private var advanced = false
+    @AppStorage("connections.advanced") private var advanced = false
     @State private var connectingApp: ConnectorApp?
 
     struct Field: Hashable {
@@ -156,19 +156,37 @@ struct ConnectionsSettings: View {
                 Text("Blink only creates the meetings you approve with Touch ID. The access stays on your server.")
             }
             Section {
-                DisclosureGroup("Advanced: API keys and links", isExpanded: $advanced) {
+                Toggle("Show advanced settings", isOn: $advanced)
+            } footer: {
+                Text("API keys for other AI services, image tools, and using Blink from other apps.")
+            }
+            if advanced {
+                Section {
                     ForEach(aiKeys) { row($0) }
-                    if let credit = status?["openrouter_credit"], !credit.isEmpty {
-                        LabeledContent("OpenRouter credit left", value: "$\(credit)")
-                    }
+                } header: {
+                    Text("AI keys")
+                } footer: {
+                    Text("Pick which one answers in Settings › AI & Usage. Each is optional.")
+                }
+                Section("Images and My Page") {
                     ForEach(otherKeys) { row($0) }
-                    if oneClick { row(googleApp) }
-                    #if os(macOS)
+                }
+                #if os(macOS)
+                Section {
                     connectRow(.chatGPT, about: "Ask ChatGPT about your day, tasks and mail")
                     connectRow(.claude, about: "Ask Claude about your day, tasks and mail")
                     ConnectorLinks()
-                    #endif
+                } header: {
+                    Text("Use Blink in other apps")
+                } footer: {
+                    Text("Each app gets a private link. It can read your day and mail summaries and add tasks and notes, never send or delete.")
                 }
+                #endif
+                if oneClick {
+                    Section("Your own Google app") { row(googleApp) }
+                }
+            }
+            Section {
                 HStack {
                     Button("Check Again") { Task { await check() } }.disabled(checking)
                     if checking { ProgressView().controlSize(.small) }
@@ -236,7 +254,7 @@ struct ConnectionsSettings: View {
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(service.name)
-                Text(service.use + (state == "ok" && !inApp ? " · set on your server" : ""))
+                Text(service.id == "openrouter" ? service.use + (status?["openrouter_credit"].flatMap { $0.isEmpty ? nil : " · $\($0) credit left" } ?? "") : service.use)
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

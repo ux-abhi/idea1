@@ -33,10 +33,10 @@ struct MetricTile: View {
                 .monospacedDigit()
                 .contentTransition(.numericText())
                 .lineLimit(1).minimumScaleFactor(0.7)
-            if let detail { Text(detail).font(.caption).foregroundStyle(detailColor).lineLimit(1) }
+            if let detail { Text(detail).font(.caption).foregroundStyle(detailColor).lineLimit(2).fixedSize(horizontal: false, vertical: true) }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
         .accessibilityElement(children: .combine)
     }
