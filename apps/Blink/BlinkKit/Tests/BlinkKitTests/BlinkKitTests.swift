@@ -239,6 +239,16 @@ extension Tokens {
         #expect(project.contains(x: 100, y: 30) && !project.contains(x: 200, y: 0))
     }
 
+    @Test func overlappingMeetingsShareTheColumn() {
+        let t0 = Date(timeIntervalSince1970: 0)
+        let at = { (m: Double, len: Double, id: String) in AgendaEvent(extID: id, title: id, start: t0.addingTimeInterval(m * 60), end: t0.addingTimeInterval((m + len) * 60)) }
+        let lanes = EventLane.layout([at(0, 60, "a"), at(30, 60, "b"), at(60, 30, "c"), at(120, 30, "d")])
+        let byID = Dictionary(uniqueKeysWithValues: lanes.map { ($0.event.extID, $0) })
+        #expect(byID["a"]?.lane == 0 && byID["b"]?.lane == 1 && byID["c"]?.lane == 0) // c starts when a ends
+        #expect(byID["a"]?.of == 2 && byID["c"]?.of == 2)
+        #expect(byID["d"]?.lane == 0 && byID["d"]?.of == 1) // on its own later
+    }
+
     @Test func blankNotesAreOnlyWhitespace() {
         #expect(BlinkItem(id: "1", type: .note, title: " ", body: "\n\t").isBlank)
         #expect(!BlinkItem(id: "2", type: .note, title: "", body: "x").isBlank)

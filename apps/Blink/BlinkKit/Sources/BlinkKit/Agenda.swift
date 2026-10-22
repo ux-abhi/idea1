@@ -3,6 +3,37 @@ import EventKit
 import Foundation
 
 /// One calendar occurrence. Identity = external id + occurrence start + source (ARCHITECTURE §36.1).
+/// Where each meeting of one day sits in a calendar column: meetings that overlap share the width side by side.
+public struct EventLane: Equatable, Sendable {
+    public let event: AgendaEvent
+    /// 0-based position among `of` side-by-side lanes.
+    public let lane: Int
+    public let of: Int
+
+    /// Greedy lanes: each meeting takes the first lane free at its start; a group of overlapping meetings shares one
+    /// lane count, so their widths line up.
+    public static func layout(_ events: [AgendaEvent]) -> [EventLane] {
+        let sorted = events.sorted { ($0.start, $1.end) < ($1.start, $0.end) }
+        var result: [EventLane] = []
+        var group: [(AgendaEvent, Int)] = []
+        var laneEnds: [Date] = []
+        var groupEnd = Date.distantPast
+        func close() {
+            result += group.map { EventLane(event: $0.0, lane: $0.1, of: max(laneEnds.count, 1)) }
+            group = []; laneEnds = []
+        }
+        for event in sorted {
+            if event.start >= groupEnd { close() }
+            let lane = laneEnds.firstIndex { $0 <= event.start } ?? laneEnds.count
+            if lane == laneEnds.count { laneEnds.append(event.end) } else { laneEnds[lane] = event.end }
+            group.append((event, lane))
+            groupEnd = max(groupEnd, event.end)
+        }
+        close()
+        return result
+    }
+}
+
 public struct AgendaEvent: Sendable, Equatable, Identifiable {
     public let extID: String
     public let source: String

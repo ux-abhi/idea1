@@ -2267,6 +2267,12 @@ final class AppModel {
     }
 
     /// Marks a meeting done (left early, or finished): it leaves the notch and Today until the calendar drops it. Undo-able.
+    /// Every timed meeting in `window` from this Mac's calendars, for the Calendar page's week and month.
+    func events(in window: DateInterval) async -> [AgendaEvent] {
+        guard calendarAccess == .granted else { return [] }
+        return await calendarReader.agenda(in: window).events
+    }
+
     func finishMeeting(_ event: AgendaEvent) {
         doneMeetings.insert(event.id)
         showMeetings()

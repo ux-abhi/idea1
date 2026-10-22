@@ -246,44 +246,6 @@ struct MainWindow: View {
     }
 }
 
-struct EventRow: View {
-    @Environment(AppModel.self) private var model
-    let event: AgendaEvent
-    let now: Date
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .trailing) {
-                Text(event.start, format: .dateTime.hour().minute())
-                Text(event.end, format: .dateTime.hour().minute()).foregroundStyle(.secondary)
-            }
-            .font(.callout.monospacedDigit())
-            .frame(minWidth: 52, alignment: .trailing)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(event.title).lineLimit(1)
-                if let location = event.location, event.joinURL?.absoluteString != location.trimmingCharacters(in: .whitespaces) {
-                    Text(location).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            Spacer()
-            if model.doneMeetings.contains(event.id) {
-                Image(systemName: "checkmark").foregroundStyle(.secondary).accessibilityLabel("Done")
-            }
-            if let url = event.joinURL {
-                Link("Join", destination: url).buttonStyle(.borderless)
-            }
-        }
-        .opacity(model.doneMeetings.contains(event.id) ? 0.6 : 1)
-        .contextMenu {
-            if model.doneMeetings.contains(event.id) { Button("Mark Not Done") { model.reopenMeeting(event) } }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityActions {
-            if model.doneMeetings.contains(event.id) { Button("Mark Not Done") { model.reopenMeeting(event) } }
-        }
-    }
-}
-
 struct ConnectCalendarRow: View {
     @Environment(AppModel.self) private var model
 
@@ -298,40 +260,6 @@ struct ConnectCalendarRow: View {
                     .font(.caption)
             }
         }
-    }
-}
-
-// MARK: Calendar
-
-struct CalendarListView: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        // Every meeting, done ones too (with "Not done"), so a wrong tap on Done can always be put right here.
-        let days = Dictionary(grouping: model.calendarEvents) { Calendar.current.startOfDay(for: $0.start) }
-        let count = model.calendarEvents.count
-        DashPage("Calendar", summary: count == 0 ? "Next 14 days" : "\(count == 1 ? "1 meeting" : "\(count) meetings") in the next 14 days") {
-            if model.calendarAccess != .granted {
-                DashCard { ConnectCalendarRow() }
-            } else if days.isEmpty {
-                EmptyCard(symbol: "calendar", title: "No meetings in the next 14 days",
-                          message: "All-day events and ones you've declined are left out.")
-            } else {
-                DashCard {
-                    ForEach(days.keys.sorted(), id: \.self) { day in
-                        Text(dayTitle(day)).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                            .padding(.top, day == days.keys.min() ? 0 : 10)
-                        CardRows(items: days[day] ?? []) { EventRow(event: $0, now: .now) }
-                    }
-                }
-            }
-        }
-    }
-
-    private func dayTitle(_ day: Date) -> String {
-        if Calendar.current.isDateInToday(day) { return "Today" }
-        if Calendar.current.isDateInTomorrow(day) { return "Tomorrow" }
-        return day.formatted(.dateTime.weekday(.wide).day().month())
     }
 }
 
