@@ -188,6 +188,8 @@ private struct SpaceCanvasView: View {
             .coordinateSpace(.named("canvas"))
         }
         .scrollPosition($position)
+        // Opens on the middle of the sheet, where the project starts, even before the cards have loaded.
+        .defaultScrollAnchor(.center)
         .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, rect in
             viewport = rect
             centreOnceLoaded()
@@ -528,7 +530,8 @@ private struct SpaceCanvasView: View {
     private func centreOnceLoaded() {
         guard !centred, viewport.width > 0, let project = nodes.first(where: { $0.kind == .project }) else { return }
         centred = true
-        centre(on: (project.x, project.y), animated: false)
+        // After this layout pass: a scroll asked for in the same pass as the first geometry is dropped.
+        Task { centre(on: (project.x, project.y), animated: false) }
     }
 
     private var zoomBar: some View {
