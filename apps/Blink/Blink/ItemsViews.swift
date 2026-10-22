@@ -499,6 +499,9 @@ struct NotesView: View {
             }
         }
         .background(BlinkCanvas())
+        // On the page, not the board: a toolbar item that comes and goes while a note opens crashes AppKit's toolbar.
+        .searchable(text: $query, placement: .toolbar, prompt: "Search notes")
+        .onChange(of: query) { if !query.isEmpty { close() } } // searching shows the board
         .onAppear {
             if let id = model.focusNoteID {
                 selection = id
@@ -557,7 +560,6 @@ struct NotesView: View {
             .frame(maxWidth: 1100, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .searchable(text: $query, placement: .toolbar, prompt: "Search notes")
     }
 
     private func newNote() {
