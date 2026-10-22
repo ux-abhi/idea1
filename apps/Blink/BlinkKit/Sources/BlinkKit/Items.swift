@@ -15,15 +15,21 @@ public struct BlinkItem: Codable, Identifiable, Equatable, Sendable {
     public var updatedAt: Date
     /// The Space it belongs to, if any.
     public var spaceID: String?
+    /// Its column on the Space's board (nil: the first column, or the last when done).
+    public var stage: String?
+    /// When work on it starts, for the Space's timeline.
+    public var startAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, type, title, body, status
-        case dueAt = "due_at", updatedAt = "updated_at", spaceID = "segment_id"
+        case id, type, title, body, status, stage
+        case dueAt = "due_at", updatedAt = "updated_at", spaceID = "segment_id", startAt = "start_at"
     }
 
     public init(id: String, type: Kind, title: String, body: String = "", status: Status = .open,
-                dueAt: Date? = nil, updatedAt: Date = .now, spaceID: String? = nil) {
+                dueAt: Date? = nil, updatedAt: Date = .now, spaceID: String? = nil, stage: String? = nil, startAt: Date? = nil) {
         self.spaceID = spaceID
+        self.stage = stage
+        self.startAt = startAt
         self.id = id
         self.type = type
         self.title = title

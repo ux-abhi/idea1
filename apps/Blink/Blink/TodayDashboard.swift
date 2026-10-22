@@ -163,8 +163,8 @@ private struct HeroCard: View {
     }
 }
 
-/// The black of the Today band with slow colour light drifting through it, like Blink's notch glow: warm orange, the
-/// accent blue and a touch of pink, mostly dark so the white text keeps its contrast. 20 frames a second while shown;
+/// The black of the Today band with one colour of light (the accent) drifting slowly through it, like Blink's notch
+/// glow; mostly dark so the white text keeps its contrast. 20 frames a second while shown;
 /// still under Reduce Motion.
 private struct AmbientGlow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -181,9 +181,9 @@ private struct AmbientGlow: View {
                     [0, 1], [drift(5.0), 1], [1, 1],
                 ],
                 colors: [
-                    .black, .black, Color.orange.opacity(0.55),
-                    Color.blue.opacity(0.45), .black, .black,
-                    .black, Color.pink.opacity(0.35), Color.blue.opacity(0.3),
+                    .black, .black, Color.accentColor.opacity(0.55),
+                    Color.accentColor.opacity(0.3), .black, .black,
+                    .black, Color.accentColor.opacity(0.4), Color.accentColor.opacity(0.18),
                 ]
             )
             .overlay(Color.black.opacity(0.25))

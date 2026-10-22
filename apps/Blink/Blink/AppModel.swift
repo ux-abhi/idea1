@@ -2027,6 +2027,63 @@ final class AppModel {
         }
     }
 
+    // MARK: A Space's board
+
+    /// A card dropped in a column: its stage changes, and the last column means done (moving out reopens it). Undo puts
+    /// it back where it was.
+    func move(_ task: BlinkItem, toColumn column: String, in space: Space) {
+        guard let current = items.first(where: { $0.id == task.id }), space.column(of: current) != column else { return }
+        var changed = current
+        changed.stage = column
+        changed.spaceID = space.id
+        changed.status = column == space.columns.last ? .done : .open
+        edit(changed)
+        Task { await save(changed.id) }
+        offerUndo("Moved to \(column): \(task.title)") { [weak self] in
+            guard let self else { return }
+            edit(current)
+            await save(current.id)
+        }
+    }
+
+    /// Renames a column on the board, and moves its cards along with it.
+    func renameColumn(_ old: String, to new: String, in space: Space) async {
+        let name = String(new.trimmingCharacters(in: .whitespaces).prefix(60))
+        guard !name.isEmpty, name != old, !space.columns.contains(name), let i = space.columns.firstIndex(of: old) else { return }
+        var changed = space
+        changed.columns[i] = name
+        await saveSpace(changed)
+        for item in items where item.spaceID == space.id && item.stage == old {
+            var moved = item
+            moved.stage = name
+            edit(moved)
+            await save(moved.id)
+        }
+    }
+
+    /// A new column before the last (done) one.
+    func addColumn(_ name: String, to space: Space) async {
+        let title = String(name.trimmingCharacters(in: .whitespaces).prefix(60))
+        guard !title.isEmpty, !space.columns.contains(title), space.columns.count < 8 else { return }
+        var changed = space
+        changed.columns.insert(title, at: max(changed.columns.count - 1, 0))
+        await saveSpace(changed)
+    }
+
+    /// Removes a column (never below two); its cards go back to the first column.
+    func removeColumn(_ column: String, from space: Space) async {
+        guard space.columns.count > 2, column != space.columns.last else { return }
+        var changed = space
+        changed.columns.removeAll { $0 == column }
+        await saveSpace(changed)
+        for item in items where item.spaceID == space.id && item.stage == column {
+            var moved = item
+            moved.stage = nil
+            edit(moved)
+            await save(moved.id)
+        }
+    }
+
     // MARK: A Space's reminders (its own list in Apple Reminders, named like the Space)
 
     /// Open reminders per Space id, loaded when its page shows.

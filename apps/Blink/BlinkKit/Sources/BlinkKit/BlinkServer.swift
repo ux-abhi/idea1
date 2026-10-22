@@ -158,7 +158,7 @@ public final class BlinkServer: Sendable {
 
     public func items() async throws -> [BlinkItem] {
         try await client.from("item")
-            .select("id, type, title, body, status, due_at, updated_at, segment_id")
+            .select("id, type, title, body, status, due_at, updated_at, segment_id, stage, start_at")
             .in("type", values: ["note", "task"])
             .is("deleted_at", value: nil)
             .neq("status", value: "archived")
@@ -190,8 +190,12 @@ public final class BlinkServer: Sendable {
         let id: String, type: String, title: String, body: String, status: String
         let due_at: Date?
         let segment_id: String?
+        let stage: String?
+        let start_at: Date?
         init(_ item: BlinkItem) {
             segment_id = item.spaceID
+            stage = item.stage
+            start_at = item.startAt
             id = item.id
             type = item.type.rawValue
             title = item.title
@@ -210,15 +214,17 @@ public final class BlinkServer: Sendable {
             try c.encode(status, forKey: .status)
             try c.encode(due_at, forKey: .due_at)
             try c.encode(segment_id, forKey: .segment_id)
+            try c.encode(stage, forKey: .stage)
+            try c.encode(start_at, forKey: .start_at)
         }
-        enum CodingKeys: String, CodingKey { case id, type, title, body, status, due_at, segment_id }
+        enum CodingKeys: String, CodingKey { case id, type, title, body, status, due_at, segment_id, stage, start_at }
     }
 
     // MARK: Spaces
 
     public func spaces() async throws -> [Space] {
         try await client.from("segment")
-            .select("id, title, goal, status, due_at, color, icon")
+            .select("id, title, goal, status, due_at, color, icon, cover, columns")
             .neq("status", value: "archived")
             .order("created_at")
             .execute().value

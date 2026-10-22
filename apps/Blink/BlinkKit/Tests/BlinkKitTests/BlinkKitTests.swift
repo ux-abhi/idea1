@@ -228,6 +228,17 @@ extension Tokens {
         #expect(AgendaEvent(extID: "u", title: "U", start: at(9, 0), end: at(10, 0), url: URL(string: "https://evil.example/j")).joinURL == nil)
     }
 
+    @Test func boardColumnsFollowTheTask() {
+        let space = Space(title: "Launch", columns: ["To do", "Doing", "Review", "Done"])
+        #expect(space.column(of: BlinkItem(id: "1", type: .task, title: "a")) == "To do")
+        #expect(space.column(of: BlinkItem(id: "2", type: .task, title: "b", stage: "Review")) == "Review")
+        #expect(space.column(of: BlinkItem(id: "3", type: .task, title: "c", status: .done)) == "Done")
+        #expect(space.column(of: BlinkItem(id: "4", type: .task, title: "d", stage: "Gone")) == "To do")      // a removed column
+        #expect(space.column(of: BlinkItem(id: "5", type: .task, title: "e", status: .done, stage: "Doing")) == "Done")
+        let old = try? JSONDecoder().decode(Space.self, from: Data(#"{"id":"x","title":"Old"}"#.utf8))
+        #expect(old?.columns == Space.defaultColumns && old?.cover == "aurora")
+    }
+
     @Test func mailTextIsCalmToRead() {
         let raw = "Say congrats https://www.linkedin.com/comm/messaging/compose?propUrn=urn%3Ali&trk=eml-1234\n\n\n\n---------------------\nBye"
         let text = MailText.readable(raw)

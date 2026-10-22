@@ -570,4 +570,22 @@ do $$ begin
 end $$;
 reset role;
 
+-- Space workspaces: a cover from the list and 2 to 8 board columns.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  insert into public.segment (title) values ('Board check');
+  assert (select columns from public.segment where title = 'Board check') = '["To do", "Doing", "Done"]'::jsonb, 'a Space starts with three columns';
+  begin
+    update public.segment set cover = 'https://evil.example/x.png' where title = 'Board check';
+    raise exception 'a cover outside the list was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.segment set columns = '["only one"]' where title = 'Board check';
+    raise exception 'a board with one column was accepted';
+  exception when check_violation then null;
+  end;
+end $$;
+reset role;
+
 select 'all RLS checks passed' as result;
