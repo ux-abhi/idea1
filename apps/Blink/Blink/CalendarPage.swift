@@ -213,20 +213,24 @@ private struct WeekGrid: View {
     let events: [AgendaEvent]
     @Binding var picked: Date
     @ScaledMetric private var hour = 56.0
+    @State private var position = ScrollPosition()
     private let gutter = 52.0
+    /// Room above midnight so the "00" label isn't cut.
+    private let top = 10.0
 
     private var cal: Calendar { .current }
 
     var body: some View {
         VStack(spacing: 0) {
             dayHeader
+                .fixedSize(horizontal: false, vertical: true)
             Divider()
-            ScrollViewReader { proxy in
-                ScrollView {
+            ScrollView {
                     TimelineView(.everyMinute) { context in
                         GeometryReader { geo in
                             let column = (geo.size.width - gutter) / Double(max(days.count, 1))
                             ZStack(alignment: .topLeading) {
+                                Color.clear
                                 hourLines(width: geo.size.width)
                                 ForEach(Array(days.enumerated()), id: \.offset) { index, date in
                                     let x = gutter + Double(index) * column
@@ -241,10 +245,12 @@ private struct WeekGrid: View {
                             }
                         }
                         .frame(height: hour * 24)
+                        .padding(.top, top)
                     }
-                }
-                .onAppear { proxy.scrollTo(7, anchor: .top) }
             }
+            .scrollPosition($position)
+            // Opens on the morning, where the day starts.
+            .onAppear { position.scrollTo(y: 7 * hour) }
         }
         .cardSurface(radius: Tokens.Radius.tile)
         .clipShape(.rect(cornerRadius: Tokens.Radius.tile, style: .continuous))
@@ -286,7 +292,6 @@ private struct WeekGrid: View {
             }
             .frame(width: width, alignment: .leading)
             .offset(y: Double(h) * hour)
-            .id(h)
         }
     }
 
@@ -325,7 +330,8 @@ private struct EventBlock: View {
 
     var body: some View {
         Button { showing = true } label: {
-            HStack(spacing: 0) {
+            // Top-aligned, so a long meeting shows its title at its start, not in its middle.
+            HStack(alignment: .top, spacing: 0) {
                 Rectangle().fill(Color.accentColor).frame(width: 3)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(event.title).font(.caption.weight(.semibold)).lineLimit(2)
