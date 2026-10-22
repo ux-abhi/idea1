@@ -17,6 +17,7 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("content.tab") private var tab: Tab = .posts
     @State private var composing = false
+    @State private var clearingIdeas = false
     @State private var editingVoice = false
     @State private var opened: String?
     @State private var query = ""
@@ -35,7 +36,7 @@ struct ContentView: View {
                 .labelsHidden()
                 .fixedSize()
                 Spacer()
-                PageSearchField(prompt: "Search posts", text: $query)
+                if tab == .posts { PageSearchField(prompt: "Search posts", text: $query) }
             }
             if let problem = model.contentProblem {
                 Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
@@ -47,18 +48,15 @@ struct ContentView: View {
             case .ideas: ideas
             }
         }
-        .onChange(of: query) { if !query.isEmpty { tab = .posts } }
         .toolbar {
             Button { composing = true } label: { Label("New Post", systemImage: "square.and.pencil") }
                 .keyboardShortcut("n")
                 .help("Write drafts from an idea (⌘N)")
-            Button { Task { await model.readPage() } } label: {
-                if model.readingPage { ProgressView().controlSize(.small) } else { Label("Read My Page", systemImage: "text.viewfinder") }
-            }
-            .disabled(model.readingPage)
-            .help("Read your latest Instagram posts to learn your voice and what works (costs about 5 cents)")
             Button { editingVoice = true } label: { Label("Voice", systemImage: "person.wave.2") }
                 .help("How you write")
+        }
+        .confirmationDialog("Clear all ideas?", isPresented: $clearingIdeas) {
+            Button("Clear Ideas", role: .destructive) { Task { await model.clearIdeas() } }
         }
         .sheet(isPresented: $composing) { NewPostSheet(written: { tab = .posts }, editVoice: { composing = false; editingVoice = true }) }
         .sheet(isPresented: $editingVoice) { VoiceSheet() }
@@ -177,7 +175,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var ideas: some View {
-        DashCard("Ideas", trailing: model.ideas.isEmpty ? nil : "Clear", action: { Task { await model.clearIdeas() } }) {
+        DashCard("Ideas", trailing: model.ideas.isEmpty ? nil : "Clear…", action: { clearingIdeas = true }) {
             HStack {
                 Button { Task { await model.suggestIdeas(theme: "", platforms: model.contentPlatforms) } } label: {
                     if model.thinkingOfIdeas { ProgressView().controlSize(.small) } else { Label("Give Me Ideas", systemImage: "lightbulb") }
@@ -301,29 +299,28 @@ private struct NewPostSheet: View {
                 .textFieldStyle(.plain)
                 .lineLimit(3...8)
                 .padding(10)
-                .background(.quaternary.opacity(0.6), in: .rect(cornerRadius: 12, style: .continuous))
+                .background(.quaternary.opacity(0.6), in: .rect(cornerRadius: Tokens.Radius.tile, style: .continuous))
             HStack(spacing: 8) {
                 ForEach(ContentPiece.Platform.allCases, id: \.self) { platform in
-                    let on = platforms.contains(platform)
-                    Button { toggle(platform) } label: { Label(platform.name, systemImage: on ? "checkmark.circle.fill" : "circle") }
-                        .buttonStyle(.bordered)
-                        .tint(on ? .accentColor : .secondary)
-                        .accessibilityAddTraits(on ? .isSelected : [])
+                    Toggle(platform.name, isOn: Binding(get: { platforms.contains(platform) }, set: { _ in toggle(platform) }))
+                        .toggleStyle(.button)
                 }
                 Spacer()
                 ModelMenu(feature: "content", compact: true).menuStyle(.borderlessButton).controlSize(.small)
             }
             if let problem = model.contentProblem { Text(problem).font(.callout).foregroundStyle(.orange) }
             else if !model.voice.isSetUp {
-                Button("Tell Blink about your page (e.g. @yourname, who it's for, your topics) so posts aren't generic…", action: editVoice)
+                Button("Set up your voice…", action: editVoice)
                     .buttonStyle(.link)
             }
             HStack {
                 // The idea doubles as a theme for a week plan or a set of ideas.
-                Button("Plan My Week") { Task { await model.planWeek(theme: idea, platforms: platforms); written(); dismiss() } }
-                    .disabled(platforms.isEmpty || model.thinkingOfIdeas)
-                Button("Give Me Ideas") { Task { await model.suggestIdeas(theme: idea, platforms: platforms); dismiss() } }
-                    .disabled(platforms.isEmpty || model.thinkingOfIdeas)
+                Menu("More") {
+                    Button("Plan My Week on This") { Task { await model.planWeek(theme: idea, platforms: platforms); written(); dismiss() } }
+                    Button("Give Me Ideas on This") { Task { await model.suggestIdeas(theme: idea, platforms: platforms); dismiss() } }
+                }
+                .fixedSize()
+                .disabled(platforms.isEmpty || model.thinkingOfIdeas)
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button {
@@ -573,7 +570,7 @@ private struct PieceMedia: View {
                         }
                     }
                     .disabled(model.makingImage.contains(piece.id))
-                    .help("A free FLUX image from Cloudflare; text is drawn on your Mac")
+                    .help("A free image made for this post; the text is drawn on your Mac")
                     }
                     if (carousel && asked) || image != nil {
                         Button("Export…") { export(carousel: carousel, background: image) }

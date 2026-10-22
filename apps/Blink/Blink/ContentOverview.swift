@@ -15,15 +15,17 @@ struct ContentOverview: View {
         let posts = model.pagePosts
         if posts.isEmpty && !model.voice.page.contains("@") {
             EmptyCard(symbol: "person.crop.circle.badge.plus", title: "Add your Instagram handle first",
-                      message: "Blink reads only your own page. Open Voice, start “About your page” with your handle (like @yourname), and you can import your creator brief there too. Then press Read My Page.",
+                      message: "Add your Instagram handle in Voice so Blink can read your posts.",
                       actionTitle: "Open Voice", action: editVoice)
         } else if posts.isEmpty {
             EmptyCard(symbol: "chart.bar.xaxis", title: "See how your posts perform",
-                      message: "Read My Page looks at your latest Instagram posts (about $0.05 of Apify credit). Then this shows likes, comments and reel views per post, which format and day work best, and your top posts.",
+                      message: "Read your latest posts to see what works (costs about 5 cents).",
                       actionTitle: model.readingPage ? nil : "Read My Page", action: { Task { await model.readPage() } })
         } else {
             metrics(ContentStats.summary(posts))
-            DashCard("Engagement per post") {
+            // Reading again is here, where its numbers show (it costs a little, so not in the toolbar).
+            DashCard("Engagement per post", trailing: model.readingPage ? "Reading…" : "Read Again",
+                     action: { if !model.readingPage { Task { await model.readPage() } } }) {
                 EngagementChart(posts: Array(ContentStats.newestFirst(posts).filter { $0.postedAt != nil }.prefix(30)))
                 Text("Likes plus comments for each of your latest posts, coloured by format.").font(.caption).foregroundStyle(.secondary)
             }
@@ -94,7 +96,6 @@ private struct AccountsStrip: View {
     }
 
     private func tile(_ platform: SocialAccount.Platform, _ account: SocialAccount?) -> some View {
-        let source = platform == .instagram ? "Posts via Apify · \(model.pagePosts.count) read" : "Typed in"
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(platform.name).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -108,11 +109,10 @@ private struct AccountsStrip: View {
                 Text(account == nil ? "Add" : "No account").font(.system(.title3, design: .rounded).weight(.semibold)).foregroundStyle(.secondary)
                 Text(account == nil ? "Your follower count" : "Not on \(platform.name) yet").font(.caption).foregroundStyle(.secondary)
             }
-            Text(source).font(.caption2).foregroundStyle(.tertiary)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
+        .cardSurface(radius: Tokens.Radius.tile)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Edit the follower number")

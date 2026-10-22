@@ -104,7 +104,7 @@ final class AppModel {
         }
     }
 
-    /// Opens Settings at a tab ("usage", "connections", "calendar"…), bringing Blink forward.
+    /// Opens Settings at a tab ("general", "usage", "connections"…), bringing Blink forward.
     func openSettings(_ tab: String? = nil) {
         if let tab { UserDefaults.standard.set(tab, forKey: "settings.tab") }
         #if os(macOS)

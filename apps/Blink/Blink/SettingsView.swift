@@ -8,10 +8,10 @@ import SwiftUI
 /// Models & cost, Connections, Automatic rules and Data arrive with the features they control.
 struct SettingsRoot: View {
     /// The tabs, by key, so a prompt elsewhere ("Add a key") can open the right one.
-    enum Section: String { case server, devices, calendar, day, notch, usage, connections, privacy }
+    enum Section: String { case general, usage, connections, privacy, server, devices }
 
     @Environment(AppModel.self) private var model
-    @AppStorage("settings.tab") private var tab: Section = .server
+    @AppStorage("settings.tab") private var tab: Section = .general
 
     var body: some View {
         Group {
@@ -19,21 +19,26 @@ struct SettingsRoot: View {
                 LockView()
             } else if model.screen == .home {
                 TabView(selection: $tab) {
-                    Tab("Server", systemImage: "server.rack", value: .server) { ServerSettings() }
-                    Tab("Devices", systemImage: "laptopcomputer.and.iphone", value: .devices) { DevicesSettings() }
-                    Tab("Calendar", systemImage: "calendar", value: .calendar) { CalendarSettings() }
-                    Tab("Your Day", systemImage: "sun.horizon", value: .day) { DaySettings() }
-                    Tab("Blink & Notch", systemImage: "eyes", value: .notch) { NotchSettings() }
-                    Tab("AI & Usage", systemImage: "sparkles", value: .usage) { UsageSettings() }
+                    Tab("General", systemImage: "gearshape", value: .general) {
+                        Form {
+                            DaySettings()
+                            NotchSettings()
+                            CalendarSettings()
+                        }
+                        .formStyle(.grouped)
+                    }
+                    Tab("AI", systemImage: "sparkles", value: .usage) { UsageSettings() }
                     Tab("Connections", systemImage: "key", value: .connections) { ConnectionsSettings() }
                     Tab("Privacy", systemImage: "lock.shield", value: .privacy) { PrivacySettings() }
+                    Tab("Server", systemImage: "server.rack", value: .server) { ServerSettings() }
+                    Tab("Devices", systemImage: "laptopcomputer.and.iphone", value: .devices) { DevicesSettings() }
                 }
             } else {
                 ContentUnavailableView("Connect your server first", systemImage: "server.rack",
                                        description: Text("Settings appear once Blink is connected to your server and you're signed in."))
             }
         }
-        .frame(width: 760, height: 520) // wide enough that all eight tabs show, none hidden behind »
+        .frame(width: 680, height: 560)
     }
 }
 
@@ -103,11 +108,13 @@ struct ServerSettings: View {
                 } header: {
                     Text("Your Blink login")
                 } footer: {
-                    Text("Blink made this when it set up your server, and fills it in when you sign in here. Save it in Passwords for another Mac; if it's ever lost, reset it in your Supabase dashboard › Authentication › Users.")
+                    Text("Blink made this when it set up your server. Save it in Passwords to sign in on another Mac. Lost it? Reset it in Supabase › Authentication › Users.")
                 }
             }
-            HStack {
+            Section {
                 Button("Sign Out") { Task { await model.signOut() } }
+            }
+            Section("Advanced") {
                 Button("Use a Different Server…") { confirmSwitch = true }
                 Button("Restart Setup…") { confirmRestart = true }
             }
@@ -215,11 +222,12 @@ struct DevicesSettings: View {
     }
 }
 
+/// Calendar access, as sections of the General tab.
 struct CalendarSettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Form {
+        Section {
             switch model.calendarAccess {
             case .granted:
                 LabeledContent("Access", value: "Calendars and reminders")
@@ -235,12 +243,11 @@ struct CalendarSettings: View {
                     }
                 }
             }
-            Section {
-                Text("Blink reads every calendar on this Mac. All-day events and ones you've declined are left out. The next 14 days are copied to your server so your other devices can use them. Reminders stay on this Mac, except their titles and times go along when you ask Blink something.")
-                    .foregroundStyle(.secondary)
-            }
+        } header: {
+            Text("Calendar")
+        } footer: {
+            Text("All-day events and ones you've declined are left out. The next 14 days are copied to your server for your other devices.")
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -251,14 +258,16 @@ struct NotchSettings: View {
     @State private var loginProblem: String?
 
     var body: some View {
-        Form {
-            Picker("When nothing is happening", selection: $restStyle) {
-                ForEach(RestStyle.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.radioGroup)
+        Group {
             Section {
-                Text("Meetings and things that need you still appear in the notch, whichever you choose.")
-                    .foregroundStyle(.secondary)
+                Picker("When nothing is happening", selection: $restStyle) {
+                    ForEach(RestStyle.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.radioGroup)
+            } header: {
+                Text("Notch")
+            } footer: {
+                Text("Meetings and things that need you still appear in the notch.")
             }
             Section("Startup") {
                 Toggle("Open Blink when you log in", isOn: Binding(get: { openAtLogin }, set: { on in
@@ -276,13 +285,12 @@ struct NotchSettings: View {
                     .padding(.vertical, 23)
                     .frame(maxWidth: .infinity)
                     .clipped()
-                    .background(.black, in: .rect(cornerRadius: 18, style: .continuous))
+                    .background(.black, in: .rect(cornerRadius: Tokens.Radius.tile, style: .continuous))
                 Picker("Mood", selection: $mood) {
                     ForEach(Mood.allCases) { Text($0.word).tag($0) }
                 }
             }
         }
-        .formStyle(.grouped)
     }
 }
 
@@ -291,7 +299,7 @@ struct DaySettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Form {
+        Group {
             Section {
                 DatePicker("Wake up", selection: binding(\.wake), displayedComponents: .hourAndMinute)
                 DatePicker("Evening check-in", selection: binding(\.evening), displayedComponents: .hourAndMinute)
@@ -304,7 +312,8 @@ struct DaySettings: View {
             } footer: {
                 Text("Shows Content: post ideas and drafts in your voice, and how your posts do.")
             }
-            Section("Keyboard shortcuts") {
+            Section {
+                DisclosureGroup("Keyboard shortcuts") {
                 LabeledContent("Ask Blink", value: "⌃⌥Space")
                 LabeledContent("Quick actions in the notch", value: "/task  /remind  /note  /timer")
                 LabeledContent("Clipboard history", value: "⌃⌥V")
@@ -314,12 +323,12 @@ struct DaySettings: View {
                 LabeledContent("Approve a card", value: "⌘⏎")
                 LabeledContent("Undo the last done", value: "⌘Z")
                 LabeledContent("Close the notch", value: "Esc")
+                }
             }
             if let problem = model.saveProblem {
                 Text(problem).foregroundStyle(.orange)
             }
         }
-        .formStyle(.grouped)
     }
 
     /// A time on today's date for the picker; saving keeps only hour and minute.
@@ -410,14 +419,20 @@ struct PrivacySettings: View {
 
     var body: some View {
         Form {
-            Picker("Lock Blink after", selection: $lockAfter) {
-                Text("1 minute away").tag(60.0)
-                Text("5 minutes away").tag(300.0)
-                Text("15 minutes away").tag(900.0)
-                Text("1 hour away").tag(3600.0)
+            Section {
+                Picker("Lock Blink after", selection: $lockAfter) {
+                    Text("1 minute away").tag(60.0)
+                    Text("5 minutes away").tag(300.0)
+                    Text("15 minutes away").tag(900.0)
+                    Text("1 hour away").tag(3600.0)
+                }
+                @Bindable var model = model
+                Toggle("Show the notch in screenshots and recordings", isOn: $model.notchInRecordings)
+            } footer: {
+                Text("Leave recordings off to keep your mail, money and tasks out of screen sharing.")
             }
             Section {
-                Toggle("Keep clipboard history", isOn: Binding(get: { !clipboardPaused }, set: { clipboardPaused = !$0 }))
+                Toggle("Keep clipboard history (⌃⌥V)", isOn: Binding(get: { !clipboardPaused }, set: { clipboardPaused = !$0 }))
                 Button("Clear Clipboard History (\(clipboard.history.items.count))…", role: .destructive) { clearingClipboard = true }
                     .disabled(clipboard.history.items.isEmpty)
                     .confirmationDialog("Clear your clipboard history?", isPresented: $clearingClipboard) {
@@ -425,41 +440,29 @@ struct PrivacySettings: View {
                     } message: {
                         Text("Everything you copied is removed from Blink. This can't be undone.")
                     }
+                Button("Clear Chat History…", role: .destructive) { clearingChat = true }
+                    .disabled(model.chat.isEmpty)
+                    .confirmationDialog("Clear your chat with Blink?", isPresented: $clearingChat) {
+                        Button("Clear Chat History", role: .destructive) { model.clearChat() }
+                    } message: {
+                        Text("This removes the conversation from this Mac. Cards waiting for your OK, your notes and tasks stay.")
+                    }
             } header: {
-                Text("Clipboard (⌃⌥V)")
+                Text("History")
             } footer: {
-                Text("The last 50 things you copy, kept on this Mac only. Passwords copied from password managers are never kept.")
+                Text("The last 50 things you copy and your last 20 chat messages, kept on this Mac only. Passwords from password managers are never kept.")
             }
             Section {
-                @Bindable var model = model
-                Toggle("Show the notch in screenshots and recordings", isOn: $model.notchInRecordings)
-            } footer: {
-                Text("Off keeps your mail, money and tasks out of screenshots, recordings and screen sharing. Turn it on to record a demo, then off again.")
-            }
-            Section("What leaves this Mac") {
-                Label("Your next 14 days of meetings: title, time, place and link", systemImage: "calendar")
-                Label("This Mac's name and your time zone", systemImage: "laptopcomputer")
-                Label("Your decisions on cards, and a signature for red ones", systemImage: "checkmark.seal")
-            }
-            Section("Only when you ask Blink") {
-                Label("Your open reminders' titles and times go with your question, so Blink can finish or delete one for you", systemImage: "list.bullet")
-                Label("Your question, with your calendar, tasks, notes and habits, goes to Claude through your server", systemImage: "bubble.left")
-            }
-            Section("What stays on this Mac") {
-                Label("Your fingerprint. Touch ID only unlocks a key that never leaves the Secure Enclave", systemImage: "touchid")
-                LabeledContent {
-                    Button("Clear Chat History…") { clearingChat = true }.disabled(model.chat.isEmpty)
-                } label: {
-                    Label("Your chat with Blink: the last 20 messages", systemImage: "bubble.left.and.bubble.right")
+                DisclosureGroup("What leaves this Mac") {
+                    Label("Your next 14 days of meetings: title, time, place and link", systemImage: "calendar")
+                    Label("This Mac's name and your time zone", systemImage: "laptopcomputer")
+                    Label("Your decisions on cards, and a signature for red ones", systemImage: "checkmark.seal")
+                    Label("When you ask Blink: your question with your calendar, tasks, notes, habits and open reminders, sent to the AI through your server",
+                          systemImage: "bubble.left")
+                    Label("Never: your fingerprint. Touch ID only unlocks a key that stays in the Secure Enclave", systemImage: "touchid")
                 }
-            }
-            .confirmationDialog("Clear your chat with Blink?", isPresented: $clearingChat) {
-                Button("Clear Chat History", role: .destructive) { model.clearChat() }
-            } message: {
-                Text("This removes the conversation from this Mac. Cards waiting for your OK, your notes and tasks stay.")
-            }
-            Section {
-                Text("Everything goes only to your own server, never to Pexilim.").foregroundStyle(.secondary)
+            } footer: {
+                Text("Everything goes only to your own server, never to Pexilim.")
             }
         }
         .formStyle(.grouped)

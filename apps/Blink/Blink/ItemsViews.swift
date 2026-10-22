@@ -29,16 +29,15 @@ struct TasksView: View {
             DashCard("Tasks", trailing: entries.isEmpty ? nil : (selecting ? "Cancel" : "Select"),
                      action: { selecting.toggle(); selected = [] }) {
                 HStack(spacing: 8) {
+                    AddField(placeholder: addAsReminder ? "Add a reminder" : "Add a task", text: $newTitle, action: add)
                     Picker("Add as", selection: $addAsReminder) {
-                        Text("Task").tag(false)
-                        Text("Reminder").tag(true)
+                        Label("Task", systemImage: "checklist").tag(false)
+                        Label("Reminder", systemImage: "bell").tag(true)
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
                     .labelsHidden()
                     .fixedSize()
                     .help("Reminders go to Apple Reminders on all your devices")
-                    AddField(placeholder: addAsReminder ? "Add a reminder, e.g. \"Call Sam tomorrow 4pm\""
-                                                        : "Add a task, e.g. \"Send invoice tomorrow at 10\"", text: $newTitle, action: add)
                 }
                 // Shows what Blink understood before Return.
                 if let due = TaskInput.parse(newTitle).due {
@@ -48,15 +47,13 @@ struct TasksView: View {
                         .foregroundStyle(.secondary)
                 }
                 if entries.isEmpty {
-                    Text("Nothing open. Type above and press Return; Apple Reminders show here too.").foregroundStyle(.secondary)
+                    Text("Nothing open.").foregroundStyle(.secondary)
                 }
-            }
-
-            // Blink tasks and Apple Reminders together, by when they're due.
-            ForEach(DueGroup.allCases, id: \.self) { group in
-                let rows = entries.filter { $0.group == group }
-                if !rows.isEmpty {
-                    DashCard("\(group.rawValue) · \(rows.count)") {
+                // Blink tasks and Apple Reminders together, by when they're due, in one card.
+                ForEach(DueGroup.allCases, id: \.self) { group in
+                    let rows = entries.filter { $0.group == group }
+                    if !rows.isEmpty {
+                        Text(group.rawValue).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 8)
                         CardRows(items: rows) { entry in
                             selectable(entry.id) {
                                 switch entry.kind {
@@ -80,9 +77,8 @@ struct TasksView: View {
                     newHabit = ""
                     Task { await model.addHabit(name) }
                 }
-                Text("Skips and rest days never break a streak, and one missed day a week is forgiven.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
+            .help("Skips and rest days never break a streak, and one missed day a week is forgiven.")
 
             if !model.doneTasks.isEmpty {
                 DashCard {
@@ -203,6 +199,7 @@ struct TaskRow: View {
     /// Off inside a Space's own page, where the chip would only repeat its name.
     var showsSpace = true
     @State private var title = ""
+    @FocusState private var editing: Bool
 
     var body: some View {
         HStack(spacing: 10) {
@@ -220,7 +217,9 @@ struct TaskRow: View {
                 .textFieldStyle(.plain)
                 .strikethrough(task.status == .done)
                 .foregroundStyle(task.status == .done ? .secondary : .primary)
+                .focused($editing)
                 .onSubmit(commit)
+                .onChange(of: editing) { _, now in if !now { commit() } } // clicking away saves too
 
             Spacer()
             if showsSpace, let space = model.spaces.first(where: { $0.id == task.spaceID }) {
@@ -234,7 +233,8 @@ struct TaskRow: View {
             }
         }
         .onAppear { title = task.title }
-        .onChange(of: task.title) { title = task.title }
+        // A title synced from elsewhere replaces the field only if you haven't changed it.
+        .onChange(of: task.title) { old, new in if title == old { title = new } }
         .contextMenu {
             MoveToSpaceMenu(item: task)
             Button("Delete", role: .destructive) { Task { await model.deleteWithUndo(task) } }
@@ -243,7 +243,8 @@ struct TaskRow: View {
 
     private func commit() {
         let trimmed = title.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, trimmed != task.title else { return }
+        guard !trimmed.isEmpty else { title = task.title; return }
+        guard trimmed != task.title else { return }
         var changed = task
         changed.title = trimmed
         model.edit(changed)
@@ -355,15 +356,21 @@ struct HabitRow: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
             } else {
-                HStack(spacing: 6) {
-                    Button("Done") { Task { await model.answer(habit, .done) } }
-                        .buttonStyle(.borderedProminent)
+                Menu {
                     Button("Not Today") { Task { await model.answer(habit, .notToday) } }
-                        .help("Missed it today. No guilt, the streak just pauses.")
-                    Button("Skip") { Task { await model.answer(habit, .skipped) } }
-                        .help("A planned rest day. It doesn't count against you.")
+                    Button("Skip (Rest Day)") { Task { await model.answer(habit, .skipped) } }
+                } label: {
+                    Image(systemName: "ellipsis")
                 }
-                .controlSize(.small)
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Not today pauses the streak; a skip is a planned rest day")
+                Button { Task { await model.answer(habit, .done) } } label: {
+                    Image(systemName: "circle").imageScale(.large).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Mark \(habit.name) done today")
             }
         }
         .contextMenu {
@@ -424,6 +431,7 @@ struct ReminderRow: View {
     @Environment(AppModel.self) private var model
     let reminder: AgendaReminder
     @State private var title = ""
+    @FocusState private var editing: Bool
 
     var body: some View {
         HStack(spacing: 10) {
@@ -437,19 +445,24 @@ struct ReminderRow: View {
 
             TextField("Reminder", text: $title)
                 .textFieldStyle(.plain)
-                .onSubmit {
-                    let trimmed = title.trimmingCharacters(in: .whitespaces)
-                    guard !trimmed.isEmpty, trimmed != reminder.title else { return }
-                    Task { await model.rename(reminder, to: trimmed) }
-                }
+                .focused($editing)
+                .onSubmit(commit)
+                .onChange(of: editing) { _, now in if !now { commit() } } // clicking away saves too
             Spacer()
             DueMenu(due: reminder.due, highlight: (reminder.due ?? .distantFuture) < .now) { date in
                 Task { await model.setDue(reminder, to: date) }
             }
         }
         .onAppear { title = reminder.title }
-        .onChange(of: reminder.title) { title = reminder.title }
+        .onChange(of: reminder.title) { old, new in if title == old { title = new } }
         .help("From Apple Reminders")
+    }
+
+    private func commit() {
+        let trimmed = title.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { title = reminder.title; return }
+        guard trimmed != reminder.title else { return }
+        Task { await model.rename(reminder, to: trimmed) }
     }
 }
 
@@ -462,63 +475,59 @@ struct NotesView: View {
     @AppStorage("notes.space") private var spaceFilter = "all"
 
     var body: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Notes").font(.system(.largeTitle, design: .rounded).weight(.semibold))
-                    Text(model.notes.count == 1 ? "1 note" : "\(model.notes.count) notes").foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 4)
-                TextField("Search notes", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                SpaceFilter(selected: $spaceFilter)
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(model.notes.filter { (spaceFilter == "all" || $0.spaceID == spaceFilter)
-                                                     && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
-                                                         || $0.body.localizedCaseInsensitiveContains(query)) }) { note in
-                            Button { selection = note.id } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(note.title.isEmpty ? "New note" : note.title).font(.headline).lineLimit(1)
-                                    Text(note.body.isEmpty ? note.updatedAt.formatted(.relative(presentation: .named)) : note.body)
-                                        .font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(12)
-                                .background(selection == note.id ? AnyShapeStyle(Color.accentColor.opacity(0.15)) : AnyShapeStyle(.background),
-                                            in: .rect(cornerRadius: 16, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .strokeBorder(selection == note.id ? Color.accentColor : .clear, lineWidth: 1.5))
-                                .contentShape(.rect)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                MoveToSpaceMenu(item: note)
-                                Button("Delete", role: .destructive) { Task { await model.deleteWithUndo(note) } }
-                            }
-                        }
+        let shown = model.notes.filter { (spaceFilter == "all" || $0.spaceID == spaceFilter)
+                                         && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
+                                             || $0.body.localizedCaseInsensitiveContains(query)) }
+        HSplitView {
+            List(selection: $selection) {
+                ForEach(shown) { note in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(note.title.isEmpty ? "New note" : note.title).font(.headline).lineLimit(1)
+                        Text(note.body.isEmpty ? note.updatedAt.formatted(.relative(presentation: .named)) : note.body)
+                            .font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    .padding(.vertical, 4)
+                    .tag(note.id)
+                    .contextMenu {
+                        MoveToSpaceMenu(item: note)
+                        Button("Delete", role: .destructive) { Task { await model.deleteWithUndo(note) } }
                     }
                 }
             }
-            .frame(width: 260)
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .onDeleteCommand {
+                if let id = selection, let note = model.notes.first(where: { $0.id == id }) { Task { await model.deleteWithUndo(note) } }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack {
+                    Text(shown.count == 1 ? "1 note" : "\(shown.count) notes").font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    SpaceFilter(selected: $spaceFilter)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+            }
+            .overlay {
+                if shown.isEmpty && !query.isEmpty { ContentUnavailableView.search(text: query) }
+            }
+            .frame(minWidth: 220, idealWidth: 270, maxWidth: 380)
 
             Group {
                 if let id = selection, let note = model.notes.first(where: { $0.id == id }) {
                     NoteEditor(note: note).id(note.id)
                 } else {
-                    VStack(spacing: 12) {
-                        Image(systemName: "note.text").font(.largeTitle).foregroundStyle(.secondary)
-                        Text(model.notes.isEmpty ? "No notes yet" : "Pick a note").font(.headline)
-                        Text("Notes you write here are kept on your server and searchable later, for example meeting notes or an idea.")
-                            .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
+                    ContentUnavailableView {
+                        Label(model.notes.isEmpty ? "No notes yet" : "No note selected", systemImage: "note.text")
+                    } description: {
+                        Text("Select a note or start a new one.")
+                    } actions: {
                         Button("New Note", action: newNote).buttonStyle(.borderedProminent)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
+            .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(20)
+        .searchable(text: $query, placement: .toolbar, prompt: "Search notes")
         .background(BlinkCanvas())
         .onAppear {
             if let id = model.focusNoteID {

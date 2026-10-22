@@ -3,15 +3,14 @@
 import BlinkKit
 import SwiftUI
 
-/// Today in the Look v3 style (DESIGN.md): soft canvas, an ink hero card with one big number, one warm card for
-/// what's next, stat cards with bars, a properties list, then the day's lists on rounded cards.
+/// Today, in order of urgency: the ink hero with the one number that matters, then anything that needs you, then the
+/// rest of the day as one list, then four quiet tiles, and setup or tips last.
 struct TodayView: View {
     @Environment(AppModel.self) private var model
     let showWaiting: () -> Void
     let showNotes: () -> Void
-    let showContent: () -> Void
-    var showInbox: () -> Void = {}
     @AppStorage("tourDone") private var tourDone = false
+    @AppStorage("blinkPanel") private var showPanel = true
     @State private var addingTask = false
     @State private var newTask = ""
 
@@ -21,27 +20,31 @@ struct TodayView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     HeroCard(now: now, showNotes: showNotes, adding: $addingTask, newTask: $newTask)
+                    actionCards
+                    DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks, reminders: model.agenda.reminders, now: now),
+                                    now: now, planDay: planDay)
                     TodayWidgetGrid(now: now)
                     // One getting-started card at a time: setup while something's left, then the tips.
                     let steps = model.setupSteps
                     if steps.contains(where: { !$0.done }) { SetupCard(steps: steps) }
                     else if !tourDone { TipsCard { tourDone = true } }
-                    lists(now: now)
                 }
-                .padding(24)
-                .frame(maxWidth: 880)
+                .padding(20)
+                .frame(maxWidth: 820)
                 .frame(maxWidth: .infinity)
             }
             .background(BlinkCanvas())
         }
     }
 
-    // MARK: Visual summary
+    private func planDay() {
+        showPanel = true
+        Task { await model.ask("Plan the rest of my day around my calendar and open tasks, with realistic times, and propose them.") }
+    }
 
-    // MARK: The day, then the lists
-
+    /// What's waiting on the owner: the evening plan and the first approval.
     @ViewBuilder
-    private func lists(now: Date) -> some View {
+    private var actionCards: some View {
         if model.eveningDue {
             DashCard("Evening check-in") {
                 VStack(alignment: .leading, spacing: 8) {
@@ -69,12 +72,11 @@ struct TodayView: View {
             }
         }
         if let first = model.pending.first {
-            DashCard("Waiting for you", trailing: model.pending.count > 1 ? "See all \(model.pending.count)" : nil,
+            DashCard("Needs you", trailing: model.pending.count > 1 ? "See all \(model.pending.count)" : nil,
                      action: showWaiting) {
-                CardView(action: first, count: model.pending.count, problem: model.actionProblem, app: model)
+                CardView(action: first, count: 1, problem: model.actionProblem, app: model)
             }
         }
-        DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks, reminders: model.agenda.reminders, now: now), now: now)
     }
 }
 
@@ -98,12 +100,12 @@ private struct HeroCard: View {
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.65))
                 Text(hero.value)
-                    .font(.system(size: 48, weight: .semibold, design: .rounded)) // type.numbers
+                    .font(.system(.largeTitle, design: .rounded, weight: .semibold)) // type.numbers
                     .monospacedDigit()
                     .foregroundStyle(.white)
                     .contentTransition(.numericText())
                     .lineLimit(1).minimumScaleFactor(0.6)
-                Text(next.map { "\(hero.caption) · \($0.start.formatted(date: .omitted, time: .shortened))\($0.location.map { " · \($0)" } ?? "")" } ?? hero.caption)
+                Text(next.flatMap(\.location).map { "\(hero.caption) · \($0)" } ?? hero.caption)
                     .font(.callout)
                     .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
@@ -122,6 +124,11 @@ private struct HeroCard: View {
                     }
                     PillButton(title: "Task", symbol: "plus") { adding = true }
                         .popover(isPresented: $adding, arrowEdge: .bottom) { quickTask }
+                    if model.timer == nil {
+                        PillButton(title: "Focus", symbol: "timer") { model.startFocus() }
+                    } else {
+                        PillButton(title: "Stop Timer", symbol: "stop.fill") { model.stopTimer() }
+                    }
                 }
                 .padding(.top, 4)
             }
@@ -132,7 +139,7 @@ private struct HeroCard: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background { HorizonGlow().clipShape(.rect(cornerRadius: Tokens.Radius.card + 6, style: .continuous)) }
+        .background { HorizonGlow().clipShape(.rect(cornerRadius: Tokens.Radius.notchOpen, style: .continuous)) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(hero.value) \(hero.caption)")
     }
@@ -189,11 +196,8 @@ private struct TipsCard: View {
         DashCard("Get to know Blink", trailing: "Got it", action: done) {
             VStack(alignment: .leading, spacing: 8) {
                 tip("Click", "Click the notch to see your day and ask Blink anything.")
-                tip("Say it", "“Remind me to call Sam at 4pm”, “task send invoice friday”, “timer 10 min”: no / needed.")
-                tip("⌃⌥Space", "Open the notch chat from anywhere.")
-                tip("⌃⌥V", "Your clipboard history, with search. Drag items into any app.")
+                tip("⌃⌥Space", "Just type: “remind me to call Sam at 4pm”.")
                 tip("⌘K", "Search notes, tasks, posts and spaces.")
-                tip("⌥⌘B", "The Blink panel on every page, with suggestions for that page.")
             }
         }
     }
@@ -212,13 +216,16 @@ private struct DayTimelineCard: View {
     @Environment(AppModel.self) private var model
     let plan: DayPlan
     let now: Date
+    let planDay: () -> Void
 
     var body: some View {
         DashCard("Your day") {
-            if !plan.isEmpty { DayStrip(plan: plan, now: now).padding(.bottom, 6) }
             if plan.isEmpty {
-                Text("Nothing planned for the rest of today. Add a task above, or ask Blink to plan your day (⌃⌥Space).")
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("Nothing else today.").foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Plan with Blink", systemImage: "sparkles", action: planDay).disabled(model.thinking)
+                }
             }
             VStack(alignment: .leading, spacing: 6) {
                 if !plan.overdue.isEmpty {
@@ -226,10 +233,10 @@ private struct DayTimelineCard: View {
                     ForEach(plan.overdue) { row($0, time: $0.start.formatted(.dateTime.weekday(.abbreviated)), late: true) }
                 }
                 if !plan.anytime.isEmpty {
-                    group("Anytime today")
+                    group("Today")
                     ForEach(plan.anytime) { row($0, time: "", late: false) }
                 }
-                if !plan.timed.isEmpty, !(plan.overdue.isEmpty && plan.anytime.isEmpty) { group("Timeline") }
+                if !plan.timed.isEmpty, !(plan.overdue.isEmpty && plan.anytime.isEmpty) { group("Later") }
                 ForEach(Array(plan.timed.enumerated()), id: \.element.id) { index, entry in
                     if index == plan.nowIndex { nowLine }
                     row(entry, time: entry.start.formatted(.dateTime.hour().minute()),
@@ -259,9 +266,9 @@ private struct DayTimelineCard: View {
 
     private func row(_ entry: DayEntry, time: String, late: Bool) -> some View {
         let tint: Color = switch entry.kind {
-        case .meeting: .blue
-        case .task: .orange
-        case .reminder: .purple
+        case .meeting: .teal
+        case .task: Color.accentColor
+        case .reminder: Color.secondary
         }
         return HStack(spacing: 10) {
             Text(time)
@@ -287,7 +294,7 @@ private struct DayTimelineCard: View {
             }
             Spacer(minLength: 8)
             if let url = entry.event?.joinURL {
-                Link("Join", destination: url).buttonStyle(.bordered)
+                Link("Join", destination: url).buttonStyle(.borderless)
             }
         }
         .padding(.vertical, 2)

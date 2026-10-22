@@ -21,14 +21,13 @@ struct MoneyView: View {
             if let problem = model.moneyProblem {
                 Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
             }
-            if !model.accounts.isEmpty { moneyMetrics(summary, today: today) }
-            metrics(summary)
             DashCard("Add spending") { entry }
-            AccountsCard(editing: $editingAccount)
-            ApplePayCard()
+            metrics(summary, today: today)
             charts(summary, today: today)
             DashCard("Categories and limits") { monthCard }
             DashCard("Latest") { latest }
+            AccountsCard(editing: $editingAccount)
+            ApplePayCard()
         }
         .animation(.default, value: model.spends)
         .task { await model.loadMoney() }
@@ -36,19 +35,34 @@ struct MoneyView: View {
         .sheet(item: $editingAccount) { AccountEditor(mode: $0) }
     }
 
-    /// How much there is, what's left at month end and how long it lasts, at this month's pace.
-    private func moneyMetrics(_ s: MoneyMath.Summary, today: String) -> some View {
+    /// The headline numbers in one row: what you have, this month, where the month lands, and how long the money lasts.
+    private func metrics(_ s: MoneyMath.Summary, today: String) -> some View {
+        let change = s.change.map { c -> (String, Color) in
+            let pct = Int((abs(c) * 100).rounded())
+            return (c >= 0 ? "▲ \(pct)% vs last month" : "▼ \(pct)% vs last month", c > 0.1 ? .orange : c < 0 ? .green : .secondary)
+        }
         let total = MoneyMath.totalBalance(model.accounts)
         let left = MoneyMath.leftAtMonthEnd(total: total, summary: s, today: today)
         let runway = MoneyMath.runwayDays(total: total, average: s.average)
-        return HStack(spacing: 12) {
-            MetricTile(title: "Money you have", value: total, detail: "\(model.accounts.count) account\(model.accounts.count == 1 ? "" : "s")",
-                       valueColor: total < 0 ? .red : .primary)
-            MetricTile(title: "Left at month end", value: left, detail: "If you keep this pace",
-                       detailColor: left < 0 ? .red : .secondary, valueColor: left < 0 ? .red : .primary)
-            MetricTile(title: "Lasts", text: runway.map { $0 >= 365 ? "Over a year" : "\($0) days" } ?? "—",
-                       detail: runway.map { _ in "At \(s.average.formatted(.currency(code: MoneyMath.currency))) a day" } ?? "Add spends to see",
-                       valueColor: (runway ?? 99) < 30 ? .orange : .primary)
+        let overForecast = limitsTotal.map { s.forecast > $0 } ?? false
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
+            if !model.accounts.isEmpty {
+                MetricTile(title: "Money you have", value: total, detail: "\(model.accounts.count) account\(model.accounts.count == 1 ? "" : "s")",
+                           valueColor: total < 0 ? .red : .primary)
+            }
+            MetricTile(title: "This month", value: s.total, detail: change?.0 ?? "No data last month",
+                       detailColor: change?.1 ?? .secondary)
+            if model.accounts.isEmpty {
+                MetricTile(title: "Month-end forecast", value: s.forecast,
+                           detail: limitsTotal.map { overForecast ? "Over your limits (\($0.formatted(.currency(code: MoneyMath.currency))))" : "Within your limits" }
+                               ?? "At this pace", detailColor: overForecast ? .red : .secondary)
+            } else {
+                MetricTile(title: "Left at month end", value: left, detail: "If you keep this pace",
+                           detailColor: left < 0 ? .red : .secondary, valueColor: left < 0 ? .red : .primary)
+                MetricTile(title: "Lasts", text: runway.map { $0 >= 365 ? "Over a year" : "\($0) days" } ?? "—",
+                           detail: runway.map { _ in "At \(s.average.formatted(.currency(code: MoneyMath.currency))) a day" } ?? "Add spends to see",
+                           valueColor: (runway ?? 99) < 30 ? .orange : .primary)
+            }
         }
     }
 
@@ -64,23 +78,6 @@ struct MoneyView: View {
         model.budgets.isEmpty ? nil : model.budgets.reduce(Decimal.zero) { $0 + $1.monthlyLimit }
     }
 
-    private func metrics(_ s: MoneyMath.Summary) -> some View {
-        let change = s.change.map { c -> (String, Color) in
-            let pct = Int((abs(c) * 100).rounded())
-            return (c >= 0 ? "▲ \(pct)% vs last month" : "▼ \(pct)% vs last month", c > 0.1 ? .orange : c < 0 ? .green : .secondary)
-        }
-        let overForecast = limitsTotal.map { s.forecast > $0 } ?? false
-        return HStack(spacing: 12) {
-            MetricTile(title: "This month", value: s.total, detail: change?.0 ?? "No data last month",
-                       detailColor: change?.1 ?? .secondary)
-            MetricTile(title: "Today", value: s.today, detail: "Average \(s.average.formatted(.currency(code: MoneyMath.currency))) a day")
-            MetricTile(title: "Month-end forecast", value: s.forecast,
-                       detail: limitsTotal.map { overForecast ? "Over your limits (\($0.formatted(.currency(code: MoneyMath.currency))))" : "Within your limits" }
-                           ?? "At this pace", detailColor: overForecast ? .red : .secondary)
-            MetricTile(title: "Last month", value: s.lastMonthTotal, detail: "In total")
-        }
-    }
-
     @ViewBuilder
     private func charts(_ s: MoneyMath.Summary, today: String) -> some View {
         let day = Int(today.suffix(2)) ?? 1
@@ -90,7 +87,7 @@ struct MoneyView: View {
                 PaceChart(thisMonth: MoneyMath.cumulative(daily),
                           lastMonth: MoneyMath.cumulative(MoneyMath.daily(model.spends, month: MoneyMath.previous(month: month))),
                           limit: limitsTotal, daysInMonth: MoneyMath.daysIn(month: month))
-                Text("Solid: this month so far. Dashed: last month. Above the dashed line means spending faster than last month.")
+                Text("Solid: this month · Dashed: last month")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -115,7 +112,7 @@ struct MoneyView: View {
     @ViewBuilder
     private var entry: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField("What did you spend today? e.g. lunch 8.50, rewe 23.40, bus 3, yesterday cinema 12",
+            TextField("What did you spend? e.g. lunch 8.50, bus 3",
                       text: $typed, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(2...6)
@@ -125,8 +122,7 @@ struct MoneyView: View {
                     if model.sortingSpends { ProgressView().controlSize(.small) } else { Text("Sort It") }
                 }
                 .disabled(typed.trimmingCharacters(in: .whitespaces).isEmpty || model.sortingSpends)
-                Text("Blink reads the amounts and picks a category. You check before saving.")
-                    .font(.caption).foregroundStyle(.secondary)
+                .help("Blink reads the amounts and picks a category; you check before saving")
             }
             if !drafts.isEmpty {
                 Divider()
@@ -176,7 +172,7 @@ struct MoneyView: View {
     private func categoryRow(_ category: SpendCategory, total: Decimal) -> some View {
         let limit = model.budgets.first { $0.category == category }?.monthlyLimit
         let used = limit.map { MoneyMath.used(total, of: $0) } ?? 0
-        return VStack(alignment: .leading, spacing: 4) {
+        return Button { editingLimit = category } label: { VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Label(category.title, systemImage: category.symbol)
                 Spacer()
@@ -191,10 +187,8 @@ struct MoneyView: View {
                     .accessibilityValue(used >= 1 ? "Over the limit" : "\(Int(used * 100)) percent of the limit")
             }
         }
-        .contentShape(.rect)
-        .onTapGesture { editingLimit = category }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
+        .contentShape(.rect) }
+        .buttonStyle(.plain)
         .accessibilityHint("Set the monthly limit")
     }
 
@@ -233,6 +227,7 @@ private struct DraftRow: View {
     @State private var amount = ""
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
         HStack(spacing: 8) {
             TextField("Amount", text: $amount)
                 .textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing)
@@ -240,6 +235,8 @@ private struct DraftRow: View {
                 .onAppear { amount = draft.amount.formatted(.number.grouping(.never).precision(.fractionLength(2))) }
                 .onChange(of: amount) { draft.amount = MoneyMath.parseAmount(amount) ?? 0 }
             TextField("What", text: $draft.note).textFieldStyle(.roundedBorder)
+        }
+        HStack(spacing: 8) {
             Picker("Category", selection: $draft.category) {
                 ForEach(SpendCategory.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
             }
@@ -253,8 +250,10 @@ private struct DraftRow: View {
             }
             Text(HabitDay.date(fromKey: draft.spentOn).map { $0.formatted(.dateTime.weekday(.abbreviated).day()) } ?? draft.spentOn)
                 .font(.caption).foregroundStyle(.secondary).frame(width: 50)
+            Spacer(minLength: 0)
             Button("Remove", systemImage: "xmark.circle.fill", action: remove)
                 .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.secondary)
+        }
         }
     }
 }
@@ -325,6 +324,7 @@ private struct LimitEditor: View {
             Text("The bar turns orange at 80% and red when you go over. Leave it empty for no limit.").font(.caption).foregroundStyle(.secondary)
             HStack {
                 Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Save") {
                     Task {
                         await model.setLimit(MoneyMath.parseAmount(limit), for: category)

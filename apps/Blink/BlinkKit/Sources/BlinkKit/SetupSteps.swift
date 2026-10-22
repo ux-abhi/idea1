@@ -35,7 +35,7 @@ public struct SetupStep: Identifiable, Equatable, Sendable {
         return [
             aiStep,
             SetupStep(id: .calendar, title: "Allow Calendar", detail: "Your meetings in the notch and on Today",
-                      symbol: "calendar", action: "Allow", destination: "settings:calendar", done: calendarGranted),
+                      symbol: "calendar", action: "Allow", destination: "settings:general", done: calendarGranted),
             content ? SetupStep(id: .handle, title: "Add your Instagram handle", detail: "Drafts in your voice and post stats",
                                 symbol: "at", action: "Add Handle", destination: "content", done: voicePage.contains("@")) : nil,
             SetupStep(id: .mail, title: "Connect mail", detail: "Important mail sorted for you",

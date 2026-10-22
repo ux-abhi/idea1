@@ -168,8 +168,7 @@ struct MainWindow: View {
 
     @ViewBuilder private var detail: some View {
             switch page ?? .section(.today) {
-        case .section(.today): TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) },
-                                         showContent: { page = .section(.content) }, showInbox: { page = .section(.inbox) })
+        case .section(.today): TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
         case .section(.inbox): InboxView()
         case .section(.calendar): CalendarListView()
         case .section(.notes): NotesView()
@@ -188,8 +187,7 @@ struct MainWindow: View {
                 })
                 .id(id)
             } else {
-                TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) },
-                          showContent: { page = .section(.content) })
+                TodayView(showWaiting: { page = .section(.waiting) }, showNotes: { page = .section(.notes) })
             }
         }
             }
@@ -204,13 +202,11 @@ struct MainWindow: View {
     }
 
     private func spaceRow(_ space: Space) -> some View {
-        let progress = Space.progress(of: model.items, in: space.id)
-        return Label {
+        Label {
             Text(space.title)
         } icon: {
             Image(systemName: space.icon).foregroundStyle(Color.system(space.color))
         }
-        .badge(progress.total - progress.done)
         .tag(Page.space(space.id))
     }
 
@@ -254,13 +250,20 @@ struct EventRow: View {
             }
             Spacer()
             if model.doneMeetings.contains(event.id) {
-                Button("Mark Not Done") { model.reopenMeeting(event) }.buttonStyle(.bordered)
+                Image(systemName: "checkmark").foregroundStyle(.secondary).accessibilityLabel("Done")
             }
             if let url = event.joinURL {
-                Link("Join", destination: url).buttonStyle(.bordered)
+                Link("Join", destination: url).buttonStyle(.borderless)
             }
         }
+        .opacity(model.doneMeetings.contains(event.id) ? 0.6 : 1)
+        .contextMenu {
+            if model.doneMeetings.contains(event.id) { Button("Mark Not Done") { model.reopenMeeting(event) } }
+        }
         .accessibilityElement(children: .contain)
+        .accessibilityActions {
+            if model.doneMeetings.contains(event.id) { Button("Mark Not Done") { model.reopenMeeting(event) } }
+        }
     }
 }
 
@@ -295,10 +298,12 @@ struct CalendarListView: View {
                 DashCard { ConnectCalendarRow() }
             } else if days.isEmpty {
                 EmptyCard(symbol: "calendar", title: "No meetings in the next 14 days",
-                          message: "Timed events from the calendars on this Mac show here for the next 14 days. All-day events and ones you've declined are left out.")
+                          message: "All-day events and ones you've declined are left out.")
             } else {
-                ForEach(days.keys.sorted(), id: \.self) { day in
-                    DashCard(dayTitle(day)) {
+                DashCard {
+                    ForEach(days.keys.sorted(), id: \.self) { day in
+                        Text(dayTitle(day)).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                            .padding(.top, day == days.keys.min() ? 0 : 10)
                         CardRows(items: days[day] ?? []) { EventRow(event: $0, now: .now) }
                     }
                 }
@@ -313,15 +318,15 @@ struct CalendarListView: View {
     }
 }
 
-// MARK: Waiting for you
+// MARK: Needs you
 
 struct WaitingView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        DashPage("Waiting for you", summary: model.pending.isEmpty ? "Nothing needs you" : "\(model.pending.count) need\(model.pending.count == 1 ? "s" : "") your OK") {
+        DashPage("Needs You", summary: model.pending.isEmpty ? "All clear" : "\(model.pending.count) to approve") {
             if model.pending.isEmpty {
-                EmptyCard(symbol: "tray", title: "Nothing waiting for you",
+                EmptyCard(symbol: "tray", title: "Nothing needs you",
                           message: "When Blink prepares something that needs your OK, like adding a reminder, it waits here and in the notch.")
             }
             ForEach(model.pending) { action in
@@ -342,7 +347,7 @@ struct ActivityView: View {
 
     var body: some View {
         let days = Dictionary(grouping: model.activity) { Calendar.current.startOfDay(for: $0.decidedAt ?? .distantPast) }
-        DashPage("Activity", summary: model.activity.isEmpty ? "What Blink did" : "Last \(model.activity.count) decisions") {
+        DashPage("Activity", summary: "What Blink did") {
             if model.activity.isEmpty {
                 EmptyCard(symbol: "clock.arrow.circlepath", title: "No activity yet",
                           message: "Everything Blink does or you approve is listed here, for example a reminder it added.")

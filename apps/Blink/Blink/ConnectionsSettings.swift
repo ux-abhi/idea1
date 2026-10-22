@@ -93,18 +93,8 @@ struct ConnectionsSettings: View {
     var body: some View {
         Form {
             Section {
-                // shortcut: shown but not live until OpenAI gives Blink a Sign in with ChatGPT client ID (requested by the
-                // owner); then the button signs in and Blink's chat runs on the ChatGPT plan from this Mac.
-                LabeledContent {
-                    Button("Sign in with ChatGPT") {}
-                        .disabled(true)
-                        .help("Coming soon: waiting for OpenAI to approve Blink")
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("ChatGPT")
-                        Text("Use your ChatGPT plan as Blink's brain · coming soon").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+                // shortcut: no Sign in with ChatGPT row until OpenAI gives Blink a client ID (requested by the owner); add
+                // it here then, so Blink's chat can run on the ChatGPT plan from this Mac.
                 LabeledContent {
                     let problem = OnDeviceChat.problem
                     Label(problem == nil ? "Working" : "Off", systemImage: problem == nil ? "checkmark.circle.fill" : "minus.circle")
@@ -119,10 +109,14 @@ struct ConnectionsSettings: View {
             } header: {
                 Text("AI brain")
             } footer: {
-                Text("Blink answers on this Mac for free. Soon you can sign in with ChatGPT to use the plan you already pay for. API keys are under Advanced.")
+                Text("Blink answers on this Mac for free. API keys are under Advanced.")
             }
-            Section("Mail") {
+            Section {
                 ForEach(mail) { row($0) }
+            } header: {
+                Text("Mail")
+            } footer: {
+                Text("Passwords and keys are stored encrypted on your own server and can't be read back, only replaced or removed.")
             }
             Section {
                 LabeledContent {
@@ -186,15 +180,16 @@ struct ConnectionsSettings: View {
                     Section("Your own Google app") { row(googleApp) }
                 }
             }
-            Section {
-                HStack {
-                    Button("Check Again") { Task { await check() } }.disabled(checking)
-                    if checking { ProgressView().controlSize(.small) }
-                    if failed { Text("Couldn't reach your server.").foregroundStyle(.orange) }
-                    if let problem { Text(problem).foregroundStyle(.orange) }
+            // Checked when the tab opens; only a failed check needs a row.
+            if failed || problem != nil {
+                Section {
+                    HStack {
+                        Text(problem ?? "Couldn't reach your server.").foregroundStyle(.orange)
+                        Spacer()
+                        if checking { ProgressView().controlSize(.small) }
+                        Button("Try Again") { Task { await check() } }.disabled(checking)
+                    }
                 }
-            } footer: {
-                Text("Keys are stored encrypted on your own server and can't be read back, only replaced or removed. Each check is free and read-only.")
             }
         }
         .formStyle(.grouped)

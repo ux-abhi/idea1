@@ -8,56 +8,6 @@ import SwiftUI
 
 private func double(_ d: Decimal) -> Double { NSDecimalNumber(decimal: d).doubleValue }
 
-/// The day's hours as one strip: meetings as blocks, tasks and reminders as dots, a line for now.
-struct DayStrip: View {
-    let plan: DayPlan
-    let now: Date
-    var startHour = 7
-    var endHour = 23
-
-    var body: some View {
-        let cal = Calendar.current
-        let day = cal.startOfDay(for: now)
-        let start = cal.date(byAdding: .hour, value: startHour, to: day)!
-        let end = cal.date(byAdding: .hour, value: endHour, to: day)!
-        GeometryReader { geo in
-            let width = geo.size.width
-            let x: (Date) -> CGFloat = { width * CGFloat(min(max($0.timeIntervalSince(start) / end.timeIntervalSince(start), 0), 1)) }
-            ZStack(alignment: .topLeading) {
-                Capsule().fill(.quaternary).frame(height: 30).offset(y: 14)
-                ForEach(plan.timed) { entry in
-                    if entry.kind == .meeting, let finish = entry.end {
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(finish < now ? Color.mint.opacity(0.4) : Color.mint)
-                            .frame(width: max(x(finish) - x(entry.start), 6), height: 30)
-                            .offset(x: x(entry.start), y: 14)
-                            .help("\(entry.title), \(entry.start.formatted(date: .omitted, time: .shortened))")
-                    } else {
-                        Circle()
-                            .fill(entry.start < now ? Color.orange : Color.accentColor)
-                            .frame(width: 10, height: 10)
-                            .offset(x: x(entry.start) - 5, y: 24)
-                            .help("\(entry.title), \(entry.start.formatted(date: .omitted, time: .shortened))")
-                    }
-                }
-                if now > start && now < end {
-                    Rectangle().fill(.red).frame(width: 2, height: 42).offset(x: x(now) - 1, y: 8)
-                    Text(now, format: .dateTime.hour().minute()).font(.caption2.weight(.semibold)).foregroundStyle(.red)
-                        .offset(x: min(max(x(now) - 14, 0), width - 32), y: -8)
-                }
-                ForEach(Array(stride(from: startHour, through: endHour, by: 4)), id: \.self) { hour in
-                    Text(cal.date(byAdding: .hour, value: hour, to: day)!, format: .dateTime.hour()).font(.caption2).foregroundStyle(.tertiary)
-                        .offset(x: min(x(cal.date(byAdding: .hour, value: hour - startHour, to: start)!), width - 30), y: 50)
-                }
-            }
-        }
-        .frame(height: 64)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Your day")
-        .accessibilityValue("\(plan.timed.filter { $0.kind == .meeting }.count) meetings, \(plan.timed.filter { $0.kind != .meeting }.count) tasks and reminders with a time")
-    }
-}
-
 /// The last 7 days as bars: one value per day, today highlighted.
 struct WeekBars: View {
     let title: String
@@ -94,9 +44,9 @@ struct WeekBars: View {
             .accessibilityValue(days.map { "\(HabitDay.date(fromKey: $0.day).map { $0.formatted(.dateTime.weekday(.wide)) } ?? $0.day): \(format($0.value))" }
                 .joined(separator: ", "))
         }
-        .padding(16)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
+        .cardSurface()
     }
 }
 
@@ -135,9 +85,9 @@ struct SetupCard: View {
                 }
             }
         }
-        .padding(16)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: .rect(cornerRadius: Tokens.Radius.notchOpen - 6, style: .continuous))
+        .cardSurface()
     }
 }
 

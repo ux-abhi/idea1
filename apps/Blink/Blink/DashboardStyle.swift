@@ -17,12 +17,10 @@ extension View {
     }
 }
 
-/// The soft blue-grey canvas: the window background with a faint wash of the accent colour.
+/// The page background: plain, so the one glow (the Today hero, a Space) is the only colour.
 struct BlinkCanvas: View {
     var body: some View {
-        LinearGradient(colors: [Color.accentColor.opacity(0.06), Color(nsColor: .windowBackgroundColor)],
-                       startPoint: .topLeading, endPoint: .bottom)
-            .ignoresSafeArea()
+        Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
     }
 }
 

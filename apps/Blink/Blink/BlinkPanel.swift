@@ -33,12 +33,12 @@ struct BlinkPanel: View {
                         if let action = model.pending.first {
                             CardView(action: action, count: model.pending.count, problem: model.actionProblem, app: model)
                                 .padding(12)
-                                .background(.black, in: .rect(cornerRadius: 16, style: .continuous))
+                                .background(.black, in: .rect(cornerRadius: Tokens.Radius.tile, style: .continuous))
                                 .environment(\.colorScheme, .dark)
                         }
                         if model.chat.isEmpty {
                             Text("For this page").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            ForEach(suggestions, id: \.self) { suggestion in
+                            ForEach(suggestions.prefix(2), id: \.self) { suggestion in
                                 Button { send(suggestion.message, context: suggestion.context) } label: {
                                     Label(suggestion.title, systemImage: "sparkle")
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -53,7 +53,6 @@ struct BlinkPanel: View {
                         ForEach(model.chat.suffix(12)) { turn in
                             if turn.role == .user {
                                 Text(turn.text)
-                                    .lineLimit(4)
                                     .padding(.horizontal, 12).padding(.vertical, 8)
                                     .background(Color.accentColor.opacity(0.15), in: .rect(cornerRadius: 12, style: .continuous))
                                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -86,8 +85,8 @@ struct BlinkPanel: View {
                 NeedsSetup(step: step, model: model).padding(.horizontal, 12).padding(.bottom, 8)
             }
             Divider()
-            // The same quick starts as the notch: a click puts the words in the box, the rest is typed.
-            if text.isEmpty {
+            // The same quick starts as the notch, once you're in the box: a click puts the words in, the rest is typed.
+            if typing && text.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(Self.pills, id: \.title) { pill in

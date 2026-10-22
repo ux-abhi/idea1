@@ -44,36 +44,25 @@ struct ProgressRing: View {
     }
 }
 
-/// "All · ● Website · ● Visa": which Space a page shows. Hidden when there are no Spaces.
+/// Which Space a page shows, as one small menu ("All Spaces", "● Website"). Hidden when there are no Spaces.
 struct SpaceFilter: View {
     @Environment(AppModel.self) private var model
     @Binding var selected: String
 
     var body: some View {
         if !model.spaces.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    chip("All", id: "all", color: nil)
-                    ForEach(model.spaces) { space in chip(space.title, id: space.id, color: Color.system(space.color)) }
+            Picker("Space", selection: $selected) {
+                Text("All Spaces").tag("all")
+                Divider()
+                ForEach(model.spaces) { space in
+                    Label { Text(space.title) } icon: { Image(systemName: "circle.fill").foregroundStyle(Color.system(space.color)) }
+                        .tag(space.id)
                 }
             }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
         }
-    }
-
-    private func chip(_ title: String, id: String, color: Color?) -> some View {
-        let on = selected == id
-        return Button { selected = id } label: {
-            HStack(spacing: 5) {
-                if let color { Circle().fill(color).frame(width: 7, height: 7) }
-                Text(title).lineLimit(1)
-            }
-            .font(.callout.weight(on ? .semibold : .regular))
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(on ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.05), in: .capsule)
-            .overlay(Capsule().strokeBorder(on ? Color.accentColor.opacity(0.5) : .clear))
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 

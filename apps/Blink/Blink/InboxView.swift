@@ -4,9 +4,9 @@ import AppKit
 import BlinkKit
 import SwiftUI
 
-/// Inbox, laid out like Mail: the sorted list on the left, the open mail on the right, and the actions (Reply, Clear,
-/// Teach Blink) in the toolbar for whatever is selected. The list is a native one, so arrows, Shift-click, ⌘A and the
-/// Delete key work as everywhere on the Mac; E clears, R replies. A mail's next steps (an event, a deadline, a to-do,
+/// Inbox, laid out like Mail: the sorted list on the left, the open mail on the right, and Reply, Done and Check Mail
+/// in the toolbar. The list is a native one, so arrows, Shift-click, ⌘A and the Delete key work as everywhere on the
+/// Mac; E marks done, R replies. Teaching Blink about a sender is in the right-click menu. A mail's next steps (an event, a deadline, a to-do,
 /// a detail) become a calendar event, reminder, task or note with one click in the reading pane.
 struct InboxView: View {
     @Environment(AppModel.self) private var model
@@ -45,13 +45,13 @@ struct InboxView: View {
         let newsletters = shown.filter { $0.triage == .newsletter }
         return List(selection: $selection) {
             section("Important", important)
-            section("Waiting for your reply", reply)
-            section("Everything else", rest)
+            section("To Reply", reply)
+            section("Other", rest)
             if !newsletters.isEmpty {
                 Section(isExpanded: $newsletterOpen) {
-                    ForEach(newsletters) { MailListRow(message: $0).tag($0.id) }
+                    ForEach(newsletters) { row($0) }
                 } header: {
-                    Text("Not important · \(newsletters.count)")
+                    Text("Low Priority · \(newsletters.count)")
                 }
             }
         }
@@ -65,7 +65,11 @@ struct InboxView: View {
             return .handled
         }
         .overlay {
-            if model.emails.isEmpty { emptyState } else if shown.isEmpty { ContentUnavailableView.search(text: query) }
+            if model.emails.isEmpty {
+                emptyState
+            } else if shown.isEmpty {
+                if query.isEmpty { ContentUnavailableView("No mail here", systemImage: "tray") } else { ContentUnavailableView.search(text: query) }
+            }
         }
         .safeAreaInset(edge: .top, spacing: 0) { banners }
     }
@@ -73,10 +77,17 @@ struct InboxView: View {
     @ViewBuilder
     private func section(_ title: String, _ list: [EmailMessage]) -> some View {
         if !list.isEmpty {
-            Section("\(title) · \(list.count)") {
-                ForEach(list) { MailListRow(message: $0).tag($0.id) }
+            Section(title) {
+                ForEach(list) { row($0) }
             }
         }
+    }
+
+    private func row(_ message: EmailMessage) -> some View {
+        MailListRow(message: message)
+            .tag(message.id)
+            .accessibilityAction(named: "Reply") { Task { await model.reviewReply(to: message) } }
+            .accessibilityAction(named: "Done") { clear([message.id]) }
     }
 
     private var selected: [EmailMessage] { model.emails.filter { selection.contains($0.id) } }
@@ -104,10 +115,15 @@ struct InboxView: View {
         let errors = model.mailStates.filter { $0.lastError != nil }
         if model.mailProblem != nil || !errors.isEmpty || model.sendingNow != nil || !scheduled.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                if let problem = model.mailProblem { Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
-                ForEach(errors, id: \.account) { state in
-                    Label("\(EmailMessage.accountName(state.account)): \(state.lastError ?? "")", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange).lineLimit(2)
+                if let problem = model.mailProblem { Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).lineLimit(1) }
+                if !errors.isEmpty {
+                    HStack {
+                        Label("\(errors.map { EmailMessage.accountName($0.account) }.formatted()) can't connect", systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange).lineLimit(1)
+                            .help(errors.compactMap(\.lastError).joined(separator: "\n"))
+                        Spacer()
+                        Button("Fix…") { model.openSettings("connections") }.buttonStyle(.link)
+                    }
                 }
                 if let sending = model.sendingNow {
                     HStack(spacing: 8) {
@@ -117,16 +133,18 @@ struct InboxView: View {
                         Button("Cancel") { Task { await model.cancelSend(sending) } }.controlSize(.small)
                     }
                 }
-                ForEach(scheduled) { action in
-                    HStack(spacing: 8) {
-                        Image(systemName: "paperplane").foregroundStyle(.secondary).accessibilityHidden(true)
-                        Text(action.payload.subject ?? action.title).lineLimit(1)
-                        Spacer()
-                        if let at = action.payload.sendAt {
-                            Text(at, format: .dateTime.weekday(.abbreviated).hour().minute()).foregroundStyle(.secondary)
+                if !scheduled.isEmpty {
+                    Menu {
+                        ForEach(scheduled) { action in
+                            Button("Cancel “\(action.payload.subject ?? action.title)”\(action.payload.sendAt.map { " · \($0.formatted(.dateTime.weekday(.abbreviated).hour().minute()))" } ?? "")") {
+                                Task { await model.cancelSend(action) }
+                            }
                         }
-                        Button("Cancel") { Task { await model.cancelSend(action) } }.controlSize(.small)
+                    } label: {
+                        Label("\(scheduled.count) scheduled to send", systemImage: "paperplane")
                     }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
                 }
             }
             .font(.callout)
@@ -142,15 +160,15 @@ struct InboxView: View {
         switch picked.count {
         case 0:
             ContentUnavailableView("No mail selected", systemImage: "envelope.open",
-                                   description: Text("Pick a mail to read it here, with what Blink found in it."))
+                                   description: Text("Select a mail to read it."))
         case 1:
             MailReader(message: picked[0], close: { selection = [] })
         default:
             ContentUnavailableView {
                 Label("\(picked.count) mails selected", systemImage: "tray.full")
             } actions: {
-                Button("Clear All") { clear(selection) }.buttonStyle(.borderedProminent)
-                Menu("Teach Blink") { teachItems(picked) }.fixedSize()
+                Button("Mark All Done") { clear(selection) }.buttonStyle(.borderedProminent)
+                Menu("Sender") { teachItems(picked) }.fixedSize()
             }
         }
     }
@@ -159,7 +177,7 @@ struct InboxView: View {
 
     @ToolbarContentBuilder
     private func toolbar(_ picked: [EmailMessage]) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .principal) {
+        ToolbarItemGroup(placement: .navigation) {
             if accounts.count > 1 {
                 Picker("Mailbox", selection: $account) {
                     Text("All Mailboxes").tag("all")
@@ -175,17 +193,15 @@ struct InboxView: View {
             }
             .disabled(picked.count != 1)
             .help("Reply (R)")
-            Button { clear(selection) } label: { Label("Clear", systemImage: "checkmark.circle") }
+            Button { clear(selection) } label: { Label("Done", systemImage: "archivebox") }
                 .disabled(picked.isEmpty)
-                .help("Clear from Blink's inbox (E). Anything you added from it stays.")
-            Menu { teachItems(picked) } label: { Label("Teach Blink", systemImage: "graduationcap") }
-                .disabled(picked.isEmpty)
-                .help("Mark the sender important or not")
+                .help("Done: off Blink's inbox (E). Anything you added from it stays.")
             Button { Task { await model.syncMail() } } label: {
-                if model.syncingMail { ProgressView().controlSize(.small) } else { Label("Check Mail", systemImage: "envelope.arrow.triangle.branch") }
+                Label("Check Mail", systemImage: "arrow.clockwise").symbolEffect(.rotate, isActive: model.syncingMail)
             }
             .disabled(model.syncingMail)
-            .help("Check all your mailboxes now")
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .help("Check all your mailboxes now (⇧⌘N)")
         }
     }
 
@@ -197,15 +213,16 @@ struct InboxView: View {
             if let url = one.mailURL { Button("Open in Apple Mail") { NSWorkspace.shared.open(url) } }
             Divider()
         }
-        Button("Clear") { clear(ids) }
-        teachItems(picked)
+        Button("Done") { clear(ids) }
+        Menu("Sender") { teachItems(picked) }
     }
 
     @ViewBuilder
     private func teachItems(_ picked: [EmailMessage]) -> some View {
-        Button("Mark Important", systemImage: "exclamationmark.circle") { teach(.important, picked) }
-        Button("Not Important", systemImage: "arrow.down.circle") { teach(.newsletter, picked) }
-        Text("Applies to all mail from \(picked.count == 1 ? picked[0].fromAddr : "these senders")")
+        Section("All mail from \(picked.count == 1 ? picked[0].fromAddr : "these senders")") {
+            Button("Always Important", systemImage: "exclamationmark.circle") { teach(.important, picked) }
+            Button("Never Important", systemImage: "arrow.down.circle") { teach(.newsletter, picked) }
+        }
     }
 
     private func clear(_ ids: Set<String>) {
@@ -235,8 +252,8 @@ struct InboxView: View {
     }
 }
 
-/// One mail in the list: who, when, the subject, Blink's one-line summary, and small marks for "important" and for
-/// next steps found. Unread mail shows a dot and a bolder sender, like Mail.
+/// One mail in the list, like Mail: who and when, the subject, and Blink's one-line summary. Unread shows a dot and a
+/// bolder sender; a small sparkle means Blink found next steps in it.
 private struct MailListRow: View {
     let message: EmailMessage
 
@@ -245,28 +262,22 @@ private struct MailListRow: View {
             Circle()
                 .fill(message.status == .new ? Color.accentColor : .clear)
                 .frame(width: 7, height: 7)
-                .padding(.top, 6)
+                .alignmentGuide(.top) { $0[VerticalAlignment.center] - 9 }
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(message.sender).font(.body.weight(message.status == .new ? .semibold : .regular)).lineLimit(1)
                     Spacer(minLength: 4)
+                    if !message.nextSteps.isEmpty {
+                        Image(systemName: "sparkles").font(.caption).foregroundStyle(.secondary).accessibilityLabel("Has next steps")
+                    }
                     if let at = message.receivedAt {
                         Text(Self.when(at)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
                 Text(message.subject.isEmpty ? "(No subject)" : message.subject).font(.callout).lineLimit(1)
-                Text(message.reason.isEmpty ? message.summary : message.reason)
-                    .font(.callout).foregroundStyle(message.reason.isEmpty ? Color.secondary : Color.red).lineLimit(1)
-                if !message.nextSteps.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(Array(message.nextSteps.enumerated()), id: \.offset) { _, step in
-                            Image(systemName: NextStepChips.symbol(step.kind)).accessibilityHidden(true)
-                        }
-                        Text(message.nextSteps.count == 1 ? NextStepChips.text(message.nextSteps[0]) : "\(message.nextSteps.count) next steps")
-                            .lineLimit(1)
-                    }
-                    .font(.caption).foregroundStyle(.blue)
+                if !message.summary.isEmpty {
+                    Text(message.summary).font(.callout).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
         }
@@ -304,6 +315,15 @@ enum NextStepChips {
         }
     }
 
+    /// The short button word in the reading pane; the icon beside it says where it goes.
+    static func shortVerb(_ kind: MailAction.Kind) -> String {
+        switch kind {
+        case .event, .task: "Add"
+        case .deadline: "Remind"
+        case .note: "Save"
+        }
+    }
+
     /// "Interview · Thu 21 Oct, 15:00", "Pay rent · Mon 20 Oct", "Booking ref LH4XK2".
     static func text(_ step: MailAction) -> String {
         guard let start = step.start else { return step.title }
@@ -328,15 +348,7 @@ struct MailReader: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
-                if !message.summary.isEmpty {
-                    Label { Text(message.summary) } icon: { Image(systemName: "sparkles").foregroundStyle(.blue) }
-                        .font(.callout)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.blue.opacity(0.08), in: .rect(cornerRadius: Tokens.Radius.tile - 6, style: .continuous))
-                }
-                if !message.nextSteps.isEmpty { nextSteps }
-                Divider()
+                if !message.summary.isEmpty || !message.reason.isEmpty || !message.nextSteps.isEmpty { blinkCard }
                 body(text)
             }
             .padding(24)
@@ -356,69 +368,80 @@ struct MailReader: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(message.subject.isEmpty ? "(No subject)" : message.subject)
                 .font(.title2.weight(.semibold)).textSelection(.enabled)
                 .accessibilityAddTraits(.isHeader)
             HStack(alignment: .center, spacing: 10) {
                 Text(String(message.sender.prefix(1)).uppercased())
-                    .font(.headline).foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
+                    .font(.callout.weight(.semibold)).foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
                     .background(Color.accentColor.gradient, in: .circle)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(message.sender).font(.headline)
-                    Text("\(message.fromAddr) · \(EmailMessage.accountName(message.account))").font(.caption).foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                Text(message.sender).font(.headline).lineLimit(1)
+                    .help(message.fromAddr)
+                if Set(model.mailStates.map(\.account)).count > 1 {
+                    Text(EmailMessage.accountName(message.account)).font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer()
                 if let at = message.receivedAt {
                     Text(at.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                 }
-            }
-            HStack(spacing: 8) {
-                // Replying only where someone reads it; the blue button only when someone is waiting for you.
-                if !message.isNoReply || message.status == .drafted {
-                    if message.needsReply || message.status == .drafted {
-                        Button(message.status == .drafted ? "Review & Send" : "Reply") { Task { await model.reviewReply(to: message) } }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(model.draftingMail.contains(message.id))
-                    } else {
-                        Button("Reply") { Task { await model.reviewReply(to: message) } }
-                            .disabled(model.draftingMail.contains(message.id))
-                    }
-                    Button("Reply with a Note…") { writingNote = true }
-                        .popover(isPresented: $writingNote, arrowEdge: .bottom) { notePopover }
-                }
-                if model.draftingMail.contains(message.id) { ProgressView().controlSize(.small) }
                 Spacer()
-                if let url = message.mailURL { Button("Open in Mail") { NSWorkspace.shared.open(url) }.buttonStyle(.link) }
+                if model.draftingMail.contains(message.id) { ProgressView().controlSize(.small) }
+                replyMenu
             }
-            .controlSize(.regular)
         }
     }
 
-    private var nextSteps: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Blink found").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            VStack(spacing: 0) {
+    /// Reply (or Review & Send when a draft waits), with the rarer choices behind its arrow.
+    @ViewBuilder
+    private var replyMenu: some View {
+        let more = Group {
+            if !message.isNoReply { Button("Reply with a Note…") { writingNote = true } }
+            if let url = message.mailURL { Button("Open in Apple Mail") { NSWorkspace.shared.open(url) } }
+        }
+        if message.isNoReply && message.status != .drafted {
+            if let url = message.mailURL { Button("Open in Mail") { NSWorkspace.shared.open(url) }.buttonStyle(.link) }
+        } else {
+            let menu = Menu { more } label: { Text(message.status == .drafted ? "Review & Send" : "Reply") }
+                primaryAction: { Task { await model.reviewReply(to: message) } }
+                .menuStyle(.button)
+                .fixedSize()
+                .disabled(model.draftingMail.contains(message.id))
+                .popover(isPresented: $writingNote, arrowEdge: .bottom) { notePopover }
+            if message.status == .drafted { menu.buttonStyle(.borderedProminent) } else { menu }
+        }
+    }
+
+    /// What Blink made of it: the summary and why it's sorted where it is, then the next steps, each one a click away.
+    private var blinkCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !message.summary.isEmpty { Text(message.summary).font(.callout) }
+            if !message.reason.isEmpty { Text(message.reason).font(.caption).foregroundStyle(.secondary) }
+            if !message.nextSteps.isEmpty {
+                if !message.summary.isEmpty || !message.reason.isEmpty { Divider() }
                 ForEach(Array(message.nextSteps.enumerated()), id: \.offset) { index, step in
                     let saved = model.savedSteps.contains("\(message.id)#\(index)")
-                    if index > 0 { Divider() }
                     HStack(spacing: 10) {
-                        Image(systemName: NextStepChips.symbol(step.kind)).foregroundStyle(.blue).frame(width: 22).accessibilityHidden(true)
-                        Text(NextStepChips.text(step)).lineLimit(2)
+                        Image(systemName: NextStepChips.symbol(step.kind)).foregroundStyle(.secondary).frame(width: 22).accessibilityHidden(true)
+                        Text(NextStepChips.text(step)).font(.callout).lineLimit(2)
                         Spacer()
-                        Button(saved ? "Added" : NextStepChips.verb(step.kind)) { Task { await model.save(step, from: message, index: index) } }
-                            .disabled(saved)
-                            .accessibilityLabel(saved ? "Added: \(step.title)" : "\(NextStepChips.verb(step.kind)): \(NextStepChips.text(step))")
+                        if saved {
+                            Label("Added", systemImage: "checkmark").font(.callout).foregroundStyle(.secondary)
+                                .accessibilityLabel("Added: \(step.title)")
+                        } else {
+                            Button(NextStepChips.shortVerb(step.kind)) { Task { await model.save(step, from: message, index: index) } }
+                                .buttonStyle(.borderless)
+                                .controlSize(.small)
+                                .accessibilityLabel("\(NextStepChips.verb(step.kind)): \(NextStepChips.text(step))")
+                        }
                     }
-                    .padding(.vertical, 8)
                 }
             }
-            .padding(.horizontal, 12)
-            .background(.quaternary.opacity(0.4), in: .rect(cornerRadius: Tokens.Radius.tile - 6, style: .continuous))
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface(radius: Tokens.Radius.tile)
     }
 
     @ViewBuilder
