@@ -5,11 +5,9 @@ import SwiftUI
 
 /// Money, laid out like a wallet: your accounts as cards, where this month's money went as small tiles, and the
 /// latest spends; on the right, this month's total with its pace against last month, and how much of your limits is
-/// used. Type spending at the top; Blink sorts it and you check before it's saved.
+/// used. Spending is typed in the bar at the bottom; Blink sorts it and you check it here before it's saved.
 struct MoneyView: View {
     @Environment(AppModel.self) private var model
-    @State private var typed = ""
-    @State private var drafts: [SpendDraft] = []
     @State private var editingLimit: SpendCategory?
     @State private var editingAccount: AccountEditor.Mode?
 
@@ -27,9 +25,7 @@ struct MoneyView: View {
                 if let problem = model.moneyProblem {
                     Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 }
-                entry
-                    .padding(14)
-                    .cardSurface(radius: Tokens.Radius.tile)
+                if !model.spendDrafts.isEmpty { drafts }
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 20) {
                         leftColumn(summary).frame(minWidth: 460)
@@ -58,6 +54,9 @@ struct MoneyView: View {
                     ? "\(MoneyMath.totalBalance(model.accounts).formatted(.currency(code: MoneyMath.currency))) in total" : nil)
             AccountCards(editing: $editingAccount)
             section("Where it went this month")
+            if MoneyMath.totals(model.spends, month: month).isEmpty {
+                Text("Nothing spent yet this month. Type what you spend in the bar below.").foregroundStyle(.secondary)
+            }
             categoryTiles
             section("Recent spending")
             latest
@@ -115,7 +114,7 @@ struct MoneyView: View {
                     .padding(.top, 8)
                 Text("Solid: this month · Dashed: last month").font(.caption2).foregroundStyle(.tertiary)
             } else {
-                Text("Your pace shows after your first spend.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 30)
+                Text("Your pace shows after your first spend.").font(.callout).foregroundStyle(.secondary).padding(.top, 8)
             }
         }
         .padding(20)
@@ -135,9 +134,10 @@ struct MoneyView: View {
         let total = MoneyMath.totalBalance(model.accounts)
         let left = MoneyMath.leftAtMonthEnd(total: total, summary: s, today: today)
         let runway = MoneyMath.runwayDays(total: total, average: s.average)
-        return darkCard(caption: "Left at month end", title: left.formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0))),
-                        progress: total > 0 ? min(max(NSDecimalNumber(decimal: left / total).doubleValue, 0), 1) : 0,
-                        label: runway.map { $0 >= 365 ? "1y+" : "\($0)d" } ?? "—", tint: left < 0 ? .red : .white)
+        let share = total > 0 ? min(max(NSDecimalNumber(decimal: left / total).doubleValue, 0), 1) : 0
+        return darkCard(caption: runway.map { "Left at month end · lasts \($0 >= 365 ? "over a year" : "\($0) days")" } ?? "Left at month end",
+                        title: left.formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0))),
+                        progress: share, label: "\(Int((share * 100).rounded()))%", tint: left < 0 ? .red : .white)
     }
 
     private func darkCard(caption: String, title: String, progress: Double, label: String, tint: Color) -> some View {
@@ -193,45 +193,29 @@ struct MoneyView: View {
 
     // MARK: Entry: type → AI sorts → check → save
 
-    @ViewBuilder
-    private var entry: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TextField("What did you spend? e.g. lunch 8.50, bus 3",
-                      text: $typed, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(2...6)
-                .onSubmit(sort)
-            HStack {
-                Button(action: sort) {
-                    if model.sortingSpends { ProgressView().controlSize(.small) } else { Text("Sort It") }
-                }
-                .disabled(typed.trimmingCharacters(in: .whitespaces).isEmpty || model.sortingSpends)
-                .help("Blink reads the amounts and picks a category; you check before saving")
+    /// Spending typed in the bar, sorted by Blink: check, fix and save, or discard.
+    private var drafts: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Check before saving").font(.headline)
+            ForEach($model.spendDrafts) { $draft in
+                DraftRow(draft: $draft) { model.spendDrafts.removeAll { $0.id == draft.id } }
             }
-            if !drafts.isEmpty {
-                Divider()
-                ForEach($drafts) { $draft in DraftRow(draft: $draft) { drafts.removeAll { $0.id == draft.id } } }
-                HStack {
-                    Text("Total \(drafts.reduce(Decimal.zero) { $0 + $1.amount }.formatted(.currency(code: MoneyMath.currency)))").font(.headline)
-                    Spacer()
-                    Button("Discard") { drafts = [] }
-                    Button("Save \(drafts.count == 1 ? "Spend" : "All \(drafts.count)")") {
-                        Task {
-                            if await model.addSpends(drafts) != nil { drafts = []; typed = "" }
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(drafts.contains { $0.amount <= 0 })
+            HStack {
+                Text("Total \(model.spendDrafts.reduce(Decimal.zero) { $0 + $1.amount }.formatted(.currency(code: MoneyMath.currency)))").font(.headline)
+                Spacer()
+                Button("Discard") { model.spendDrafts = [] }
+                Button("Save \(model.spendDrafts.count == 1 ? "Spend" : "All \(model.spendDrafts.count)")") {
+                    let saving = model.spendDrafts
+                    Task { if await model.addSpends(saving) != nil { model.spendDrafts = [] } }
                 }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.spendDrafts.contains { $0.amount <= 0 })
             }
         }
-    }
-
-    private func sort() {
-        let text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !model.sortingSpends else { return }
-        Task { drafts = await model.sortSpends(text) }
+        .padding(16)
+        .cardSurface(radius: Tokens.Radius.tile)
     }
 
     // MARK: Recent spending

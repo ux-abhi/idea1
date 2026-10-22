@@ -113,6 +113,9 @@ struct MainWindow: View {
 
         } detail: {
             detail
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if case .section = page ?? .section(.today) { QuickBar(page: page ?? .section(.today)) }
+                }
                 .inspector(isPresented: $showPanel) { BlinkPanel(page: page ?? .section(.today)) }
                 .toolbar {
                     ToolbarItem(placement: .navigation) {

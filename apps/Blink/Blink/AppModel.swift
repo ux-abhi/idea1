@@ -1465,6 +1465,8 @@ final class AppModel {
     private(set) var budgets: [Budget] = []
     private(set) var moneyProblem: String?
     private(set) var sortingSpends = false
+    /// Spending typed in the bar and sorted by Blink, waiting on the Money page to be checked and saved.
+    var spendDrafts: [SpendDraft] = []
 
     /// This month and last, so the page can compare.
     /// A new capture link for one iPhone; the token is shown once (only its hash is stored).

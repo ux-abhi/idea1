@@ -7,14 +7,12 @@ import SwiftUI
 
 struct TasksView: View {
     @Environment(AppModel.self) private var model
-    @State private var newTitle = ""
     @State private var newHabit = ""
     @State private var showDone = false
     /// Select mode: tick several tasks and reminders, then finish or delete them together.
     @State private var selecting = false
     @State private var selected: Set<String> = []
     @State private var confirmDelete = false
-    @AppStorage("addAsReminder") private var addAsReminder = false
     @AppStorage("tasks.space") private var spaceFilter = "all"
     /// "all", "tasks" (Blink's own) or "reminders" (Apple Reminders).
     @AppStorage("tasks.kind") private var kindFilter = "all"
@@ -45,25 +43,8 @@ struct TasksView: View {
             }
             DashCard("Tasks", trailing: entries.isEmpty ? nil : (selecting ? "Cancel" : "Select"),
                      action: { selecting.toggle(); selected = [] }) {
-                AddField(placeholder: addAsReminder ? "Add a reminder, e.g. “call Sam 4pm”" : "Add a task, e.g. “send invoice friday”",
-                         text: $newTitle, action: add)
-                    .overlay(alignment: .trailing) {
-                        HStack(spacing: 4) {
-                            FilterPill(title: "Task", on: !addAsReminder) { addAsReminder = false }
-                            FilterPill(title: "Reminder", on: addAsReminder) { addAsReminder = true }
-                                .help("Reminders go to Apple Reminders on all your devices")
-                        }
-                        .padding(.trailing, 8)
-                    }
-                // Shows what Blink understood before Return.
-                if let due = TaskInput.parse(newTitle).due {
-                    Label("Due \(due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))",
-                          systemImage: "calendar")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
                 if entries.isEmpty {
-                    Text("Nothing open.").foregroundStyle(.secondary)
+                    Text("Nothing open. Add one in the bar below.").foregroundStyle(.secondary)
                 }
                 // Blink tasks and Apple Reminders together, by when they're due, in one card.
                 ForEach(DueGroup.allCases, id: \.self) { group in
@@ -192,20 +173,6 @@ struct TasksView: View {
             Entry(kind: .reminder($0), id: $0.id, due: $0.due, group: DueGroup.of($0.due, now: now))
         }
         return (tasks + reminders).sorted { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
-    }
-
-    private func add() {
-        let parsed = TaskInput.parse(newTitle)
-        guard !parsed.title.isEmpty else { return }
-        // With a Space picked above, what's added belongs to it (a reminder goes to its Reminders list).
-        let space = model.spaces.first { $0.id == spaceFilter }
-        if addAsReminder {
-            if let space { Task { await model.addReminder(parsed.title, due: parsed.due, to: space) } }
-            else { Task { await model.run(.remind(title: parsed.title, due: parsed.due)) } }
-        } else {
-            model.create(.task, title: parsed.title, due: parsed.due, space: space?.id)
-        }
-        newTitle = ""
     }
 }
 
