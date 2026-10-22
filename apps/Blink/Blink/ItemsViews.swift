@@ -21,7 +21,7 @@ struct TasksView: View {
         let entries = openEntries
         let habitsToday = model.habits.filter { model.isScheduledToday($0) }
         let doneToday = habitsToday.filter { model.answerToday($0) == .done }.count
-        DashPage("Tasks & Habits", summary: "\(model.openTasks.count) open · \(habitsToday.isEmpty ? "no habits today" : "\(doneToday) of \(habitsToday.count) habits done")") {
+        DashPage("Tasks & Habits", summary: "\(entries.count) open · \(habitsToday.isEmpty ? "no habits today" : "\(doneToday) of \(habitsToday.count) habits done")") {
             SpaceFilter(selected: $spaceFilter)
                 .task(id: spaceFilter) {
                     if let space = model.spaces.first(where: { $0.id == spaceFilter }) { await model.loadReminders(for: space) }
@@ -468,6 +468,9 @@ struct ReminderRow: View {
 
 // MARK: Notes
 
+/// Notes as a board of cards, like paper on a desk: each card shows where it lives (its Space, or when it was edited),
+/// its title big, and the start of its text. A click opens the note full width, with a back button; an empty note is
+/// thrown away on the way back, so blank notes never pile up.
 struct NotesView: View {
     @Environment(AppModel.self) private var model
     @State private var selection: String?
@@ -475,59 +478,26 @@ struct NotesView: View {
     @AppStorage("notes.space") private var spaceFilter = "all"
 
     var body: some View {
-        let shown = model.notes.filter { (spaceFilter == "all" || $0.spaceID == spaceFilter)
-                                         && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
-                                             || $0.body.localizedCaseInsensitiveContains(query)) }
-        HSplitView {
-            List(selection: $selection) {
-                ForEach(shown) { note in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(note.title.isEmpty ? "New note" : note.title).font(.headline).lineLimit(1)
-                        Text(note.body.isEmpty ? note.updatedAt.formatted(.relative(presentation: .named)) : note.body)
-                            .font(.callout).foregroundStyle(.secondary).lineLimit(2)
+        Group {
+            if let id = selection, let note = model.notes.first(where: { $0.id == id }) {
+                VStack(spacing: 0) {
+                    HStack {
+                        Button { close() } label: { Label("Notes", systemImage: "chevron.left") }
+                            .buttonStyle(.borderless)
+                            .keyboardShortcut("[", modifiers: .command)
+                            .help("Back to all notes (⌘[)")
+                        Spacer()
                     }
-                    .padding(.vertical, 4)
-                    .tag(note.id)
-                    .contextMenu {
-                        MoveToSpaceMenu(item: note)
-                        Button("Delete", role: .destructive) { Task { await model.deleteWithUndo(note) } }
-                    }
-                }
-            }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .onDeleteCommand {
-                if let id = selection, let note = model.notes.first(where: { $0.id == id }) { Task { await model.deleteWithUndo(note) } }
-            }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack {
-                    Text(shown.count == 1 ? "1 note" : "\(shown.count) notes").font(.callout).foregroundStyle(.secondary)
-                    Spacer()
-                    SpaceFilter(selected: $spaceFilter)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 8)
-            }
-            .overlay {
-                if shown.isEmpty && !query.isEmpty { ContentUnavailableView.search(text: query) }
-            }
-            .frame(minWidth: 220, idealWidth: 270, maxWidth: 380)
-
-            Group {
-                if let id = selection, let note = model.notes.first(where: { $0.id == id }) {
+                    .padding(.horizontal, 20).padding(.top, 14)
                     NoteEditor(note: note).id(note.id)
-                } else {
-                    ContentUnavailableView {
-                        Label(model.notes.isEmpty ? "No notes yet" : "No note selected", systemImage: "note.text")
-                    } description: {
-                        Text("Select a note or start a new one.")
-                    } actions: {
-                        Button("New Note", action: newNote).buttonStyle(.borderedProminent)
-                    }
+                        .frame(maxWidth: 760)
+                        .frame(maxWidth: .infinity)
                 }
+                .onExitCommand(perform: close)
+            } else {
+                board
             }
-            .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .searchable(text: $query, placement: .toolbar, prompt: "Search notes")
         .background(BlinkCanvas())
         .onAppear {
             if let id = model.focusNoteID {
@@ -538,15 +508,142 @@ struct NotesView: View {
         .toolbar {
             Button(action: newNote) { Label("New Note", systemImage: "square.and.pencil") }
                 .keyboardShortcut("n")
+                .help("New note (⌘N)")
         }
         .safeAreaInset(edge: .bottom) { SaveProblemBar() }
         .task { await model.loadItems() }
         .onChange(of: selection, initial: true) { model.openNoteID = selection }
-        .onDisappear { model.openNoteID = nil }
+        .onDisappear {
+            model.openNoteID = nil
+            discardIfEmpty(selection)
+        }
+    }
+
+    private var shown: [BlinkItem] {
+        model.notes.filter { (spaceFilter == "all" || $0.spaceID == spaceFilter)
+                             && (query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.body.localizedCaseInsensitiveContains(query)) }
+    }
+
+    private var board: some View {
+        let shown = shown
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Notes").font(.system(.largeTitle, design: .rounded, weight: .bold)).accessibilityAddTraits(.isHeader)
+                        Text(shown.count == 1 ? "1 note" : "\(shown.count) notes").foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    SpaceFilter(selected: $spaceFilter)
+                }
+                if shown.isEmpty && !query.isEmpty {
+                    ContentUnavailableView.search(text: query).frame(maxWidth: .infinity).padding(.top, 40)
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 320), spacing: 16)], alignment: .leading, spacing: 16) {
+                        NewNoteCard(action: newNote)
+                        ForEach(shown) { note in
+                            NoteCard(note: note, space: model.spaces.first { $0.id == note.spaceID }) { selection = note.id }
+                                .contextMenu {
+                                    Button("Open") { selection = note.id }
+                                    MoveToSpaceMenu(item: note)
+                                    Divider()
+                                    Button("Delete", role: .destructive) { Task { await model.deleteWithUndo(note) } }
+                                }
+                        }
+                    }
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 1100, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .searchable(text: $query, placement: .toolbar, prompt: "Search notes")
     }
 
     private func newNote() {
-        selection = model.create(.note, title: "").id
+        discardIfEmpty(selection)
+        selection = model.create(.note, title: "", space: spaceFilter == "all" ? nil : spaceFilter).id
+    }
+
+    private func close() {
+        discardIfEmpty(selection)
+        selection = nil
+    }
+
+    /// A note left with no title and no text is removed without asking: nothing is lost.
+    private func discardIfEmpty(_ id: String?) {
+        guard let id, let note = model.notes.first(where: { $0.id == id }), note.isBlank else { return }
+        Task { await model.delete(note) }
+    }
+}
+
+/// One note on the board: where it lives, its title big, the start of its text.
+private struct NoteCard: View {
+    let note: BlinkItem
+    let space: Space?
+    let open: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: open) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    if let space {
+                        Circle().fill(Color.system(space.color)).frame(width: 7, height: 7)
+                        Text(space.title)
+                    } else {
+                        Text(note.updatedAt.formatted(.relative(presentation: .named)))
+                    }
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                Text(note.title.isEmpty ? "Untitled" : note.title)
+                    .font(.system(.title3, design: .default, weight: .bold))
+                    .foregroundStyle(note.title.isEmpty ? .secondary : .primary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                if !note.body.isEmpty {
+                    Text(note.body)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(6)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, minHeight: 200, maxHeight: 200, alignment: .topLeading)
+            .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: Tokens.Radius.card, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous).strokeBorder(Color.primary.opacity(hovering ? 0.18 : 0.07)))
+            .shadow(color: .black.opacity(hovering ? 0.14 : 0.06), radius: hovering ? 14 : 6, y: hovering ? 6 : 2)
+            .contentShape(.rect(cornerRadius: Tokens.Radius.card))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovering)
+        .accessibilityLabel(note.title.isEmpty ? "Untitled note" : note.title)
+        .accessibilityHint("Opens the note")
+    }
+}
+
+/// The first card on the board: a dashed outline that makes a new note.
+private struct NewNoteCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 10) {
+                Image(systemName: "plus").font(.title2.weight(.semibold))
+                Text("New Note").font(.callout.weight(.semibold))
+            }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 200, maxHeight: 200)
+            .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
+            .contentShape(.rect(cornerRadius: Tokens.Radius.card))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -564,8 +661,8 @@ struct NoteEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                TextField("Title", text: $title)
-                    .font(.title2.weight(.semibold))
+                TextField("Title", text: $title, axis: .vertical)
+                    .font(.system(.largeTitle, design: .default, weight: .bold))
                     .textFieldStyle(.plain)
                 Spacer()
                 if let undoText {
@@ -603,6 +700,8 @@ struct NoteEditor: View {
         }
         .onChange(of: title) { apply() }
         .onChange(of: text) { apply() }
+        // Leaving (Back, ⌘N, another page) cancels the pending save below, so send the last words now.
+        .onDisappear { Task { await model.saveIfNeeded(note.id) } }
         // Saves after a 1 s pause in typing; a new keystroke cancels the pending save.
         .task(id: "\(title)\u{0}\(text)") {
             try? await Task.sleep(for: .seconds(1))

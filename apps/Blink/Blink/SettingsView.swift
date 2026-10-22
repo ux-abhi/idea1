@@ -294,12 +294,44 @@ struct NotchSettings: View {
     }
 }
 
-/// Wake and evening times, and the keyboard shortcuts.
+/// Light, dark or like the Mac; the notch stays dark either way.
+enum Appearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: Self { self }
+    static let key = "appearance"
+
+    var title: String {
+        switch self {
+        case .system: "Match the Mac"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
+/// Appearance, wake and evening times, and the keyboard shortcuts.
 struct DaySettings: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(Appearance.key) private var appearance = Appearance.system
 
     var body: some View {
         Group {
+            Section {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(Appearance.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                // Here too, so it applies even when only Settings is open.
+                .onChange(of: appearance) { NSApp.appearance = appearance.nsAppearance }
+            }
             Section {
                 DatePicker("Wake up", selection: binding(\.wake), displayedComponents: .hourAndMinute)
                 DatePicker("Evening check-in", selection: binding(\.evening), displayedComponents: .hourAndMinute)

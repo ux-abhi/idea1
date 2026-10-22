@@ -3,6 +3,11 @@ import Foundation
 
 /// A note or task from the `item` table (ARCHITECTURE §16).
 public struct BlinkItem: Codable, Identifiable, Equatable, Sendable {
+    /// Nothing written: no title and no text, spaces and new lines aside.
+    public var isBlank: Bool {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     public enum Kind: String, Codable, Sendable { case note, task }
     public enum Status: String, Codable, Sendable { case open, done, archived }
 

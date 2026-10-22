@@ -239,6 +239,12 @@ extension Tokens {
         #expect(project.contains(x: 100, y: 30) && !project.contains(x: 200, y: 0))
     }
 
+    @Test func blankNotesAreOnlyWhitespace() {
+        #expect(BlinkItem(id: "1", type: .note, title: " ", body: "\n\t").isBlank)
+        #expect(!BlinkItem(id: "2", type: .note, title: "", body: "x").isBlank)
+        #expect(!BlinkItem(id: "3", type: .note, title: "Plan", body: "").isBlank)
+    }
+
     @Test func canvasSpotsStayOnTheSheet() {
         #expect(CanvasLayout.onSheet((4130, 1300)) == (3860, 1300))
         #expect(CanvasLayout.onSheet((-50, -50)) == (140, 90))

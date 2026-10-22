@@ -15,7 +15,7 @@ struct MainWindow: View {
             case .inbox: "Inbox"
             case .calendar: "Calendar"
             case .notes: "Notes"
-            case .tasks: "Tasks & Habits"
+            case .tasks: "Tasks"
             case .content: "Content"
             case .money: "Money"
             case .waiting: "Needs You"
@@ -68,6 +68,7 @@ struct MainWindow: View {
     @AppStorage("sidebar.open.spaces") private var spacesOpen = true
     @AppStorage("sidebar.open.review") private var reviewOpen = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(Appearance.key) private var appearance = Appearance.system
 
     var body: some View {
         // Blink's own sidebar button: the automatic one is re-inserted as a duplicate when this view is rebuilt in the
@@ -149,6 +150,7 @@ struct MainWindow: View {
                 }
         }
         .overlay(alignment: .bottom) { UndoToast() }
+        .background { pageShortcuts }
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : Tokens.Motion.content.animation, value: model.undoChip?.id)
         // One title per page: the big heading in the page; the toolbar carries the app name and sync state.
         .navigationTitle("Blink")
@@ -158,6 +160,7 @@ struct MainWindow: View {
             if let key = model.openPage { page = Page(key: key); model.openPage = nil }
         }
         .onChange(of: page) { if let page { savedPage = page.key } }
+        .onChange(of: appearance, initial: true) { NSApp.appearance = appearance.nsAppearance }
         .task {
             // Onboarding's last step has just synced in this launch: don't fetch everything twice in a row.
             // (lastSync survives a relaunch, so it alone can't tell; status is .checking until this launch syncs.)
@@ -208,6 +211,20 @@ struct MainWindow: View {
             Image(systemName: space.icon).foregroundStyle(Color.system(space.color))
         }
         .tag(Page.space(space.id))
+    }
+
+    /// ⌘1 Today, ⌘2 Inbox, ⌘3 Calendar… in sidebar order, like tabs in Safari.
+    private var pageShortcuts: some View {
+        let pages: [Section] = [.today, .inbox, .calendar, .notes, .tasks] + (model.showsContent ? [.content] : []) + [.money, .waiting, .activity]
+        return ZStack {
+            ForEach(Array(pages.enumerated()), id: \.offset) { index, section in
+                Button(section.title) { page = .section(section) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            }
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
     }
 
     private func row(_ s: Section) -> some View {

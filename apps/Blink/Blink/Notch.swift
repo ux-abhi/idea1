@@ -484,6 +484,7 @@ final class NotchController {
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
         panel.sharingType = app.notchInRecordings ? .readOnly : .none // hidden from screen capture and sharing (§36.1) unless the owner allows it
+        panel.appearance = NSAppearance(named: .darkAqua) // the notch is black hardware: dark even when the app is set to Light
         panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app, clipboard: clipboard,
                                                                       open: { [weak self] in self?.openChat() },
                                                                       plan: { [weak self] in self?.planTomorrow() },

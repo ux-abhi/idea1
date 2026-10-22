@@ -575,6 +575,8 @@ final class AppModel {
                 try await server.save(item)
             } else {
                 try await server.save(new: item)
+                // Deleted while the first save was on its way (a blank note left at once): don't let it come back.
+                guard items.contains(where: { $0.id == id }) else { try? await server.delete(item); return }
                 onServer.insert(id)
             }
             // Only clear if nothing was typed while saving.
