@@ -255,31 +255,6 @@ struct InboxView: View {
     }
 }
 
-/// "Inbox 24": a filter as a pill; the chosen one is filled.
-private struct FilterPill: View {
-    let title: String
-    let count: Int
-    let on: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Text(title)
-                if count > 0 { Text("\(count)").monospacedDigit().opacity(0.6) }
-            }
-            .font(.callout.weight(.medium))
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .foregroundStyle(on ? Color(nsColor: .windowBackgroundColor) : .primary)
-            .background(on ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.primary.opacity(0.06)), in: .capsule)
-            .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(title), \(count)")
-        .accessibilityAddTraits(on ? .isSelected : [])
-    }
-}
-
 /// A round initial in a colour of its own for each sender, so the list is easy to scan.
 struct SenderAvatar: View {
     let name: String
@@ -296,20 +271,6 @@ struct SenderAvatar: View {
             .frame(width: size, height: size)
             .background(Self.colors[index].gradient, in: .circle)
             .accessibilityHidden(true)
-    }
-}
-
-/// A small coloured tag: "Important", "Reply", "2 next steps".
-private struct MailTag: View {
-    let text: String
-    let tint: Color
-
-    var body: some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 7).padding(.vertical, 2)
-            .background(tint.opacity(0.14), in: .capsule)
     }
 }
 
@@ -338,10 +299,10 @@ private struct MailListRow: View {
                 }
                 if message.triage == .important || message.needsReply || !message.nextSteps.isEmpty {
                     HStack(spacing: 5) {
-                        if message.triage == .important { MailTag(text: "Important", tint: .red) }
-                        if message.needsReply { MailTag(text: "Reply", tint: .blue) }
+                        if message.triage == .important { Tag(text: "Important", tint: .red) }
+                        if message.needsReply { Tag(text: "Reply", tint: .blue) }
                         if !message.nextSteps.isEmpty {
-                            MailTag(text: message.nextSteps.count == 1 ? "1 next step" : "\(message.nextSteps.count) next steps", tint: .teal)
+                            Tag(text: message.nextSteps.count == 1 ? "1 next step" : "\(message.nextSteps.count) next steps", tint: .teal)
                         }
                     }
                     .padding(.top, 2)

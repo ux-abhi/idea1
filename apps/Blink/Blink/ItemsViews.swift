@@ -16,29 +16,45 @@ struct TasksView: View {
     @State private var confirmDelete = false
     @AppStorage("addAsReminder") private var addAsReminder = false
     @AppStorage("tasks.space") private var spaceFilter = "all"
+    /// "all", "tasks" (Blink's own) or "reminders" (Apple Reminders).
+    @AppStorage("tasks.kind") private var kindFilter = "all"
 
     var body: some View {
-        let entries = openEntries
+        let all = openEntries
+        let entries = all.filter { entry in
+            switch entry.kind {
+            case .task: kindFilter != "reminders"
+            case .reminder: kindFilter != "tasks"
+            }
+        }
         let habitsToday = model.habits.filter { model.isScheduledToday($0) }
         let doneToday = habitsToday.filter { model.answerToday($0) == .done }.count
         DashPage("Tasks & Habits", summary: "\(entries.count) open · \(habitsToday.isEmpty ? "no habits today" : "\(doneToday) of \(habitsToday.count) habits done")") {
-            SpaceFilter(selected: $spaceFilter)
-                .task(id: spaceFilter) {
-                    if let space = model.spaces.first(where: { $0.id == spaceFilter }) { await model.loadReminders(for: space) }
-                }
+            HStack(spacing: 6) {
+                FilterPill(title: "All", count: all.count, on: kindFilter == "all") { kindFilter = "all" }
+                FilterPill(title: "Tasks", count: all.filter { if case .task = $0.kind { true } else { false } }.count,
+                           on: kindFilter == "tasks") { kindFilter = "tasks" }
+                FilterPill(title: "Reminders", count: all.filter { if case .reminder = $0.kind { true } else { false } }.count,
+                           on: kindFilter == "reminders") { kindFilter = "reminders" }
+                    .help("From Apple Reminders, on all your devices")
+                Spacer()
+                SpaceFilter(selected: $spaceFilter)
+                    .task(id: spaceFilter) {
+                        if let space = model.spaces.first(where: { $0.id == spaceFilter }) { await model.loadReminders(for: space) }
+                    }
+            }
             DashCard("Tasks", trailing: entries.isEmpty ? nil : (selecting ? "Cancel" : "Select"),
                      action: { selecting.toggle(); selected = [] }) {
-                HStack(spacing: 8) {
-                    AddField(placeholder: addAsReminder ? "Add a reminder" : "Add a task", text: $newTitle, action: add)
-                    Picker("Add as", selection: $addAsReminder) {
-                        Label("Task", systemImage: "checklist").tag(false)
-                        Label("Reminder", systemImage: "bell").tag(true)
+                AddField(placeholder: addAsReminder ? "Add a reminder, e.g. “call Sam 4pm”" : "Add a task, e.g. “send invoice friday”",
+                         text: $newTitle, action: add)
+                    .overlay(alignment: .trailing) {
+                        HStack(spacing: 4) {
+                            FilterPill(title: "Task", on: !addAsReminder) { addAsReminder = false }
+                            FilterPill(title: "Reminder", on: addAsReminder) { addAsReminder = true }
+                                .help("Reminders go to Apple Reminders on all your devices")
+                        }
+                        .padding(.trailing, 8)
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .fixedSize()
-                    .help("Reminders go to Apple Reminders on all your devices")
-                }
                 // Shows what Blink understood before Return.
                 if let due = TaskInput.parse(newTitle).due {
                     Label("Due \(due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))",
@@ -222,6 +238,7 @@ struct TaskRow: View {
                 .onChange(of: editing) { _, now in if !now { commit() } } // clicking away saves too
 
             Spacer()
+            Tag(text: "Task", tint: .blue)
             if showsSpace, let space = model.spaces.first(where: { $0.id == task.spaceID }) {
                 SpaceChip(space: space)
             }
@@ -438,7 +455,7 @@ struct ReminderRow: View {
             Button {
                 Task { await model.complete(reminder) }
             } label: {
-                Image(systemName: "circle").foregroundStyle(.secondary).imageScale(.large)
+                Image(systemName: "circle").foregroundStyle(.orange).imageScale(.large)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Mark as done")
@@ -449,6 +466,7 @@ struct ReminderRow: View {
                 .onSubmit(commit)
                 .onChange(of: editing) { _, now in if !now { commit() } } // clicking away saves too
             Spacer()
+            Tag(text: "Reminder", tint: .orange, symbol: "bell.fill")
             DueMenu(due: reminder.due, highlight: (reminder.due ?? .distantFuture) < .now) { date in
                 Task { await model.setDue(reminder, to: date) }
             }

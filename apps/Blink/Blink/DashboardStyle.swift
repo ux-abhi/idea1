@@ -212,4 +212,43 @@ struct CardRows<Item: Identifiable, Row: View>: View {
         }
     }
 }
+/// "Inbox 24": a filter or a choice as a pill; the chosen one is filled. Used on Mail and Tasks.
+struct FilterPill: View {
+    let title: String
+    var count = 0
+    let on: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text(title)
+                if count > 0 { Text("\(count)").monospacedDigit().opacity(0.6) }
+            }
+            .font(.callout.weight(.medium))
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .foregroundStyle(on ? Color(nsColor: .windowBackgroundColor) : .primary)
+            .background(on ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.primary.opacity(0.06)), in: .capsule)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title), \(count)")
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+/// A small coloured tag: "Important", "Reply", "Task", "Reminder".
+struct Tag: View {
+    let text: String
+    let tint: Color
+    var symbol: String?
+
+    var body: some View {
+        Label { Text(text) } icon: { if let symbol { Image(systemName: symbol) } }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(tint.opacity(0.14), in: .capsule)
+    }
+}
 #endif
