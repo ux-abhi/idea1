@@ -3,8 +3,9 @@
 import BlinkKit
 import SwiftUI
 
-/// Money (Phase 7, first slice): type the day's spending, the AI sorts it, you check and save. This month per category
-/// against its limit, and the latest spends to fix or delete.
+/// Money, laid out like a wallet: your accounts as cards, where this month's money went as small tiles, and the
+/// latest spends; on the right, this month's total with its pace against last month, and how much of your limits is
+/// used. Type spending at the top; Blink sorts it and you check before it's saved.
 struct MoneyView: View {
     @Environment(AppModel.self) private var model
     @State private var typed = ""
@@ -17,52 +18,66 @@ struct MoneyView: View {
     var body: some View {
         let today = HabitDay.key(.now)
         let summary = MoneyMath.summary(model.spends, today: today)
-        DashPage("Money", summary: pageSummary(summary)) {
-            if let problem = model.moneyProblem {
-                Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Money").font(.system(.largeTitle, design: .rounded, weight: .bold)).accessibilityAddTraits(.isHeader)
+                    Text(pageSummary(summary)).foregroundStyle(.secondary)
+                }
+                if let problem = model.moneyProblem {
+                    Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                }
+                entry
+                    .padding(14)
+                    .cardSurface(radius: Tokens.Radius.tile)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 20) {
+                        leftColumn(summary).frame(minWidth: 460)
+                        rightColumn(summary, today: today).frame(width: 340)
+                    }
+                    VStack(alignment: .leading, spacing: 20) {
+                        rightColumn(summary, today: today)
+                        leftColumn(summary)
+                    }
+                }
             }
-            DashCard("Add spending") { entry }
-            metrics(summary, today: today)
-            charts(summary, today: today)
-            DashCard("Categories and limits") { monthCard }
-            DashCard("Latest") { latest }
-            AccountsCard(editing: $editingAccount)
-            ApplePayCard()
+            .padding(24)
+            .frame(maxWidth: 1180, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
+        .background(BlinkCanvas())
         .animation(.default, value: model.spends)
         .task { await model.loadMoney() }
         .sheet(item: $editingLimit) { LimitEditor(category: $0) }
         .sheet(item: $editingAccount) { AccountEditor(mode: $0) }
     }
 
-    /// The headline numbers in one row: what you have, this month, where the month lands, and how long the money lasts.
-    private func metrics(_ s: MoneyMath.Summary, today: String) -> some View {
-        let change = s.change.map { c -> (String, Color) in
-            let pct = Int((abs(c) * 100).rounded())
-            return (c >= 0 ? "▲ \(pct)% vs last month" : "▼ \(pct)% vs last month", c > 0.1 ? .orange : c < 0 ? .green : .secondary)
+    private func leftColumn(_ s: MoneyMath.Summary) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            section("Accounts", trailing: model.accounts.count > 1
+                    ? "\(MoneyMath.totalBalance(model.accounts).formatted(.currency(code: MoneyMath.currency))) in total" : nil)
+            AccountCards(editing: $editingAccount)
+            section("Where it went this month")
+            categoryTiles
+            section("Recent spending")
+            latest
+            ApplePayCard()
         }
-        let total = MoneyMath.totalBalance(model.accounts)
-        let left = MoneyMath.leftAtMonthEnd(total: total, summary: s, today: today)
-        let runway = MoneyMath.runwayDays(total: total, average: s.average)
-        let overForecast = limitsTotal.map { s.forecast > $0 } ?? false
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
-            if !model.accounts.isEmpty {
-                MetricTile(title: "Money you have", value: total, detail: "\(model.accounts.count) account\(model.accounts.count == 1 ? "" : "s")",
-                           valueColor: total < 0 ? .red : .primary)
-            }
-            MetricTile(title: "This month", value: s.total, detail: change?.0 ?? "No data last month",
-                       detailColor: change?.1 ?? .secondary)
-            if model.accounts.isEmpty {
-                MetricTile(title: "Month-end forecast", value: s.forecast,
-                           detail: limitsTotal.map { overForecast ? "Over your limits (\($0.formatted(.currency(code: MoneyMath.currency))))" : "Within your limits" }
-                               ?? "At this pace", detailColor: overForecast ? .red : .secondary)
-            } else {
-                MetricTile(title: "Left at month end", value: left, detail: "If you keep this pace",
-                           detailColor: left < 0 ? .red : .secondary, valueColor: left < 0 ? .red : .primary)
-                MetricTile(title: "Lasts", text: runway.map { $0 >= 365 ? "Over a year" : "\($0) days" } ?? "—",
-                           detail: runway.map { _ in "At \(s.average.formatted(.currency(code: MoneyMath.currency))) a day" } ?? "Add spends to see",
-                           valueColor: (runway ?? 99) < 30 ? .orange : .primary)
-            }
+    }
+
+    private func rightColumn(_ s: MoneyMath.Summary, today: String) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            spentCard(s, today: today)
+            if let limits = limitsTotal { limitsCard(spent: s.total, limits: limits) }
+            else if !model.accounts.isEmpty { leftCard(s, today: today) }
+        }
+    }
+
+    private func section(_ title: String, trailing: String? = nil) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).font(.title3.weight(.semibold))
+            Spacer()
+            if let trailing { Text(trailing).foregroundStyle(.secondary).monospacedDigit() }
         }
     }
 
@@ -72,38 +87,107 @@ struct MoneyView: View {
         return "\(s.total.formatted(.currency(code: MoneyMath.currency))) this month · \(pct)% \(change >= 0 ? "more" : "less") than last month by today"
     }
 
-    // MARK: Dashboard: headline numbers and charts
-
     private var limitsTotal: Decimal? {
         model.budgets.isEmpty ? nil : model.budgets.reduce(Decimal.zero) { $0 + $1.monthlyLimit }
     }
 
-    @ViewBuilder
-    private func charts(_ s: MoneyMath.Summary, today: String) -> some View {
+    // MARK: Right column
+
+    /// This month's total, how it compares, and its pace drawn against last month.
+    private func spentCard(_ s: MoneyMath.Summary, today: String) -> some View {
         let day = Int(today.suffix(2)) ?? 1
         let daily = Array(MoneyMath.daily(model.spends, month: month).prefix(day))
-        if s.total > 0 || s.lastMonthTotal > 0 {
-            DashCard("Spending pace") {
+        return VStack(spacing: 6) {
+            Text("Spent this month").font(.callout).foregroundStyle(.secondary)
+            Text(s.total, format: .currency(code: MoneyMath.currency))
+                .font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
+                .contentTransition(.numericText())
+            if let change = s.change {
+                let pct = Int((abs(change) * 100).rounded())
+                Text("\(change >= 0 ? "▲" : "▼") \(pct)% vs last month by today")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(change > 0.1 ? Color.orange : change < 0 ? .green : .secondary)
+            }
+            if s.total > 0 || s.lastMonthTotal > 0 {
                 PaceChart(thisMonth: MoneyMath.cumulative(daily),
                           lastMonth: MoneyMath.cumulative(MoneyMath.daily(model.spends, month: MoneyMath.previous(month: month))),
                           limit: limitsTotal, daysInMonth: MoneyMath.daysIn(month: month))
-                Text("Solid: this month · Dashed: last month")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.top, 8)
+                Text("Solid: this month · Dashed: last month").font(.caption2).foregroundStyle(.tertiary)
+            } else {
+                Text("Your pace shows after your first spend.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 30)
             }
         }
-        if s.total == 0 && s.lastMonthTotal == 0 {
-            EmptyCard(symbol: "chart.xyaxis.line", title: "Charts appear after your first spend",
-                      message: "Your spending pace against last month, each day's total, and where the money goes by category.")
-        }
-        if s.total > 0 {
-            HStack(alignment: .top, spacing: 16) {
-                DashCard("Day by day") {
-                    DailyBars(daily: daily, average: s.average, daysInMonth: MoneyMath.daysIn(month: month))
-                }
-                DashCard("By category") {
-                    CategoryRing(totals: MoneyMath.totals(model.spends, month: month))
-                }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .cardSurface(radius: Tokens.Radius.card)
+    }
+
+    /// Of all your monthly limits together, how much is used: a dark card with a ring, like a plan's progress.
+    private func limitsCard(spent: Decimal, limits: Decimal) -> some View {
+        let used = MoneyMath.used(spent, of: limits)
+        return darkCard(caption: "Your limits", title: used >= 1 ? "Over the limit" : "\((limits - spent).formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0)))) left",
+                        progress: min(used, 1), label: "\(Int((used * 100).rounded()))%", tint: used >= 1 ? .red : used >= 0.8 ? .orange : .white)
+    }
+
+    /// With accounts and no limits: what's left at month end at this pace.
+    private func leftCard(_ s: MoneyMath.Summary, today: String) -> some View {
+        let total = MoneyMath.totalBalance(model.accounts)
+        let left = MoneyMath.leftAtMonthEnd(total: total, summary: s, today: today)
+        let runway = MoneyMath.runwayDays(total: total, average: s.average)
+        return darkCard(caption: "Left at month end", title: left.formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0))),
+                        progress: total > 0 ? min(max(NSDecimalNumber(decimal: left / total).doubleValue, 0), 1) : 0,
+                        label: runway.map { $0 >= 365 ? "1y+" : "\($0)d" } ?? "—", tint: left < 0 ? .red : .white)
+    }
+
+    private func darkCard(caption: String, title: String, progress: Double, label: String, tint: Color) -> some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(caption).font(.callout).foregroundStyle(.white.opacity(0.6))
+                Text(title).font(.title2.weight(.semibold)).foregroundStyle(.white).monospacedDigit()
             }
+            Spacer()
+            ZStack {
+                Circle().stroke(.white.opacity(0.15), lineWidth: 9)
+                Circle().trim(from: 0, to: progress).stroke(tint, style: StrokeStyle(lineWidth: 9, lineCap: .round)).rotationEffect(.degrees(-90))
+                Text(label).font(.callout.weight(.bold)).foregroundStyle(.white).monospacedDigit()
+            }
+            .frame(width: 70, height: 70)
+            .accessibilityHidden(true)
+        }
+        .padding(20)
+        .background { HorizonGlow() }
+        .clipShape(.rect(cornerRadius: Tokens.Radius.card, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: Where it went
+
+    /// This month's categories as small tiles, biggest first, each against its limit; one more tile sets a limit.
+    private var categoryTiles: some View {
+        let totals = MoneyMath.totals(model.spends, month: month)
+        let limited = model.budgets.filter { b in !totals.contains { $0.category == b.category } }.map { (category: $0.category, total: Decimal.zero) }
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
+            ForEach(totals + limited, id: \.category) { row in
+                CategoryTile(category: row.category, total: row.total,
+                             limit: model.budgets.first { $0.category == row.category }?.monthlyLimit) { editingLimit = row.category }
+            }
+            Menu {
+                ForEach(SpendCategory.allCases) { c in Button(c.title, systemImage: c.symbol) { editingLimit = c } }
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "plus").font(.title3.weight(.semibold))
+                    Text("Set a Limit").font(.callout.weight(.medium))
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 128)
+                .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.tile, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
+                .contentShape(.rect)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
         }
     }
 
@@ -150,69 +234,146 @@ struct MoneyView: View {
         Task { drafts = await model.sortSpends(text) }
     }
 
-    // MARK: This month per category, against its limit
+    // MARK: Recent spending
 
-    @ViewBuilder
-    private var monthCard: some View {
-        let totals = MoneyMath.totals(model.spends, month: month)
-        let limited = model.budgets.filter { b in !totals.contains { $0.category == b.category } }
-        if totals.isEmpty && limited.isEmpty {
-            Text("Nothing spent this month yet.").foregroundStyle(.secondary)
+    /// The latest spends as one list: what, the day, the amount, and a menu to change or delete each.
+    private var latest: some View {
+        let recent = Array(model.spends.prefix(30))
+        return VStack(spacing: 0) {
+            if recent.isEmpty {
+                Text("Spends you add show here.").foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(16)
+            }
+            ForEach(Array(recent.enumerated()), id: \.element.id) { index, spend in
+                if index > 0 { Divider().padding(.leading, 60) }
+                SpendRow(spend: spend).padding(.horizontal, 14).padding(.vertical, 10)
+            }
         }
-        ForEach(totals, id: \.category) { row in categoryRow(row.category, total: row.total) }
-        ForEach(limited, id: \.category) { categoryRow($0.category, total: 0) }
-        Menu("Set a Limit") {
-            ForEach(SpendCategory.allCases) { c in Button(c.title, systemImage: c.symbol) { editingLimit = c } }
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .padding(.top, 4)
+        .cardSurface(radius: Tokens.Radius.tile)
     }
+}
 
-    private func categoryRow(_ category: SpendCategory, total: Decimal) -> some View {
-        let limit = model.budgets.first { $0.category == category }?.monthlyLimit
+/// One category this month: its icon on a dark tile, the amount, and the bar against its limit when there is one.
+private struct CategoryTile: View {
+    let category: SpendCategory
+    let total: Decimal
+    let limit: Decimal?
+    let edit: () -> Void
+
+    var body: some View {
         let used = limit.map { MoneyMath.used(total, of: $0) } ?? 0
-        return Button { editingLimit = category } label: { VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Label(category.title, systemImage: category.symbol)
-                Spacer()
-                Text(total, format: .currency(code: MoneyMath.currency)).monospacedDigit()
+        Button(action: edit) {
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: category.symbol)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(Color.black, in: .rect(cornerRadius: 10, style: .continuous))
+                    .accessibilityHidden(true)
+                Text(category.title).font(.callout.weight(.semibold)).lineLimit(1)
+                Text(total, format: .currency(code: MoneyMath.currency).precision(.fractionLength(0)))
+                    .font(.title3.weight(.bold)).monospacedDigit()
                 if let limit {
-                    Text("of \(limit.formatted(.currency(code: MoneyMath.currency)))").foregroundStyle(.secondary)
+                    ProgressView(value: min(used, 1))
+                        .tint(used >= 1 ? .red : used >= 0.8 ? .orange : .accentColor)
+                    Text("of \(limit.formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0))))")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            if limit != nil {
-                ProgressView(value: min(used, 1))
-                    .tint(used >= 1 ? .red : used >= 0.8 ? .orange : .accentColor)
-                    .accessibilityValue(used >= 1 ? "Over the limit" : "\(Int(used * 100)) percent of the limit")
-            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
+            .cardSurface(radius: Tokens.Radius.tile)
+            .contentShape(.rect)
         }
-        .contentShape(.rect) }
         .buttonStyle(.plain)
         .accessibilityHint("Set the monthly limit")
     }
+}
 
-    // MARK: Latest spends, by day
+/// The accounts as cards in a row, like the cards in a wallet: kind, balance big, name. A click updates the balance;
+/// the last card adds an account.
+private struct AccountCards: View {
+    @Environment(AppModel.self) private var model
+    @Binding var editing: AccountEditor.Mode?
+    @State private var deleting: MoneyAccount?
 
-    @ViewBuilder
-    private var latest: some View {
-        let recent = Array(model.spends.prefix(40))
-        if recent.isEmpty {
-            Text("Spends you add show here.").foregroundStyle(.secondary)
-        }
-        let days = Dictionary(grouping: recent, by: \.spentOn).sorted { $0.key > $1.key }
-        ForEach(days, id: \.key) { day, list in
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(HabitDay.date(fromKey: day).map { $0.formatted(.dateTime.weekday(.wide).day().month()) } ?? day)
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Text(list.reduce(Decimal.zero) { $0 + $1.amount }, format: .currency(code: MoneyMath.currency))
-                        .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(model.accounts) { account in
+                    Button { editing = .balance(account) } label: { card(account) }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Update Balance…", systemImage: "pencil") { editing = .balance(account) }
+                            if !account.isDefault {
+                                Button("Make Default", systemImage: "star") { Task { await model.makeDefault(account) } }
+                            }
+                            Button("Delete Account…", systemImage: "trash", role: .destructive) { deleting = account }
+                        }
+                        .accessibilityHint("Update the balance")
                 }
-                ForEach(list) { SpendRow(spend: $0) }
+                Button { editing = .new } label: {
+                    VStack(spacing: 8) {
+                        Image(systemName: "plus").font(.title2.weight(.semibold))
+                        Text(model.accounts.isEmpty ? "Add your first account" : "Add Account").font(.callout.weight(.medium))
+                        if model.accounts.isEmpty {
+                            Text("Bank, savings, cash or card, with today's balance").font(.caption).multilineTextAlignment(.center)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(12)
+                    .frame(width: 200, height: 140)
+                    .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.card, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.15), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
             }
-            .padding(.bottom, 6)
+            .padding(.vertical, 4)
+        }
+        .confirmationDialog("Delete \(deleting?.name ?? "this account")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete Account", role: .destructive) { if let account = deleting { Task { await model.deleteAccount(account) } } }
+        } message: {
+            Text("Its balance goes. Spending you added stays, without an account.")
+        }
+    }
+
+    private func card(_ account: MoneyAccount) -> some View {
+        let now = MoneyMath.balance(of: account)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Image(systemName: account.kind.symbol).font(.title3)
+                Spacer()
+                if account.isDefault {
+                    Text("Default").font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(.white.opacity(0.18), in: .capsule)
+                }
+            }
+            Spacer()
+            Text(now, format: .currency(code: MoneyMath.currency))
+                .font(.system(.title2, design: .rounded, weight: .bold)).monospacedDigit()
+                .foregroundStyle(now < 0 ? Color.red : .white)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text("\(account.name) · \(account.kind.title)").font(.caption).foregroundStyle(.white.opacity(0.65)).lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .padding(16)
+        .frame(width: 240, height: 140)
+        .background { HorizonGlow(tint: tint(account.kind)) }
+        .clipShape(.rect(cornerRadius: Tokens.Radius.card, style: .continuous))
+        .shadow(color: .black.opacity(0.2), radius: 10, y: 5)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(account.name), \(now.formatted(.currency(code: MoneyMath.currency)))\(account.isDefault ? ", default" : "")")
+    }
+
+    /// One soft colour per kind of account, rising from the bottom of the black card.
+    private func tint(_ kind: MoneyAccount.Kind) -> Color {
+        switch kind {
+        case .checking: .blue
+        case .savings: .green
+        case .cash: .orange
+        case .card: .indigo
+        case .other: .gray
         }
     }
 }
@@ -264,11 +425,19 @@ private struct SpendRow: View {
     let spend: Spend
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: spend.category.symbol).foregroundStyle(.secondary).frame(width: 18).accessibilityHidden(true)
-            Text(spend.note.isEmpty ? spend.category.title : spend.note).lineLimit(1)
+        HStack(spacing: 12) {
+            Image(systemName: spend.category.symbol)
+                .foregroundStyle(.secondary)
+                .frame(width: 34, height: 34)
+                .background(Color.primary.opacity(0.06), in: .rect(cornerRadius: 10, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(spend.note.isEmpty ? spend.category.title : spend.note).font(.callout.weight(.medium)).lineLimit(1)
+                Text("\(spend.category.title) · \(HabitDay.date(fromKey: spend.spentOn).map { $0.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) } ?? spend.spentOn)")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Spacer()
-            Text(spend.amount, format: .currency(code: MoneyMath.currency)).monospacedDigit()
+            Text(spend.amount, format: .currency(code: MoneyMath.currency)).font(.callout.weight(.semibold)).monospacedDigit()
             Menu("Change", systemImage: "ellipsis.circle") { menu }
                 .labelStyle(.iconOnly).menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         }

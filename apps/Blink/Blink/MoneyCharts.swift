@@ -59,9 +59,11 @@ struct PaceChart: View {
             ForEach(Array(thisMonth.enumerated()), id: \.offset) { day, value in
                 AreaMark(x: .value("Day", day + 1), y: .value("Spent", double(value)))
                     .foregroundStyle(LinearGradient(colors: [Color.accentColor.opacity(0.25), .clear], startPoint: .top, endPoint: .bottom))
+                    .interpolationMethod(.catmullRom)
                 LineMark(x: .value("Day", day + 1), y: .value("Spent", double(value)), series: .value("Month", "This month"))
                     .foregroundStyle(Color.accentColor)
                     .lineStyle(StrokeStyle(lineWidth: 2.5))
+                    .interpolationMethod(.catmullRom)
             }
             if let limit {
                 RuleMark(y: .value("Limits", double(limit)))
@@ -75,63 +77,6 @@ struct PaceChart: View {
         .frame(height: 200)
         .accessibilityLabel("Spending this month against last month")
         .accessibilityValue("\(thisMonth.last.map { double($0) }?.formatted(axisEuros) ?? "0") so far; last month by the same day \(lastMonth[safe: thisMonth.count - 1].map { double($0).formatted(axisEuros) } ?? "nothing")")
-    }
-}
-
-/// What was spent each day this month, with the average as a line.
-struct DailyBars: View {
-    let daily: [Decimal]       // through today
-    let average: Decimal
-    let daysInMonth: Int
-
-    var body: some View {
-        Chart {
-            ForEach(Array(daily.enumerated()), id: \.offset) { day, value in
-                BarMark(x: .value("Day", day + 1), y: .value("Spent", double(value)), width: .fixed(7))
-                    .foregroundStyle(day == daily.count - 1 ? Color.accentColor : Color.accentColor.opacity(0.45))
-                    .cornerRadius(3)
-            }
-            if average > 0 {
-                RuleMark(y: .value("Average", double(average)))
-                    .foregroundStyle(.secondary)
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-            }
-        }
-        .chartXScale(domain: 0.5...(Double(daysInMonth) + 0.5))
-        .chartXAxis { AxisMarks(values: [1, 8, 15, 22, 29].filter { $0 <= daysInMonth }) }
-        .chartYAxis { AxisMarks { AxisGridLine(); AxisValueLabel(format: axisEuros) } }
-        .frame(height: 170)
-        .accessibilityLabel("Spending per day this month")
-    }
-}
-
-/// Where the month's money went, as a ring, with the total in the middle.
-struct CategoryRing: View {
-    let totals: [(category: SpendCategory, total: Decimal)]
-
-    var body: some View {
-        let sum = totals.reduce(Decimal.zero) { $0 + $1.total }
-        Chart(totals, id: \.category) { row in
-            SectorMark(angle: .value("Spent", double(row.total)), innerRadius: .ratio(0.62), angularInset: 1.5)
-                .cornerRadius(3)
-                .foregroundStyle(by: .value("Category", row.category.title))
-        }
-        .chartLegend(position: .trailing, alignment: .center)
-        .chartBackground { proxy in
-            GeometryReader { geo in
-                if let frame = proxy.plotFrame {
-                    let rect = geo[frame]
-                    VStack(spacing: 0) {
-                        Text("Total").font(.caption2).foregroundStyle(.secondary)
-                        Text(sum, format: .currency(code: MoneyMath.currency).precision(.fractionLength(0))).font(.headline).monospacedDigit()
-                    }
-                    .position(x: rect.midX, y: rect.midY)
-                }
-            }
-        }
-        .frame(height: 170)
-        .accessibilityLabel("Spending by category")
-        .accessibilityValue(totals.map { "\($0.category.title) \(double($0.total).formatted(axisEuros))" }.formatted())
     }
 }
 
