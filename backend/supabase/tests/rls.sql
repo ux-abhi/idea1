@@ -588,4 +588,41 @@ do $$ begin
 end $$;
 reset role;
 
+-- Space canvas: nodes and links only in the owner's own Space; others see nothing and can't link into it.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  insert into public.segment (id, title) values ('00000000-0000-0000-0000-0000000000d1', 'Canvas check');
+  insert into public.space_node (id, segment_id, kind) values ('00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-0000000000d1', 'project');
+  insert into public.space_node (id, segment_id, kind, ref, x, y) values ('00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-0000000000d1', 'task', 'item-1', 300, 40);
+  insert into public.space_edge (segment_id, from_node, to_node) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-0000000000d3');
+  assert (select count(*) from public.space_edge) = 1, 'A links two of their nodes';
+  begin
+    insert into public.space_edge (segment_id, from_node, to_node) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-0000000000d3');
+    raise exception 'a node linked to itself';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.space_node (segment_id, kind) values ('00000000-0000-0000-0000-0000000000d1', 'project');
+    raise exception 'a second project node';
+  exception when unique_violation then null;
+  end;
+end $$;
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  assert (select count(*) from public.space_node) = 0, 'B can''t see A''s canvas';
+  begin
+    insert into public.space_node (segment_id, kind) values ('00000000-0000-0000-0000-0000000000d1', 'project');
+    raise exception 'B put a node in someone else''s Space';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.space_edge (segment_id, from_node, to_node)
+      values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-0000000000d2');
+    raise exception 'B linked A''s nodes';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+
 select 'all RLS checks passed' as result;

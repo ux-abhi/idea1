@@ -3,44 +3,26 @@
 import BlinkKit
 import SwiftUI
 
-/// A Space as a project workspace: a cover with its icon, goal, deadline and progress, then three views of the same
-/// work. Overview is the whole project at a glance; Board moves tasks between the Space's own columns by dragging;
-/// Notes is its writing. Everything is the same task or note as in the rest of Blink, and reminders live in the
-/// Space's own Apple Reminders list.
+/// A Space as a canvas: a dark header with its icon, name and goal, and below it the plan as cards you drag and link.
+/// The project sits in the middle; the tasks, sticky notes and reminders around it are the real ones from the rest of
+/// Blink (a reminder lives in the Space's own Apple Reminders list), so ticking one here ticks it everywhere.
 struct SpaceView: View {
-    enum Tab: String, CaseIterable { case overview = "Overview", board = "Board", notes = "Notes" }
-
     @Environment(AppModel.self) private var model
     let space: Space
     let openNote: (String) -> Void
-    @AppStorage("space.tab") private var tab = Tab.overview.rawValue
     @State private var customizing = false
     @State private var renaming = false
     @State private var newTitle = ""
     @State private var confirmDelete = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                SpaceCover(space: space, customize: { customizing = true })
-                Picker("View", selection: $tab) {
-                    ForEach(Tab.allCases, id: \.rawValue) { Text($0.rawValue).tag($0.rawValue) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 340)
-                switch Tab(rawValue: tab) ?? .overview {
-                case .overview: SpaceOverview(space: space, openNote: openNote, showBoard: { tab = Tab.board.rawValue })
-                case .board: SpaceBoard(space: space)
-                case .notes: SpaceNotes(space: space, openNote: openNote)
-                }
-            }
-            .padding(24)
-            .frame(maxWidth: 1100, alignment: .leading)
-            .frame(maxWidth: .infinity)
+        VStack(spacing: 0) {
+            SpaceHeader(space: space)
+                .padding([.horizontal, .top], 20)
+            SpaceCanvasView(space: space, openNote: openNote)
         }
         .background(BlinkCanvas())
-        .task(id: space.id) { await model.loadReminders(for: space) }
+        .task(id: space.id) { await model.loadCanvas(space) }
         .sheet(isPresented: $customizing) { SpaceCustomizer(space: space) }
         .toolbar {
             Menu {
@@ -72,98 +54,53 @@ struct SpaceView: View {
     }
 }
 
-// MARK: Cover
+// MARK: Header
 
-extension Space {
-    /// The cover's gradient: Apple system colours only, so it works in light and dark.
-    var coverColors: [Color] {
-        switch cover {
-        case "ocean": [.blue, .teal, .cyan]
-        case "sunset": [.orange, .pink, .purple]
-        case "forest": [.green, .mint, .teal]
-        case "dusk": [.indigo, .purple, .black]
-        case "rose": [.pink, .red, .orange]
-        case "mono": [.gray, .black, .gray]
-        default: [.purple, .blue, .mint] // aurora
-        }
-    }
-}
-
-/// The Space's header: its cover gradient, icon, name, goal, deadline, status and progress ring.
-private struct SpaceCover: View {
+/// The Space's name, icon and goal on black, with its colour rising softly from the bottom.
+private struct SpaceHeader: View {
     @Environment(AppModel.self) private var model
     let space: Space
-    let customize: () -> Void
     @State private var goal = ""
     @FocusState private var editingGoal: Bool
 
     var body: some View {
         let progress = Space.progress(of: model.items, in: space.id)
-        ZStack(alignment: .bottomLeading) {
-            LinearGradient(colors: space.coverColors, startPoint: .topLeading, endPoint: .bottomTrailing)
-                .overlay(LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .top, endPoint: .bottom))
-                .frame(height: 210)
-            HStack(alignment: .bottom, spacing: 16) {
-                Image(systemName: space.icon)
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 64, height: 64)
-                    .background(.ultraThinMaterial, in: .rect(cornerRadius: 18, style: .continuous))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(space.title).font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(.white)
-                        .accessibilityAddTraits(.isHeader)
-                    TextField("What's the goal? e.g. “Launch by December”", text: $goal, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .font(.callout)
-                        .foregroundStyle(.white.opacity(0.9))
-                        .focused($editingGoal)
-                        .onSubmit(saveGoal)
-                        .onChange(of: editingGoal) { _, now in if !now { saveGoal() } }
-                    HStack(spacing: 8) {
-                        pill(space.status.rawValue.capitalized, symbol: space.status == .active ? "circle.fill" : "pause.circle")
-                        if let due = space.dueAt {
-                            let days = Calendar.current.dateComponents([.day], from: .now, to: due).day ?? 0
-                            pill(days >= 0 ? "\(days) days left" : "\(-days) days late", symbol: "flag.fill")
-                        }
-                        pill("\(progress.done)/\(progress.total) done", symbol: "checkmark.circle")
-                    }
-                }
-                Spacer()
-                ZStack {
-                    Circle().stroke(.white.opacity(0.25), lineWidth: 7)
-                    Circle().trim(from: 0, to: progress.total == 0 ? 0 : Double(progress.done) / Double(progress.total))
-                        .stroke(.white, style: StrokeStyle(lineWidth: 7, lineCap: .round)).rotationEffect(.degrees(-90))
-                    Text(progress.total == 0 ? "–" : "\(progress.done * 100 / max(progress.total, 1))%")
-                        .font(.callout.weight(.semibold)).foregroundStyle(.white).monospacedDigit()
-                }
-                .frame(width: 62, height: 62)
-                .accessibilityLabel("\(progress.done) of \(progress.total) tasks done")
+        HStack(spacing: 16) {
+            Image(systemName: space.icon)
+                .font(.title2.weight(.semibold))
+                .frame(width: 56, height: 56)
+                .background(.white.opacity(0.12), in: .rect(cornerRadius: Tokens.Radius.tile, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(space.title)
+                    .font(.system(.title, design: .rounded, weight: .bold))
+                    .accessibilityAddTraits(.isHeader)
+                TextField("Add a goal, e.g. “Launch by December”", text: $goal, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .focused($editingGoal)
+                    .onSubmit(saveGoal)
+                    .onChange(of: editingGoal) { _, now in if !now { saveGoal() } }
             }
-            .padding(22)
-        }
-        .clipShape(.rect(cornerRadius: Tokens.Radius.card + 6, style: .continuous))
-        .overlay(alignment: .topTrailing) {
-            Button(action: customize) {
-                Label("Customize", systemImage: "paintbrush.pointed")
-                    .font(.callout.weight(.medium))
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(.ultraThinMaterial, in: .capsule)
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(progress.total == 0 ? "No tasks yet" : "\(progress.done) of \(progress.total) done")
+                if let due = space.dueAt {
+                    let days = Calendar.current.dateComponents([.day], from: .now, to: due).day ?? 0
+                    Text(days >= 0 ? "\(days) days left" : "\(-days) days late").foregroundStyle(days < 0 ? .red : .secondary)
+                }
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .padding(14)
+            .font(.callout.weight(.medium))
+            .monospacedDigit()
         }
+        .foregroundStyle(.white)
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(HorizonGlow(tint: Color.system(space.color)))
+        .clipShape(.rect(cornerRadius: Tokens.Radius.card, style: .continuous))
+        .environment(\.colorScheme, .dark)
         .onAppear { goal = space.goal }
         .onChange(of: space.goal) { _, new in if !editingGoal { goal = new } }
-    }
-
-    private func pill(_ text: String, symbol: String) -> some View {
-        Label(text, systemImage: symbol)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(.white.opacity(0.18), in: .capsule)
-            .foregroundStyle(.white)
     }
 
     private func saveGoal() {
@@ -175,53 +112,49 @@ private struct SpaceCover: View {
     }
 }
 
-/// Make the Space yours: cover, icon, colour, deadline and status.
+/// Make the Space yours: icon, colour, deadline and status.
 private struct SpaceCustomizer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let space: Space
-    private static let icons = ["folder", "sparkles", "rocket", "paintpalette", "book", "graduationcap", "airplane", "house",
+    private static let icons = ["folder", "sparkles", "paperplane", "paintpalette", "book", "graduationcap", "airplane", "house",
                                 "briefcase", "heart", "camera", "music.note", "leaf", "hammer", "chart.line.uptrend.xyaxis", "globe"]
+    private static let colors = ["blue", "indigo", "purple", "pink", "red", "orange", "yellow", "green", "mint", "teal"]
 
     var body: some View {
+        let current = model.spaces.first { $0.id == space.id } ?? space
         VStack(alignment: .leading, spacing: 18) {
-            Text("Customize \(space.title)").font(.title2.weight(.semibold))
-            Text("Cover").font(.headline)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 10) {
-                ForEach(Space.covers, id: \.self) { name in
-                    var preview = space
-                    let _ = preview.cover = name
-                    Button { update { $0.cover = name } } label: {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(LinearGradient(colors: preview.coverColors, startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(height: 56)
-                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(space.cover == name ? Color.white : .clear, lineWidth: 3))
-                            .overlay(alignment: .bottomLeading) {
-                                Text(name.capitalized).font(.caption.weight(.semibold)).foregroundStyle(.white).padding(6)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(name.capitalized) cover")
-                }
-            }
+            Text("Customize \(current.title)").font(.title2.weight(.semibold))
             Text("Icon").font(.headline)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 8)], spacing: 8) {
                 ForEach(Self.icons, id: \.self) { icon in
                     Button { update { $0.icon = icon } } label: {
                         Image(systemName: icon).font(.title3).frame(width: 44, height: 44)
-                            .background(space.icon == icon ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.05),
+                            .background(current.icon == icon ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.05),
                                         in: .rect(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(icon)
+                    .accessibilityAddTraits(current.icon == icon ? .isSelected : [])
+                }
+            }
+            Text("Colour").font(.headline)
+            HStack(spacing: 10) {
+                ForEach(Self.colors, id: \.self) { name in
+                    Button { update { $0.color = name } } label: {
+                        Circle().fill(Color.system(name)).frame(width: 26, height: 26)
+                            .overlay(Circle().strokeBorder(.primary, lineWidth: current.color == name ? 2 : 0).padding(-4))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(name.capitalized)
+                    .accessibilityAddTraits(current.color == name ? .isSelected : [])
                 }
             }
             HStack(spacing: 20) {
                 LabeledContent("Deadline") {
-                    DueMenu(due: space.dueAt, highlight: (space.dueAt ?? .distantFuture) < .now) { date in update { $0.dueAt = date } }
+                    DueMenu(due: current.dueAt, highlight: (current.dueAt ?? .distantFuture) < .now) { date in update { $0.dueAt = date } }
                 }
-                Picker("Status", selection: Binding(get: { space.status }, set: { s in update { $0.status = s } })) {
+                Picker("Status", selection: Binding(get: { current.status }, set: { s in update { $0.status = s } })) {
                     Text("Active").tag(Space.Status.active)
                     Text("Paused").tag(Space.Status.paused)
                     Text("Done").tag(Space.Status.done)
@@ -244,289 +177,439 @@ private struct SpaceCustomizer: View {
     }
 }
 
-// MARK: Overview
+// MARK: Canvas
 
-private struct SpaceOverview: View {
+/// The plan as cards on a dotted sheet: drag a card to move it, drag from its dot to link it to another, and add new
+/// ones from the bar at the bottom (linked to the selected card, or to the project).
+private struct SpaceCanvasView: View {
     @Environment(AppModel.self) private var model
     let space: Space
     let openNote: (String) -> Void
-    let showBoard: () -> Void
-    @State private var newTask = ""
-    @AppStorage("space.addAsReminder") private var addAsReminder = false
+    @AppStorage("blinkPanel") private var showPanel = true
+    @State private var selected: String?
+    @State private var dragID: String?
+    @State private var dragOffset: CGSize = .zero
+    @State private var linkFrom: String?
+    @State private var linkEnd: CGPoint = .zero
+
+    private var nodes: [SpaceNode] { (model.canvasNodes[space.id] ?? []).filter { content(of: $0) != nil } }
+    private var edges: [SpaceEdge] {
+        let shown = Set(nodes.map(\.id))
+        return (model.canvasEdges[space.id] ?? []).filter { shown.contains($0.from) && shown.contains($0.to) }
+    }
 
     var body: some View {
-        let mine = model.items.filter { $0.spaceID == space.id }
-        let open = mine.filter { $0.type == .task && $0.status == .open }.sorted { ($0.dueAt ?? .distantFuture) < ($1.dueAt ?? .distantFuture) }
-        let notes = mine.filter { $0.type == .note }.sorted { $0.updatedAt > $1.updatedAt }
-        let reminders = model.spaceReminders[space.id] ?? []
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Picker("Add as", selection: $addAsReminder) {
-                    Text("Task").tag(false)
-                    Text("Reminder").tag(true)
+        let nodes = nodes
+        let edges = edges
+        ScrollView([.horizontal, .vertical]) {
+            ZStack(alignment: .topLeading) {
+                DotGrid()
+                    .contentShape(.rect)
+                    .onTapGesture { selected = nil }
+                Canvas { context, _ in
+                    for edge in edges {
+                        guard let a = nodes.first(where: { $0.id == edge.from }), let b = nodes.first(where: { $0.id == edge.to }) else { continue }
+                        context.stroke(curve(point(a), point(b)), with: .color(.secondary.opacity(0.55)), lineWidth: 1.5)
+                    }
+                    if let from = nodes.first(where: { $0.id == linkFrom }) {
+                        context.stroke(curve(point(from), linkEnd), with: .color(.accentColor),
+                                       style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 5]))
+                    }
                 }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
-                AddField(placeholder: addAsReminder ? "Remind me, e.g. \"Call the printer friday 10am\"" : "Add a task, e.g. \"Draft homepage friday\"",
-                         text: $newTask) {
-                    let parsed = TaskInput.parse(newTask)
-                    guard !parsed.title.isEmpty else { return }
-                    if addAsReminder { Task { await model.addReminder(parsed.title, due: parsed.due, to: space) } }
-                    else { model.create(.task, title: parsed.title, due: parsed.due, space: space.id) }
-                    newTask = ""
+                .allowsHitTesting(false)
+                ForEach(nodes) { node in
+                    card(node)
+                        .position(point(node))
                 }
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
-                // Where the work stands, column by column; a click opens the board.
-                WidgetTile(title: "Board", symbol: "rectangle.split.3x1", tint: .indigo, open: showBoard) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(space.columns, id: \.self) { column in
-                            let count = mine.filter { $0.type == .task && space.column(of: $0) == column }.count
-                            HStack {
-                                Text(column).font(.callout)
-                                Spacer()
-                                Text("\(count)").font(.callout.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                WidgetTile(title: "Next up · \(open.count)", symbol: "checklist", tint: .orange) {
-                    if open.isEmpty { Text("Nothing open. Add a task above.").foregroundStyle(.secondary) }
-                    else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(open.prefix(4)) { task in
-                                HStack(spacing: 8) {
-                                    Button { Task { await model.toggle(task) } } label: { Image(systemName: "circle").foregroundStyle(.orange) }
-                                        .buttonStyle(.plain).accessibilityLabel("Mark \(task.title) done")
-                                    Text(task.title).font(.callout).lineLimit(1)
-                                    Spacer()
-                                    if let due = task.dueAt { Text(Agenda.dueLabel(due)).font(.caption).foregroundStyle(.secondary) }
-                                }
-                            }
-                        }
-                    }
-                }
-                WidgetTile(title: "Reminders · \(reminders.count)", symbol: "bell.fill", tint: .red) {
-                    if reminders.isEmpty {
-                        Text("Reminders here go to a “\(space.title)” list in Apple Reminders.").font(.callout).foregroundStyle(.secondary)
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(reminders.prefix(4)) { reminder in
-                                HStack(spacing: 8) {
-                                    Button { Task { await model.complete(reminder, in: space) } } label: { Image(systemName: "circle").foregroundStyle(.red) }
-                                        .buttonStyle(.plain).accessibilityLabel("Mark \(reminder.title) done")
-                                    Text(reminder.title).font(.callout).lineLimit(1)
-                                    Spacer()
-                                    if let due = reminder.due { Text(Agenda.dueLabel(due)).font(.caption).foregroundStyle(.secondary) }
-                                }
-                            }
-                        }
-                    }
-                }
-                WidgetTile(title: "Latest notes · \(notes.count)", symbol: "note.text", tint: .yellow) {
-                    if notes.isEmpty {
-                        Button("Write the first note") { openNote(model.create(.note, title: "", space: space.id).id) }.buttonStyle(.link)
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(notes.prefix(3)) { note in
-                                Button { openNote(note.id) } label: {
-                                    HStack {
-                                        Text(note.title.isEmpty ? "New note" : note.title).font(.callout).lineLimit(1)
-                                        Spacer()
-                                        Text(note.updatedAt, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    .contentShape(.rect)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
+            .frame(width: AppModel.canvasSize.width, height: AppModel.canvasSize.height)
+            .coordinateSpace(.named("canvas"))
+        }
+        .defaultScrollAnchor(.center)
+        .overlay {
+            if nodes.isEmpty { ProgressView().controlSize(.small) }
+        }
+        .overlay(alignment: .bottom) {
+            CanvasToolbar(space: space, parent: nodes.first { $0.id == selected }, askBlink: askBlink, added: { selected = $0 })
+                .padding(.bottom, 18)
+        }
+    }
+
+    // MARK: Cards
+
+    private enum Content {
+        case project
+        case item(BlinkItem)
+        case reminder(AgendaReminder)
+    }
+
+    /// What a node points at, or nil when it's gone (deleted, finished reminder) and the next load will tidy it away.
+    private func content(of node: SpaceNode) -> Content? {
+        switch node.kind {
+        case .project: .project
+        case .task, .note: model.items.first { $0.id == node.ref && $0.status != .archived }.map(Content.item)
+        case .reminder: model.spaceReminders[space.id]?.first { $0.id == node.ref }.map(Content.reminder)
+        }
+    }
+
+    private func point(_ node: SpaceNode) -> CGPoint {
+        let offset = node.id == dragID ? dragOffset : .zero
+        return CGPoint(x: node.x + offset.width, y: node.y + offset.height)
+    }
+
+    /// A soft S-curve between two cards, leaving and arriving sideways.
+    private func curve(_ a: CGPoint, _ b: CGPoint) -> Path {
+        Path { path in
+            let bend = max(abs(b.x - a.x) / 2, 40)
+            path.move(to: a)
+            path.addCurve(to: b, control1: CGPoint(x: a.x + (b.x >= a.x ? bend : -bend), y: a.y),
+                          control2: CGPoint(x: b.x + (b.x >= a.x ? -bend : bend), y: b.y))
+        }
+    }
+
+    @ViewBuilder
+    private func card(_ node: SpaceNode) -> some View {
+        let isSelected = selected == node.id
+        let shape = RoundedRectangle(cornerRadius: node.kind == .note ? 8 : 14, style: .continuous)
+        Group {
+            switch content(of: node) {
+            case .project: ProjectCard(space: space)
+            case .item(let item) where node.kind == .note: StickyCard(note: item, tint: Color.system(node.color))
+            case .item(let item): TaskCard(task: item, tint: Color.system(node.color))
+            case .reminder(let reminder): ReminderCard(reminder: reminder, space: space)
+            case nil: EmptyView()
             }
         }
+        .frame(width: node.size.width, height: node.size.height)
+        .overlay(shape.strokeBorder(Color.accentColor, lineWidth: 2).opacity(isSelected ? 1 : 0))
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+        .overlay(alignment: .trailing) { linkHandle(node) }
+        .onTapGesture(count: 2) { if node.kind == .note, let ref = node.ref { openNote(ref) } }
+        .onTapGesture { selected = node.id }
+        .gesture(
+            DragGesture(minimumDistance: 3, coordinateSpace: .named("canvas"))
+                .onChanged { drag in
+                    dragID = node.id
+                    dragOffset = drag.translation
+                }
+                .onEnded { drag in
+                    model.moveNode(node, x: node.x + drag.translation.width, y: node.y + drag.translation.height)
+                    dragID = nil
+                    dragOffset = .zero
+                }
+        )
+        .contextMenu { menu(node) }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// The dot on a card's right edge: drag it onto another card to link the two.
+    private func linkHandle(_ node: SpaceNode) -> some View {
+        Circle()
+            .fill(Color.accentColor)
+            .frame(width: 12, height: 12)
+            .overlay(Circle().strokeBorder(.background, lineWidth: 2))
+            .padding(8)
+            .contentShape(.circle)
+            .offset(x: 14)
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("canvas"))
+                    .onChanged { drag in
+                        linkFrom = node.id
+                        linkEnd = drag.location
+                    }
+                    .onEnded { drag in
+                        linkFrom = nil
+                        guard let target = nodes.first(where: { $0.id != node.id && $0.contains(x: drag.location.x, y: drag.location.y) })
+                        else { return }
+                        Task { await model.connect(node, to: target, in: space) }
+                    }
+            )
+            .help("Drag onto another card to link them")
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func menu(_ node: SpaceNode) -> some View {
+        switch content(of: node) {
+        case .project:
+            Button("Ask Blink About This Plan", action: askBlink)
+        case .item(let item):
+            if item.type == .note {
+                Button("Open Note") { openNote(item.id) }
+            } else {
+                Button(item.status == .done ? "Mark Not Done" : "Mark Done") { Task { await model.toggle(item) } }
+            }
+            Menu("Colour") {
+                ForEach(["yellow", "orange", "pink", "green", "mint", "blue", "purple"], id: \.self) { name in
+                    Button(name.capitalized) { model.recolor(node, to: name) }
+                }
+            }
+        case .reminder(let reminder):
+            Button("Mark Done") { Task { await model.complete(reminder, in: space) } }
+        case nil:
+            EmptyView()
+        }
+        let links = edges.filter { $0.from == node.id || $0.to == node.id }
+        if !links.isEmpty {
+            Button("Remove Links") { Task { for edge in links { await model.disconnect(edge) } } }
+        }
+        if case .item(let item) = content(of: node) {
+            Divider()
+            Button(item.type == .note ? "Delete Note" : "Delete Task", role: .destructive) { Task { await model.deleteWithUndo(item) } }
+        }
+    }
+
+    // MARK: Ask Blink
+
+    private func askBlink() {
+        showPanel = true
+        Task {
+            await model.ask("Look at this Space's plan. In a few lines, say where it stands and what's at risk, then suggest the next tasks it's missing as tasks I can approve.",
+                            context: planSummary())
+        }
+    }
+
+    /// The plan as plain text for Claude: the goal, every card, and what links to what.
+    private func planSummary() -> String {
+        var lines = ["Space: \(space.title)"]
+        if !space.goal.isEmpty { lines.append("Goal: \(space.goal)") }
+        if let due = space.dueAt { lines.append("Deadline: \(due.formatted(date: .abbreviated, time: .omitted))") }
+        var names: [String: String] = [:]
+        for node in nodes {
+            switch content(of: node) {
+            case .project: names[node.id] = space.title
+            case .item(let item):
+                let name = item.title.isEmpty ? String(item.body.prefix(60)) : item.title
+                names[node.id] = name
+                if item.type == .note {
+                    lines.append("Sticky note: \(name)\(item.body.isEmpty ? "" : " — \(item.body.prefix(200))")")
+                } else {
+                    lines.append("Task\(item.status == .done ? " (done)" : ""): \(name)\(item.dueAt.map { " · due \(Agenda.dueLabel($0))" } ?? "")")
+                }
+            case .reminder(let reminder):
+                names[node.id] = reminder.title
+                lines.append("Reminder: \(reminder.title)\(reminder.due.map { " · \(Agenda.dueLabel($0))" } ?? "")")
+            case nil: break
+            }
+        }
+        for edge in edges { if let a = names[edge.from], let b = names[edge.to] { lines.append("Link: \(a) → \(b)") } }
+        // The chat server takes at most 4000 characters of context (functions/chat input.ts).
+        return String(lines.joined(separator: "\n").prefix(3900))
     }
 }
 
-// MARK: Board
-
-/// The Space's columns side by side; cards drag between them (the last column means done). Columns can be added,
-/// renamed and removed.
-private struct SpaceBoard: View {
+/// The add bar floating over the canvas: + Task, + Sticky, + Reminder, and Ask Blink.
+private struct CanvasToolbar: View {
     @Environment(AppModel.self) private var model
     let space: Space
-    @State private var addingColumn = false
-    @State private var newColumn = ""
+    let parent: SpaceNode?
+    let askBlink: () -> Void
+    let added: (String) -> Void
+    @State private var adding: SpaceNode.Kind?
+    @State private var draft = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
-        let tasks = model.items.filter { $0.spaceID == space.id && $0.type == .task && $0.status != .archived }
-        ScrollView(.horizontal) {
-            HStack(alignment: .top, spacing: 14) {
-                ForEach(space.columns, id: \.self) { column in
-                    BoardColumn(space: space, column: column,
-                                cards: tasks.filter { space.column(of: $0) == column }.sorted { ($0.dueAt ?? .distantFuture) < ($1.dueAt ?? .distantFuture) })
-                }
-                if space.columns.count < 8 {
-                    Button { addingColumn = true } label: {
-                        Label("Add Column", systemImage: "plus")
-                            .frame(width: 180, height: 44)
-                            .cardSurface(radius: Tokens.Radius.tile)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.bottom, 8)
-        }
-        .alert("New Column", isPresented: $addingColumn) {
-            TextField("e.g. Review", text: $newColumn)
-            Button("Add") { let name = newColumn; newColumn = ""; Task { await model.addColumn(name, to: space) } }
-            Button("Cancel", role: .cancel) { newColumn = "" }
-        }
-    }
-}
-
-private struct BoardColumn: View {
-    @Environment(AppModel.self) private var model
-    let space: Space
-    let column: String
-    let cards: [BlinkItem]
-    @State private var targeted = false
-    @State private var adding = ""
-    @State private var renaming = false
-    @State private var newName = ""
-
-    var body: some View {
-        let isDone = column == space.columns.last
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Circle().fill(isDone ? Color.green : Color.system(space.color)).frame(width: 8, height: 8)
-                Text(column).font(.headline)
-                Text("\(cards.count)").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2).background(Color.primary.opacity(0.06), in: .capsule)
-                Spacer()
-                Menu {
-                    Button("Rename…") { newName = column; renaming = true }
-                    if space.columns.count > 2 && !isDone {
-                        Button("Remove Column", role: .destructive) { Task { await model.removeColumn(column, from: space) } }
-                    }
-                } label: { Image(systemName: "ellipsis") }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .accessibilityLabel("\(column) options")
-            }
-            ForEach(cards) { task in
-                BoardCard(task: task, done: isDone)
-                    .draggable(task.id)
-            }
-            if !isDone {
-                TextField("Add a card", text: $adding)
+        HStack(spacing: 4) {
+            if let adding {
+                Image(systemName: symbol(adding)).foregroundStyle(.secondary).padding(.leading, 8).accessibilityHidden(true)
+                TextField(placeholder(adding), text: $draft)
                     .textFieldStyle(.plain)
-                    .padding(10)
-                    .background(Color.primary.opacity(0.04), in: .rect(cornerRadius: 10, style: .continuous))
-                    .onSubmit {
-                        let parsed = TaskInput.parse(adding)
-                        guard !parsed.title.isEmpty else { return }
-                        var item = model.create(.task, title: parsed.title, due: parsed.due, space: space.id)
-                        item.stage = column
-                        model.edit(item)
-                        Task { await model.save(item.id) }
-                        adding = ""
-                    }
+                    .frame(width: 300)
+                    .focused($focused)
+                    .onSubmit(add)
+                    .onExitCommand { self.adding = nil }
+                Button("Done") { self.adding = nil }
+                    .buttonStyle(.borderless)
+                    .padding(.horizontal, 8)
+            } else {
+                tool("Task", symbol: symbol(.task), kind: .task)
+                tool("Sticky", symbol: symbol(.note), kind: .note)
+                tool("Reminder", symbol: symbol(.reminder), kind: .reminder)
+                Divider().frame(height: 18).padding(.horizontal, 4)
+                Button(action: askBlink) {
+                    Label("Ask Blink", systemImage: "sparkles").padding(.horizontal, 10).padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .disabled(model.thinking)
             }
         }
-        .padding(14)
-        .frame(width: 270, alignment: .top)
-        .frame(minHeight: 260, alignment: .top)
-        .cardSurface(radius: Tokens.Radius.tile)
-        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.tile, style: .continuous)
-            .strokeBorder(targeted ? Color.accentColor : .clear, lineWidth: 2))
-        .dropDestination(for: String.self) { ids, _ in
-            for id in ids { if let task = model.items.first(where: { $0.id == id && $0.type == .task }) { model.move(task, toColumn: column, in: space) } }
-            return true
-        } isTargeted: { targeted = $0 }
-        .alert("Rename Column", isPresented: $renaming) {
-            TextField("Name", text: $newName)
-            Button("Save") { Task { await model.renameColumn(column, to: newName, in: space) } }
-            Button("Cancel", role: .cancel) {}
+        .font(.callout.weight(.medium))
+        .padding(6)
+        .frame(height: 44)
+        .background(.regularMaterial, in: .capsule)
+        .overlay(Capsule().strokeBorder(.separator))
+        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+    }
+
+    private func tool(_ title: String, symbol: String, kind: SpaceNode.Kind) -> some View {
+        Button {
+            adding = kind
+            focused = true
+        } label: {
+            Label(title, systemImage: symbol).padding(.horizontal, 10).padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+        .help("Add a \(title.lowercased())\(parent.map { _ in " linked to the selected card" } ?? "")")
+    }
+
+    private func symbol(_ kind: SpaceNode.Kind) -> String {
+        switch kind {
+        case .task: "checkmark.circle"
+        case .note: "note.text"
+        case .reminder: "bell"
+        case .project: "folder"
+        }
+    }
+
+    private func placeholder(_ kind: SpaceNode.Kind) -> String {
+        switch kind {
+        case .task: "Task, e.g. “Draft homepage friday”"
+        case .note: "Sticky note"
+        case .reminder: "Reminder, e.g. “Call the printer friday 10am”"
+        case .project: ""
+        }
+    }
+
+    /// Adds the card and keeps the field open for the next one; Escape or Done closes it.
+    private func add() {
+        guard let adding else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let parsed = adding == .note ? (title: text, due: Date?.none) : { let p = TaskInput.parse(text); return (title: p.title, due: p.due) }()
+        guard !parsed.title.isEmpty else { return }
+        draft = ""
+        Task {
+            if let node = await model.addToCanvas(adding, title: parsed.title, due: parsed.due, in: space, linkedFrom: parent) {
+                added(node.id)
+            }
         }
     }
 }
 
-private struct BoardCard: View {
+// MARK: Card faces
+
+private struct ProjectCard: View {
+    @Environment(AppModel.self) private var model
+    let space: Space
+
+    var body: some View {
+        let progress = Space.progress(of: model.items, in: space.id)
+        HStack(spacing: 12) {
+            Image(systemName: space.icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Color.system(space.color).gradient, in: .rect(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(space.title).font(.headline).lineLimit(1)
+                Text(progress.total == 0 ? "Add the first task below" : "\(progress.done) of \(progress.total) done")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial, in: .rect(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.system(space.color).opacity(0.6), lineWidth: 1.5))
+    }
+}
+
+private struct TaskCard: View {
     @Environment(AppModel.self) private var model
     let task: BlinkItem
-    let done: Bool
+    let tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(task.title).font(.callout.weight(.medium)).strikethrough(done).foregroundStyle(done ? .secondary : .primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 6) {
-                if let due = task.dueAt {
-                    let late = due < .now && !done
-                    Label(Agenda.dueLabel(due), systemImage: "calendar")
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background((late ? Color.orange : Color.primary).opacity(late ? 0.2 : 0.06), in: .capsule)
-                        .foregroundStyle(late ? .orange : .secondary)
-                }
-                if !task.body.isEmpty { Image(systemName: "text.alignleft").font(.caption).foregroundStyle(.secondary) }
-                Spacer()
+        let done = task.status == .done
+        HStack(spacing: 10) {
+            Button { Task { await model.toggle(task) } } label: {
+                Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(done ? Color.green : tint)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(done ? "Mark \(task.title) not done" : "Mark \(task.title) done")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.title).font(.callout.weight(.medium)).strikethrough(done).lineLimit(2)
+                    .foregroundStyle(done ? .secondary : .primary)
+                if let due = task.dueAt {
+                    Text(Agenda.dueLabel(due)).font(.caption).foregroundStyle(due < .now && !done ? .red : .secondary)
+                }
+            }
+            Spacer(minLength: 0)
         }
-        .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-        .contextMenu {
-            Button(done ? "Mark Not Done" : "Mark Done") { Task { await model.toggle(task) } }
-            Button("Delete", role: .destructive) { Task { await model.deleteWithUndo(task) } }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Drag to another column")
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial, in: .rect(cornerRadius: 14, style: .continuous))
+        .overlay(alignment: .leading) { Capsule().fill(tint).frame(width: 3).padding(.vertical, 14).accessibilityHidden(true) }
     }
 }
 
-// MARK: Notes
-
-private struct SpaceNotes: View {
-    @Environment(AppModel.self) private var model
-    let space: Space
-    let openNote: (String) -> Void
-    @State private var query = ""
+private struct StickyCard: View {
+    let note: BlinkItem
+    let tint: Color
 
     var body: some View {
-        let notes = model.items.filter { $0.spaceID == space.id && $0.type == .note }
-            .filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) || $0.body.localizedCaseInsensitiveContains(query) }
-            .sorted { $0.updatedAt > $1.updatedAt }
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                PageSearchField(prompt: "Search \(space.title)'s notes", text: $query)
-                Spacer()
-                Button { openNote(model.create(.note, title: "", space: space.id).id) } label: { Label("New Note", systemImage: "square.and.pencil") }
-                    .buttonStyle(.borderedProminent)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(note.title.isEmpty ? "Untitled note" : note.title).font(.callout.weight(.semibold)).lineLimit(2)
+            if !note.body.isEmpty {
+                Text(note.body).font(.caption).foregroundStyle(.secondary).lineLimit(6)
             }
-            if notes.isEmpty {
-                ContentUnavailableView("No notes yet", systemImage: "note.text",
-                                       description: Text("Meeting notes, ideas and drafts for \(space.title) live here, and in Notes."))
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14)], spacing: 14) {
-                    ForEach(notes) { note in
-                        Button { openNote(note.id) } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(note.title.isEmpty ? "New note" : note.title).font(.headline).lineLimit(2)
-                                Text(note.body.isEmpty ? " " : note.body).font(.callout).foregroundStyle(.secondary).lineLimit(5)
-                                Spacer(minLength: 0)
-                                Text(note.updatedAt, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.tertiary)
-                            }
-                            .padding(16)
-                            .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
-                            .cardSurface(radius: Tokens.Radius.tile)
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .draggable(note.id)
-                    }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(tint.opacity(0.28), in: .rect(cornerRadius: 8, style: .continuous))
+        .background(.regularMaterial, in: .rect(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Double-click to open")
+    }
+}
+
+private struct ReminderCard: View {
+    @Environment(AppModel.self) private var model
+    let reminder: AgendaReminder
+    let space: Space
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button { Task { await model.complete(reminder, in: space) } } label: {
+                Image(systemName: "circle").font(.title3).foregroundStyle(.orange)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Mark \(reminder.title) done")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(reminder.title).font(.callout.weight(.medium)).lineLimit(2)
+                if let due = reminder.due {
+                    Text(Agenda.dueLabel(due)).font(.caption).foregroundStyle(due < .now ? .red : .secondary)
                 }
             }
+            Spacer(minLength: 0)
+            Image(systemName: "bell.fill").font(.caption).foregroundStyle(.orange).accessibilityHidden(true)
         }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial, in: .rect(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// Faint dots every 24 points, drawn once as one path.
+private struct DotGrid: View {
+    var body: some View {
+        Canvas { context, size in
+            var dots = Path()
+            for x in stride(from: 12.0, to: size.width, by: 24) {
+                for y in stride(from: 12.0, to: size.height, by: 24) {
+                    dots.addEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2))
+                }
+            }
+            context.fill(dots, with: .color(.secondary.opacity(0.3)))
+        }
+        .accessibilityHidden(true)
     }
 }
 #endif

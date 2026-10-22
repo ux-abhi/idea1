@@ -620,6 +620,28 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    // MARK: Space canvas
+
+    public func canvas(of spaceID: String) async throws -> (nodes: [SpaceNode], edges: [SpaceEdge]) {
+        async let nodes: [SpaceNode] = client.from("space_node").select("id, segment_id, kind, ref, x, y, color")
+            .eq("segment_id", value: spaceID).execute().value
+        async let edges: [SpaceEdge] = client.from("space_edge").select("id, segment_id, from_node, to_node")
+            .eq("segment_id", value: spaceID).execute().value
+        return try await (nodes, edges)
+    }
+
+    public func save(_ node: SpaceNode) async throws {
+        try await client.from("space_node").upsert(node).execute()
+    }
+
+    public func save(_ edge: SpaceEdge) async throws {
+        try await client.from("space_edge").upsert(edge, onConflict: "from_node,to_node").execute()
+    }
+
+    public func delete(_ edge: SpaceEdge) async throws {
+        try await client.from("space_edge").delete().eq("id", value: edge.id).execute()
+    }
+
     // MARK: Blink connector (Claude, ChatGPT)
 
     /// A connector link in use: when it was made and last used by Claude or ChatGPT.

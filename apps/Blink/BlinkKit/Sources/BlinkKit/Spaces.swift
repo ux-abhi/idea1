@@ -69,12 +69,6 @@ public struct Space: Codable, Identifiable, Equatable, Sendable {
         try c.encode(columns, forKey: .columns)
     }
 
-    /// The column a task sits in: its own if it's still on the board, else the first (or the last once done).
-    public func column(of task: BlinkItem) -> String {
-        if let stage = task.stage, columns.contains(stage), (task.status == .done) == (stage == columns.last) { return stage }
-        return task.status == .done ? columns.last ?? "Done" : columns.first ?? "To do"
-    }
-
     /// Tasks done out of all tasks in the space, for its progress ring.
     public static func progress(of items: [BlinkItem], in spaceID: String) -> (done: Int, total: Int) {
         let tasks = items.filter { $0.type == .task && $0.spaceID == spaceID && $0.status != .archived }

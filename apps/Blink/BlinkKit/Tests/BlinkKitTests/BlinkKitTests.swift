@@ -228,13 +228,18 @@ extension Tokens {
         #expect(AgendaEvent(extID: "u", title: "U", start: at(9, 0), end: at(10, 0), url: URL(string: "https://evil.example/j")).joinURL == nil)
     }
 
-    @Test func boardColumnsFollowTheTask() {
-        let space = Space(title: "Launch", columns: ["To do", "Doing", "Review", "Done"])
-        #expect(space.column(of: BlinkItem(id: "1", type: .task, title: "a")) == "To do")
-        #expect(space.column(of: BlinkItem(id: "2", type: .task, title: "b", stage: "Review")) == "Review")
-        #expect(space.column(of: BlinkItem(id: "3", type: .task, title: "c", status: .done)) == "Done")
-        #expect(space.column(of: BlinkItem(id: "4", type: .task, title: "d", stage: "Gone")) == "To do")      // a removed column
-        #expect(space.column(of: BlinkItem(id: "5", type: .task, title: "e", status: .done, stage: "Doing")) == "Done")
+    @Test func canvasPlacesNewNodesWithoutStacking() {
+        let project = SpaceNode(spaceID: "s", kind: .project, x: 0, y: 0)
+        var taken = [project]
+        for _ in 0..<10 {
+            let spot = CanvasLayout.freeSpot(around: (0, 0), taken: taken)
+            #expect(!taken.contains { abs($0.x - spot.x) < 230 && abs($0.y - spot.y) < 150 })
+            taken.append(SpaceNode(spaceID: "s", kind: .task, ref: UUID().uuidString, x: spot.x, y: spot.y))
+        }
+        #expect(project.contains(x: 100, y: 30) && !project.contains(x: 200, y: 0))
+    }
+
+    @Test func oldSpacesDecodeWithDefaults() {
         let old = try? JSONDecoder().decode(Space.self, from: Data(#"{"id":"x","title":"Old"}"#.utf8))
         #expect(old?.columns == Space.defaultColumns && old?.cover == "aurora")
     }
@@ -282,8 +287,14 @@ extension Tokens {
         #expect(QuickCommand.parse("spent 8.50 lunch", now: now) == .spent("8.50 lunch"))
         if case .meet(let title, _, let guests) = QuickCommand.parse("meeting with sam@example.com tomorrow 3pm", now: now) {
             #expect(guests == ["sam@example.com"])
-            #expect(!title.isEmpty)
+            #expect(title.isEmpty) // no "with" left over; the invite card asks for a title
         } else { Issue.record("meeting") }
+        if case .meet(let title, _, let guests) = QuickCommand.parse("meeting with  sam@example.com launch review", now: now) {
+            #expect(title == "launch review" && guests == ["sam@example.com"])
+        } else { Issue.record("meeting with a title after the guest") }
+        if case .meet(let title, _, _) = QuickCommand.parse("meet Design review with sam@example.com", now: now) {
+            #expect(title == "Design review")
+        } else { Issue.record("meeting with the guest last") }
         // Questions and ordinary chat still go to the AI.
         #expect(QuickCommand.parse("what's my next task?", now: now) == nil)
         #expect(QuickCommand.parse("tasks for today", now: now) == nil)

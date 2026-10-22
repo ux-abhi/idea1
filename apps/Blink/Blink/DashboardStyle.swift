@@ -26,6 +26,19 @@ struct BlinkCanvas: View {
     }
 }
 
+/// Black with one soft colour rising from the bottom edge, like light over a horizon: behind the Today hero and a
+/// Space's header.
+struct HorizonGlow: View {
+    var tint: Color = .accentColor
+
+    var body: some View {
+        Color.black.overlay(
+            EllipticalGradient(colors: [tint.opacity(0.75), tint.opacity(0.25), .clear], center: .bottom,
+                               startRadiusFraction: 0, endRadiusFraction: 0.85)
+        )
+    }
+}
+
 /// A scrolling page: title and summary on top, cards below, on the canvas.
 struct DashPage<Content: View>: View {
     let title: String

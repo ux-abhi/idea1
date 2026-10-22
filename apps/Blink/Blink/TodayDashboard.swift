@@ -132,7 +132,7 @@ private struct HeroCard: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background { AmbientGlow().clipShape(.rect(cornerRadius: Tokens.Radius.card + 6, style: .continuous)) }
+        .background { HorizonGlow().clipShape(.rect(cornerRadius: Tokens.Radius.card + 6, style: .continuous)) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(hero.value) \(hero.caption)")
     }
@@ -160,34 +160,6 @@ private struct HeroCard: View {
             }
         }
         .padding(12)
-    }
-}
-
-/// The black of the Today band with one colour of light (the accent) drifting slowly through it, like Blink's notch
-/// glow; mostly dark so the white text keeps its contrast. 20 frames a second while shown;
-/// still under Reduce Motion.
-private struct AmbientGlow: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { context in
-            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate / 6
-            let drift = { (phase: Double) in Float(0.5 + 0.18 * sin(t + phase)) }
-            MeshGradient(
-                width: 3, height: 3,
-                points: [
-                    [0, 0], [drift(0), 0], [1, 0],
-                    [0, drift(1.7)], [drift(2.4), drift(3.1)], [1, drift(4.2)],
-                    [0, 1], [drift(5.0), 1], [1, 1],
-                ],
-                colors: [
-                    .black, .black, Color.accentColor.opacity(0.55),
-                    Color.accentColor.opacity(0.3), .black, .black,
-                    .black, Color.accentColor.opacity(0.4), Color.accentColor.opacity(0.18),
-                ]
-            )
-            .overlay(Color.black.opacity(0.25))
-        }
     }
 }
 

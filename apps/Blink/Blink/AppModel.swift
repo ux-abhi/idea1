@@ -2027,63 +2027,6 @@ final class AppModel {
         }
     }
 
-    // MARK: A Space's board
-
-    /// A card dropped in a column: its stage changes, and the last column means done (moving out reopens it). Undo puts
-    /// it back where it was.
-    func move(_ task: BlinkItem, toColumn column: String, in space: Space) {
-        guard let current = items.first(where: { $0.id == task.id }), space.column(of: current) != column else { return }
-        var changed = current
-        changed.stage = column
-        changed.spaceID = space.id
-        changed.status = column == space.columns.last ? .done : .open
-        edit(changed)
-        Task { await save(changed.id) }
-        offerUndo("Moved to \(column): \(task.title)") { [weak self] in
-            guard let self else { return }
-            edit(current)
-            await save(current.id)
-        }
-    }
-
-    /// Renames a column on the board, and moves its cards along with it.
-    func renameColumn(_ old: String, to new: String, in space: Space) async {
-        let name = String(new.trimmingCharacters(in: .whitespaces).prefix(60))
-        guard !name.isEmpty, name != old, !space.columns.contains(name), let i = space.columns.firstIndex(of: old) else { return }
-        var changed = space
-        changed.columns[i] = name
-        await saveSpace(changed)
-        for item in items where item.spaceID == space.id && item.stage == old {
-            var moved = item
-            moved.stage = name
-            edit(moved)
-            await save(moved.id)
-        }
-    }
-
-    /// A new column before the last (done) one.
-    func addColumn(_ name: String, to space: Space) async {
-        let title = String(name.trimmingCharacters(in: .whitespaces).prefix(60))
-        guard !title.isEmpty, !space.columns.contains(title), space.columns.count < 8 else { return }
-        var changed = space
-        changed.columns.insert(title, at: max(changed.columns.count - 1, 0))
-        await saveSpace(changed)
-    }
-
-    /// Removes a column (never below two); its cards go back to the first column.
-    func removeColumn(_ column: String, from space: Space) async {
-        guard space.columns.count > 2, column != space.columns.last else { return }
-        var changed = space
-        changed.columns.removeAll { $0 == column }
-        await saveSpace(changed)
-        for item in items where item.spaceID == space.id && item.stage == column {
-            var moved = item
-            moved.stage = nil
-            edit(moved)
-            await save(moved.id)
-        }
-    }
-
     // MARK: A Space's reminders (its own list in Apple Reminders, named like the Space)
 
     /// Open reminders per Space id, loaded when its page shows.
@@ -2095,10 +2038,12 @@ final class AppModel {
     }
 
     /// A reminder in the Space's list (made the first time), with Undo; it syncs to the owner's iPhone like any other.
-    func addReminder(_ title: String, due: Date?, to space: Space) async {
+    /// Returns its id (nil when it couldn't be added).
+    @discardableResult
+    func addReminder(_ title: String, due: Date?, to space: Space) async -> String? {
         guard calendarAccess == .granted else {
             saveProblem = "Turn on Reminders for Blink in System Settings › Privacy & Security › Reminders."
-            return
+            return nil
         }
         do {
             let id = try await calendarReader.addReminder(title, due: due, list: space.title)
@@ -2108,9 +2053,118 @@ final class AppModel {
                 await self?.writeReminder { try await self?.calendarReader.deleteReminder(id: id) }
                 await self?.loadReminders(for: space)
             }
+            return id
         } catch {
             saveProblem = "Couldn't add that reminder. Check that Reminders is allowed for Blink."
+            return nil
         }
+    }
+
+    // MARK: A Space's canvas
+
+    /// The canvas is a large sheet; the project starts in its middle.
+    static let canvasSize = (width: 4000.0, height: 2600.0)
+    static let canvasCenter = (x: 2000.0, y: 1300.0)
+
+    private(set) var canvasNodes: [String: [SpaceNode]] = [:]
+    private(set) var canvasEdges: [String: [SpaceEdge]] = [:]
+
+    /// Loads the canvas and adds what's missing: the project node, and a node for every task, note and reminder in the
+    /// Space that hasn't one yet. Nodes whose thing isn't here are kept, only hidden: the list may just not have
+    /// loaded (Reminders off, items still coming), and deleting them would lose their place and links.
+    // shortcut: nodes of deleted things stay on the server hidden, a few rows per Space; clean them up when deleting an item if they pile up.
+    func loadCanvas(_ space: Space) async {
+        guard let server else { return }
+        await loadReminders(for: space)
+        let loaded: (nodes: [SpaceNode], edges: [SpaceEdge])
+        do { loaded = try await server.canvas(of: space.id) } catch {
+            saveProblem = "Couldn't load this Space's canvas. Check your connection and try again."
+            return
+        }
+        // Keep anything added here while the load was on its way.
+        let local = canvasNodes[space.id] ?? []
+        var nodes = loaded.nodes + local.filter { node in !loaded.nodes.contains { $0.id == node.id || ($0.ref != nil && $0.ref == node.ref) } }
+        let edges = loaded.edges + (canvasEdges[space.id] ?? []).filter { edge in !loaded.edges.contains { $0.id == edge.id } }
+        var added: [SpaceNode] = []
+        if !nodes.contains(where: { $0.kind == .project }) {
+            // The project node's id is the Space's own, so two Macs adding it at once make the same row.
+            added.append(SpaceNode(id: space.id, spaceID: space.id, kind: .project, x: Self.canvasCenter.x, y: Self.canvasCenter.y, color: space.color))
+        }
+        let mine = items.filter { $0.spaceID == space.id && $0.status != .archived }
+        let reminders = spaceReminders[space.id] ?? []
+        let wanted: [(SpaceNode.Kind, String)] = mine.map { ($0.type == .note ? .note : .task, $0.id) } + reminders.map { (.reminder, $0.id) }
+        for (kind, ref) in wanted where !(nodes + added).contains(where: { $0.ref == ref }) {
+            let spot = CanvasLayout.freeSpot(around: Self.canvasCenter, taken: nodes + added)
+            added.append(SpaceNode(spaceID: space.id, kind: kind, ref: ref, x: spot.x, y: spot.y, color: kind == .note ? "yellow" : space.color))
+        }
+        nodes += added
+        canvasNodes[space.id] = nodes
+        canvasEdges[space.id] = edges
+        for node in added { await canvasWrite { try await server.save(node) } }
+    }
+
+    /// A canvas change saved behind the screen; a failure says so instead of quietly snapping back on the next load.
+    private func canvasWrite(_ write: () async throws -> Void) async {
+        do { try await write() } catch {
+            saveProblem = "Couldn't save a change to the canvas. Check your connection and try again."
+        }
+    }
+
+    /// A new task or note made on the canvas: the real item, its node on the first free spot, and a link from `parent`
+    /// (the project when none is picked).
+    @discardableResult
+    func addToCanvas(_ kind: SpaceNode.Kind, title: String, due: Date? = nil, in space: Space, linkedFrom parent: SpaceNode? = nil) async -> SpaceNode? {
+        let ref: String?
+        switch kind {
+        case .task: ref = create(.task, title: title, due: due, space: space.id).id
+        case .note: ref = create(.note, title: title, space: space.id).id
+        case .reminder:
+            ref = await addReminder(title, due: due, to: space)
+        case .project: ref = nil
+        }
+        guard let ref else { return nil }
+        var nodes = canvasNodes[space.id] ?? []
+        let anchor = parent.map { (x: $0.x, y: $0.y) } ?? Self.canvasCenter
+        let spot = CanvasLayout.freeSpot(around: anchor, taken: nodes, radius: parent == nil ? 300 : 260)
+        let node = SpaceNode(spaceID: space.id, kind: kind, ref: ref, x: spot.x, y: spot.y, color: kind == .note ? "yellow" : space.color)
+        nodes.append(node)
+        canvasNodes[space.id] = nodes
+        await canvasWrite { try await server?.save(node) }
+        if let from = parent ?? nodes.first(where: { $0.kind == .project }) { await connect(from, to: node, in: space) }
+        return node
+    }
+
+    /// Where a node was dropped after dragging; shown at once (no snap back), saved behind.
+    func moveNode(_ node: SpaceNode, x: Double, y: Double) {
+        guard var nodes = canvasNodes[node.spaceID], let i = nodes.firstIndex(where: { $0.id == node.id }) else { return }
+        nodes[i].x = min(max(x, 120), Self.canvasSize.width - 120)
+        nodes[i].y = min(max(y, 80), Self.canvasSize.height - 80)
+        canvasNodes[node.spaceID] = nodes
+        let moved = nodes[i]
+        // shortcut: each drop saves on its own, so two very quick drops can land out of order; queue per node if seen.
+        Task { await canvasWrite { try await server?.save(moved) } }
+    }
+
+    func recolor(_ node: SpaceNode, to color: String) {
+        guard var nodes = canvasNodes[node.spaceID], let i = nodes.firstIndex(where: { $0.id == node.id }) else { return }
+        nodes[i].color = color
+        canvasNodes[node.spaceID] = nodes
+        let changed = nodes[i]
+        Task { await canvasWrite { try await server?.save(changed) } }
+    }
+
+    func connect(_ from: SpaceNode, to: SpaceNode, in space: Space) async {
+        guard from.id != to.id else { return }
+        let edges = canvasEdges[space.id] ?? []
+        guard !edges.contains(where: { ($0.from == from.id && $0.to == to.id) || ($0.from == to.id && $0.to == from.id) }) else { return }
+        let edge = SpaceEdge(spaceID: space.id, from: from.id, to: to.id)
+        canvasEdges[space.id] = edges + [edge]
+        await canvasWrite { try await server?.save(edge) }
+    }
+
+    func disconnect(_ edge: SpaceEdge) async {
+        canvasEdges[edge.spaceID]?.removeAll { $0.id == edge.id }
+        await canvasWrite { try await server?.delete(edge) }
     }
 
     func complete(_ reminder: AgendaReminder, in space: Space) async {
