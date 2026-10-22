@@ -37,6 +37,13 @@ struct ContentView: View {
                 .fixedSize()
                 Spacer()
                 if tab == .posts { PageSearchField(prompt: "Search posts", text: $query) }
+                // The window toolbar stays the same on every page: items that come and go between pages crash AppKit's toolbar.
+                Button { editingVoice = true } label: { Label("Voice", systemImage: "person.wave.2") }
+                    .help("How you write")
+                Button { composing = true } label: { Label("New Post", systemImage: "square.and.pencil") }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut("n")
+                    .help("Write drafts from an idea (⌘N)")
             }
             if let problem = model.contentProblem {
                 Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
@@ -47,13 +54,6 @@ struct ContentView: View {
             case .plan: plan(live)
             case .ideas: ideas
             }
-        }
-        .toolbar {
-            Button { composing = true } label: { Label("New Post", systemImage: "square.and.pencil") }
-                .keyboardShortcut("n")
-                .help("Write drafts from an idea (⌘N)")
-            Button { editingVoice = true } label: { Label("Voice", systemImage: "person.wave.2") }
-                .help("How you write")
         }
         .confirmationDialog("Clear all ideas?", isPresented: $clearingIdeas) {
             Button("Clear Ideas", role: .destructive) { Task { await model.clearIdeas() } }

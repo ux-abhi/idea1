@@ -472,6 +472,9 @@ struct NotesView: View {
                             .keyboardShortcut("[", modifiers: .command)
                             .help("Back to all notes (⌘[)")
                         Spacer()
+                        Button(action: newNote) { Label("New Note", systemImage: "square.and.pencil") }
+                            .keyboardShortcut("n")
+                            .help("New note (⌘N)")
                     }
                     .padding(.horizontal, 20).padding(.top, 14)
                     NoteEditor(note: note).id(note.id)
@@ -484,19 +487,12 @@ struct NotesView: View {
             }
         }
         .background(BlinkCanvas())
-        // On the page, not the board: a toolbar item that comes and goes while a note opens crashes AppKit's toolbar.
-        .searchable(text: $query, placement: .toolbar, prompt: "Search notes")
         .onChange(of: query) { if !query.isEmpty { close() } } // searching shows the board
         .onAppear {
             if let id = model.focusNoteID {
                 selection = id
                 model.focusNoteID = nil
             }
-        }
-        .toolbar {
-            Button(action: newNote) { Label("New Note", systemImage: "square.and.pencil") }
-                .keyboardShortcut("n")
-                .help("New note (⌘N)")
         }
         .safeAreaInset(edge: .bottom) { SaveProblemBar() }
         .task { await model.loadItems() }
@@ -522,7 +518,13 @@ struct NotesView: View {
                         Text(shown.count == 1 ? "1 note" : "\(shown.count) notes").foregroundStyle(.secondary)
                     }
                     Spacer()
+                    // The window toolbar stays the same on every page: items that come and go between pages crash AppKit's toolbar.
+                    PageSearchField(prompt: "Search notes", text: $query).frame(maxWidth: 240)
                     SpaceFilter(selected: $spaceFilter)
+                    Button(action: newNote) { Label("New Note", systemImage: "square.and.pencil") }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut("n")
+                        .help("New note (⌘N)")
                 }
                 if shown.isEmpty && !query.isEmpty {
                     ContentUnavailableView.search(text: query).frame(maxWidth: .infinity).padding(.top, 40)

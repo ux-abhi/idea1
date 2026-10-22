@@ -30,7 +30,6 @@ struct InboxView: View {
             reader(picked)
                 .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .searchable(text: $query, placement: .toolbar, prompt: "Search mail")
         .sheet(item: $model.reviewing) { ReplyReviewSheet(review: $0) }
         .task {
             await model.loadMail()
@@ -71,6 +70,8 @@ struct InboxView: View {
                         .fixedSize()
                     }
                 }
+                // The window toolbar stays the same on every page: items that come and go between pages crash AppKit's toolbar.
+                PageSearchField(prompt: "Search mail", text: $query)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(Filter.allCases) { option in

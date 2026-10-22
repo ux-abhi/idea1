@@ -14,18 +14,9 @@ struct SpaceView: View {
     @State private var confirmDelete = false
 
     var body: some View {
-        SpaceCanvasView(space: space, openNote: openNote)
+        SpaceCanvasView(space: space, openNote: openNote, customize: { customizing = true }, delete: { confirmDelete = true })
         .task(id: space.id) { await model.loadCanvas(space) }
         .sheet(isPresented: $customizing) { SpaceCustomizer(space: space) }
-        .toolbar {
-            Menu {
-                Button("Customize…") { customizing = true }
-                Divider()
-                Button("Delete Space…", role: .destructive) { confirmDelete = true }
-            } label: {
-                Label("Space", systemImage: "ellipsis.circle")
-            }
-        }
         .confirmationDialog("Delete “\(space.title)”?", isPresented: $confirmDelete) {
             Button("Delete Space", role: .destructive) { Task { await model.deleteSpace(space) } }
         } message: {
@@ -126,6 +117,8 @@ private struct SpaceCanvasView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let space: Space
     let openNote: (String) -> Void
+    let customize: () -> Void
+    let delete: () -> Void
     @AppStorage("blinkPanel") private var showPanel = true
     @State private var selected: String?
     @State private var editing: String?
@@ -218,7 +211,7 @@ private struct SpaceCanvasView: View {
         .overlay {
             if nodes.isEmpty { ProgressView().controlSize(.small) }
         }
-        .overlay(alignment: .topLeading) { SpaceTitleCard(space: space).padding(16) }
+        .overlay(alignment: .topLeading) { SpaceTitleCard(space: space, customize: customize, delete: delete).padding(16) }
         .overlay(alignment: .topTrailing) { SpaceProgressPill(space: space).padding(16) }
         .overlay(alignment: .bottom) {
             VStack(spacing: 10) {
@@ -870,6 +863,8 @@ private struct DraftCard: View {
 private struct SpaceTitleCard: View {
     @Environment(AppModel.self) private var model
     let space: Space
+    let customize: () -> Void
+    let delete: () -> Void
     @State private var title = ""
     @State private var goal = ""
     @FocusState private var field: Field?
@@ -896,6 +891,18 @@ private struct SpaceTitleCard: View {
             .textFieldStyle(.plain)
             .frame(width: 230)
             .onSubmit { field = nil }
+            // Here, not in the window toolbar: items that come and go between pages crash AppKit's toolbar.
+            Menu {
+                Button("Customize…", action: customize)
+                Divider()
+                Button("Delete Space…", role: .destructive, action: delete)
+            } label: {
+                Image(systemName: "ellipsis.circle").font(.title3)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Space options")
         }
         .padding(10)
         .padding(.trailing, 6)
