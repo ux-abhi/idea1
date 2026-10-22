@@ -96,9 +96,16 @@ public enum QuickCommand: Equatable, Sendable {
             let guests = rest.split(whereSeparator: { $0.isWhitespace || $0 == "," })
                 .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "<>;")) }
                 .filter(isEmail)
-            let words = rest.split(separator: " ").filter { word in !guests.contains { word.contains($0) } }
-            let parsed = TaskInput.parse(words.joined(separator: " "), now: now)
-            var title = parsed.title
+            // Guests leave the title, and so does a "with"/"and" right before one ("with sam@x.com Launch" → "Launch").
+            let all = rest.split(whereSeparator: \.isWhitespace)
+            let isGuest = { (word: Substring) in guests.contains { word.contains($0) } }
+            let words = all.indices.filter { i in
+                !isGuest(all[i]) && !(["with", "and"].contains(all[i].lowercased()) && all.dropFirst(i + 1).first.map(isGuest) == true)
+            }.map { all[$0] }
+            let left = words.joined(separator: " ")
+            let parsed = TaskInput.parse(left, now: now)
+            // Only a time left ("tomorrow 3pm"): no title, so the invite card asks for one.
+            var title = parsed.due != nil && parsed.title == left ? "" : parsed.title
             while let joiner = [" with", " and"].first(where: { title.lowercased().hasSuffix($0) }) { title = String(title.dropLast(joiner.count)) }
             return .meet(title: title.trimmingCharacters(in: .whitespaces), start: parsed.due, guests: guests.map { $0.lowercased() })
         default:
