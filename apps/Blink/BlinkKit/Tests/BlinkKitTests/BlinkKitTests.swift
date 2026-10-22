@@ -239,6 +239,12 @@ extension Tokens {
         #expect(project.contains(x: 100, y: 30) && !project.contains(x: 200, y: 0))
     }
 
+    @Test func canvasSpotsStayOnTheSheet() {
+        #expect(CanvasLayout.onSheet((4130, 1300)) == (3860, 1300))
+        #expect(CanvasLayout.onSheet((-50, -50)) == (140, 90))
+        #expect(CanvasLayout.onSheet((2000, 1300)) == (2000, 1300))
+    }
+
     @Test func oldSpacesDecodeWithDefaults() {
         let old = try? JSONDecoder().decode(Space.self, from: Data(#"{"id":"x","title":"Old"}"#.utf8))
         #expect(old?.columns == Space.defaultColumns && old?.cover == "aurora")

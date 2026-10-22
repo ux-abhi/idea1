@@ -3,47 +3,28 @@
 import BlinkKit
 import SwiftUI
 
-/// A Space as a canvas: a dark header with its icon, name and goal, and below it the plan as cards you drag and link.
-/// The project sits in the middle; the tasks, sticky notes and reminders around it are the real ones from the rest of
-/// Blink (a reminder lives in the Space's own Apple Reminders list), so ticking one here ticks it everywhere.
+/// A Space as a canvas, FigJam-style: the plan as cards you add, edit, drag and link right where they are. The project
+/// sits in the middle; the tasks, sticky notes and reminders around it are the real ones from the rest of Blink (a
+/// reminder lives in the Space's own Apple Reminders list), so ticking one here ticks it everywhere.
 struct SpaceView: View {
     @Environment(AppModel.self) private var model
     let space: Space
     let openNote: (String) -> Void
     @State private var customizing = false
-    @State private var renaming = false
-    @State private var newTitle = ""
     @State private var confirmDelete = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            SpaceHeader(space: space)
-                .padding([.horizontal, .top], 20)
-            SpaceCanvasView(space: space, openNote: openNote)
-        }
-        .background(BlinkCanvas())
+        SpaceCanvasView(space: space, openNote: openNote)
         .task(id: space.id) { await model.loadCanvas(space) }
         .sheet(isPresented: $customizing) { SpaceCustomizer(space: space) }
         .toolbar {
             Menu {
                 Button("Customize…") { customizing = true }
-                Button("Rename…") { newTitle = space.title; renaming = true }
                 Divider()
                 Button("Delete Space…", role: .destructive) { confirmDelete = true }
             } label: {
                 Label("Space", systemImage: "ellipsis.circle")
             }
-        }
-        .alert("Rename Space", isPresented: $renaming) {
-            TextField("Name", text: $newTitle)
-            Button("Save") {
-                let title = newTitle.trimmingCharacters(in: .whitespaces)
-                guard !title.isEmpty else { return }
-                var changed = space
-                changed.title = title
-                Task { await model.saveSpace(changed) }
-            }
-            Button("Cancel", role: .cancel) {}
         }
         .confirmationDialog("Delete “\(space.title)”?", isPresented: $confirmDelete) {
             Button("Delete Space", role: .destructive) { Task { await model.deleteSpace(space) } }
@@ -51,64 +32,6 @@ struct SpaceView: View {
             Text("Its tasks and notes are kept and move out of the space.")
         }
         .safeAreaInset(edge: .bottom) { SaveProblemBar() }
-    }
-}
-
-// MARK: Header
-
-/// The Space's name, icon and goal on black, with its colour rising softly from the bottom.
-private struct SpaceHeader: View {
-    @Environment(AppModel.self) private var model
-    let space: Space
-    @State private var goal = ""
-    @FocusState private var editingGoal: Bool
-
-    var body: some View {
-        let progress = Space.progress(of: model.items, in: space.id)
-        HStack(spacing: 16) {
-            Image(systemName: space.icon)
-                .font(.title2.weight(.semibold))
-                .frame(width: 56, height: 56)
-                .background(.white.opacity(0.12), in: .rect(cornerRadius: Tokens.Radius.tile, style: .continuous))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(space.title)
-                    .font(.system(.title, design: .rounded, weight: .bold))
-                    .accessibilityAddTraits(.isHeader)
-                TextField("Add a goal, e.g. “Launch by December”", text: $goal, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .focused($editingGoal)
-                    .onSubmit(saveGoal)
-                    .onChange(of: editingGoal) { _, now in if !now { saveGoal() } }
-            }
-            Spacer(minLength: 12)
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(progress.total == 0 ? "No tasks yet" : "\(progress.done) of \(progress.total) done")
-                if let due = space.dueAt {
-                    let days = Calendar.current.dateComponents([.day], from: .now, to: due).day ?? 0
-                    Text(days >= 0 ? "\(days) days left" : "\(-days) days late").foregroundStyle(days < 0 ? .red : .secondary)
-                }
-            }
-            .font(.callout.weight(.medium))
-            .monospacedDigit()
-        }
-        .foregroundStyle(.white)
-        .padding(22)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(HorizonGlow(tint: Color.system(space.color)))
-        .clipShape(.rect(cornerRadius: Tokens.Radius.card, style: .continuous))
-        .environment(\.colorScheme, .dark)
-        .onAppear { goal = space.goal }
-        .onChange(of: space.goal) { _, new in if !editingGoal { goal = new } }
-    }
-
-    private func saveGoal() {
-        let trimmed = goal.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed != space.goal else { return }
-        var changed = space
-        changed.goal = trimmed
-        Task { await model.saveSpace(changed) }
     }
 }
 
@@ -179,18 +102,47 @@ private struct SpaceCustomizer: View {
 
 // MARK: Canvas
 
-/// The plan as cards on a dotted sheet: drag a card to move it, drag from its dot to link it to another, and add new
-/// ones from the bar at the bottom (linked to the selected card, or to the project).
+/// What a card on the canvas points at.
+private enum CardContent {
+    case project
+    case item(BlinkItem)
+    case reminder(AgendaReminder)
+}
+
+/// A card being written before it exists: where it goes, what kind, and what's typed so far.
+private struct CardDraft: Equatable {
+    var kind: SpaceNode.Kind
+    var x: Double
+    var y: Double
+    var parentID: String?
+    var text = ""
+}
+
+/// The plan as cards on a dotted sheet that pans and zooms. Double-click empty space to add a card there, double-click
+/// a card to edit it in place, drag a card to move it, and drag from its dot to link it (or let go on empty space to
+/// add a linked task there). Nothing here ever leaves the page.
 private struct SpaceCanvasView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let space: Space
     let openNote: (String) -> Void
     @AppStorage("blinkPanel") private var showPanel = true
     @State private var selected: String?
-    @State private var dragID: String?
-    @State private var dragOffset: CGSize = .zero
-    @State private var linkFrom: String?
-    @State private var linkEnd: CGPoint = .zero
+    @State private var editing: String?
+    @State private var hovered: String?
+    @State private var draft: CardDraft?
+    /// A card being dragged, and the link being drawn: they reset on their own if a gesture is cancelled.
+    @GestureState private var moving: (id: String, offset: CGSize)?
+    @GestureState private var linking: (from: String, end: CGPoint)?
+    @State private var scale = 1.0
+    @State private var pinch: (start: Double, centre: (x: Double, y: Double))?
+    @State private var position = ScrollPosition()
+    /// The part of the sheet on screen, in zoomed points.
+    @State private var viewport = CGRect.zero
+    @State private var centred = false
+    @FocusState private var canvasFocused: Bool
+
+    private static let zoomRange = 0.3...2.0
 
     private var nodes: [SpaceNode] { (model.canvasNodes[space.id] ?? []).filter { content(of: $0) != nil } }
     private var edges: [SpaceEdge] {
@@ -203,129 +155,184 @@ private struct SpaceCanvasView: View {
         let edges = edges
         ScrollView([.horizontal, .vertical]) {
             ZStack(alignment: .topLeading) {
-                DotGrid()
+                DotGrid(spacing: 24 * scale)
                     .contentShape(.rect)
-                    .onTapGesture { selected = nil }
+                    .gesture(SpatialTapGesture(count: 2).onEnded { tap in
+                        startDraft(.task, at: (tap.location.x / scale, tap.location.y / scale), parent: nil)
+                    })
+                    .simultaneousGesture(TapGesture().onEnded { clearSelection() })
                 Canvas { context, _ in
                     for edge in edges {
                         guard let a = nodes.first(where: { $0.id == edge.from }), let b = nodes.first(where: { $0.id == edge.to }) else { continue }
-                        context.stroke(curve(point(a), point(b)), with: .color(.secondary.opacity(0.55)), lineWidth: 1.5)
+                        let (from, to) = ports(a, b)
+                        context.stroke(curve(from, to), with: .color(.secondary.opacity(0.6)), lineWidth: 1.5)
                     }
-                    if let from = nodes.first(where: { $0.id == linkFrom }) {
-                        context.stroke(curve(point(from), linkEnd), with: .color(.accentColor),
+                    if let linking, let from = nodes.first(where: { $0.id == linking.from }) {
+                        let start = CGPoint(x: (point(from).x + from.size.width / 2) * scale, y: point(from).y * scale)
+                        context.stroke(curve(start, CGPoint(x: linking.end.x * scale, y: linking.end.y * scale)), with: .color(.accentColor),
                                        style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 5]))
                     }
                 }
                 .allowsHitTesting(false)
                 ForEach(nodes) { node in
                     card(node)
-                        .position(point(node))
+                        .position(x: point(node).x * scale, y: point(node).y * scale)
+                }
+                if draft != nil {
+                    DraftCard(draft: $draft, commit: finishDraft)
+                        .scaleEffect(scale)
+                        .position(x: (draft?.x ?? 0) * scale, y: (draft?.y ?? 0) * scale)
                 }
             }
-            .frame(width: AppModel.canvasSize.width, height: AppModel.canvasSize.height)
+            .frame(width: AppModel.canvasSize.width * scale, height: AppModel.canvasSize.height * scale)
             .coordinateSpace(.named("canvas"))
         }
-        .defaultScrollAnchor(.center)
+        .scrollPosition($position)
+        .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, rect in
+            viewport = rect
+            centreOnceLoaded()
+        }
+        .onChange(of: nodes.isEmpty) { centreOnceLoaded() }
+        .simultaneousGesture(
+            MagnifyGesture()
+                .onChanged { change in
+                    if pinch == nil { pinch = (scale, viewCentre) }
+                    guard let pinch else { return }
+                    zoom(to: pinch.start * change.magnification, around: pinch.centre)
+                }
+                .onEnded { _ in pinch = nil }
+        )
+        .background(CanvasBackdrop(tint: Color.system(space.color)))
+        .focusable()
+        .focusEffectDisabled()
+        .focused($canvasFocused)
+        .onDeleteCommand(perform: deleteSelected)
+        .onExitCommand { draft != nil ? (draft = nil) : clearSelection() }
+        .onKeyPress(.return) {
+            guard let selected, editing == nil, draft == nil, nodes.first(where: { $0.id == selected })?.kind != .project else { return .ignored }
+            editing = selected
+            return .handled
+        }
         .overlay {
             if nodes.isEmpty { ProgressView().controlSize(.small) }
         }
+        .overlay(alignment: .topLeading) { SpaceTitleCard(space: space).padding(16) }
+        .overlay(alignment: .topTrailing) { SpaceProgressPill(space: space).padding(16) }
         .overlay(alignment: .bottom) {
-            CanvasToolbar(space: space, parent: nodes.first { $0.id == selected }, askBlink: askBlink, added: { selected = $0 })
-                .padding(.bottom, 18)
+            VStack(spacing: 10) {
+                if nodes.count <= 1 && draft == nil {
+                    Text("Double-click anywhere to add a card. Drag a card's dot onto another to link them.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                addBar
+            }
+            .padding(.bottom, 18)
         }
+        .overlay(alignment: .bottomTrailing) { zoomBar.padding(18) }
+        .onChange(of: editing) { _, now in if now == nil && draft == nil { canvasFocused = true } }
+        .onDisappear(perform: finishDraft)
     }
 
     // MARK: Cards
 
-    private enum Content {
-        case project
-        case item(BlinkItem)
-        case reminder(AgendaReminder)
-    }
-
-    /// What a node points at, or nil when it's gone (deleted, finished reminder) and the next load will tidy it away.
-    private func content(of node: SpaceNode) -> Content? {
+    /// What a node points at, or nil when it's gone (deleted, finished reminder).
+    private func content(of node: SpaceNode) -> CardContent? {
         switch node.kind {
         case .project: .project
-        case .task, .note: model.items.first { $0.id == node.ref && $0.status != .archived }.map(Content.item)
-        case .reminder: model.spaceReminders[space.id]?.first { $0.id == node.ref }.map(Content.reminder)
+        case .task, .note: model.items.first { $0.id == node.ref && $0.status != .archived }.map(CardContent.item)
+        case .reminder: model.spaceReminders[space.id]?.first { $0.id == node.ref }.map(CardContent.reminder)
         }
     }
 
+    /// Where a node is drawn now, in sheet points: its spot plus any drag under way.
     private func point(_ node: SpaceNode) -> CGPoint {
-        let offset = node.id == dragID ? dragOffset : .zero
+        let offset = moving?.id == node.id ? moving?.offset ?? .zero : .zero
         return CGPoint(x: node.x + offset.width, y: node.y + offset.height)
     }
 
-    /// A soft S-curve between two cards, leaving and arriving sideways.
+    /// A link leaves the side of one card facing the other and arrives at the other's near side, in zoomed points.
+    private func ports(_ a: SpaceNode, _ b: SpaceNode) -> (CGPoint, CGPoint) {
+        let pa = point(a), pb = point(b)
+        let rightward = pb.x >= pa.x
+        let from = CGPoint(x: pa.x + (rightward ? a.size.width : -a.size.width) / 2, y: pa.y)
+        let to = CGPoint(x: pb.x + (rightward ? -b.size.width : b.size.width) / 2, y: pb.y)
+        return (CGPoint(x: from.x * scale, y: from.y * scale), CGPoint(x: to.x * scale, y: to.y * scale))
+    }
+
     private func curve(_ a: CGPoint, _ b: CGPoint) -> Path {
         Path { path in
-            let bend = max(abs(b.x - a.x) / 2, 40)
+            let bend = max(abs(b.x - a.x) / 2, 30)
+            let sign: CGFloat = b.x >= a.x ? 1 : -1
             path.move(to: a)
-            path.addCurve(to: b, control1: CGPoint(x: a.x + (b.x >= a.x ? bend : -bend), y: a.y),
-                          control2: CGPoint(x: b.x + (b.x >= a.x ? -bend : bend), y: b.y))
+            path.addCurve(to: b, control1: CGPoint(x: a.x + sign * bend, y: a.y), control2: CGPoint(x: b.x - sign * bend, y: b.y))
         }
     }
 
-    @ViewBuilder
     private func card(_ node: SpaceNode) -> some View {
         let isSelected = selected == node.id
-        let shape = RoundedRectangle(cornerRadius: node.kind == .note ? 8 : 14, style: .continuous)
-        Group {
-            switch content(of: node) {
-            case .project: ProjectCard(space: space)
-            case .item(let item) where node.kind == .note: StickyCard(note: item, tint: Color.system(node.color))
-            case .item(let item): TaskCard(task: item, tint: Color.system(node.color))
-            case .reminder(let reminder): ReminderCard(reminder: reminder, space: space)
-            case nil: EmptyView()
+        let isEditing = editing == node.id
+        return CanvasCard(node: node, space: space, content: content(of: node) ?? .project, selected: isSelected, editing: $editing)
+            .overlay(alignment: .trailing) {
+                linkPort(node).opacity(isSelected || hovered == node.id || linking?.from == node.id ? 1 : 0)
             }
-        }
-        .frame(width: node.size.width, height: node.size.height)
-        .overlay(shape.strokeBorder(Color.accentColor, lineWidth: 2).opacity(isSelected ? 1 : 0))
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-        .overlay(alignment: .trailing) { linkHandle(node) }
-        .onTapGesture(count: 2) { if node.kind == .note, let ref = node.ref { openNote(ref) } }
-        .onTapGesture { selected = node.id }
-        .gesture(
-            DragGesture(minimumDistance: 3, coordinateSpace: .named("canvas"))
-                .onChanged { drag in
-                    dragID = node.id
-                    dragOffset = drag.translation
-                }
-                .onEnded { drag in
-                    model.moveNode(node, x: node.x + drag.translation.width, y: node.y + drag.translation.height)
-                    dragID = nil
-                    dragOffset = .zero
-                }
-        )
-        .contextMenu { menu(node) }
-        .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .onHover { inside in hovered = inside ? node.id : (hovered == node.id ? nil : hovered) }
+            .scaleEffect(scale)
+            .onTapGesture(count: 2) { edit(node) }
+            .simultaneousGesture(TapGesture().onEnded {
+                if draft != nil { finishDraft() }
+                selected = node.id
+                if !isEditing { editing = nil; canvasFocused = true }
+            })
+            .gesture(moveGesture(node), including: isEditing ? .subviews : .all)
+            .contextMenu { menu(node) }
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityAction(named: "Edit") { edit(node) }
+            .accessibilityAction(named: "Select") { selected = node.id }
     }
 
-    /// The dot on a card's right edge: drag it onto another card to link the two.
-    private func linkHandle(_ node: SpaceNode) -> some View {
+    private func edit(_ node: SpaceNode) {
+        guard node.kind != .project else { return }
+        if draft != nil { finishDraft() }
+        selected = node.id
+        editing = node.id
+    }
+
+    private func moveGesture(_ node: SpaceNode) -> some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named("canvas"))
+            .updating($moving) { drag, state, _ in
+                state = (node.id, CGSize(width: drag.translation.width / scale, height: drag.translation.height / scale))
+            }
+            .onChanged { _ in if selected != node.id { selected = node.id } }
+            .onEnded { drag in
+                model.moveNode(node, x: node.x + drag.translation.width / scale, y: node.y + drag.translation.height / scale)
+            }
+    }
+
+    /// The dot on a card's right edge: drop it on another card to link the two, or on empty space for a new linked task.
+    private func linkPort(_ node: SpaceNode) -> some View {
         Circle()
-            .fill(Color.accentColor)
-            .frame(width: 12, height: 12)
-            .overlay(Circle().strokeBorder(.background, lineWidth: 2))
+            .fill(.background)
+            .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 2))
+            .frame(width: 14, height: 14)
             .padding(8)
             .contentShape(.circle)
-            .offset(x: 14)
+            .offset(x: 15)
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .named("canvas"))
-                    .onChanged { drag in
-                        linkFrom = node.id
-                        linkEnd = drag.location
+                    .updating($linking) { drag, state, _ in
+                        state = (node.id, CGPoint(x: drag.location.x / scale, y: drag.location.y / scale))
                     }
                     .onEnded { drag in
-                        linkFrom = nil
-                        guard let target = nodes.first(where: { $0.id != node.id && $0.contains(x: drag.location.x, y: drag.location.y) })
-                        else { return }
-                        Task { await model.connect(node, to: target, in: space) }
+                        let end = CGPoint(x: drag.location.x / scale, y: drag.location.y / scale)
+                        if let target = nodes.first(where: { $0.id != node.id && $0.contains(x: end.x, y: end.y) }) {
+                            Task { await model.connect(node, to: target, in: space) }
+                        } else if hypot(end.x - node.x, end.y - node.y) > node.size.width / 2 + 40 {
+                            startDraft(.task, at: (end.x + 130, end.y), parent: node)
+                        }
                     }
             )
-            .help("Drag onto another card to link them")
+            .help("Drag to another card to link them, or to empty space to add a linked task")
             .accessibilityHidden(true)
     }
 
@@ -335,21 +342,46 @@ private struct SpaceCanvasView: View {
         case .project:
             Button("Ask Blink About This Plan", action: askBlink)
         case .item(let item):
+            Button("Edit") { edit(node) }
             if item.type == .note {
-                Button("Open Note") { openNote(item.id) }
+                Button("Open in Notes") { openNote(item.id) }
+                Menu("Colour") {
+                    ForEach(CanvasCard.stickyColors, id: \.self) { name in
+                        Button(name.capitalized) { model.recolor(node, to: name) }
+                    }
+                }
             } else {
                 Button(item.status == .done ? "Mark Not Done" : "Mark Done") { Task { await model.toggle(item) } }
-            }
-            Menu("Colour") {
-                ForEach(["yellow", "orange", "pink", "green", "mint", "blue", "purple"], id: \.self) { name in
-                    Button(name.capitalized) { model.recolor(node, to: name) }
+                dueMenu { due in
+                    var changed = item
+                    changed.dueAt = due
+                    model.edit(changed)
+                    Task { await model.save(changed.id) }
                 }
             }
         case .reminder(let reminder):
+            Button("Edit") { edit(node) }
             Button("Mark Done") { Task { await model.complete(reminder, in: space) } }
+            dueMenu { due in
+                Task {
+                    await model.setDue(reminder, to: due)
+                    await model.loadReminders(for: space)
+                }
+            }
         case nil:
             EmptyView()
         }
+        let others = nodes.filter { other in
+            other.id != node.id && !edges.contains { ($0.from == node.id && $0.to == other.id) || ($0.from == other.id && $0.to == node.id) }
+        }
+        if !others.isEmpty {
+            Menu("Link To") {
+                ForEach(others) { other in
+                    Button(name(of: other)) { Task { await model.connect(node, to: other, in: space) } }
+                }
+            }
+        }
+        Button("Add Linked Task") { startDraft(.task, at: (node.x + node.size.width / 2 + 170, node.y), parent: node) }
         let links = edges.filter { $0.from == node.id || $0.to == node.id }
         if !links.isEmpty {
             Button("Remove Links") { Task { for edge in links { await model.disconnect(edge) } } }
@@ -358,6 +390,169 @@ private struct SpaceCanvasView: View {
             Divider()
             Button(item.type == .note ? "Delete Note" : "Delete Task", role: .destructive) { Task { await model.deleteWithUndo(item) } }
         }
+    }
+
+    private func name(of node: SpaceNode) -> String {
+        switch content(of: node) {
+        case .project: space.title
+        case .item(let item): item.title.isEmpty ? "Untitled" : item.title
+        case .reminder(let reminder): reminder.title
+        case nil: ""
+        }
+    }
+
+    private func dueMenu(_ set: @escaping (Date?) -> Void) -> some View {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let at9 = { (days: Int) in calendar.date(byAdding: .hour, value: 24 * days + 9, to: today) }
+        return Menu("Due") {
+            Button("Today") { set(calendar.date(byAdding: .hour, value: 17, to: today)) }
+            Button("Tomorrow") { set(at9(1)) }
+            Button("Next Week") { set(at9(7)) }
+            Divider()
+            Button("No Due Date") { set(nil) }
+        }
+    }
+
+    // MARK: Adding
+
+    private func startDraft(_ kind: SpaceNode.Kind, at spot: (x: Double, y: Double), parent: SpaceNode?) {
+        if draft != nil { finishDraft() }
+        editing = nil
+        selected = nil
+        draft = CardDraft(kind: kind, x: spot.x, y: spot.y, parentID: parent?.id)
+        let shown = CGRect(x: viewport.minX / scale, y: viewport.minY / scale, width: viewport.width / scale, height: viewport.height / scale)
+        if viewport.width > 0, !shown.insetBy(dx: 150, dy: 80).contains(CGPoint(x: spot.x, y: spot.y)) { centre(on: spot) }
+    }
+
+    /// Makes the card from what's typed; an empty draft just goes away.
+    private func finishDraft() {
+        guard let done = draft else { return }
+        draft = nil
+        let text = done.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let parsed = done.kind == .note ? (title: text, due: Date?.none) : { let p = TaskInput.parse(text); return (title: p.title, due: p.due) }()
+        let parent = nodes.first { $0.id == done.parentID }
+        Task {
+            if let node = await model.addToCanvas(done.kind, title: parsed.title, due: parsed.due, in: space, linkedFrom: parent,
+                                                  at: (done.x, done.y)) {
+                selected = node.id
+                canvasFocused = true
+            }
+        }
+    }
+
+    /// A new card from the bar: next to the selected card and linked to it, or in the middle of the view.
+    private func add(_ kind: SpaceNode.Kind) {
+        if let parent = nodes.first(where: { $0.id == selected }) {
+            let spot = CanvasLayout.freeSpot(around: (parent.x, parent.y), taken: nodes, radius: 280)
+            startDraft(kind, at: spot, parent: parent)
+        } else {
+            startDraft(kind, at: viewCentre, parent: nil)
+        }
+    }
+
+    private func clearSelection() {
+        if draft != nil { finishDraft() }
+        selected = nil
+        editing = nil
+        canvasFocused = true
+    }
+
+    private func deleteSelected() {
+        guard editing == nil, let node = nodes.first(where: { $0.id == selected }), case .item(let item) = content(of: node) else { return }
+        selected = nil
+        Task { await model.deleteWithUndo(item) }
+    }
+
+    private var addBar: some View {
+        HStack(spacing: 2) {
+            barButton("Task", symbol: "checkmark.circle") { add(.task) }
+            barButton("Sticky", symbol: "note.text") { add(.note) }
+            barButton("Reminder", symbol: "bell") { add(.reminder) }
+            Divider().frame(height: 18).padding(.horizontal, 6)
+            barButton("Ask Blink", symbol: "sparkles", action: askBlink)
+                .foregroundStyle(Color.accentColor)
+                .disabled(model.thinking)
+        }
+        .font(.callout.weight(.medium))
+        .padding(5)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    private func barButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol).padding(.horizontal, 10).padding(.vertical, 7).contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .help(title == "Ask Blink" ? "Ask Blink to explain this plan and suggest what's missing"
+              : "Add a \(title.lowercased()), linked to the selected card if one is selected")
+    }
+
+    // MARK: Moving around
+
+    private var viewCentre: (x: Double, y: Double) {
+        guard viewport.width > 0 else { return AppModel.canvasCenter }
+        return (viewport.midX / scale, viewport.midY / scale)
+    }
+
+    /// Scrolls so `spot` (in sheet points) is in the middle of the view.
+    private func centre(on spot: (x: Double, y: Double), animated: Bool = true) {
+        let target = CGPoint(x: max(spot.x * scale - viewport.width / 2, 0), y: max(spot.y * scale - viewport.height / 2, 0))
+        if animated && !reduceMotion {
+            withAnimation(.smooth(duration: 0.3)) { position.scrollTo(point: target) }
+        } else {
+            position.scrollTo(point: target)
+        }
+    }
+
+    /// Zooms around the middle of the view (or a pinch's own centre), so what you're looking at stays put.
+    private func zoom(to new: Double, around anchor: (x: Double, y: Double)? = nil) {
+        let keep = anchor ?? viewCentre
+        scale = min(max(new, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+        centre(on: keep, animated: false)
+    }
+
+    /// Zooms and scrolls so every card fits in the view.
+    private func fitAll() {
+        guard !nodes.isEmpty, viewport.width > 0 else { return }
+        let left = nodes.map { $0.x - $0.size.width / 2 }.min() ?? 0, right = nodes.map { $0.x + $0.size.width / 2 }.max() ?? 0
+        let top = nodes.map { $0.y - $0.size.height / 2 }.min() ?? 0, bottom = nodes.map { $0.y + $0.size.height / 2 }.max() ?? 0
+        // Room for the title card at the top and the add bar at the bottom.
+        let fit = min(viewport.width / (right - left + 160), (viewport.height - 160) / (bottom - top + 80), 1.2)
+        scale = min(max(fit, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+        centre(on: ((left + right) / 2, (top + bottom) / 2), animated: false)
+    }
+
+    /// The first time the cards and the view are both ready: the project in the middle.
+    private func centreOnceLoaded() {
+        guard !centred, viewport.width > 0, let project = nodes.first(where: { $0.kind == .project }) else { return }
+        centred = true
+        centre(on: (project.x, project.y), animated: false)
+    }
+
+    private var zoomBar: some View {
+        HStack(spacing: 0) {
+            Button("Zoom Out", systemImage: "minus") { zoom(to: scale / 1.25) }
+                .keyboardShortcut("-", modifiers: .command)
+            Button { zoom(to: 1) } label: {
+                Text("\(Int((scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 44)
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            .help("Actual size (⌘0)")
+            .accessibilityLabel("Zoom \(Int((scale * 100).rounded())) percent, actual size")
+            Button("Zoom In", systemImage: "plus") { zoom(to: scale * 1.25) }
+                .keyboardShortcut("=", modifiers: .command)
+            Divider().frame(height: 16).padding(.horizontal, 4)
+            Button("Fit All Cards", systemImage: "arrow.up.left.and.arrow.down.right", action: fitAll)
+                .keyboardShortcut("1", modifiers: [.command, .shift])
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .font(.callout.weight(.medium))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .glassEffect(.regular, in: .capsule)
     }
 
     // MARK: Ask Blink
@@ -399,63 +594,255 @@ private struct SpaceCanvasView: View {
     }
 }
 
-/// The add bar floating over the canvas: + Task, + Sticky, + Reminder, and Ask Blink.
-private struct CanvasToolbar: View {
+// MARK: Card
+
+/// One card: an icon tile, the title and a quiet line under it; a sticky note is a square of colour instead. While
+/// editing, the title (and a sticky's text) becomes a field right on the card, saved when you press Return or click away.
+private struct CanvasCard: View {
     @Environment(AppModel.self) private var model
+    let node: SpaceNode
     let space: Space
-    let parent: SpaceNode?
-    let askBlink: () -> Void
-    let added: (String) -> Void
-    @State private var adding: SpaceNode.Kind?
-    @State private var draft = ""
+    let content: CardContent
+    let selected: Bool
+    @Binding var editing: String?
+    @State private var title = ""
+    @State private var text = ""
+    @State private var cancelled = false
+    @FocusState private var field: Field?
+
+    enum Field { case title, text }
+    static let stickyColors = ["yellow", "orange", "pink", "green", "mint", "teal"]
+
+    private var isEditing: Bool { editing == node.id }
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: node.kind == .note ? 6 : 16, style: .continuous) }
+
+    var body: some View {
+        Group {
+            if node.kind == .note { sticky } else { row }
+        }
+        .frame(width: node.size.width, height: node.size.height)
+        .overlay(shape.strokeBorder(Color.accentColor, lineWidth: 2).opacity(selected ? 1 : 0))
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        .onChange(of: isEditing, initial: true) { was, now in
+            if now {
+                load()
+                Task { field = .title } // after the field is on screen
+            } else if was && !cancelled {
+                commit()
+            }
+        }
+        .onChange(of: field) { _, now in if now == nil && isEditing { editing = nil } }
+    }
+
+    private var row: some View {
+        HStack(spacing: 12) {
+            tile
+            VStack(alignment: .leading, spacing: 2) {
+                if isEditing {
+                    TextField("Title", text: $title)
+                        .textFieldStyle(.plain)
+                        .font(.callout.weight(.semibold))
+                        .focused($field, equals: .title)
+                        .onSubmit { editing = nil }
+                        .onExitCommand(perform: cancel)
+                } else {
+                    Text(displayTitle)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(2)
+                        .strikethrough(isDone)
+                        .foregroundStyle(isDone ? .secondary : .primary)
+                }
+                Text(subtitle).font(.caption).foregroundStyle(isOverdue ? .red : .secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.thickMaterial, in: shape)
+        .overlay(shape.strokeBorder(node.kind == .project ? Color.system(space.color).opacity(0.7) : Color.primary.opacity(0.08)))
+    }
+
+    /// The project's icon, or the circle that ticks a task or reminder off.
+    @ViewBuilder
+    private var tile: some View {
+        let tint = node.kind == .reminder ? Color.orange : Color.system(node.kind == .project ? space.color : node.color)
+        switch content {
+        case .project:
+            Image(systemName: space.icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(tint.gradient, in: .rect(cornerRadius: 11, style: .continuous))
+                .accessibilityHidden(true)
+        case .item(let task):
+            Button { Task { await model.toggle(task) } } label: {
+                Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundStyle(isDone ? Color.green : tint)
+                    .frame(width: 36, height: 36)
+                    .background(tint.opacity(0.14), in: .rect(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isDone ? "Mark \(task.title) not done" : "Mark \(task.title) done")
+        case .reminder(let reminder):
+            Button { Task { await model.complete(reminder, in: space) } } label: {
+                Image(systemName: "bell")
+                    .font(.title3)
+                    .foregroundStyle(tint)
+                    .frame(width: 36, height: 36)
+                    .background(tint.opacity(0.14), in: .rect(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .help("Mark done")
+            .accessibilityLabel("Mark \(reminder.title) done")
+        }
+    }
+
+    private var sticky: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if isEditing {
+                TextField("Title", text: $title, axis: .vertical)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1...2)
+                    .focused($field, equals: .title)
+                    .onSubmit { field = .text }
+                TextField("Write something…", text: $text, axis: .vertical)
+                    .font(.callout)
+                    .lineLimit(1...5)
+                    .focused($field, equals: .text)
+                    .onExitCommand(perform: cancel)
+            } else if case .item(let note) = content {
+                Text(note.title.isEmpty ? "Untitled note" : note.title).font(.callout.weight(.semibold)).lineLimit(2)
+                if !note.body.isEmpty { Text(note.body).font(.callout).lineLimit(5).opacity(0.75) }
+            }
+            Spacer(minLength: 0)
+        }
+        .textFieldStyle(.plain)
+        .foregroundStyle(.black.opacity(0.85))
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.system(node.color).opacity(0.9), in: shape)
+        .environment(\.colorScheme, .light)
+        .accessibilityElement(children: isEditing ? .contain : .combine)
+        .accessibilityHint(isEditing ? "" : "Double-click to edit")
+    }
+
+    private var isDone: Bool { if case .item(let item) = content { item.status == .done } else { false } }
+
+    private var due: Date? {
+        switch content {
+        case .project: space.dueAt
+        case .item(let item): item.dueAt
+        case .reminder(let reminder): reminder.due
+        }
+    }
+
+    private var isOverdue: Bool { !isDone && (due ?? .distantFuture) < .now }
+
+    private var displayTitle: String {
+        switch content {
+        case .project: space.title
+        case .item(let item): item.title.isEmpty ? "Untitled" : item.title
+        case .reminder(let reminder): reminder.title
+        }
+    }
+
+    private var subtitle: String {
+        let when = due.map { " · \(Agenda.dueLabel($0))" } ?? ""
+        switch content {
+        case .project:
+            let progress = Space.progress(of: model.items, in: space.id)
+            return progress.total == 0 ? "Project" : "Project · \(progress.done) of \(progress.total) done"
+        case .item: return "Task\(when)"
+        case .reminder: return "Reminder\(when)"
+        }
+    }
+
+    private func cancel() {
+        cancelled = true
+        editing = nil
+    }
+
+    private func load() {
+        cancelled = false
+        switch content {
+        case .project: title = space.title
+        case .item(let item): (title, text) = (item.title, item.body)
+        case .reminder(let reminder): title = reminder.title
+        }
+    }
+
+    private func commit() {
+        let newTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch content {
+        case .project: break
+        case .item(let item):
+            var changed = model.items.first { $0.id == item.id } ?? item
+            if !newTitle.isEmpty { changed.title = newTitle }
+            if item.type == .note { changed.body = text }
+            guard changed.title != item.title || changed.body != item.body else { return }
+            model.edit(changed)
+            Task { await model.save(changed.id) }
+        case .reminder(let reminder):
+            guard !newTitle.isEmpty, newTitle != reminder.title else { return }
+            Task {
+                await model.rename(reminder, to: newTitle)
+                await model.loadReminders(for: space)
+            }
+        }
+    }
+}
+
+/// A card being written: pick task, sticky or reminder, type, Return. Escape or an empty card throws it away.
+private struct DraftCard: View {
+    @Binding var draft: CardDraft?
+    let commit: () -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
-            if let adding {
-                Image(systemName: symbol(adding)).foregroundStyle(.secondary).padding(.leading, 8).accessibilityHidden(true)
-                TextField(placeholder(adding), text: $draft)
-                    .textFieldStyle(.plain)
-                    .frame(width: 300)
-                    .focused($focused)
-                    .onSubmit(add)
-                    .onExitCommand { self.adding = nil }
-                Button("Done") { self.adding = nil }
-                    .buttonStyle(.borderless)
-                    .padding(.horizontal, 8)
-            } else {
-                tool("Task", symbol: symbol(.task), kind: .task)
-                tool("Sticky", symbol: symbol(.note), kind: .note)
-                tool("Reminder", symbol: symbol(.reminder), kind: .reminder)
-                Divider().frame(height: 18).padding(.horizontal, 4)
-                Button(action: askBlink) {
-                    Label("Ask Blink", systemImage: "sparkles").padding(.horizontal, 10).padding(.vertical, 6)
+        let kind = draft?.kind ?? .task
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 4) {
+                ForEach([SpaceNode.Kind.task, .note, .reminder], id: \.self) { option in
+                    Button {
+                        draft?.kind = option
+                        focused = true
+                    } label: {
+                        Label(Self.name(option), systemImage: Self.symbol(option))
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 9).padding(.vertical, 4)
+                            .background(kind == option ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.05), in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(kind == option ? .isSelected : [])
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
-                .disabled(model.thinking)
             }
+            TextField(Self.placeholder(kind), text: Binding(get: { draft?.text ?? "" }, set: { draft?.text = $0 }), axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1...4)
+                .focused($focused)
+                .onSubmit(commit)
+                .onExitCommand { draft = nil }
         }
-        .font(.callout.weight(.medium))
-        .padding(6)
-        .frame(height: 44)
-        .background(.regularMaterial, in: .capsule)
-        .overlay(Capsule().strokeBorder(.separator))
-        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+        .padding(12)
+        .frame(width: 260, alignment: .leading)
+        .background(.thickMaterial, in: .rect(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.accentColor, lineWidth: 2))
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        .onAppear { Task { focused = true } }
     }
 
-    private func tool(_ title: String, symbol: String, kind: SpaceNode.Kind) -> some View {
-        Button {
-            adding = kind
-            focused = true
-        } label: {
-            Label(title, systemImage: symbol).padding(.horizontal, 10).padding(.vertical, 6)
+    static func name(_ kind: SpaceNode.Kind) -> String {
+        switch kind {
+        case .task: "Task"
+        case .note: "Sticky"
+        case .reminder: "Reminder"
+        case .project: "Project"
         }
-        .buttonStyle(.plain)
-        .help("Add a \(title.lowercased())\(parent.map { _ in " linked to the selected card" } ?? "")")
     }
 
-    private func symbol(_ kind: SpaceNode.Kind) -> String {
+    static func symbol(_ kind: SpaceNode.Kind) -> String {
         switch kind {
         case .task: "checkmark.circle"
         case .note: "note.text"
@@ -464,150 +851,130 @@ private struct CanvasToolbar: View {
         }
     }
 
-    private func placeholder(_ kind: SpaceNode.Kind) -> String {
+    static func placeholder(_ kind: SpaceNode.Kind) -> String {
         switch kind {
-        case .task: "Task, e.g. “Draft homepage friday”"
+        case .task: "New task, e.g. “Draft homepage friday”"
         case .note: "Sticky note"
-        case .reminder: "Reminder, e.g. “Call the printer friday 10am”"
+        case .reminder: "Remind me, e.g. “Call the printer friday 10am”"
         case .project: ""
-        }
-    }
-
-    /// Adds the card and keeps the field open for the next one; Escape or Done closes it.
-    private func add() {
-        guard let adding else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        let parsed = adding == .note ? (title: text, due: Date?.none) : { let p = TaskInput.parse(text); return (title: p.title, due: p.due) }()
-        guard !parsed.title.isEmpty else { return }
-        draft = ""
-        Task {
-            if let node = await model.addToCanvas(adding, title: parsed.title, due: parsed.due, in: space, linkedFrom: parent) {
-                added(node.id)
-            }
         }
     }
 }
 
-// MARK: Card faces
+// MARK: Floating title and progress
 
-private struct ProjectCard: View {
+/// The Space's icon, name and goal, floating at the top left of the canvas; both are edited right here.
+private struct SpaceTitleCard: View {
+    @Environment(AppModel.self) private var model
+    let space: Space
+    @State private var title = ""
+    @State private var goal = ""
+    @FocusState private var field: Field?
+    private enum Field { case title, goal }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: space.icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(Color.system(space.color).gradient, in: .rect(cornerRadius: 11, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                TextField("Space name", text: $title)
+                    .font(.headline)
+                    .focused($field, equals: .title)
+                    .accessibilityAddTraits(.isHeader)
+                TextField("Add a goal", text: $goal)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .focused($field, equals: .goal)
+            }
+            .textFieldStyle(.plain)
+            .frame(width: 230)
+            .onSubmit { field = nil }
+        }
+        .padding(10)
+        .padding(.trailing, 6)
+        .glassEffect(.regular, in: .rect(cornerRadius: 18, style: .continuous))
+        .onAppear { (title, goal) = (space.title, space.goal) }
+        .onChange(of: space) { _, new in if field == nil { (title, goal) = (new.title, new.goal) } }
+        .onChange(of: field) { _, now in if now == nil { save() } }
+        .onDisappear { if field != nil { save() } }
+    }
+
+    private func save() {
+        let name = title.trimmingCharacters(in: .whitespaces)
+        let aim = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { title = space.title; return }
+        guard name != space.title || aim != space.goal else { return }
+        var changed = space
+        changed.title = name
+        changed.goal = aim
+        Task { await model.saveSpace(changed) }
+    }
+}
+
+/// How far along the Space is, and its deadline, floating at the top right.
+private struct SpaceProgressPill: View {
     @Environment(AppModel.self) private var model
     let space: Space
 
     var body: some View {
         let progress = Space.progress(of: model.items, in: space.id)
-        HStack(spacing: 12) {
-            Image(systemName: space.icon)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(Color.system(space.color).gradient, in: .rect(cornerRadius: 12, style: .continuous))
+        HStack(spacing: 8) {
+            Gauge(value: Double(progress.done), in: 0...Double(max(progress.total, 1))) { EmptyView() }
+                .gaugeStyle(.accessoryCircularCapacity)
+                .tint(Color.system(space.color))
+                .scaleEffect(0.42)
+                .frame(width: 22, height: 22)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(space.title).font(.headline).lineLimit(1)
-                Text(progress.total == 0 ? "Add the first task below" : "\(progress.done) of \(progress.total) done")
-                    .font(.caption).foregroundStyle(.secondary)
+            Text(progress.total == 0 ? "No tasks yet" : "\(progress.done) of \(progress.total) done")
+            if let due = space.dueAt {
+                let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: .now), to: due).day ?? 0
+                Text("·").foregroundStyle(.tertiary)
+                Text(days >= 0 ? "\(days) days left" : "\(-days) days late").foregroundStyle(days < 0 ? .red : .secondary)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.regularMaterial, in: .rect(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.system(space.color).opacity(0.6), lineWidth: 1.5))
-    }
-}
-
-private struct TaskCard: View {
-    @Environment(AppModel.self) private var model
-    let task: BlinkItem
-    let tint: Color
-
-    var body: some View {
-        let done = task.status == .done
-        HStack(spacing: 10) {
-            Button { Task { await model.toggle(task) } } label: {
-                Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(done ? Color.green : tint)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(done ? "Mark \(task.title) not done" : "Mark \(task.title) done")
-            VStack(alignment: .leading, spacing: 2) {
-                Text(task.title).font(.callout.weight(.medium)).strikethrough(done).lineLimit(2)
-                    .foregroundStyle(done ? .secondary : .primary)
-                if let due = task.dueAt {
-                    Text(Agenda.dueLabel(due)).font(.caption).foregroundStyle(due < .now && !done ? .red : .secondary)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.regularMaterial, in: .rect(cornerRadius: 14, style: .continuous))
-        .overlay(alignment: .leading) { Capsule().fill(tint).frame(width: 3).padding(.vertical, 14).accessibilityHidden(true) }
-    }
-}
-
-private struct StickyCard: View {
-    let note: BlinkItem
-    let tint: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(note.title.isEmpty ? "Untitled note" : note.title).font(.callout.weight(.semibold)).lineLimit(2)
-            if !note.body.isEmpty {
-                Text(note.body).font(.caption).foregroundStyle(.secondary).lineLimit(6)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(tint.opacity(0.28), in: .rect(cornerRadius: 8, style: .continuous))
-        .background(.regularMaterial, in: .rect(cornerRadius: 8, style: .continuous))
+        .font(.callout.weight(.medium))
+        .monospacedDigit()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Double-click to open")
     }
 }
 
-private struct ReminderCard: View {
-    @Environment(AppModel.self) private var model
-    let reminder: AgendaReminder
-    let space: Space
+// MARK: Backdrop
+
+/// The sheet behind the cards: near-black in dark mode with the Space's colour rising softly from the bottom edge.
+private struct CanvasBackdrop: View {
+    @Environment(\.colorScheme) private var scheme
+    let tint: Color
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button { Task { await model.complete(reminder, in: space) } } label: {
-                Image(systemName: "circle").font(.title3).foregroundStyle(.orange)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Mark \(reminder.title) done")
-            VStack(alignment: .leading, spacing: 2) {
-                Text(reminder.title).font(.callout.weight(.medium)).lineLimit(2)
-                if let due = reminder.due {
-                    Text(Agenda.dueLabel(due)).font(.caption).foregroundStyle(due < .now ? .red : .secondary)
-                }
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "bell.fill").font(.caption).foregroundStyle(.orange).accessibilityHidden(true)
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.regularMaterial, in: .rect(cornerRadius: 14, style: .continuous))
+        (scheme == .dark ? Color.black : Color(nsColor: .windowBackgroundColor))
+            .overlay(
+                EllipticalGradient(colors: [tint.opacity(scheme == .dark ? 0.45 : 0.25), tint.opacity(0.08), .clear], center: .bottom,
+                                   startRadiusFraction: 0, endRadiusFraction: 0.75)
+            )
+            .ignoresSafeArea()
     }
 }
 
-/// Faint dots every 24 points, drawn once as one path.
+/// Faint dots, drawn once as one path.
 private struct DotGrid: View {
+    let spacing: Double
+
     var body: some View {
         Canvas { context, size in
             var dots = Path()
-            for x in stride(from: 12.0, to: size.width, by: 24) {
-                for y in stride(from: 12.0, to: size.height, by: 24) {
+            for x in stride(from: spacing / 2, to: size.width, by: spacing) {
+                for y in stride(from: spacing / 2, to: size.height, by: spacing) {
                     dots.addEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2))
                 }
             }
-            context.fill(dots, with: .color(.secondary.opacity(0.3)))
+            context.fill(dots, with: .color(.secondary.opacity(0.35)))
         }
         .accessibilityHidden(true)
     }

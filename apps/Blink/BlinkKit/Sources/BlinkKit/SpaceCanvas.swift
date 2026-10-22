@@ -49,6 +49,14 @@ public struct SpaceEdge: Codable, Identifiable, Equatable, Sendable {
 }
 
 public enum CanvasLayout {
+    /// The sheet the cards sit on; the project starts in its middle.
+    public static let size = (width: 4000.0, height: 2600.0)
+
+    /// A spot pulled inside the sheet, far enough from the edge that the whole card stays reachable.
+    public static func onSheet(_ spot: (x: Double, y: Double)) -> (x: Double, y: Double) {
+        (min(max(spot.x, 140), size.width - 140), min(max(spot.y, 90), size.height - 90))
+    }
+
     /// Where the next new node goes: on a ring around the project, the first free spot (so new things never stack).
     public static func freeSpot(around center: (x: Double, y: Double), taken: [SpaceNode], radius: Double = 300) -> (x: Double, y: Double) {
         for ring in 1...6 {

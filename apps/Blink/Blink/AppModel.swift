@@ -2063,8 +2063,8 @@ final class AppModel {
     // MARK: A Space's canvas
 
     /// The canvas is a large sheet; the project starts in its middle.
-    static let canvasSize = (width: 4000.0, height: 2600.0)
-    static let canvasCenter = (x: 2000.0, y: 1300.0)
+    static let canvasSize = CanvasLayout.size
+    static let canvasCenter = (x: CanvasLayout.size.width / 2, y: CanvasLayout.size.height / 2)
 
     private(set) var canvasNodes: [String: [SpaceNode]] = [:]
     private(set) var canvasEdges: [String: [SpaceEdge]] = [:]
@@ -2110,10 +2110,11 @@ final class AppModel {
         }
     }
 
-    /// A new task or note made on the canvas: the real item, its node on the first free spot, and a link from `parent`
-    /// (the project when none is picked).
+    /// A new task, note or reminder made on the canvas: the real thing, and its node at `spot` (else the first free spot
+    /// near `parent` or the project). It links from `parent`; placed by hand with no parent, it stays on its own.
     @discardableResult
-    func addToCanvas(_ kind: SpaceNode.Kind, title: String, due: Date? = nil, in space: Space, linkedFrom parent: SpaceNode? = nil) async -> SpaceNode? {
+    func addToCanvas(_ kind: SpaceNode.Kind, title: String, due: Date? = nil, in space: Space, linkedFrom parent: SpaceNode? = nil,
+                     at spot: (x: Double, y: Double)? = nil) async -> SpaceNode? {
         let ref: String?
         switch kind {
         case .task: ref = create(.task, title: title, due: due, space: space.id).id
@@ -2125,20 +2126,19 @@ final class AppModel {
         guard let ref else { return nil }
         var nodes = canvasNodes[space.id] ?? []
         let anchor = parent.map { (x: $0.x, y: $0.y) } ?? Self.canvasCenter
-        let spot = CanvasLayout.freeSpot(around: anchor, taken: nodes, radius: parent == nil ? 300 : 260)
-        let node = SpaceNode(spaceID: space.id, kind: kind, ref: ref, x: spot.x, y: spot.y, color: kind == .note ? "yellow" : space.color)
+        let place = CanvasLayout.onSheet(spot ?? CanvasLayout.freeSpot(around: anchor, taken: nodes, radius: parent == nil ? 300 : 260))
+        let node = SpaceNode(spaceID: space.id, kind: kind, ref: ref, x: place.x, y: place.y, color: kind == .note ? "yellow" : space.color)
         nodes.append(node)
         canvasNodes[space.id] = nodes
         await canvasWrite { try await server?.save(node) }
-        if let from = parent ?? nodes.first(where: { $0.kind == .project }) { await connect(from, to: node, in: space) }
+        if let from = parent ?? (spot == nil ? nodes.first(where: { $0.kind == .project }) : nil) { await connect(from, to: node, in: space) }
         return node
     }
 
     /// Where a node was dropped after dragging; shown at once (no snap back), saved behind.
     func moveNode(_ node: SpaceNode, x: Double, y: Double) {
         guard var nodes = canvasNodes[node.spaceID], let i = nodes.firstIndex(where: { $0.id == node.id }) else { return }
-        nodes[i].x = min(max(x, 120), Self.canvasSize.width - 120)
-        nodes[i].y = min(max(y, 80), Self.canvasSize.height - 80)
+        (nodes[i].x, nodes[i].y) = CanvasLayout.onSheet((x, y))
         canvasNodes[node.spaceID] = nodes
         let moved = nodes[i]
         // shortcut: each drop saves on its own, so two very quick drops can land out of order; queue per node if seen.
