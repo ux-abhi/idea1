@@ -13,6 +13,11 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/site.css">
+  <!-- Vercel Web Analytics and Speed Insights: no cookies, no personal data (see privacy.html). -->
+  <script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
+  <script defer src="/_vercel/insights/script.js"></script>
+  <script>window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };</script>
+  <script defer src="/_vercel/speed-insights/script.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -32,7 +37,7 @@
 <main id="main" class="doc light">
   <h1>Privacy</h1>
   <p class="lede">Blink keeps your data on your Mac and on a server in your own account. Pexilim, the company that makes Blink, doesn't store it and can't read it.</p>
-  <p class="updated">Last updated 14 October 2026</p>
+  <p class="updated">Last updated 24 October 2026</p>
 
   <h2>The short version</h2>
   <ul>
@@ -41,7 +46,7 @@
     <li>AI requests go from your server to the AI provider <strong>you</strong> pick, with <strong>your</strong> key.</li>
     <li>Pexilim runs no database for the Blink app. For the app, the only thing we run is a tiny sign-in helper used once during setup, and it stores nothing.</li>
     <li>If you join the waitlist on this website, we keep your email to tell you when Blink is ready. <a href="#waitlist">Details below</a>.</li>
-    <li>No analytics, no tracking, no cookies, in the app or on this website.</li>
+    <li>No analytics, no tracking and no cookies in the app. This website counts anonymous visits and page speed, without cookies (<a href="#website">below</a>).</li>
   </ul>
 
   <h2>Who holds what</h2>
@@ -62,8 +67,8 @@
   <p>When you choose “Sign in with Supabase” during setup, Supabase needs a secret that a Mac app can't keep safely. So Pexilim runs one small helper. It receives the one-time sign-in code from Supabase, adds our secret, and returns a short-lived access token to Blink on your Mac. It never asks for a long-lived token.</p>
   <p>The helper's code doesn't store or log the code or the token. Blink keeps the token in memory only while it sets up your server, then drops it. Like any hosted service, the platform the helper runs on may record basic request details such as the time and the result. If you choose “I already have a server” instead, the helper isn't used at all.</p>
 
-  <h2>This website</h2>
-  <p>www.blinkk.app is a set of static pages. It sets no cookies and runs no analytics or tracking. The only thing it sends anywhere is the waitlist form, when you submit it. Everything it uses, the font, the animation library and the film, is served from this site itself, so no other company sees your visit. Like any web server, our host receives your IP address to send you the pages.</p>
+  <h2 id="website">This website</h2>
+  <p>www.blinkk.app is a set of static pages. It sets no cookies. To see which pages people read and how fast they load, it uses Vercel Web Analytics and Speed Insights from our host, Vercel: they count page views, the country, the browser and device type, and loading times, without cookies and without identifying you or following you to other sites. The only other thing it sends anywhere is the waitlist form, when you submit it. Everything it uses, the font, the animation library and the film, is served from this site itself, so no company other than our host sees your visit. Like any web server, our host receives your IP address to send you the pages.</p>
 
   <h2 id="waitlist">Waitlist</h2>
   <p>Blink isn't public yet. If you join the waitlist on this website:</p>
