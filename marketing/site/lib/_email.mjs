@@ -42,7 +42,7 @@ export function layout(opts) {
     </td></tr>
     <tr><td align="center" style="padding:20px 18px 0;">
       <p style="margin:0 0 8px;font:400 12px/1.6 ${FONT};color:#86868b;">Button not working? <a href="${escape(opts.button.url)}" style="color:#86868b;">Use this link</a>.</p>
-      <p style="margin:0;font:400 12px/1.6 ${FONT};color:#86868b;"><b style="color:#1d1d1f;">Blink</b> by Pexilim · <a href="${SITE}" style="color:#86868b;">blinkk.app</a> · <a href="${SITE}/privacy.html#waitlist" style="color:#86868b;">Privacy</a> · <a href="${escape(opts.unsubscribe)}" style="color:#86868b;">Leave the waitlist</a></p>
+      <p style="margin:0;font:400 12px/1.6 ${FONT};color:#86868b;"><b style="color:#1d1d1f;">Blink</b> by Pexilim · <a href="${SITE}" style="color:#86868b;">blinkk.app</a> · <a href="${SITE}/privacy#waitlist" style="color:#86868b;">Privacy</a> · <a href="${escape(opts.unsubscribe)}" style="color:#86868b;">Leave the waitlist</a></p>
     </td></tr>
   </table>
 </td></tr></table>

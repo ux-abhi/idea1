@@ -142,7 +142,7 @@ export default function Home() {
 
               {/* Mail: the bento's one peek */}
               <article className="tile t-mail" id="mail" aria-labelledby="mail-title">
-                <span className="peeker" aria-hidden="true"><span className="head"><span className="eyes-look"><img src="/assets/eyes-important.png" alt="" width="320" height="160" /></span></span></span>
+                <span className="peeker" aria-hidden="true"><span className="head"><span className="eyes-look"><img loading="lazy" src="/assets/eyes-important.png" alt="" width="320" height="160" /></span></span></span>
                 <div className="tile-text">
                   <h3 id="mail-title">Reads your mail.</h3>
                   <p>Tells you what matters. Click a mail to teach it that sender.</p>
@@ -252,7 +252,7 @@ export default function Home() {
                   </div>
                   <div className="panel-demo" id="day-mock">
                     <div className="peeks" aria-hidden="true">
-                      <div className="mini-notch" style={{ '--c': 'var(--mint)' }}><img src="/assets/eyes-headsup.png" alt="" width="52" height="26" />Thesis review in 10 min</div>
+                      <div className="mini-notch" style={{ '--c': 'var(--mint)' }}><img loading="lazy" src="/assets/eyes-headsup.png" alt="" width="52" height="26" />Thesis review in 10 min</div>
                       <div className="mini-notch" style={{ '--c': 'var(--orange)' }}><img src="/assets/eyes-idle.png" alt="" width="52" height="26" />Plan tomorrow?</div>
                     </div>
                     <div className="timeline" role="img" aria-label="Timeline: standup 9:30, deep work 10 to 12, lunch 12:30, thesis 2 to 4 pm, gym 5:30 to 6:30.">
@@ -299,7 +299,7 @@ export default function Home() {
                     <p>Ideas and drafts for Instagram, LinkedIn and X, in your voice. A weekly plan, and stats on what worked.</p>
                   </div>
                   <div className="panel-demo" id="content-mock">
-                    <div className="mini-notch" style={{ '--c': 'var(--green)' }}><img src="/assets/eyes-done.png" alt="" width="52" height="26" />5 ideas ready</div>
+                    <div className="mini-notch" style={{ '--c': 'var(--green)' }}><img loading="lazy" src="/assets/eyes-done.png" alt="" width="52" height="26" />5 ideas ready</div>
                     <div className="ideas">
                       <div className="idea" style={{ '--c': 'var(--pink)' }}><span className="fmt"><i></i>Reel</span><span className="ttl">3 tools I use every day</span><span className="plat">Instagram</span></div>
                       <div className="idea" style={{ '--c': 'var(--mint)' }}><span className="fmt"><i></i>Carousel</span><span className="ttl">Building an app in a week</span><span className="plat">LinkedIn</span></div>
@@ -386,7 +386,7 @@ export default function Home() {
                 <li className="step">
                   <div className="step-art art-dmg" aria-hidden="true">
                     <div className="dmg">
-                      <span className="app"><img src="/assets/apple-touch-icon.png" alt="" width="180" height="180" />Blink</span>
+                      <span className="app"><img loading="lazy" src="/assets/apple-touch-icon.png" alt="" width="180" height="180" />Blink</span>
                       <svg className="drag" viewBox="0 0 48 16"><path d="M2 8h40M36 2l6 6-6 6" /></svg>
                       <span className="app"><span className="folder"></span>Applications</span>
                     </div>
@@ -409,7 +409,7 @@ export default function Home() {
                 </li>
                 <li className="step">
                   <div className="step-art art-notch" aria-hidden="true">
-                    <div className="mini-notch" style={{ '--c': 'var(--mint)' }}><img src="/assets/eyes-headsup.png" alt="" width="52" height="26" />Thesis review in 10 min</div>
+                    <div className="mini-notch" style={{ '--c': 'var(--mint)' }}><img loading="lazy" src="/assets/eyes-headsup.png" alt="" width="52" height="26" />Thesis review in 10 min</div>
                     <div className="perm"><span>Groq key</span><span className="dots">••••••••</span></div>
                     <div className="perm"><span>Calendar</span><span className="on">Allowed</span></div>
                   </div>
