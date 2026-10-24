@@ -180,6 +180,23 @@ import Testing
     }
 }
 
+@Suite struct WeekReviewTests {
+    @Test func showsSundayAndMondayUntilClosed() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        cal.firstWeekday = 2 // weeks start on Monday, as in most of Europe
+        let day = { (d: Int) in cal.date(from: DateComponents(year: 2026, month: 10, day: d, hour: 10))! }
+        let sunday = day(25), monday = day(26), tuesday = day(27)
+        #expect(WeekReview.isShowing(now: sunday, closedWeek: nil, calendar: cal))
+        #expect(WeekReview.isShowing(now: monday, closedWeek: nil, calendar: cal))
+        #expect(!WeekReview.isShowing(now: tuesday, closedWeek: nil, calendar: cal))
+        // Closed on Sunday: gone on Monday too, though Monday starts a new week here.
+        let closed = WeekReview.reviewedWeek(now: sunday, calendar: cal)
+        #expect(!WeekReview.isShowing(now: monday, closedWeek: closed, calendar: cal))
+        #expect(WeekReview.reviewedWeek(now: monday, calendar: cal) == closed)
+    }
+}
+
 @Suite struct ShortcutTests {
     /// The app's list and design/shortcuts.json (which the website reads) must match exactly.
     @Test func appListMatchesTheSharedFile() throws {
@@ -266,6 +283,12 @@ extension Tokens {
         #expect(agenda.briefLine(now: at(7, 0), calendar: cal).hasPrefix("2 meetings · first at "))
         #expect(agenda.briefLine(now: at(7, 0), calendar: cal).hasSuffix(" · 2 reminders"))
         #expect(Agenda.empty.briefLine(now: at(7, 0), calendar: cal) == "No meetings today")
+        #expect(Agenda.empty.briefLine(now: at(7, 0), tasksDue: 2, calendar: cal) == "No meetings today · 2 tasks due")
+        // Move to tomorrow: same time tomorrow when timed, 9:00 tomorrow otherwise.
+        let moved = EveningCheck.movedToTomorrow(at(15, 30), timed: true, now: at(20, 0), calendar: cal)
+        #expect(cal.dateComponents([.day, .hour, .minute], from: moved) == cal.dateComponents([.day, .hour, .minute], from: at(15, 30).addingTimeInterval(86_400)))
+        let dayOnly = EveningCheck.movedToTomorrow(at(0, 0), timed: false, now: at(20, 0), calendar: cal)
+        #expect(cal.component(.hour, from: dayOnly) == 9 && cal.isDate(dayOnly, inSameDayAs: at(12, 0).addingTimeInterval(86_400)))
         let zoom = AgendaEvent(extID: "z", title: "Z", start: at(9, 0), end: at(10, 0), location: " https://zoom.us/j/1 ")
         #expect(zoom.joinURL?.host() == "zoom.us")
         #expect(AgendaEvent(extID: "r", title: "R", start: at(9, 0), end: at(10, 0), location: "Room 4").joinURL == nil)
@@ -531,6 +554,15 @@ extension Tokens {
         #expect(TaskInput.parse("  Buy milk ") == ("Buy milk", nil))
         let lastYear = TaskInput.parse("Notes from 3 March 2020")
         #expect(lastYear.title == "Notes from 3 March 2020" && lastYear.due == nil)
+    }
+}
+
+@Suite struct ServiceNoteTests {
+    @Test func firstLineIsTheTitleAndNothingIsLost() {
+        #expect(ServiceNote.split("Groceries\nmilk\neggs") == ("Groceries", "milk\neggs", false))
+        let long = String(repeating: "a", count: 130)
+        #expect(ServiceNote.split(long) == (String(repeating: "a", count: 120), long, false))
+        #expect(ServiceNote.split("t\n" + String(repeating: "b", count: 20_001)).trimmed)
     }
 }
 

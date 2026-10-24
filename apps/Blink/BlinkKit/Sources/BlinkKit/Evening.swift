@@ -16,6 +16,14 @@ public enum EveningCheck {
         let open = opens(now: now, evening: evening, wake: wake, calendar: calendar)
         return now >= open && (lastDone ?? .distantPast) < open
     }
+
+    /// Where an unfinished task or reminder goes with "Move to tomorrow": the same time tomorrow, or 9:00 tomorrow when
+    /// it had no time (a day-only one, or none at all).
+    public static func movedToTomorrow(_ due: Date?, timed: Bool, now: Date, calendar: Calendar = .current) -> Date {
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+        let time = (due.map { calendar.dateComponents([.hour, .minute], from: $0) }).flatMap { timed ? $0 : nil }
+        return calendar.date(bySettingHour: time?.hour ?? 9, minute: time?.minute ?? 0, second: 0, of: tomorrow) ?? tomorrow
+    }
 }
 
 extension Agenda {

@@ -58,9 +58,17 @@ struct BlinkApp: App {
 #if os(macOS)
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notch: NotchController?
+    private weak var app: AppModel?
     let clipboard = ClipboardStore()
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // The Services menu entries in Info.plist call addTask and saveNote below.
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
+    }
+
     func startNotch(_ app: AppModel) {
+        self.app = app
         if notch == nil { notch = NotchController(app: app, clipboard: clipboard) }
         app.notchAction = { [weak self] action in
             switch action {
@@ -69,6 +77,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .clipboard: self?.showClipboard()
             }
         }
+    }
+
+    // MARK: Services menu: text selected in any app
+
+    /// Services › Add to Blink as Task: the first line, with any date in it ("send invoice friday").
+    @objc func addTask(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        guard let app else { error.pointee = "Blink isn't ready yet. Try again in a moment."; return }
+        guard let text = Self.serviceText(pasteboard) else { error.pointee = "Select some text first."; return }
+        let parsed = TaskInput.parse(String(text.split(separator: "\n").first ?? "").prefix(200).description)
+        guard !parsed.title.isEmpty else { error.pointee = "Select some text first."; return }
+        app.create(.task, title: parsed.title, due: parsed.due)
+        app.announce("Added to Blink: \(parsed.title)")
+    }
+
+    /// Services › Save to Blink as Note: the first line is its title, the rest its text.
+    @objc func saveNote(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        guard let app else { error.pointee = "Blink isn't ready yet. Try again in a moment."; return }
+        guard let text = Self.serviceText(pasteboard) else { error.pointee = "Select some text first."; return }
+        let note = ServiceNote.split(text)
+        app.create(.note, title: note.title, body: note.body)
+        app.announce("Saved to Blink: \(note.title.isEmpty ? "a note" : note.title)" + (note.trimmed ? " (trimmed to 20,000 characters)" : ""))
+    }
+
+    /// Text from another app, trimmed; nil when there's none (it comes from outside, so it's capped above too).
+    private static func serviceText(_ pasteboard: NSPasteboard) -> String? {
+        let text = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
     }
 
     func showNotch() { notch?.open() }

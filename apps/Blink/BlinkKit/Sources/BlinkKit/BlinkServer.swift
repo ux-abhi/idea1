@@ -592,7 +592,24 @@ public final class BlinkServer: Sendable {
     }
 
     /// A sender rule as it was before `teach` changed it, so Undo can put it back.
-    public struct SenderRule: Codable, Sendable { let sender: String, verdict: String, example: String? }
+    /// A sender the owner taught Blink about: all their mail is important, or never is. `example` is a subject it was taught on.
+    public struct SenderRule: Codable, Sendable, Identifiable, Equatable {
+        public let sender: String
+        public let verdict: String
+        public let example: String?
+        public var id: String { sender }
+        public var important: Bool { verdict == SenderVerdict.important.rawValue }
+    }
+
+    /// Everything the owner has taught Blink about senders, A to Z.
+    public func senderRules() async throws -> [SenderRule] {
+        try await client.from("mail_sender_rule").select("sender, verdict, example").order("sender").execute().value
+    }
+
+    /// Forgets one sender rule: later mail from them is sorted on its own again (mail already sorted stays as it is).
+    public func forget(rule: SenderRule) async throws {
+        try await client.from("mail_sender_rule").delete().eq("sender", value: rule.sender).execute()
+    }
 
     /// The owner says what this mail is; the sender rule makes all later mail from them follow suit. Returns the rule
     /// it replaced, if there was one.

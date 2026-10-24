@@ -261,6 +261,7 @@ struct CalendarSettings: View {
 
 struct NotchSettings: View {
     @AppStorage(RestStyle.key) private var restStyle = RestStyle.ears
+    @AppStorage(AppModel.finishSoundKey) private var finishSound = true
     @State private var mood = Mood.idle
     @State private var openAtLogin = false
     @State private var loginProblem: String?
@@ -276,6 +277,9 @@ struct NotchSettings: View {
                 Text("Notch")
             } footer: {
                 Text("Meetings and things that need you still appear in the notch.")
+            }
+            Section("Sound") {
+                Toggle("Play a soft sound when you finish something", isOn: $finishSound)
             }
             Section("Startup") {
                 Toggle("Open Blink when you log in", isOn: Binding(get: { openAtLogin }, set: { on in
@@ -490,6 +494,30 @@ struct PrivacySettings: View {
             } footer: {
                 Text("The last 50 things you copy and your last 20 chat messages, kept on this Mac only. Passwords from password managers are never kept.")
             }
+            Section {
+                if let problem = model.rulesProblem {
+                    Text(problem).foregroundStyle(.red)
+                } else if model.senderRules.isEmpty {
+                    Text("Nothing yet. When you mark a sender Always or Never Important in Mail, Blink remembers it here.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(model.senderRules) { rule in
+                    LabeledContent {
+                        Button("Forget") { Task { await model.forget(rule) } }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(rule.sender)
+                            Text((rule.important ? "Always important" : "Never important") + (rule.example.flatMap { $0.isEmpty ? nil : " · e.g. “\($0)”" } ?? ""))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                }
+            } header: {
+                Text("What Blink has learned")
+            } footer: {
+                Text("Forget a rule and later mail from that sender is sorted on its own again.")
+            }
+            .task { await model.loadSenderRules() }
             Section {
                 DisclosureGroup("What leaves this Mac") {
                     Label("Your next 14 days of meetings: title, time, place and link", systemImage: "calendar")

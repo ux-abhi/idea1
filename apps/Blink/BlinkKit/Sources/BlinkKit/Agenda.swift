@@ -238,7 +238,7 @@ extension Agenda {
     }
 
     /// The morning brief's summary line, numbers first.
-    public func briefLine(now: Date, calendar: Calendar = .current) -> String {
+    public func briefLine(now: Date, tasksDue: Int = 0, calendar: Calendar = .current) -> String {
         let todays = events.filter { calendar.isDate($0.start, inSameDayAs: now) }
         var parts: [String] = []
         if let first = todays.first {
@@ -247,6 +247,7 @@ extension Agenda {
         } else {
             parts.append("No meetings today")
         }
+        if tasksDue > 0 { parts.append(tasksDue == 1 ? "1 task due" : "\(tasksDue) tasks due") }
         if !reminders.isEmpty { parts.append(reminders.count == 1 ? "1 reminder" : "\(reminders.count) reminders") }
         return parts.joined(separator: " · ")
     }
@@ -432,9 +433,10 @@ public actor CalendarReader {
         try store.save(reminder, commit: true)
     }
 
-    public func setReminderDue(id: String, due: Date?, calendar: Calendar = .current) throws {
+    /// `timed: false` keeps a day-only reminder day-only.
+    public func setReminderDue(id: String, due: Date?, timed: Bool = true, calendar: Calendar = .current) throws {
         guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder else { throw ReminderGone() }
-        reminder.dueDateComponents = due.map { calendar.dateComponents([.year, .month, .day, .hour, .minute], from: $0) }
+        reminder.dueDateComponents = due.map { calendar.dateComponents(timed ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day], from: $0) }
         try store.save(reminder, commit: true)
     }
 

@@ -424,7 +424,7 @@ final class NotchController {
             model.briefing = true
             model.mood = .morning
             show(.open, closingAfter: 60)
-            AccessibilityNotification.Announcement("Good morning. \(app.agenda.briefLine(now: .now))").post()
+            AccessibilityNotification.Announcement("Good morning. \(app.agenda.briefLine(now: .now, tasksDue: app.tasksDueToday))").post()
         }
     }
 
@@ -489,6 +489,7 @@ final class NotchController {
         panel.contentView = NotchHostingView(rootView: NotchView(model: model, app: app, clipboard: clipboard,
                                                                       open: { [weak self] in self?.openChat() },
                                                                       plan: { [weak self] in self?.planTomorrow() },
+                                                                      planDay: { [weak self] in self?.planToday() },
                                                                       close: { [weak self] in self?.close() }))
         return panel
     }
@@ -606,6 +607,13 @@ final class NotchController {
         panel.makeKey() // for Esc; the panel never activates Blink
     }
 
+    /// Morning brief's "Plan my day": the chat, asked to fit today's open tasks around the calendar (proposals only).
+    func planToday() {
+        model.briefing = false
+        if !(model.level == .open && model.chatting) { toggleChat() }
+        Task { await app.ask("Plan the rest of my day around my calendar and open tasks, with realistic times, and propose them.") }
+    }
+
     /// Evening card's "Plan with Blink": switch the open notch to the chat and ask Claude for tomorrow's plan.
     func planTomorrow() {
         model.evening = false
@@ -701,6 +709,7 @@ struct NotchView: View {
     let clipboard: ClipboardStore
     let open: () -> Void
     let plan: () -> Void
+    let planDay: () -> Void
     let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(RestStyle.key) private var restStyle = RestStyle.ears
@@ -729,7 +738,8 @@ struct NotchView: View {
             // Clicked open with nothing typed yet: the day, with the box below ready for a question or "remind me to…".
             GlanceView(app: app, statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
                        briefing: model.briefing, done: close,
-                       card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) })
+                       card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) },
+                       planDay: planDay)
         } else if model.chatting {
             ChatPanel(app: app, input: model.input, pick: { [model] in model.input = $0 }, today: { [model] in model.chatting = false })
         } else if model.clipboarding {
@@ -743,7 +753,8 @@ struct NotchView: View {
         } else {
             GlanceView(app: app, statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
                        briefing: model.briefing, done: close,
-                       card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) })
+                       card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) },
+                       planDay: planDay)
         }
     }
 
@@ -871,6 +882,8 @@ struct GlanceView: View {
     let done: () -> Void
     /// The first Ask-First card, shown above the agenda.
     let card: CardView?
+    /// "Plan my day" on the morning brief.
+    var planDay: (() -> Void)?
 
     var body: some View {
         let events = Array(agenda.today(now: now).prefix(3))
@@ -885,7 +898,14 @@ struct GlanceView: View {
             Text(briefing ? "Good morning" : statusLine)
                 .font(.title3.weight(.semibold))
             if briefing {
-                Text(agenda.briefLine(now: now)).foregroundStyle(.white.opacity(0.7))
+                let dueToday = tasks.filter { $0.due < endOfToday }.count
+                Text(agenda.briefLine(now: now, tasksDue: dueToday)).foregroundStyle(.white.opacity(0.7))
+                if let planDay {
+                    Button(action: planDay) { Label("Plan my day", systemImage: "sun.max") }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .padding(.top, 2)
+                }
             }
             if let app {
                 ForEach(app.importantMail.filter { $0.status != .drafted }.prefix(2)) { message in
@@ -1836,9 +1856,16 @@ struct EveningView: View {
                     .foregroundStyle(.white.opacity(0.6))
                     .lineLimit(2)
             }
+            let unfinished = app.unfinishedToday.tasks.count + app.unfinishedToday.reminders.count
             HStack {
                 Button(action: plan) { Label("Plan with Blink", systemImage: "moon.stars") }
                     .buttonStyle(.borderedProminent)
+                if unfinished > 0 {
+                    Button(unfinished == 1 ? "Move 1 to Tomorrow" : "Move \(unfinished) to Tomorrow") {
+                        Task { await app.moveUnfinishedToTomorrow() }
+                    }
+                    .help("Today's unfinished tasks and reminders move to tomorrow, same time (or 9:00). You can undo.")
+                }
                 Button("All set") { app.finishEvening() }
             }
             .controlSize(.small)

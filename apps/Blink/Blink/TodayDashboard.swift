@@ -10,6 +10,8 @@ struct TodayView: View {
     let showWaiting: () -> Void
     let showNotes: () -> Void
     @AppStorage("blinkPanel") private var showPanel = true
+    /// The week whose "Your week" card was closed.
+    @AppStorage("week.closed") private var closedWeek = ""
     @State private var addingTask = false
     @State private var newTask = ""
 
@@ -43,6 +45,9 @@ struct TodayView: View {
     /// What's waiting on the owner: the evening plan and the first approval.
     @ViewBuilder
     private var actionCards: some View {
+        if WeekReview.isShowing(now: .now, closedWeek: closedWeek) {
+            WeekCard { closedWeek = WeekReview.reviewedWeek(now: .now) }
+        }
         if model.serverBehind {
             DashCard("Update your server") {
                 Text("This version of Blink needs the matching update on your server. Sign in with Supabase once; your notes, mail and money stay as they are.")
@@ -190,6 +195,49 @@ private struct PillButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.white)
+    }
+}
+
+/// Sunday's look back at the last seven days: tasks done, meetings, habit days kept, and spending against the week
+/// before. A reflection, not a score; Close hides it until next Sunday.
+private struct WeekCard: View {
+    @Environment(AppModel.self) private var model
+    let close: () -> Void
+    @State private var meetings: Int?
+
+    var body: some View {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: .now)
+        let weekStart = cal.date(byAdding: .day, value: -6, to: today) ?? today
+        let days = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) }.map { HabitDay.key($0) }
+        let daysBefore = (7..<14).compactMap { cal.date(byAdding: .day, value: -$0, to: today) }.map { HabitDay.key($0) }
+        // shortcut: updatedAt stands in for the day it was done (a done task edited this week counts again), until items store doneAt.
+        let done = model.doneTasks.filter { $0.updatedAt >= weekStart }.count
+        let habitDays = model.habitAnswers.values.reduce(0) { sum, answers in sum + days.filter { answers[$0] == .done }.count }
+        let spent = model.spends.filter { days.contains($0.spentOn) }.reduce(Decimal.zero) { $0 + $1.amount }
+        let spentBefore = model.spends.filter { daysBefore.contains($0.spentOn) }.reduce(Decimal.zero) { $0 + $1.amount }
+        DashCard("Your week", trailing: "Close", action: close) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                stat("\(done)", done == 1 ? "task done" : "tasks done", symbol: "checkmark.circle")
+                stat(meetings.map(String.init) ?? "–", meetings == 1 ? "meeting" : "meetings", symbol: "calendar")
+                    .accessibilityLabel(meetings.map { $0 == 1 ? "1 meeting" : "\($0) meetings" } ?? "Meetings loading")
+                stat("\(habitDays)", habitDays == 1 ? "habit day kept" : "habit days kept", symbol: "flame")
+                stat(spent.formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0))),
+                     spentBefore > 0 ? (spent <= spentBefore ? "spent, less than the week before" : "spent, more than the week before") : "spent",
+                     symbol: "creditcard")
+            }
+        }
+        .task { meetings = await model.events(in: DateInterval(start: weekStart, end: .now)).count }
+    }
+
+    private func stat(_ value: String, _ label: String, symbol: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Image(systemName: symbol).foregroundStyle(.secondary).accessibilityHidden(true)
+            Text(value).font(.system(.title2, design: .rounded, weight: .bold)).monospacedDigit()
+            Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 

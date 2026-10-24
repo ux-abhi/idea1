@@ -63,6 +63,19 @@ public struct BlinkItem: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+/// Text another app sends through the Services menu, split into a note: the first line is the title (up to 120
+/// characters); the body keeps all of the text when the title had to be cut, so nothing is lost. `trimmed` says the
+/// body hit its 20,000-character cap.
+public enum ServiceNote {
+    public static func split(_ text: String) -> (title: String, body: String, trimmed: Bool) {
+        let lines = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        let first = String(lines.first ?? "").trimmingCharacters(in: .whitespaces)
+        let title = String(first.prefix(120))
+        let body = title.count < first.count ? text : (lines.count > 1 ? String(lines[1]) : "")
+        return (title, String(body.prefix(20_000)), body.count > 20_000)
+    }
+}
+
 /// Reads a due date out of what the user types, e.g. "Send invoice tomorrow at 10" → ("Send invoice", tomorrow 10:00).
 public enum TaskInput {
     /// When, from words alone ("tomorrow 4pm", "in 10 minutes", "in 2 hours"). Nil when they hold no time still ahead.

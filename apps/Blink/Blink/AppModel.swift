@@ -713,10 +713,21 @@ final class AppModel {
         if unsaved.contains(id) { await save(id) }
     }
 
+    /// A small, quiet "pop" when something's done (Settings › General can turn it off).
+    static let finishSoundKey = "sound.finish"
+
+    private func playFinishSound() {
+        #if os(macOS)
+        guard UserDefaults.standard.object(forKey: Self.finishSoundKey) as? Bool ?? true else { return }
+        NSSound(named: "Pop")?.play()
+        #endif
+    }
+
     func toggle(_ task: BlinkItem, offeringUndo: Bool = true) async {
         var changed = task
         changed.status = task.status == .done ? .open : .done
         edit(changed)
+        if changed.status == .done { playFinishSound() }
         if offeringUndo && changed.status == .done {
             offerUndo("Done: \(task.title)") { [weak self] in await self?.reopen(task.id) }
         }
@@ -825,6 +836,7 @@ final class AppModel {
         let day = HabitDay.key(habitToday)
         let before = habitAnswers[habit.id]?[day]
         habitAnswers[habit.id, default: [:]][day] = answer
+        if answer == .done { playFinishSound() }
         do {
             if let answer { try await server.answer(habit, day: day, with: answer) }
             else { try await server.clearAnswer(habit, day: day) }
@@ -908,6 +920,45 @@ final class AppModel {
 
     var eveningDue: Bool { EveningCheck.isDue(now: .now, evening: evening, wake: wake, lastDone: lastEvening) }
     var tomorrow: Date { Calendar.current.date(byAdding: .day, value: 1, to: habitToday) ?? habitToday }
+
+    /// Open tasks due by the end of today, for the morning brief.
+    var tasksDueToday: Int { unfinishedToday.tasks.count }
+
+    /// Tasks and reminders due by the end of today and not done: what "Move to tomorrow" moves.
+    var unfinishedToday: (tasks: [BlinkItem], reminders: [AgendaReminder]) {
+        // The owner's day, not the calendar's: at 00:30 the evening is still "today".
+        let endOfToday = tomorrow
+        return (openTasks.filter { ($0.dueAt ?? .distantFuture) < endOfToday },
+                allReminders.filter { ($0.due ?? .distantFuture) < endOfToday })
+    }
+
+    /// The evening's one click: everything unfinished today moves to tomorrow (same time, or 9:00), with Undo.
+    func moveUnfinishedToTomorrow() async {
+        let (tasks, reminders) = unfinishedToday
+        guard !tasks.isEmpty || !reminders.isEmpty else { return }
+        for task in tasks {
+            var moved = task
+            let time = task.dueAt.map { Calendar.current.dateComponents([.hour, .minute], from: $0) }
+            // shortcut: a task due at exactly 00:00 counts as day-only, until BlinkItem stores a timed flag.
+            moved.dueAt = EveningCheck.movedToTomorrow(task.dueAt, timed: (time?.hour ?? 0, time?.minute ?? 0) != (0, 0), now: habitToday)
+            edit(moved)
+            await save(moved.id)
+        }
+        for reminder in reminders {
+            await setDue(reminder, to: EveningCheck.movedToTomorrow(reminder.due, timed: reminder.timed, now: habitToday), reload: false)
+        }
+        if !reminders.isEmpty { await reloadAgenda() } // once, not per reminder
+        let count = tasks.count + reminders.count
+        offerUndo(count == 1 ? "Moved to tomorrow" : "\(count) moved to tomorrow") { [weak self] in
+            guard let self else { return }
+            for task in tasks {
+                edit(task)
+                await save(task.id)
+            }
+            for reminder in reminders { await setDue(reminder, to: reminder.due, reload: false) }
+            if !reminders.isEmpty { await reloadAgenda() }
+        }
+    }
 
     func finishEvening() {
         lastEvening = .now
@@ -1065,7 +1116,8 @@ final class AppModel {
     /// While Write All runs, one notice at the end instead of one per draft.
     private var batchingDrafts = false
 
-    private func announce(_ text: String, failed: Bool = false) { notice = Notice(text: text, failed: failed) }
+    /// A short notice in the notch ("Added to Blink: …").
+    func announce(_ text: String, failed: Bool = false) { notice = Notice(text: text, failed: failed) }
     private func announceProblem() { if let contentProblem { announce(contentProblem, failed: true) } }
 
     private(set) var ideas: [ContentIdea] = []
@@ -1813,6 +1865,30 @@ final class AppModel {
         await loadMail()
     }
 
+    /// What Blink has learned about senders, for Settings › Privacy.
+    private(set) var senderRules: [BlinkServer.SenderRule] = []
+    private(set) var rulesProblem: String?
+
+    func loadSenderRules() async {
+        guard let server else { return }
+        do {
+            senderRules = try await server.senderRules()
+            rulesProblem = nil
+        } catch {
+            rulesProblem = "Couldn't load what Blink has learned. Check your connection."
+        }
+    }
+
+    func forget(_ rule: BlinkServer.SenderRule) async {
+        guard let server else { return }
+        let before = senderRules
+        senderRules.removeAll { $0.id == rule.id }
+        do { try await server.forget(rule: rule) } catch {
+            senderRules = before
+            rulesProblem = "Couldn't forget that. Check your connection."
+        }
+    }
+
     /// The owner corrects Blink: this mail (and everything later from this sender) is important or not.
     func teach(_ verdict: SenderVerdict, for message: EmailMessage) async {
         guard let server, let i = emails.firstIndex(where: { $0.id == message.id }) else { return }
@@ -2225,6 +2301,7 @@ final class AppModel {
     func complete(_ reminder: AgendaReminder, offeringUndo: Bool = true) async {
         agenda.reminders.removeAll { $0.id == reminder.id }
         allReminders.removeAll { $0.id == reminder.id }
+        playFinishSound()
         if offeringUndo { offerUndo("Done: \(reminder.title)") { [weak self] in await self?.reopen(reminder) } }
         await writeReminder { try await calendarReader.updateReminder(id: reminder.id, completed: true) }
     }
@@ -2233,8 +2310,8 @@ final class AppModel {
         await writeReminder { try await calendarReader.updateReminder(id: reminder.id, title: title) }
     }
 
-    func setDue(_ reminder: AgendaReminder, to due: Date?) async {
-        await writeReminder { try await calendarReader.setReminderDue(id: reminder.id, due: due) }
+    func setDue(_ reminder: AgendaReminder, to due: Date?, reload: Bool = true) async {
+        await writeReminder(reload: reload) { try await calendarReader.setReminderDue(id: reminder.id, due: due, timed: reminder.timed) }
     }
 
     private func writeReminder(reload: Bool = true, _ write: () async throws -> Void) async {
