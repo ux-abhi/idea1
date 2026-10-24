@@ -114,7 +114,8 @@ final class NotchController {
                 if self?.model.level == .open, self?.app.creatingMeet == false { self?.close() }
             },
             NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, self.model.level == .open else { return event }
+                // Only keys typed in the notch itself: ⌘⏎ in another Blink window must never approve a real card.
+                guard let self, self.model.level == .open, event.window === self.panel else { return event }
                 if event.keyCode == 53 { // Esc
                     self.close()
                     return nil

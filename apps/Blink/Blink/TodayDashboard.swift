@@ -9,7 +9,6 @@ struct TodayView: View {
     @Environment(AppModel.self) private var model
     let showWaiting: () -> Void
     let showNotes: () -> Void
-    @AppStorage("tourDone") private var tourDone = false
     @AppStorage("blinkPanel") private var showPanel = true
     @State private var addingTask = false
     @State private var newTask = ""
@@ -24,10 +23,9 @@ struct TodayView: View {
                     DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks, reminders: model.agenda.reminders, now: now),
                                     now: now, planDay: planDay)
                     TodayWidgetGrid(now: now)
-                    // One getting-started card at a time: setup while something's left, then the tips.
+                    // Setup while something's left (the first-run tour teaches the rest).
                     let steps = model.setupSteps
                     if steps.contains(where: { !$0.done }) { SetupCard(steps: steps) }
-                    else if !tourDone { TipsCard { tourDone = true } }
                 }
                 .padding(20)
                 .frame(maxWidth: 820)
@@ -192,30 +190,6 @@ private struct PillButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.white)
-    }
-}
-
-/// First days: the few things worth knowing, until "Got it".
-private struct TipsCard: View {
-    let done: () -> Void
-
-    var body: some View {
-        DashCard("Get to know Blink", trailing: "Got it", action: done) {
-            VStack(alignment: .leading, spacing: 8) {
-                tip("Click", "Click the notch to see your day and ask Blink anything.")
-                tip("⌃⌥Space", "Just type: “remind me to call Sam at 4pm”.")
-                tip("⌘K", "Search notes, tasks, posts and spaces.")
-                tip("⌘/", "Every shortcut, in one list.")
-            }
-        }
-    }
-
-    private func tip(_ key: String, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(key).font(.callout.monospaced().weight(.semibold)).frame(width: 80, alignment: .leading)
-            Text(text).font(.callout).foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 

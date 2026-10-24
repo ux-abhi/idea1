@@ -353,10 +353,13 @@ struct DaySettings: View {
                 Text("Shows Content: post ideas and drafts in your voice, and how your posts do.")
             }
             Section {
+                // Native Settings rows: what it does on the left, the keys on the right.
                 DisclosureGroup("Keyboard shortcuts") {
                     ForEach(Shortcuts.all) { group in
-                        Text(group.name).font(.headline).padding(.top, 6)
-                        ForEach(group.items) { ShortcutRow(item: $0) }
+                        Text(group.name).font(.headline).padding(.top, 6).frame(maxWidth: .infinity, alignment: .leading)
+                        ForEach(group.items) { item in
+                            LabeledContent(item.what) { KeysLabel(keys: item.keys) }
+                        }
                     }
                 }
             }

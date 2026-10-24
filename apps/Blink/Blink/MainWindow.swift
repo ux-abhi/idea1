@@ -69,6 +69,9 @@ struct MainWindow: View {
     @AppStorage("sidebar.open.review") private var reviewOpen = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(Appearance.key) private var appearance = Appearance.system
+    /// The first-run tour shows over the window until it's finished or skipped (Help › Show Tour brings it back).
+    @AppStorage("tour.v1.done") private var tourDone = false
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         // Blink's own sidebar button: the automatic one is re-inserted as a duplicate when this view is rebuilt in the
@@ -153,6 +156,7 @@ struct MainWindow: View {
                 }
         }
         .overlay(alignment: .bottom) { UndoToast() }
+        .task { if !tourDone { openWindow(id: "tour") } }
         .background { pageShortcuts }
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : Tokens.Motion.content.animation, value: model.undoChip?.id)
         // One title per page: the big heading in the page; the toolbar carries the app name and sync state.

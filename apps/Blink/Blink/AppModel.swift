@@ -32,6 +32,9 @@ final class AppModel {
     var settingsOpener: (() -> Void)?
     /// Opens a new Blink window when the last one was closed (SwiftUI's openWindow, captured by RootView).
     var windowOpener: (() -> Void)?
+    /// The notch's own actions, for the tour's Try It buttons (set when the notch starts).
+    enum NotchAction { case open, chat, clipboard }
+    var notchAction: ((NotchAction) -> Void)?
 
     /// What's still to set up, in order (Today shows the ring; pages show their own step where it's needed).
     var setupSteps: [SetupStep] {
@@ -233,7 +236,7 @@ final class AppModel {
         // Testing the first run: open Blink with `--args -BlinkRestartSetup`.
         if ProcessInfo.processInfo.arguments.contains("-BlinkRestartSetup") {
             await BlinkServer.forget(keychain: keychain)
-            for key in ["onboarding.welcomed", "onboarding.calendarSeen", "tourDone"] { UserDefaults.standard.removeObject(forKey: key) }
+            for key in ["onboarding.welcomed", "onboarding.calendarSeen", "tour.v1.done"] { UserDefaults.standard.removeObject(forKey: key) }
             UserDefaults.standard.set(false, forKey: "onboarding.done")
         }
         #endif
@@ -261,7 +264,7 @@ final class AppModel {
     func restartSetup() async {
         await signOut()
         await useDifferentServer()
-        for key in ["onboarding.done", "onboarding.welcomed", "onboarding.calendarSeen", "tourDone"] {
+        for key in ["onboarding.done", "onboarding.welcomed", "onboarding.calendarSeen", "tour.v1.done"] {
             UserDefaults.standard.removeObject(forKey: key)
         }
         UserDefaults.standard.set(false, forKey: "onboarding.done") // so the "already synced" migration doesn't skip it

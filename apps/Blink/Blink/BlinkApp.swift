@@ -31,6 +31,10 @@ struct BlinkApp: App {
         #if os(macOS)
         Window("Keyboard Shortcuts", id: "shortcuts") { ShortcutsView() }
             .windowResizability(.contentSize)
+        // The first-run tour, in its own borderless window, like a product film.
+        Window("Meet Blink", id: "tour") { MeetBlinkTour().environment(model) }
+            .windowStyle(.hiddenTitleBar)
+            .defaultPosition(.center)
         #endif
 
         #if os(macOS)
@@ -58,6 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func startNotch(_ app: AppModel) {
         if notch == nil { notch = NotchController(app: app, clipboard: clipboard) }
+        app.notchAction = { [weak self] action in
+            switch action {
+            case .open: self?.showNotch()
+            case .chat: self?.askBlink()
+            case .clipboard: self?.showClipboard()
+            }
+        }
     }
 
     func showNotch() { notch?.open() }
