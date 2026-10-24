@@ -6,7 +6,7 @@ process.env.CRON_SECRET = "c".repeat(64);
 process.env.MAILER_SECRET = "m".repeat(64);
 process.env.RESEND_KEY = "re_test";
 process.env.RESEND_FROM = "Blink <hello@blinkk.app>";
-const { GET } = await import("../api/followup.mjs");
+const { GET } = await import("../lib/followup.mjs");
 
 test("only Vercel's cron may run the follow-up", async () => {
   globalThis.fetch = async () => assert.fail("must not reach the network");

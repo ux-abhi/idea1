@@ -1,5 +1,5 @@
 // © Pexilim
-// survey.html calls this once the person presses Send (the answers themselves are already saved). The waitlist hands
+// The survey page calls this once the person presses Send (the answers themselves are already saved). The waitlist hands
 // back their answers the first time only, holding MAILER_SECRET; then a beta "yes" gets a thank-you, and the owner
 // (NOTIFY_EMAIL, else hello@blinkk.app) gets every answer. Pressing Send again sends nothing new.
 import { betaEmail, ownerEmail, sendMail } from "./_email.mjs";

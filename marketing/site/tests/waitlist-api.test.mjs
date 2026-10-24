@@ -5,7 +5,7 @@ import { test } from "node:test";
 process.env.MAILER_SECRET = "m".repeat(64);
 process.env.RESEND_KEY = "re_test";
 process.env.RESEND_FROM = "Blink <hello@blinkk.app>";
-const { POST } = await import("../api/waitlist.mjs");
+const { POST } = await import("../lib/waitlist.mjs");
 
 function fakeNetwork(upstream) {
   const calls = [];
