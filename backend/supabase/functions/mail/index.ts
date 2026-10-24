@@ -5,7 +5,7 @@
 // Drafts folder, so it shows in Apple Mail. Mail text is untrusted: it's shortened, fenced as data and never obeyed.
 // Mail is sent only for a red "mail.send" action the owner signed with Touch ID (§36.5), exactly as signed, at its time.
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
-import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.118.0";
 import { Imap, quote } from "./imap.ts";
 import { buildDraft, uidWindow, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle, splitResort } from "./message.ts";
 import { sendMail } from "./smtp.ts";

@@ -11,7 +11,7 @@
 //                          action the owner approved with Touch ID, exactly as signed.
 // shortcut: calls Google Calendar's REST API directly instead of the §34 connector gateway; move it behind the gateway
 // when a second Google feature (Gmail, Drive, calendar reads) needs the same connection.
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { consentURL, emailFromIdToken, eventBody, eventId, parseExchange, parseMeet } from "./input.ts";
 import { secret } from "../_shared/secrets.ts";
 import { isServerOwner } from "../_shared/owner.ts";

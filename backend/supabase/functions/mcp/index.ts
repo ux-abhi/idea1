@@ -4,7 +4,7 @@
 // subscription. The code is made in Blink › Settings (create_mcp_token); only its hash is stored, and the connector acts
 // only on that owner's rows. Nothing here sends, deletes or approves anything (§36.4 green tier).
 // shortcut: a secret link, not OAuth; move to OAuth 2.1 sign-in when Claude/ChatGPT connectors need it or many owners share links.
-import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.118.0";
 import { type Call, handle, localToUTC } from "./input.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });

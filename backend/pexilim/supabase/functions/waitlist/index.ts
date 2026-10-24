@@ -4,7 +4,7 @@
 // person confirms on the site's confirm page, and can leave from any email. Only that function, holding MAILER_SECRET,
 // ever sees the links, so nobody can confirm someone else's address. Answers the same whether an email is new or already
 // listed (no way to probe who signed up); a filled honeypot is quietly dropped. Public, so JWT checks are off.
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { corsFor, parseAction, parseAnswer, parseSignup, sameSecret } from "./input.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });

@@ -1,7 +1,7 @@
 // © Pexilim
 // Keys and mail passwords: the ones added in the app (Settings › Connections, kept in Vault) win; Edge Function secrets
 // are the fallback, so servers set up the old way keep working. The server has one owner, so keys are server-wide.
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 
 let cache: { at: number; keys: Promise<Record<string, string>> } | null = null;
 

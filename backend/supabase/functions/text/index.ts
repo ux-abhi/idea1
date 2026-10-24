@@ -1,7 +1,7 @@
 // © Pexilim
 // Quick text edits on a note (fix, shorter, clearer, summarise) through Groq: fast and cheap for plain text work.
 // Claude stays in charge of chat and actions; this only returns text, which the owner previews before it replaces anything.
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseTextRequest, TASKS, unescapeText, wrapText } from "./input.ts";
 import { compatible, cost, MODELS } from "../_shared/models.ts";
 

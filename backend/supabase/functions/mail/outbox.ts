@@ -1,7 +1,7 @@
 // © Pexilim
 // Sending approved mail (ARCHITECTURE §36.5): only red "mail.send" actions, approved by a verified Touch ID signature over
 // this exact payload, are sent, each exactly once, at its time. Kept apart from the server so it can be tested.
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2.49.4";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.118.0";
 import { buildDraft, parseSend } from "./message.ts";
 
 /** What sending needs from the mail worker: the connected mailbox, SMTP, and the after-send tidy-up. */

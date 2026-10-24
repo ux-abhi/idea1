@@ -1,5 +1,5 @@
 // © Pexilim
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2.49.4";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.118.0";
 import { type Mailer, sendDue } from "./outbox.ts";
 
 type Row = { id: string; status: string; payload: Record<string, unknown>; result?: Record<string, unknown> };

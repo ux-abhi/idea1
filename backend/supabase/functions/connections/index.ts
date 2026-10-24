@@ -1,7 +1,7 @@
 // © Pexilim
 // Settings › Connections: is each key on this server present and accepted? Each check uses a free, read-only call
 // (a model list or an account lookup); keys never leave the server and nothing is spent.
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { forgetSecrets, secret } from "../_shared/secrets.ts";
 import { customEndpoint } from "../_shared/models.ts";
 

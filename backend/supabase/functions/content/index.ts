@@ -3,7 +3,7 @@
 // It only writes drafts; the owner edits, approves and posts them (copy & open). Nothing is published from here.
 // The model is the owner's pick in Settings (Claude, a free Groq model or an OpenRouter pick).
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
 import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";

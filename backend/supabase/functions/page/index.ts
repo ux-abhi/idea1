@@ -3,7 +3,7 @@
 // and has the owner's content model sum up their voice and what works (§36.4 feedback loop). Interactive only: the owner
 // presses the button; nothing here runs on a schedule, and only the owner's own page is read.
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseAnalysis, parseHandle, score, toRows } from "./input.ts";
 import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";

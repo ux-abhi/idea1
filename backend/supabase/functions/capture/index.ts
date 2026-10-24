@@ -2,7 +2,7 @@
 // Apple Pay capture (Phase 7): the owner's iPhone Shortcuts automation ("When I tap a card in Wallet") posts the amount,
 // shop and card here with a private capture token. The spend is saved at once; the owner sees it in Money and can change
 // or delete it. No Blink iPhone app needed. Called with the capture token, not a login, so JWT checks are off for it.
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { compatible, cost, MODELS } from "../_shared/models.ts";
 import { accountFor, CATEGORIES, type Category, guessCategory } from "../_shared/spend.ts";
 import { localDay, parseCapture, sha256, TOKEN } from "./input.ts";

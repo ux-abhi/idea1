@@ -1,7 +1,7 @@
 // © Pexilim
 // Money, Phase 7 first slice (ARCHITECTURE §9.7): turns what the owner typed ("lunch 8.50, rewe 23.40, bus 3") into
 // spends with a category, on the free Groq model. It only proposes: the app shows the entries and the owner saves them.
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { compatible, cost, MODELS } from "../_shared/models.ts";
 import { CATEGORIES, parseEntries, parseSortRequest } from "./input.ts";
 

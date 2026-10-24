@@ -1,7 +1,7 @@
 // © Pexilim
 // Images for posts through Cloudflare Workers AI (FLUX.1 schnell, the owner's free daily allowance): a cover for a post or
 // a text-free background for a carousel. The Mac draws any text on top. Returns the JPEG; nothing is stored here.
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { DAILY_IMAGES, imagePrompt, parseImageRequest } from "./input.ts";
 import { secret } from "../_shared/secrets.ts";
 

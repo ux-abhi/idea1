@@ -5,7 +5,7 @@
 // Streams the answer when the app asks (stream: true): server-sent events {t: delta|reset|done|error}; else one JSON reply.
 // shortcut: no rate limit; add a per-owner limit when chat moves past one user (§24).
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule } from "./input.ts";
 import { capProblem, claudeUsageCost, compatibleStream, cost, lastDay, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";

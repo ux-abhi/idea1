@@ -1,7 +1,7 @@
 // © Pexilim
 // Approves a red action only with a fresh signature from the owner's enrolled Secure Enclave key (ARCHITECTURE §36.5).
 // The device signs approvalMessage() (verify.ts) after Touch ID / Face ID.
-import { createClient } from "npm:@supabase/supabase-js@2.49.4";
+import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { MAX_TTL_SECONDS, verifyApproval } from "./verify.ts";
 
 function json(status: number, body: Record<string, unknown>): Response {
