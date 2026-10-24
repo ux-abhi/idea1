@@ -1164,6 +1164,12 @@ The full spec is `design/tokens.json` → `motion`, with a summary in DESIGN.md 
   - Each platform has a refresh and rotation schedule. "Disconnect" revokes upstream.
   - `.gitignore` adds `supabase/.env`, `*.pem`, `*.key` and `GoogleService-Info.plist`.
   - A test asserts that no secret string appears in skill inputs or logs.
+- **Supabase security advisor, reviewed 2026-10-24.** Accepted on purpose, each with a test in `tests/rls.sql`:
+  - `set_server_key`, `remove_server_key`: SECURITY DEFINER callable by `authenticated`, but each refuses anyone who isn't the server's owner (`is_server_owner()`).
+  - `create_mcp_token`: makes a connector link only for the caller, under their own `owner_id`.
+  - `is_server_owner`: answers yes or no about the caller only.
+  - `google_oauth_state`: RLS on with no policy, so only the server's functions touch it.
+  - Leaked-password protection (HaveIBeenPwned) is a Pro-plan feature; Blink generates the setup login's password itself (random, never reused), so it adds little on the free plan.
 
 ### 36.6 Codebase, licences, CI and tests
 

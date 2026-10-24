@@ -89,7 +89,12 @@ final class AppModel {
     func showWindow() {
         #if os(macOS)
         NSApp.activate()
-        if let window = NSApp.windows.first(where: { $0.canBecomeMain }) { window.makeKeyAndOrderFront(nil) } else { windowOpener?() }
+        // The main window only (WindowGroup id "main"), never the Keyboard Shortcuts window.
+        if let window = NSApp.windows.first(where: { $0.canBecomeMain && $0.identifier?.rawValue.hasPrefix("main") == true }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            windowOpener?()
+        }
         #endif
     }
 

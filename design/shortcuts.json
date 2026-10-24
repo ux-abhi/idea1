@@ -1,0 +1,206 @@
+{
+  "_about": "Every keyboard shortcut in Blink, in one place. The app (BlinkKit Shortcuts.swift, checked against this file by a test) shows it in Settings and Help › Keyboard Shortcuts; blinkk.app/shortcuts shows a copy (marketing/site/lib/shortcuts.json, checked against this file by the site's tests).",
+  "groups": [
+    {
+      "name": "Anywhere on your Mac",
+      "items": [
+        {
+          "keys": "⌃⌥Space",
+          "what": "Ask Blink in the notch"
+        },
+        {
+          "keys": "⌃⌥V",
+          "what": "Clipboard history"
+        },
+        {
+          "keys": "⌃⌥K",
+          "what": "Search everything, in the notch"
+        }
+      ]
+    },
+    {
+      "name": "In the notch",
+      "items": [
+        {
+          "keys": "Esc",
+          "what": "Close the notch"
+        },
+        {
+          "keys": "⌘⏎",
+          "what": "Approve the top card (Create & Invite on a meeting card)"
+        },
+        {
+          "keys": "/",
+          "what": "Type / to see the notch commands (/task, /remind, /note, /timer, /spent, /meet…)"
+        },
+        {
+          "keys": "Tab",
+          "what": "Finish a /command"
+        },
+        {
+          "keys": "↑ ↓",
+          "what": "Move through search and clipboard results"
+        }
+      ]
+    },
+    {
+      "name": "In the window",
+      "items": [
+        {
+          "keys": "⌘1 – ⌘9",
+          "what": "Go to the pages in sidebar order: Today, Inbox, Calendar, Notes, Tasks, Content (when on), Money, Needs You, Activity"
+        },
+        {
+          "keys": "⌘L",
+          "what": "Type in the bar at the bottom (not on Space pages)"
+        },
+        {
+          "keys": "⌘K",
+          "what": "Search notes, tasks, posts and spaces"
+        },
+        {
+          "keys": "⌘R",
+          "what": "Sync now"
+        },
+        {
+          "keys": "⌥⌘B",
+          "what": "Show or hide the Blink panel"
+        },
+        {
+          "keys": "⌃⌘S",
+          "what": "Show or hide the sidebar"
+        },
+        {
+          "keys": "⌘Z",
+          "what": "Undo the last thing marked done (while Undo shows)"
+        },
+        {
+          "keys": "⌘/",
+          "what": "This list of shortcuts"
+        },
+        {
+          "keys": "⌘,",
+          "what": "Settings"
+        }
+      ]
+    },
+    {
+      "name": "Mail",
+      "items": [
+        {
+          "keys": "R",
+          "what": "Reply"
+        },
+        {
+          "keys": "E or Delete",
+          "what": "Mark done"
+        },
+        {
+          "keys": "⌘⏎",
+          "what": "Send the reply you're reviewing"
+        }
+      ]
+    },
+    {
+      "name": "Notes",
+      "items": [
+        {
+          "keys": "⌘N",
+          "what": "New note"
+        },
+        {
+          "keys": "⌘[ or Esc",
+          "what": "Back to all notes"
+        }
+      ]
+    },
+    {
+      "name": "Calendar",
+      "items": [
+        {
+          "keys": "⌘T",
+          "what": "Today"
+        },
+        {
+          "keys": "⌘← ⌘→",
+          "what": "Previous or next week (or day)"
+        }
+      ]
+    },
+    {
+      "name": "Content",
+      "items": [
+        {
+          "keys": "⌘N",
+          "what": "New post"
+        },
+        {
+          "keys": "⌘⏎",
+          "what": "Write the drafts"
+        }
+      ]
+    },
+    {
+      "name": "Space canvas",
+      "items": [
+        {
+          "keys": "Double-click",
+          "what": "Add a card where you click"
+        },
+        {
+          "keys": "Double-click a card",
+          "what": "Edit it"
+        },
+        {
+          "keys": "⏎",
+          "what": "Edit the selected card"
+        },
+        {
+          "keys": "Delete",
+          "what": "Delete the selected card"
+        },
+        {
+          "keys": "Esc",
+          "what": "Deselect"
+        },
+        {
+          "keys": "⌘= ⌘- ⌘0",
+          "what": "Zoom in, zoom out, actual size"
+        },
+        {
+          "keys": "⇧⌘1",
+          "what": "Fit all cards"
+        }
+      ]
+    },
+    {
+      "name": "Type instead of clicking",
+      "items": [
+        {
+          "keys": "remind me to…",
+          "what": "An Apple Reminder, with a time if you give one"
+        },
+        {
+          "keys": "task …",
+          "what": "A task"
+        },
+        {
+          "keys": "note …",
+          "what": "A note"
+        },
+        {
+          "keys": "meeting with …",
+          "what": "A Google Meet invite"
+        },
+        {
+          "keys": "spent …",
+          "what": "Spending, sorted for you"
+        },
+        {
+          "keys": "timer 10 · focus",
+          "what": "A timer, or a 25-minute focus round"
+        }
+      ]
+    }
+  ]
+}

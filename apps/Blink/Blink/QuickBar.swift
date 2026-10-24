@@ -60,6 +60,10 @@ struct QuickBar: View {
         .padding(.bottom, 16)
         .frame(maxWidth: .infinity)
         .onChange(of: page) { text = "" }
+        .background {
+            // ⌘L, like the address bar in a browser.
+            Button("Type in the Bar") { focused = true }.keyboardShortcut("l", modifiers: .command).opacity(0).accessibilityHidden(true)
+        }
     }
 
     private var symbol: String {

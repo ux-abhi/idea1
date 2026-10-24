@@ -25,6 +25,12 @@ struct BlinkApp: App {
         }
         #if os(macOS)
         .defaultSize(width: 920, height: 640)
+        .commands { HelpCommands() }
+        #endif
+
+        #if os(macOS)
+        Window("Keyboard Shortcuts", id: "shortcuts") { ShortcutsView() }
+            .windowResizability(.contentSize)
         #endif
 
         #if os(macOS)

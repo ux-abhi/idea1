@@ -198,6 +198,7 @@ private struct TipsCard: View {
                 tip("Click", "Click the notch to see your day and ask Blink anything.")
                 tip("⌃⌥Space", "Just type: “remind me to call Sam at 4pm”.")
                 tip("⌘K", "Search notes, tasks, posts and spaces.")
+                tip("⌘/", "Every shortcut, in one list.")
             }
         }
     }

@@ -150,6 +150,21 @@ import Testing
     }
 }
 
+@Suite struct ShortcutTests {
+    /// The app's list and design/shortcuts.json (which the website reads) must match exactly.
+    @Test func appListMatchesTheSharedFile() throws {
+        let url = URL(filePath: #filePath).deletingLastPathComponent()
+            .appending(path: "../../../../../design/shortcuts.json").standardized
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        let groups = try #require(json?["groups"] as? [[String: Any]])
+        let fromFile = groups.map { group in
+            Shortcuts.Group(name: group["name"] as? String ?? "",
+                            items: (group["items"] as? [[String: String]] ?? []).map { Shortcuts.Item(keys: $0["keys"] ?? "", what: $0["what"] ?? "") })
+        }
+        #expect(fromFile == Shortcuts.all)
+    }
+}
+
 extension Tokens {
     /// design/tokens.json, read from the repo.
     nonisolated(unsafe) static let json: [String: Any] = {

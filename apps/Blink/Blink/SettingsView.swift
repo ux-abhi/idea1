@@ -346,15 +346,10 @@ struct DaySettings: View {
             }
             Section {
                 DisclosureGroup("Keyboard shortcuts") {
-                LabeledContent("Ask Blink", value: "⌃⌥Space")
-                LabeledContent("Quick actions in the notch", value: "/task  /remind  /note  /timer")
-                LabeledContent("Clipboard history", value: "⌃⌥V")
-                LabeledContent("Search everything", value: "⌃⌥K in the notch · ⌘K in the window")
-                LabeledContent("Sync now", value: "⌘R")
-                LabeledContent("Blink panel", value: "⌥⌘B")
-                LabeledContent("Approve a card", value: "⌘⏎")
-                LabeledContent("Undo the last done", value: "⌘Z")
-                LabeledContent("Close the notch", value: "Esc")
+                    ForEach(Shortcuts.all) { group in
+                        Text(group.name).font(.headline).padding(.top, 6)
+                        ForEach(group.items) { ShortcutRow(item: $0) }
+                    }
                 }
             }
             if let problem = model.saveProblem {
