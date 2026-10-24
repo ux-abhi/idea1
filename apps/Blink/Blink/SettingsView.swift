@@ -114,6 +114,14 @@ struct ServerSettings: View {
             Section {
                 Button("Sign Out") { Task { await model.signOut() } }
             }
+            Section {
+                LabeledContent("Blink on your server") {
+                    Text(model.serverBehind ? "An update is ready" : "Up to date").foregroundStyle(model.serverBehind ? .orange : .secondary)
+                }
+                if model.serverBehind { UpdateServerButton() }
+            } footer: {
+                Text("After Blink updates, your server may need its matching update. Blink asks you to sign in with Supabase each time and never keeps that sign-in.")
+            }
             Section("Advanced") {
                 Button("Use a Different Server…") { confirmSwitch = true }
                 Button("Restart Setup…") { confirmRestart = true }

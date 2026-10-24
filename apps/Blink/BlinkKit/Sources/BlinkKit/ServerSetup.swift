@@ -161,13 +161,13 @@ public enum ServerSetup {
 
         /// Versions already applied, from the server itself (the table the Supabase CLI uses too), so a retry after a
         /// lost reply never runs a migration twice.
-        public func appliedMigrations(_ ref: String) async throws -> Set<String> {
+        /// The server's own record of the database changes it has, version and name.
+        public func ledger(_ ref: String) async throws -> [Migration.Applied] {
             struct Body: Encodable { let query: String }
-            struct Row: Decodable { let version: String }
             try await runSQL(ref, Migration.ledger)
             let data = try await request("projects/\(ref)/database/query", method: "POST",
-                                         json: Body(query: "select version from supabase_migrations.schema_migrations"))
-            return Set(try JSONDecoder().decode([Row].self, from: data).map(\.version))
+                                         json: Body(query: "select version, name from supabase_migrations.schema_migrations"))
+            return try JSONDecoder().decode([Migration.Applied].self, from: data)
         }
 
         /// Uploads one function's files (its own and the shared ones), named as the CLI names them.
@@ -306,6 +306,27 @@ public enum ServerSetup {
         public let version: String
         public let name: String
 
+        /// One row of a server's record. Changes applied with other tools carry their own version number but the same name.
+        public struct Applied: Decodable, Sendable, Equatable {
+            public let version: String
+            public let name: String?
+            public init(version: String, name: String?) { (self.version, self.name) = (version, name) }
+        }
+
+        /// The bundled changes a server still needs, oldest first. A change counts as applied when its version is on
+        /// record, or (for servers set up with other tools) when the record holds more rows of that name than the bundle's
+        /// version-matched ones: names can repeat ("audit_fixes" twice), so they're counted, never just looked up.
+        public static func pending(_ bundled: [Migration], record: [Applied]) -> [Migration] {
+            let versions = Set(record.map(\.version))
+            var spare = Dictionary(record.compactMap(\.name).map { ($0, 1) }, uniquingKeysWith: +)
+            for migration in bundled where versions.contains(migration.version) { spare[migration.name, default: 0] -= 1 }
+            return bundled.sorted { $0.version < $1.version }.filter { migration in
+                if versions.contains(migration.version) { return false }
+                if spare[migration.name, default: 0] > 0 { spare[migration.name]! -= 1; return false }
+                return true
+            }
+        }
+
         static let ledger = "create schema if not exists supabase_migrations; create table if not exists supabase_migrations.schema_migrations (version text primary key, statements text[], name text);"
 
         /// `20261012130000_money_accounts.sql` → version `20261012130000`, name `money_accounts`; nil for anything else.
@@ -323,6 +344,18 @@ public enum ServerSetup {
         public func wrapped(_ sql: String) -> String {
             "begin;\n\(sql)\n;\ninsert into supabase_migrations.schema_migrations (version, name) values ('\(version)', '\(name)') on conflict do nothing;\ncommit;"
         }
+    }
+
+    /// A fingerprint of the server package bundled in the app (every migration and function file, path and contents):
+    /// stored on the server after an install or update, so the app knows when its server is behind.
+    public static func packageID(_ files: [(path: String, data: Data)]) -> String {
+        var hash = SHA256()
+        for file in files.sorted(by: { $0.path < $1.path }) {
+            hash.update(data: Data(file.path.utf8))
+            hash.update(data: Data([0]))
+            hash.update(data: file.data)
+        }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined().prefix(32).description
     }
 
     /// Which bundled functions go to an owner's server, and whether Supabase checks a login first: mail (called by the

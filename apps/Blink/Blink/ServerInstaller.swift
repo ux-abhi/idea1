@@ -121,35 +121,9 @@ final class ServerInstaller {
             waited += 5
         }
 
-        // 3. The database, migration by migration, in order; each one only once (the server's own ledger says which).
-        step = .database
+        // 3–4. The database and the server functions, then a note of which package the server now runs.
+        try await installPackage(api, ref: ref)
         let bundle = try Self.bundledServer()
-        // shortcut: the ledger is the only record; an install half-done by the old counter-based build would rerun
-        // migration 1 and stop. Only the owner ran that build, and finished; seed the ledger if another case appears.
-        let files = try FileManager.default.contentsOfDirectory(at: bundle.appending(path: "migrations"), includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "sql" }
-            .map { file in
-                // A name Blink can't read must stop setup, never be skipped: later migrations build on it.
-                guard let migration = ServerSetup.Migration(fileName: file.lastPathComponent) else {
-                    throw ServerSetup.Problem(message: "This copy of Blink has a server file it can't read (\(file.lastPathComponent)). Update Blink.")
-                }
-                return (file, migration)
-            }
-            .sorted { $0.1.version < $1.1.version }
-        let applied = try await api.appliedMigrations(ref)
-        for (file, migration) in files where !applied.contains(migration.version) {
-            try await api.runSQL(ref, migration.wrapped(try String(contentsOf: file, encoding: .utf8)))
-        }
-
-        // 4. The server functions (each with the shared code they import). Deploying again just replaces them.
-        step = .functions
-        let functionsDir = bundle.appending(path: "functions")
-        let shared = try Self.files(in: functionsDir.appending(path: "_shared"), as: "supabase/functions/_shared")
-        let names = try FileManager.default.contentsOfDirectory(atPath: functionsDir.path)
-        for function in ServerSetup.installable(names) {
-            let own = try Self.files(in: functionsDir.appending(path: function.slug), as: "supabase/functions/\(function.slug)")
-            try await api.deployFunction(ref, slug: function.slug, files: own + shared, verifyJWT: function.verifyJWT)
-        }
 
         // 5. The owner's login, then nobody else's; each schedule once.
         step = .lock
@@ -181,6 +155,82 @@ final class ServerInstaller {
         if let failure = await model.signIn(email: email, password: password) {
             model.noteSignIn("Your server is ready. Sign in to finish: \(failure)")
         }
+    }
+
+    /// The database changes this server doesn't have yet, in order (each only once, by the server's own record), then
+    /// every server function (deploying again just replaces it), then the package fingerprint, so the app can tell later
+    /// whether the server is behind. Shared by setup and Update Server.
+    private func installPackage(_ api: ServerSetup.Client, ref: String) async throws {
+        step = .database
+        let bundle = try Self.bundledServer()
+        let files = try FileManager.default.contentsOfDirectory(at: bundle.appending(path: "migrations"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "sql" }
+            .map { file in
+                // A name Blink can't read must stop setup, never be skipped: later migrations build on it.
+                guard let migration = ServerSetup.Migration(fileName: file.lastPathComponent) else {
+                    throw ServerSetup.Problem(message: "This copy of Blink has a server file it can't read (\(file.lastPathComponent)). Update Blink.")
+                }
+                return (file, migration)
+            }
+        for migration in ServerSetup.Migration.pending(files.map(\.1), record: try await api.ledger(ref)) {
+            guard let file = files.first(where: { $0.1 == migration })?.0 else {
+                throw ServerSetup.Problem(message: "This copy of Blink is missing a server file (\(migration.name)). Update Blink.")
+            }
+            try await api.runSQL(ref, migration.wrapped(try String(contentsOf: file, encoding: .utf8)))
+        }
+
+        step = .functions
+        let functionsDir = bundle.appending(path: "functions")
+        let shared = try Self.files(in: functionsDir.appending(path: "_shared"), as: "supabase/functions/_shared")
+        let names = try FileManager.default.contentsOfDirectory(atPath: functionsDir.path)
+        for function in ServerSetup.installable(names) {
+            let own = try Self.files(in: functionsDir.appending(path: function.slug), as: "supabase/functions/\(function.slug)")
+            try await api.deployFunction(ref, slug: function.slug, files: own + shared, verifyJWT: function.verifyJWT)
+        }
+
+        // The fingerprint is 32 hex characters, so it goes into the SQL as is.
+        let package = try Self.bundledPackageID()
+        try await api.runSQL(ref, "insert into public.server_info (key, value) values ('package', '\(package)') on conflict (key) do update set value = excluded.value, updated_at = now();")
+    }
+
+    /// Brings the connected server up to this app's package after an app update: one Supabase sign-in, then only what's
+    /// missing. The token is used for this and dropped; Blink never keeps it.
+    func update(token: String, model: AppModel) async {
+        guard !working else { return }
+        working = true
+        problem = nil
+        defer { working = false }
+        do {
+            guard let url = model.server?.config.url, let ref = BlinkServer.projectRef(url) else {
+                throw ServerSetup.Problem(message: "Blink can only update a server on Supabase. Update yours from its own dashboard.")
+            }
+            try await installPackage(ServerSetup.Client(token: token), ref: ref)
+            step = nil
+            await model.checkServerPackage()
+        } catch let error as ServerSetup.Problem where error.message.contains("403") || error.message.contains("404") {
+            step = nil
+            problem = "Supabase doesn't let this account change your server. Sign in with the Supabase account that owns it."
+        } catch {
+            step = nil
+            problem = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    /// The bundled package's fingerprint, worked out once per launch (the files never change while Blink runs).
+    static let packageID: String? = try? bundledPackageID()
+
+    /// The fingerprint of the server package inside this app (every migration and function file).
+    static func bundledPackageID() throws -> String {
+        let bundle = try bundledServer()
+        let migrations = try FileManager.default.contentsOfDirectory(at: bundle.appending(path: "migrations"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "sql" }
+            .map { ("migrations/\($0.lastPathComponent)", try Data(contentsOf: $0)) }
+        let functionsDir = bundle.appending(path: "functions")
+        // Only what goes to a customer's server: the shared code and the installable functions (not Pexilim's own).
+        let names = try FileManager.default.contentsOfDirectory(atPath: functionsDir.path)
+        let functions = try (["_shared"] + ServerSetup.installable(names).map(\.slug))
+            .flatMap { try files(in: functionsDir.appending(path: $0), as: "functions/\($0)") }
+        return ServerSetup.packageID(migrations + functions)
     }
 
     /// The owner's login on a server, without the secret key when Supabase hides it from apps like Blink: open sign-ups

@@ -383,10 +383,11 @@ public final class BlinkServer: Sendable {
         return Self.projectRef(config.url)
     }
 
-    /// "abc123" from https://abc123.supabase.co; nil for a server on another domain.
+    /// "abc123" from https://abc123.supabase.co; nil for a server on another domain (or anything else under supabase.co).
     public static func projectRef(_ url: URL) -> String? {
-        guard let host = url.host(), host.hasSuffix(".supabase.co") else { return nil }
-        return host.components(separatedBy: ".").first
+        let parts = (url.host() ?? "").lowercased().split(separator: ".")
+        guard parts.count == 3, parts[1] == "supabase", parts[2] == "co", parts[0].allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
+        return String(parts[0])
     }
 
     /// Keys and passwords saved from the app (names only; values are never readable back).
@@ -617,6 +618,20 @@ public final class BlinkServer: Sendable {
         }
         for email in emails {
             try await client.from("email_msg").update(["triage": email.triage.rawValue]).eq("id", value: email.id).execute()
+        }
+    }
+
+    // MARK: Server package
+
+    /// The Blink server package this server runs (`server_info`, written by Blink's installer); nil when none is recorded,
+    /// including on a server from before that table existed.
+    public func serverPackage() async throws -> String? {
+        struct Row: Decodable { let value: String }
+        do {
+            let rows: [Row] = try await client.from("server_info").select("value").eq("key", value: "package").execute().value
+            return rows.first?.value
+        } catch let error as PostgrestError where ["PGRST205", "42P01"].contains(error.code) {
+            return nil
         }
     }
 

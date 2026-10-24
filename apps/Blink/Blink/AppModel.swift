@@ -85,6 +85,20 @@ final class AppModel {
     /// True when no AI key works: chat and drafts can't run until one is added.
     var aiKeyMissing: Bool { setupSteps.first { $0.id == .aiKey }?.done == false }
 
+    /// True when the connected server runs an older Blink server package than this app carries (after an app update),
+    /// so Today and Settings offer Update Server. A server from before the package record counts as behind.
+    private(set) var serverBehind = false
+
+    func checkServerPackage() async {
+        // Only servers on Supabase can be updated by Blink; others never get a package record, so never a banner.
+        guard let server, BlinkServer.projectRef(server.config.url) != nil, let bundled = ServerInstaller.packageID else { return }
+        do {
+            serverBehind = try await server.serverPackage() != bundled // no record yet (an older server) counts as behind
+        } catch {
+            // Offline or another problem: say nothing rather than guess.
+        }
+    }
+
     /// Brings the Blink window forward, or opens it again if it was closed.
     func showWindow() {
         #if os(macOS)
@@ -312,6 +326,7 @@ final class AppModel {
             await loadMail()
             await loadMoney()
             await loadHabits()
+            await checkServerPackage()
             // Once per launch, and again on each sync while no key works (one free, read-only ping per provider).
             if keyStatus == nil || aiKeyMissing { await loadKeyStatus() }
         } catch {

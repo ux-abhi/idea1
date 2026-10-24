@@ -150,6 +150,36 @@ import Testing
     }
 }
 
+@Suite struct ServerUpdateTests {
+    private func m(_ file: String) -> ServerSetup.Migration { ServerSetup.Migration(fileName: file)! }
+
+    @Test func onlyMissingChangesRunAndRepeatedNamesAreCounted() {
+        let bundled = [m("20260001_core.sql"), m("20260002_audit_fixes.sql"), m("20260003_money.sql"), m("20260004_audit_fixes.sql"), m("20260005_canvas.sql")]
+        // Blink's installer: the same versions on record.
+        let installed: [ServerSetup.Migration.Applied] = [.init(version: "20260001", name: "core"), .init(version: "20260002", name: "audit_fixes")]
+        #expect(ServerSetup.Migration.pending(bundled, record: installed).map(\.name) == ["money", "audit_fixes", "canvas"])
+        // Set up with other tools: other versions, same names; both audit_fixes are there, canvas isn't.
+        let other: [ServerSetup.Migration.Applied] = [.init(version: "90000001", name: "core"), .init(version: "90000002", name: "audit_fixes"),
+                                                      .init(version: "90000003", name: "money"), .init(version: "90000004", name: "audit_fixes")]
+        #expect(ServerSetup.Migration.pending(bundled, record: other).map(\.name) == ["canvas"])
+        // Only one audit_fixes on record: the second one still runs.
+        #expect(ServerSetup.Migration.pending(bundled, record: Array(other.prefix(3))).map(\.version) == ["20260004", "20260005"])
+    }
+
+    @Test func onlySupabaseHostsCanBeUpdated() {
+        #expect(BlinkServer.projectRef(URL(string: "https://eatcilcjooatetndcsxo.supabase.co")!) == "eatcilcjooatetndcsxo")
+        #expect(BlinkServer.projectRef(URL(string: "https://evil.supabase.co.example.com")!) == nil)
+        #expect(BlinkServer.projectRef(URL(string: "https://a.b.supabase.co")!) == nil)
+    }
+
+    @Test func packageFingerprintFollowsContentNotOrder() {
+        let a = (path: "functions/chat/index.ts", data: Data("one".utf8)), b = (path: "migrations/1_core.sql", data: Data("two".utf8))
+        #expect(ServerSetup.packageID([a, b]) == ServerSetup.packageID([b, a]))
+        #expect(ServerSetup.packageID([a, b]) != ServerSetup.packageID([a, (path: b.path, data: Data("changed".utf8))]))
+        #expect(ServerSetup.packageID([a]).count == 32)
+    }
+}
+
 @Suite struct ShortcutTests {
     /// The app's list and design/shortcuts.json (which the website reads) must match exactly.
     @Test func appListMatchesTheSharedFile() throws {

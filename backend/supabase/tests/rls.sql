@@ -625,4 +625,22 @@ do $$ begin
 end $$;
 reset role;
 
+-- Server package: the installer writes it; the owner reads it; nobody else reads it and no client writes it.
+insert into public.server_info (key, value) values ('package', 'abc123');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  assert (select value from public.server_info where key = 'package') = 'abc123', 'the owner reads the server package';
+  begin
+    update public.server_info set value = 'x';
+    raise exception 'a client changed the server package';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');   -- B has no profile here
+do $$ begin
+  assert (select count(*) from public.server_info) = 0, 'B must not read the server package';
+end $$;
+reset role;
+
 select 'all RLS checks passed' as result;

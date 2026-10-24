@@ -45,6 +45,13 @@ struct TodayView: View {
     /// What's waiting on the owner: the evening plan and the first approval.
     @ViewBuilder
     private var actionCards: some View {
+        if model.serverBehind {
+            DashCard("Update your server") {
+                Text("This version of Blink needs the matching update on your server. Sign in with Supabase once; your notes, mail and money stay as they are.")
+                    .foregroundStyle(.secondary)
+                UpdateServerButton()
+            }
+        }
         if model.eveningDue {
             DashCard("Evening check-in") {
                 VStack(alignment: .leading, spacing: 8) {
