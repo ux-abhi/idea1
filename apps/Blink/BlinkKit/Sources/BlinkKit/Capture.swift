@@ -17,7 +17,9 @@ public struct CaptureToken: Codable, Identifiable, Equatable, Sendable {
     /// A new token ("blk_" + 32 random bytes, URL-safe) and the hash the server stores, as Postgres bytea text.
     public static func make() -> (token: String, hash: String) {
         var bytes = Data(count: 32)
-        _ = bytes.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        let status = bytes.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        // Zero bytes would make a guessable token; stopping is safer than handing one out.
+        precondition(status == errSecSuccess, "No secure random bytes")
         let token = "blk_" + bytes.base64EncodedString().replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
         return (token, hash(of: token))

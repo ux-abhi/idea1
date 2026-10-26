@@ -24,7 +24,9 @@ public enum ServerSetup {
 
         static func randomURLSafe(_ bytes: Int) -> String {
             var data = Data(count: bytes)
-            _ = data.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, bytes, $0.baseAddress!) }
+            let status = data.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, bytes, $0.baseAddress!) }
+            // Zero bytes would make a guessable verifier, state or password; stopping is safer.
+            precondition(status == errSecSuccess, "No secure random bytes")
             return base64URL(data)
         }
 

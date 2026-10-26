@@ -249,7 +249,10 @@ public enum MoneyMath {
     /// A typed account balance: may be zero or negative (a card you owe on); "1.234,56", "1250.40" and "-50" all work.
     public static func parseBalance(_ text: String) -> Decimal? {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
-        let negative = trimmed.hasPrefix("-")
+        // One number only: "2 x 4.50" must not become 24.50 (grouping like "1 234,56" or "1'234.50" is still one).
+        guard trimmed.matches(of: /\d(?:[\d.,' \u{00A0}]*\d)?/).count == 1 else { return nil }
+        // "-50", "€ -50" and macOS's "−50" (Unicode minus) are all negative.
+        let negative = trimmed.first { $0.isNumber || $0 == "-" || $0 == "−" }.map { !$0.isNumber } ?? false
         // With a comma, dots group thousands (German style); without one, a dot is the decimal point.
         let plain = trimmed.contains(",") ? trimmed.replacingOccurrences(of: ".", with: "") : trimmed
         let digits = plain.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }

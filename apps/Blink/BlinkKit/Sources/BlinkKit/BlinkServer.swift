@@ -81,7 +81,10 @@ public final class BlinkServer: Sendable {
         guard let saved = try keychain.data(for: Self.deviceIDKey), let device = String(data: saved, encoding: .utf8) else { return }
         // Whole seconds survive the round trip exactly, so the "older than this upload" delete can't hit this upload's rows.
         let now = Date(timeIntervalSince1970: Date.now.timeIntervalSince1970.rounded(.down))
-        let rows = events.map {
+        // The same invite in two calendars would make Postgres refuse the whole upsert; keep one per key.
+        var seen = Set<String>()
+        let unique = events.filter { seen.insert("\($0.source)|\($0.extID)|\($0.start.timeIntervalSince1970)").inserted }
+        let rows = unique.map {
             CalendarRow(source: $0.source, ext_id: $0.extID, occurrence_start: $0.start, ends_at: $0.end, title: $0.title,
                         location: $0.location, url: $0.url?.absoluteString, snapshot_device: device, snapshot_at: now)
         }
@@ -172,7 +175,9 @@ public final class BlinkServer: Sendable {
     }
 
     public func save(_ item: BlinkItem) async throws {
-        try await client.from("item").update(ItemRow(item)).eq("id", value: item.id).execute()
+        // An update that matches no row (deleted elsewhere) must not look like a save.
+        let saved: [IDRow] = try await client.from("item").update(ItemRow(item)).eq("id", value: item.id).select("id").execute().value
+        if saved.isEmpty { throw RowGone() }
     }
 
     /// Soft delete, so a sync can tell other devices it's gone.
@@ -413,6 +418,8 @@ public final class BlinkServer: Sendable {
     }
 
     private struct IDRow: Decodable { let id: String }
+    /// The row to update isn't on the server (removed outside the app): save it as new instead.
+    public struct RowGone: Error {}
 
     // MARK: Mail (Phase 5)
 

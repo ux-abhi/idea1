@@ -557,6 +557,42 @@ extension Tokens {
     }
 }
 
+@Suite struct AuditFixTests {
+    @Test func chatLinksOnlyOpenTheWeb() {
+        let text = ChatText.markdown("[a](https://x.com) [b](file:///Applications/Evil.app) [c](shortcuts://run-shortcut?name=x)")
+        let links = text.runs.compactMap(\.link)
+        #expect(links == [URL(string: "https://x.com")!])
+    }
+
+    @Test func habitDayFollowsTheClockOnDaysTheClocksChange() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try #require(TimeZone(identifier: "Europe/Berlin"))
+        func at(_ y: Int, _ m: Int, _ d: Int, _ h: Int, _ min: Int) -> Date { cal.date(from: DateComponents(year: y, month: m, day: d, hour: h, minute: min))! }
+        // Spring forward: 07:30 is after a 07:00 wake. Fall back: 06:30 is before it.
+        #expect(HabitDay.day(for: at(2027, 3, 28, 7, 30), wakeHour: 7, wakeMinute: 0, calendar: cal) == at(2027, 3, 28, 0, 0))
+        #expect(HabitDay.day(for: at(2026, 10, 25, 6, 30), wakeHour: 7, wakeMinute: 0, calendar: cal) == at(2026, 10, 24, 0, 0))
+    }
+
+    @Test func timerReadsHoursAndRefusesWhatItCantRead() {
+        #expect(QuickCommand.parse("/timer 1hr") == .timer(minutes: 60))
+        #expect(QuickCommand.parse("/timer 2 hrs") == .timer(minutes: 120))
+        #expect(QuickCommand.parse("/timer 25") == .timer(minutes: 25))
+        #expect(QuickCommand.parse("/timer 1h30") == nil)
+    }
+
+    @Test func balancesKeepTheirSignAndRefuseTwoNumbers() {
+        #expect(MoneyMath.parseBalance("€ -50") == -50)
+        #expect(MoneyMath.parseBalance("−50") == -50)
+        #expect(MoneyMath.parseBalance("1.234,56") == Decimal(string: "1234.56"))
+        #expect(MoneyMath.parseAmount("2 x 4.50") == nil)
+        #expect(MoneyMath.parseBalance("1 234,56") == Decimal(string: "1234.56"))
+    }
+
+    @Test func serviceNoteSplitsWindowsLineEndings() {
+        #expect(ServiceNote.split("Title\r\nBody").title == "Title")
+    }
+}
+
 @Suite struct ServiceNoteTests {
     @Test func firstLineIsTheTitleAndNothingIsLost() {
         #expect(ServiceNote.split("Groceries\nmilk\neggs") == ("Groceries", "milk\neggs", false))

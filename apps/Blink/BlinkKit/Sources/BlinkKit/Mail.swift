@@ -136,6 +136,20 @@ extension EmailMessage {
     }
 }
 
+/// Claude's answers as light Markdown. Only web links stay clickable: an answer shaped by a mail could otherwise
+/// hide file:, shortcuts: or settings links behind friendly text.
+public enum ChatText {
+    public static func markdown(_ text: String) -> AttributedString {
+        guard var result = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
+            return AttributedString(text)
+        }
+        for run in result.runs {
+            if let url = run.link, !["http", "https"].contains(url.scheme?.lowercased() ?? "") { result[run.range].link = nil }
+        }
+        return result
+    }
+}
+
 /// A mail's text made calm to read: every link shown as its site ("linkedin.com ↗") but still opening the full address,
 /// divider lines of dashes dropped, and runs of blank lines folded to one.
 public enum MailText {

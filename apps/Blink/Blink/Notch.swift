@@ -10,6 +10,14 @@ import SwiftUI
 final class NotchModel {
     enum Level { case rest, peek, open }
 
+    /// Whether the open notch shows the day with its approval card; ⌘⏎ approves only then.
+    func showsCard(_ app: AppModel) -> Bool {
+        if meeting { return false }
+        // Clicked open with nothing typed yet: the day, with the box below ready for a question or "remind me to…".
+        if chatting { return app.chat.isEmpty && input.isEmpty && app.ideas.isEmpty && !app.drafting && !app.thinkingOfIdeas && !app.thinking }
+        return !clipboarding && !searching && app.timer == nil && app.finishedTimer == nil && !(evening || app.eveningDue)
+    }
+
     var level = Level.rest
     var mood = Mood.idle
     /// The pointer is over the notch: a soft blue glow rises from its bottom edge, like the app icon.
@@ -122,7 +130,8 @@ final class NotchController {
                 }
                 // ⌘⏎ approves; never a bare ⏎ (§36.2).
                 // Not on the /meet card, where ⌘⏎ is Create & Invite.
-                if event.keyCode == 36, event.modifierFlags.contains(.command), !self.app.locked, !self.model.meeting,
+                // Only when the card is on screen: never from the clipboard, search, timer or evening views.
+                if event.keyCode == 36, event.modifierFlags.contains(.command), !self.app.locked, self.model.showsCard(self.app),
                    let first = self.app.pending.first {
                     Task { await self.app.approve(first) }
                     return nil
@@ -142,11 +151,17 @@ final class NotchController {
             guard let app = self?.app else { return }
             for await shown in Observations({ app.notchInRecordings }) { self?.panel?.sharingType = shown ? .readOnly : .none }
         }
-        // Locking closes the notch, so nothing shows past "Blink is locked".
+        // Locking closes the notch, so nothing shows past "Blink is locked". Unlocking brings what waited: the morning
+        // brief and finished-job notices.
         Task { [weak self] in
             guard let app = self?.app else { return }
-            for await locked in Observations({ app.locked }) where locked {
-                if self?.model.level == .open { self?.close() }
+            for await locked in Observations({ app.locked }) {
+                if locked {
+                    if self?.model.level == .open { self?.close() }
+                } else {
+                    self?.morningBriefIfFirstToday()
+                    self?.showNotices()
+                }
             }
         }
         hotkeys = [
@@ -281,9 +296,17 @@ final class NotchController {
             guard Calendar.current.component(.hour, from: .now) < 12 else { return }
             self?.morningBriefIfFirstToday()
         }
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"),
+                                                            object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.app.screenAway(); self?.close() }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification,
+                                                          object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.app.screenAway(); self?.close() }
+        }
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsUnlocked"),
                                                             object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.morningBriefIfFirstToday() }
+            MainActor.assumeIsolated { self?.app.screenBack(); self?.morningBriefIfFirstToday() }
         }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
                                                           object: nil, queue: .main) { [weak self] _ in
@@ -414,7 +437,8 @@ final class NotchController {
     /// First unlock of the day: Good morning eyes and today's brief (§9.2).
     /// Fires on screen unlock, and once when Blink starts (at login, if the owner turned that on).
     private func morningBriefIfFirstToday() {
-        guard app.calendarAccess == .granted else { return }
+        // While locked the brief waits for the next unlock instead of being used up unseen.
+        guard app.calendarAccess == .granted, !app.locked else { return }
         let today = Calendar.current.startOfDay(for: .now)
         if let last = UserDefaults.standard.object(forKey: "lastBrief") as? Date, last >= today { return }
         UserDefaults.standard.set(Date.now, forKey: "lastBrief")
@@ -637,7 +661,8 @@ final class NotchController {
         guard !showingNotices else { return }
         showingNotices = true
         Task { [weak self] in
-            while let self, self.model.level != .open, !self.notices.isEmpty {
+            // While locked they wait (unlocking shows them), so nothing is read aloud past the lock.
+            while let self, self.model.level != .open, !self.app.locked, !self.notices.isEmpty {
                 await self.announce(self.notices.removeFirst())
             }
             self?.showingNotices = false
@@ -681,7 +706,8 @@ final class NotchController {
 
     private func set(_ level: NotchModel.Level) {
         // The app lock covers the notch too: cues and the morning brief can't open it over the lock (§36.5).
-        if level == .open && app.locked { return }
+        // Peeks too: they show meeting titles, mail senders and spending.
+        if level != .rest && app.locked { return }
         let m = Tokens.Motion.self
         let spring = switch level {
         case .rest: m.close
@@ -734,8 +760,7 @@ struct NotchView: View {
     private func glance(statusLine: String, now: Date) -> some View {
         if model.meeting, let draft = app.meetDraft {
             MeetPanel(app: app, done: close, shown: draft)
-        } else if model.chatting && app.chat.isEmpty && model.input.isEmpty && app.ideas.isEmpty && !app.drafting && !app.thinkingOfIdeas && !app.thinking {
-            // Clicked open with nothing typed yet: the day, with the box below ready for a question or "remind me to…".
+        } else if model.showsCard(app) {
             GlanceView(app: app, statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
                        briefing: model.briefing, done: close,
                        card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) },
@@ -750,7 +775,7 @@ struct NotchView: View {
             TimerCard(app: app)
         } else if model.evening || app.eveningDue {
             EveningView(app: app, plan: plan)
-        } else {
+        } else { // /meet before its draft arrives
             GlanceView(app: app, statusLine: statusLine, agenda: app.agenda, tasks: app.dueTasks, access: app.calendarAccess, now: now,
                        briefing: model.briefing, done: close,
                        card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) },
@@ -1178,10 +1203,7 @@ struct ChatPanel: View {
     }
 
     /// Claude writes light Markdown (bold, italics, links); show it formatted rather than as ** marks.
-    static func markdown(_ text: String) -> AttributedString {
-        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(text)
-    }
+    static func markdown(_ text: String) -> AttributedString { ChatText.markdown(text) }
 }
 
 /// /ideas in the notch: each idea with Write, which turns it into drafts in Content.

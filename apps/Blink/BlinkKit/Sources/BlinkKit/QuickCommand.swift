@@ -75,11 +75,10 @@ public enum QuickCommand: Equatable, Sendable {
         case "/note":
             return rest.isEmpty ? nil : .note(rest)
         case "/timer":
-            // "10", "10m", "10 min", "1.5h"
-            let lower = rest.lowercased()
-            let hours = lower.hasSuffix("h") || lower.hasSuffix("hour") || lower.hasSuffix("hours")
-            let number = Double(lower.filter { $0.isNumber || $0 == "." }) ?? 0
-            let minutes = hours ? number * 60 : number
+            // "10", "10m", "10 min", "1.5h", "1 hr"; anything else ("1h30") is refused rather than misread.
+            guard let m = rest.lowercased().wholeMatch(of: /(\d{1,3}(?:\.\d+)?) ?(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)?/),
+                  let number = Double(m.1) else { return nil }
+            let minutes = (m.2?.hasPrefix("h") ?? false) ? number * 60 : number
             return (1...480).contains(minutes) ? .timer(minutes: minutes) : nil
         case "/focus":
             return .focus

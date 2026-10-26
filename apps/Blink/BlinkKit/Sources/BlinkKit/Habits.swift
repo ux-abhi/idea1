@@ -45,8 +45,11 @@ public struct HabitLog: Codable, Equatable, Sendable {
 public enum HabitDay {
     /// The start of the habit day that `date` belongs to. Before wake time it still counts as yesterday.
     public static func day(for date: Date, wakeHour: Int, wakeMinute: Int, calendar: Calendar = .current) -> Date {
-        let shifted = date.addingTimeInterval(-Double(wakeHour * 3600 + wakeMinute * 60))
-        return calendar.startOfDay(for: shifted)
+        // Clock time, not elapsed seconds: on the days the clocks change, 07:30 is still after a 07:00 wake.
+        let time = calendar.dateComponents([.hour, .minute], from: date)
+        let start = calendar.startOfDay(for: date)
+        guard (time.hour ?? 0) * 60 + (time.minute ?? 0) < wakeHour * 60 + wakeMinute else { return start }
+        return calendar.date(byAdding: .day, value: -1, to: start) ?? start
     }
 
     /// The day a "2026-10-12" key stands for.

@@ -67,6 +67,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSUpdateDynamicServices()
     }
 
+    /// ⌘Q right after typing: wait (a few seconds at most) for unsent edits rather than lose them.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let app, app.hasUnsaved else { return .terminateNow }
+        Task {
+            await app.saveUnsaved()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        // Offline, a save can hang: quit anyway after 4 s (whichever reply comes first ends the app).
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     func startNotch(_ app: AppModel) {
         self.app = app
         if notch == nil { notch = NotchController(app: app, clipboard: clipboard) }
@@ -85,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func addTask(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
         guard let app else { error.pointee = "Blink isn't ready yet. Try again in a moment."; return }
         guard let text = Self.serviceText(pasteboard) else { error.pointee = "Select some text first."; return }
-        let parsed = TaskInput.parse(String(text.split(separator: "\n").first ?? "").prefix(200).description)
+        let parsed = TaskInput.parse(String(text.split(whereSeparator: \.isNewline).first ?? "").prefix(200).description)
         guard !parsed.title.isEmpty else { error.pointee = "Select some text first."; return }
         app.create(.task, title: parsed.title, due: parsed.due)
         app.announce("Added to Blink: \(parsed.title)")
@@ -121,8 +136,12 @@ struct MenuBarContent: View {
     let search: () -> Void
 
     var body: some View {
-        Text(model.agenda.statusLine(now: .now, tasks: model.dueTasks))
-        if !model.pending.isEmpty {
+        if model.locked {
+            Text("Blink is locked")
+        } else {
+            Text(model.agenda.statusLine(now: .now, tasks: model.dueTasks))
+        }
+        if !model.locked, !model.pending.isEmpty {
             Text(model.pending.count == 1 ? "1 waiting for you" : "\(model.pending.count) waiting for you")
         }
         if let timer = model.timer {

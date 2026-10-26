@@ -54,7 +54,7 @@ public struct BlinkItem: Codable, Identifiable, Equatable, Sendable {
     /// Replaces local items with the server's, except ones with edits not yet saved: those keep the local text,
     /// so a refresh never overwrites writing (data-loss guard).
     public static func merge(server: [BlinkItem], local: [BlinkItem], unsaved: Set<String>) -> [BlinkItem] {
-        let keep = Dictionary(uniqueKeysWithValues: local.filter { unsaved.contains($0.id) }.map { ($0.id, $0) })
+        let keep = Dictionary(local.filter { unsaved.contains($0.id) }.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var merged = server.map { keep[$0.id] ?? $0 }
         // An unsaved item the server doesn't know yet stays too.
         let serverIDs = Set(server.map(\.id))
@@ -68,7 +68,7 @@ public struct BlinkItem: Codable, Identifiable, Equatable, Sendable {
 /// body hit its 20,000-character cap.
 public enum ServiceNote {
     public static func split(_ text: String) -> (title: String, body: String, trimmed: Bool) {
-        let lines = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        let lines = text.split(maxSplits: 1, omittingEmptySubsequences: false, whereSeparator: \.isNewline)
         let first = String(lines.first ?? "").trimmingCharacters(in: .whitespaces)
         let title = String(first.prefix(120))
         let body = title.count < first.count ? text : (lines.count > 1 ? String(lines[1]) : "")

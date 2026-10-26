@@ -418,8 +418,12 @@ final class AppModel {
         activity = recent
     }
 
+    /// Actions being approved right now: a quick double ⌘⏎ must not run one twice.
+    private var approving: Set<String> = []
+
     func approve(_ action: BlinkAction) async {
-        guard let server else { return }
+        guard let server, approving.insert(action.id).inserted else { return }
+        defer { approving.remove(action.id) }
         actionProblem = nil
         do {
             switch action.risk {
@@ -480,12 +484,18 @@ final class AppModel {
             await save(id)
             try await server.setStatus("done", for: action, result: ["item_id": id])
         case "reminder.reschedule":
-            guard let id = action.payload.targetID else { return }
+            guard let id = action.payload.targetID else {
+                try await server.setStatus("failed", for: action, result: ["error": "That reminder is gone."])
+                return
+            }
             try await calendarReader.setReminderDue(id: id, due: action.payload.due)
             try await server.setStatus("done", for: action, result: ["reminder_id": id])
             await reloadAgenda()
         case "reminder.complete", "reminder.delete":
-            guard let id = action.payload.targetID else { return }
+            guard let id = action.payload.targetID else {
+                try await server.setStatus("failed", for: action, result: ["error": "That reminder is gone."])
+                return
+            }
             do {
                 if action.kind == "reminder.delete" {
                     try await calendarReader.deleteReminder(id: id)
@@ -568,9 +578,11 @@ final class AppModel {
     func loadItems() async {
         guard let server, email != nil else { return }
         for id in unsaved { await save(id) } // retry anything a failed save left behind
+        // Anything unsaved when the fetch started keeps its local copy: a save landing mid-fetch is newer than `fresh`.
+        let wasUnsaved = unsaved
         guard let fresh = try? await server.items() else { return }
         onServer = Set(fresh.map(\.id))
-        items = BlinkItem.merge(server: fresh, local: items, unsaved: unsaved)
+        items = BlinkItem.merge(server: fresh, local: items, unsaved: wasUnsaved.union(unsaved))
     }
 
     @discardableResult
@@ -605,6 +617,9 @@ final class AppModel {
             // Only clear if nothing was typed while saving.
             if items.first(where: { $0.id == id }) == item { unsaved.remove(id) }
             if unsaved.isEmpty { saveProblem = nil }
+        } catch is BlinkServer.RowGone {
+            onServer.remove(id)
+            await save(id) // once more, as new: the edits are kept
         } catch {
             saveProblem = "Not saved yet. Blink will try again on your next change."
         }
@@ -951,8 +966,11 @@ final class AppModel {
         let count = tasks.count + reminders.count
         offerUndo(count == 1 ? "Moved to tomorrow" : "\(count) moved to tomorrow") { [weak self] in
             guard let self else { return }
+            // Only the due date goes back: a task finished or renamed since keeps that change.
             for task in tasks {
-                edit(task)
+                guard var current = items.first(where: { $0.id == task.id }) else { continue }
+                current.dueAt = task.dueAt
+                edit(current)
                 await save(task.id)
             }
             for reminder in reminders { await setDue(reminder, to: reminder.due, reload: false) }
@@ -2409,6 +2427,20 @@ final class AppModel {
             awaySince = .now
         }
     }
+
+    /// Screen lock and sleep count as away, like leaving the window: on the way back the owner's relock time applies,
+    /// so the notch, which never changes the scene phase, can't stay unlocked for whoever sits down next.
+    func screenAway() {
+        if awaySince == nil { awaySince = .now }
+    }
+
+    func screenBack() { scenePhaseChanged(.active) }
+
+    /// Before quitting: sends edits still waiting (a note typed less than a second ago).
+    func saveUnsaved() async {
+        for id in unsaved { await save(id) }
+    }
+    var hasUnsaved: Bool { !unsaved.isEmpty }
 
     func unlockIfPending() async {
         guard locked, promptPending else { return }
