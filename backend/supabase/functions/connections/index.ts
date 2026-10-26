@@ -4,6 +4,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { forgetSecrets, secret } from "../_shared/secrets.ts";
 import { customEndpoint } from "../_shared/models.ts";
+import { ownsServer } from "../_shared/owner.ts";
 
 type Status = "ok" | "missing" | "rejected" | "unreachable";
 
@@ -30,6 +31,7 @@ Deno.serve(async (req) => {
   });
   const { data: { user } } = await db.auth.getUser((req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
+  if (!(await ownsServer(user.id))) return json(403, { error: "This server belongs to another account." });
 
   forgetSecrets(); // a key just saved in the app must count in this check
   const account = (await secret("CLOUDFLARE_ACCOUNT_ID"));

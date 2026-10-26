@@ -4,6 +4,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { DAILY_IMAGES, imagePrompt, parseImageRequest } from "./input.ts";
 import { secret } from "../_shared/secrets.ts";
+import { ownsServer } from "../_shared/owner.ts";
 
 const MODEL = "@cf/black-forest-labs/flux-1-schnell";
 
@@ -21,6 +22,7 @@ Deno.serve(async (req) => {
   const db = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
+  if (!(await ownsServer(user.id))) return json(403, { error: "This server belongs to another account." });
 
   const parsed = parseImageRequest(await req.json().catch(() => null));
   if (typeof parsed === "string") return json(400, { error: parsed });

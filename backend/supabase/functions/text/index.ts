@@ -4,6 +4,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseTextRequest, TASKS, unescapeText, wrapText } from "./input.ts";
 import { compatible, cost, MODELS } from "../_shared/models.ts";
+import { ownsServer } from "../_shared/owner.ts";
 
 // Only listed Groq models, so the cost meter always has a price.
 const MODEL = MODELS.find((m) => m.provider === "groq" && m.id === Deno.env.get("GROQ_TEXT_MODEL")) ??
@@ -23,6 +24,7 @@ Deno.serve(async (req) => {
   });
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
+  if (!(await ownsServer(user.id))) return json(403, { error: "This server belongs to another account." });
 
   const parsed = parseTextRequest(await req.json().catch(() => null));
   if (typeof parsed === "string") return json(400, { error: parsed });

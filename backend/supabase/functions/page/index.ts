@@ -7,6 +7,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseAnalysis, parseHandle, score, toRows } from "./input.ts";
 import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";
+import { ownsServer } from "../_shared/owner.ts";
 
 const SYSTEM = `You read the owner's own recent Instagram posts (in <page_posts>, newest first, with likes, comments and views) and sum up:
 - voice.page: what the page is, in one line, starting with the @handle.
@@ -51,6 +52,7 @@ Deno.serve(async (req) => {
   });
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
+  if (!(await ownsServer(user.id))) return json(403, { error: "This server belongs to another account." });
 
   const [{ data: voice }, { data: profile }, { data: spend }] = await Promise.all([
     db.from("voice_profile").select("page").maybeSingle(),

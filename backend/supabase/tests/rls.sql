@@ -46,6 +46,16 @@ do $$ begin
   end;
 end $$;
 
+-- An action's kind can't change after it is proposed (an approved meeting can't become a mail send).
+do $$ begin
+  begin
+    update public.action set kind = 'mail.send' where risk = 'red';
+    raise exception 'kind change should have failed';
+  exception when raise_exception then
+    if sqlerrm not like '%cannot change%' then raise; end if;
+  end;
+end $$;
+
 -- payload_hash is computed by the server, whatever the client sends.
 do $$ begin
   assert (select payload_hash from public.action where risk = 'green')
@@ -81,6 +91,17 @@ do $$ begin
     delete from public.device where id = '00000000-0000-0000-0000-0000000000d1';
     raise exception 'deleting the approval device should have failed';
   exception when insufficient_privilege then null;
+  end;
+end $$;
+
+-- Revoking a device is one-way.
+update public.device set revoked_at = now() where id = '00000000-0000-0000-0000-0000000000d2';
+do $$ begin
+  begin
+    update public.device set revoked_at = null where id = '00000000-0000-0000-0000-0000000000d2';
+    raise exception 'un-revoking should have failed';
+  exception when raise_exception then
+    if sqlerrm not like '%stays revoked%' then raise; end if;
   end;
 end $$;
 
@@ -641,6 +662,21 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');   -- B has no pr
 do $$ begin
   assert (select count(*) from public.server_info) = 0, 'B must not read the server package';
 end $$;
+reset role;
+
+-- A second login can't become a second owner.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  begin
+    insert into public.profile default values;
+    raise exception 'a second profile should have failed';
+  exception when raise_exception then
+    if sqlerrm not like '%already has an owner%' then raise; end if;
+  end;
+end $$;
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+insert into public.profile default values on conflict (owner_id) do nothing; -- the owner's own check-in still works
 reset role;
 
 select 'all RLS checks passed' as result;

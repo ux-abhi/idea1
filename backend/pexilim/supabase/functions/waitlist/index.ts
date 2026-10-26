@@ -96,6 +96,10 @@ Deno.serve(async (req) => {
   const signup = parseSignup(body);
   if (signup === "bot") return json(200, { ok: true });
   if (typeof signup === "string") return json(400, { error: signup });
+  // Signups come only through the site's mailer (api/waitlist.mjs). A script calling this URL directly could otherwise
+  // fill the global limit below and turn every real visitor away; a wrong secret is a loud error, not a silent "ok".
+  const mailer = sameSecret(req.headers.get("x-blink-mailer"), Deno.env.get("MAILER_SECRET"));
+  if (!mailer) return json(401, { error: "Join on www.blinkk.app." });
 
   const since = new Date(Date.now() - 10 * 60_000).toISOString();
   const { count, error: countError } = await admin.from("waitlist").select("id", { count: "exact", head: true }).gte("created_at", since);
@@ -107,8 +111,7 @@ Deno.serve(async (req) => {
 
   const { data: row, error } = await admin.from("waitlist").insert(signup).select("confirm_token, unsubscribe").maybeSingle();
   if (error && error.code !== "23505") return json(502, { error: "Something went wrong. Try again in a minute." });
-  // A new row, asked for by the site's mailer: hand it the links to email. Anyone else just gets "ok".
-  const mailer = sameSecret(req.headers.get("x-blink-mailer"), Deno.env.get("MAILER_SECRET"));
+  // A new row: hand the mailer the links to email.
   const links = (r: { confirm_token: string; unsubscribe: string }) =>
     ({ to: signup.email, confirm: `${SITE}/confirm.html?t=${r.confirm_token}`, leave: `${SITE}/leave.html?u=${r.unsubscribe}` });
   if (row && mailer) return json(200, { ok: true, mail: links(row) });

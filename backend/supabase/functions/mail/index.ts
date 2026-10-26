@@ -475,8 +475,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json(405, { error: "POST only" });
   const url = Deno.env.get("SUPABASE_URL")!;
   const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-  const list = await accounts();
-
+  // Keys are read only after the caller is known: an anonymous POST mustn't make the server decrypt them.
   // The schedule: a shared secret kept in Vault (setup/mail_schedule.sql), and the server's one owner (§33).
   const sent = req.headers.get("x-cron-secret");
   if (sent) {
@@ -484,6 +483,7 @@ Deno.serve(async (req) => {
     if (typeof secret !== "string" || secret.length < 32 || !timingSafeEqual(sent, secret)) return json(401, { error: "bad schedule secret" });
     const { data: owners } = await admin.from("profile").select("owner_id").limit(2);
     if (owners?.length !== 1) return json(409, { error: "expected exactly one owner on this server" });
+    const list = await accounts();
     // Approved sends first, so a slow mailbox can never hold them back.
     const outbox = await sendDue(admin, owners[0].owner_id, mailerFor(list));
     const results = await pollAll(admin, owners[0].owner_id, list, true);
@@ -496,6 +496,7 @@ Deno.serve(async (req) => {
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
   if (!(await isServerOwner(admin, user.id))) return json(403, { error: "Only this server's owner can use its mail." });
+  const list = await accounts();
   if (list.length === 0) return json(503, { error: "Add GMAIL_ADDRESS + GMAIL_APP_PASSWORD, ICLOUD_ADDRESS + ICLOUD_APP_PASSWORD and/or UNI_ADDRESS + UNI_PASSWORD in Blink › Settings › Connections." });
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;

@@ -7,6 +7,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
 import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";
+import { ownsServer } from "../_shared/owner.ts";
 
 // Fixed, so it caches. Our own short playbooks (§20); third-party skill text is never pasted here.
 const SYSTEM = `You write social posts for the owner, in their voice, from one idea. You write drafts only; the owner edits and posts.
@@ -131,6 +132,7 @@ Deno.serve(async (req) => {
   });
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
+  if (!(await ownsServer(user.id))) return json(403, { error: "This server belongs to another account." });
 
   const parsed = parseContentRequest(await req.json().catch(() => null));
   if (typeof parsed === "string") return json(400, { error: parsed });

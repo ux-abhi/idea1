@@ -9,6 +9,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule } from "./input.ts";
 import { capProblem, claudeUsageCost, compatibleStream, cost, lastDay, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";
+import { ownsServer } from "../_shared/owner.ts";
 
 // Fixed, so it caches: the date and the owner's data go in the user turn, not here.
 const SYSTEM = `You are Blink, a personal assistant that lives in the owner's MacBook notch.
@@ -131,6 +132,7 @@ Deno.serve(async (req) => {
   });
   const { data: { user } } = await db.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
   if (!user) return json(401, { error: "signed out" });
+  if (!(await ownsServer(user.id))) return json(403, { error: "This server belongs to another account." });
 
   const parsed = parseChatRequest(await req.json().catch(() => null));
   if (typeof parsed === "string") return json(400, { error: parsed });
