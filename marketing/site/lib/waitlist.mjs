@@ -24,8 +24,13 @@ export async function POST(request) {
     return json(502, { error: "Something went wrong. Try again in a minute." });
   }
   const answer = await upstream.json().catch(() => ({}));
+  // Anything but a bad address or the burst limit is our fault (often a wrong MAILER_SECRET): say so in the logs.
+  if (!upstream.ok && upstream.status !== 400 && upstream.status !== 429) console.error("waitlist upstream", upstream.status, answer.error);
   if (!upstream.ok) return json(upstream.status === 429 ? 429 : upstream.status === 400 ? 400 : 502, { error: answer.error || "Something went wrong. Try again in a minute." });
   // No email went out: say so, so the person tries again instead of waiting for a link that never comes.
-  if (answer.mail && !(await send(answer.mail))) return json(502, { error: "We couldn't send your confirmation email. Try again in a minute." });
+  if (answer.mail && !(await send(answer.mail))) {
+    console.error("waitlist: confirmation email not sent");
+    return json(502, { error: "We couldn't send your confirmation email. Try again in a minute." });
+  }
   return json(200, { ok: true });
 }

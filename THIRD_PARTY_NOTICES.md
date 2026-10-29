@@ -36,9 +36,13 @@ Served from the site itself (no CDN), not part of the app.
 
 | Component | Version | License | Source |
 |---|---|---|---|
-| GSAP core + ScrollTrigger (self-hosted in js/vendor) | 3.13.0 | GSAP Standard "no charge" license (free, including commercial use; not MIT) | https://gsap.com/standard-license |
-| Inter, Latin subset (self-hosted in assets/fonts) | v20 | SIL Open Font License 1.1 | https://github.com/rsms/inter |
-| Bricolage Grotesque, Latin subset (self-hosted in assets/fonts) | v9 | SIL Open Font License 1.1 | https://github.com/ateliertriay/bricolage |
+| Next.js | 16.4.3 | MIT | https://github.com/vercel/next.js |
+| React, React DOM | 19.3.1 | MIT | https://github.com/facebook/react |
+| Vercel Web Analytics (`@vercel/analytics`) | 2.0.1 | MIT | https://github.com/vercel/analytics |
+| Vercel Speed Insights (`@vercel/speed-insights`) | 2.0.0 | Apache-2.0 | https://github.com/vercel/speed-insights |
+| GSAP core + ScrollTrigger (self-hosted in public/js/vendor) | 3.13.0 | GSAP Standard "no charge" license (free, including commercial use; not MIT) | https://gsap.com/standard-license |
+| Inter, Latin subset (self-hosted in public/assets/fonts) | v20 | SIL Open Font License 1.1 | https://github.com/rsms/inter |
+| Bricolage Grotesque, Latin subset (self-hosted in public/assets/fonts) | v9 | SIL Open Font License 1.1 | https://github.com/ateliertriay/bricolage |
 
 ## Development tools (not shipped)
 

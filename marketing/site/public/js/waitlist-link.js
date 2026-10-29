@@ -21,7 +21,7 @@
         // Confirmed: offer the five quick questions, with the same code (it proves who's answering).
         const cta = document.getElementById("survey-cta");
         if (cta && button.dataset.action === "confirm") {
-          document.getElementById("survey-cta-link").href = `survey.html?t=${encodeURIComponent(token)}`;
+          document.getElementById("survey-cta-link").href = `/survey?t=${encodeURIComponent(token)}`;
           cta.hidden = false;
         }
         return;

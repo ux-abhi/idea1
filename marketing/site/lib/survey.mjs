@@ -1,5 +1,5 @@
 // © Pexilim
-// survey.html calls this once the person presses Send (the answers themselves are already saved). The waitlist hands
+// The survey page calls this once the person presses Send (the answers themselves are already saved). The waitlist hands
 // back their answers the first time only, holding MAILER_SECRET; then a beta "yes" gets a thank-you, and the owner
 // (NOTIFY_EMAIL, else hello@blinkk.app) gets every answer. Pressing Send again sends nothing new.
 import { betaEmail, ownerEmail, sendMail } from "./_email.mjs";
@@ -15,6 +15,7 @@ export async function POST(request) {
     body: JSON.stringify({ action: "finished", token: body.token }),
   }).catch(() => null);
   const answer = upstream ? await upstream.json().catch(() => ({})) : {};
+  if (!upstream?.ok && upstream?.status !== 404) console.error("survey upstream", upstream?.status, answer.error);
   if (!upstream?.ok) return Response.json({ error: answer.error || "Couldn't reach the waitlist." }, { status: upstream?.status === 404 ? 404 : 502 });
   const mail = answer.mail;
   if (!mail) return Response.json({ ok: true });

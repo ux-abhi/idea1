@@ -445,5 +445,5 @@ if (motion) {
   } });
 
   // The pin adds space above the content after the browser jumped to #waitlist etc.; jump again once laid out.
-  document.fonts?.ready.then(() => { ScrollTrigger.refresh(); if (location.hash) $(location.hash)?.scrollIntoView(); });
+  document.fonts?.ready.then(() => { ScrollTrigger.refresh(); if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView(); });
 }

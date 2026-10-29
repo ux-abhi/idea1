@@ -7,7 +7,7 @@ process.env.RESEND_KEY = "re_test";
 process.env.RESEND_FROM = "Blink <hello@blinkk.app>";
 process.env.NOTIFY_EMAIL = "owner@example.com";
 process.env.MAIL_SIGNER = "Sam";
-const { POST } = await import("../api/survey.mjs");
+const { POST } = await import("../lib/survey.mjs");
 
 function fakeNetwork(mail) {
   const calls = [];

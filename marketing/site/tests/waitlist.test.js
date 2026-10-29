@@ -1,7 +1,7 @@
 // Run: node --test marketing/site/tests/waitlist.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { waitlistResult, checkInput } from "../js/waitlist.js";
+import { waitlistResult, checkInput } from "../public/js/waitlist.js";
 
 test("only 200 with ok:true counts as joined", () => {
   assert.deepEqual(waitlistResult(200, { ok: true }), { ok: true });
