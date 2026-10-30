@@ -513,7 +513,8 @@ final class AppModel {
                 throw error
             }
         case "task.add":
-            let task = create(.task, title: action.payload.reminder ?? action.title, due: action.payload.due)
+            let task = create(.task, title: action.payload.reminder ?? action.title, due: action.payload.due,
+                              space: Space.known(action.payload.spaceID, in: spaces))
             try await server.setStatus("done", for: action, result: ["item_id": task.id])
         case "reminder.add":
             do {
@@ -1024,7 +1025,11 @@ final class AppModel {
     // MARK: Chat
 
     /// `context` is what's on screen (an open note, a Space); the server hands it to Claude as data, never as instructions.
-    func ask(_ text: String, context: String? = nil) async {
+    /// The Space the owner is asking from, while a question runs (the on-device model's add_task puts tasks there).
+    private(set) var askingSpace: String?
+
+    /// `space`: the Space on screen; the server reads its tasks and notes, and tasks proposed from it go into it.
+    func ask(_ text: String, context: String? = nil, space: String? = nil) async {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty, !thinking else { return }
         let onDevice = model(for: "chat").id == AIModel.onDeviceID
@@ -1033,7 +1038,8 @@ final class AppModel {
         let history = chat
         chat.append(.init(role: .user, text: message))
         thinking = true
-        defer { thinking = false; streaming = nil }
+        askingSpace = space
+        defer { thinking = false; streaming = nil; askingSpace = nil }
         if onDevice {
             let reply = await OnDeviceChat.answer(message, history: history, context: context, about: self) { self.streaming = $0 }
             chat.append(.init(role: .assistant, text: reply))
@@ -1046,7 +1052,7 @@ final class AppModel {
             var final: String?
             streaming = ""
             for try await event in server.chatStream(message, history: history, timeZone: TimeZone.current.identifier,
-                                                     reminders: reminders, context: context) {
+                                                     reminders: reminders, context: context, spaceID: space) {
                 switch event {
                 case .delta(let text): streaming = (streaming ?? "") + text
                 case .reset: streaming = "" // a new turn after a tool call: the earlier words were the model thinking aloud
@@ -1318,14 +1324,14 @@ final class AppModel {
 
     // MARK: Quick commands (typed in the notch: "/task Pay rent friday 9am")
 
-    /// Carries out a typed command at once, on this device, with Undo. No AI is involved.
-    /// Does a command at once (with Undo). Returns a problem to show, or nil when it worked.
+    /// Does a typed command at once, on this device, with Undo; no AI. Returns a problem to show, or nil when it worked.
+    /// `space`: a task or note typed on a Space page goes into that Space.
     @discardableResult
-    func run(_ command: QuickCommand) async -> String? {
+    func run(_ command: QuickCommand, space: String? = nil) async -> String? {
         let when: (Date?) -> String = { $0.map { " · \($0.formatted(.dateTime.weekday(.abbreviated).day().hour().minute()))" } ?? "" }
         switch command {
         case .task(let title, let due):
-            let task = create(.task, title: title, due: due)
+            let task = create(.task, title: title, due: due, space: space)
             offerUndo("Task added: \(title)\(when(due))") { [weak self] in
                 guard let self, let current = self.items.first(where: { $0.id == task.id }) else { return }
                 await self.delete(current)
@@ -1346,7 +1352,7 @@ final class AppModel {
                 return saveProblem
             }
         case .note(let title):
-            let note = create(.note, title: title)
+            let note = create(.note, title: title, space: space)
             offerUndo("Note started: \(title)") { [weak self] in
                 guard let self, let current = self.items.first(where: { $0.id == note.id }) else { return }
                 await self.delete(current)

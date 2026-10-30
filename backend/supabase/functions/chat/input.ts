@@ -3,17 +3,19 @@
 
 export type Turn = { role: "user" | "assistant"; text: string };
 export type Reminder = { id: string; title: string; due: string | null };
-export type ChatRequest = { message: string; history: Turn[]; timeZone: string; reminders: Reminder[]; context: string | null; stream: boolean };
+export type ChatRequest = { message: string; history: Turn[]; timeZone: string; reminders: Reminder[]; context: string | null;
+  spaceID: string | null; stream: boolean };
 
 export const MAX_MESSAGE = 2000;
 export const MAX_TURNS = 20;
 export const MAX_TURN_TEXT = 4000;
 export const MAX_CONTEXT = 4000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Returns the checked request, or a sentence saying what's wrong. */
 export function parseChatRequest(body: unknown): ChatRequest | string {
   if (typeof body !== "object" || body === null) return "Send a JSON body.";
-  const { message, history = [], timeZone = "UTC", reminders = [], context = null, stream = false } = body as Record<string, unknown>;
+  const { message, history = [], timeZone = "UTC", reminders = [], context = null, space_id = null, stream = false } = body as Record<string, unknown>;
   if (typeof message !== "string" || message.trim().length === 0) return "message is required.";
   if (message.length > MAX_MESSAGE) return `message is longer than ${MAX_MESSAGE} characters.`;
   if (!Array.isArray(history) || history.length > MAX_TURNS) return `history must be at most ${MAX_TURNS} turns.`;
@@ -41,7 +43,10 @@ export function parseChatRequest(body: unknown): ChatRequest | string {
   if (context !== null && (typeof context !== "string" || context.length > MAX_CONTEXT)) {
     return `context must be text of at most ${MAX_CONTEXT} characters.`;
   }
-  return { message: message.trim(), history: turns, timeZone, reminders: checked, context: context?.trim() || null, stream: stream === true };
+  // The Space on screen: its tasks and notes are read from the database (RLS keeps it to the owner's own).
+  if (space_id !== null && (typeof space_id !== "string" || !UUID.test(space_id))) return "space_id must be a Space id.";
+  return { message: message.trim(), history: turns, timeZone, reminders: checked, context: context?.trim() || null,
+    spaceID: space_id, stream: stream === true };
 }
 
 function isTimeZone(tz: string): boolean {
@@ -62,6 +67,14 @@ export function parseProposal(input: unknown): { title: string; due: string | nu
     return { title: title.trim(), due: new Date(due_at).toISOString() };
   }
   return { title: title.trim(), due: null };
+}
+
+/** The Space a proposed task goes into: null, or one of the owner's Spaces Blink showed the model. undefined = unknown id. */
+export function parseSpace(input: unknown, spaces: Map<string, string>): { id: string; title: string } | null | undefined {
+  const { space_id } = (input ?? {}) as Record<string, unknown>;
+  if (space_id === null || space_id === undefined || space_id === "") return null;
+  const title = typeof space_id === "string" ? spaces.get(space_id) : undefined;
+  return title === undefined ? undefined : { id: space_id as string, title };
 }
 
 /** A proposed change to an existing task or reminder: the id must be one Blink showed Claude. */

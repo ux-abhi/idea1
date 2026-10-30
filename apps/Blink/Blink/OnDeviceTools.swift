@@ -41,7 +41,7 @@ struct AddTask: Tool {
         guard !title.isEmpty else { return "No task added: it had no title." }
         let (due, unread) = OnDeviceTools.when(arguments.due)
         if let unread { return unread }
-        if let problem = await app.run(.task(title: title, due: due)) { return "Not added: \(problem)" }
+        if let problem = await app.run(.task(title: title, due: due), space: app.askingSpace) { return "Not added: \(problem)" }
         return "Added the task “\(title)”" + (due.map { ", due \($0.formatted(.dateTime.weekday(.wide).hour().minute()))" } ?? "") + "."
     }
 }
@@ -78,7 +78,7 @@ struct AddNote: Tool {
     func call(arguments: Arguments) async throws -> String {
         let title = OnDeviceTools.title(arguments.title)
         guard !title.isEmpty else { return "No note started: it had no title." }
-        await app.run(.note(title))
+        await app.run(.note(title), space: app.askingSpace)
         return "Started the note “\(title)”."
     }
 }

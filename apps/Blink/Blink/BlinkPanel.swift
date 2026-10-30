@@ -154,13 +154,19 @@ struct BlinkPanel: View {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !model.thinking else { return }
         text = ""
-        // "remind me to…", "task …", "/timer 10": done at once with Undo, no AI needed.
+        // "remind me to…", "task …", "/timer 10": done at once with Undo, no AI needed. A task typed on a Space joins it.
         if context == nil, let command = QuickCommand.parse(trimmed) {
-            Task { _ = await model.run(command) }
+            Task { _ = await model.run(command, space: spaceID) }
             return
         }
+        // A typed question carries what's on screen too (the open Space, note, mail or money), as data.
         // The server takes at most 2000 characters (functions/chat input.ts).
-        Task { await model.ask(String(trimmed.prefix(1990)), context: context) }
+        let onScreen = context ?? suggestions.lazy.compactMap(\.context).first
+        Task { await model.ask(String(trimmed.prefix(1990)), context: onScreen, space: spaceID) }
+    }
+
+    private var spaceID: String? {
+        if case .space(let id) = page { id } else { nil }
     }
 
     /// What Blink can help with on this page. Anything it would change still comes back as an Ask-First card.
@@ -221,9 +227,11 @@ struct BlinkPanel: View {
         case .space(let id):
             guard let space = model.spaces.first(where: { $0.id == id }) else { return [] }
             let open = model.openTasks.filter { $0.spaceID == id }.prefix(20).map { "- \($0.title)" }.joined(separator: "\n")
+            let notes = model.notes.filter { $0.spaceID == id }.prefix(10).map { "- \($0.title): \($0.body.prefix(200))" }.joined(separator: "\n")
             let context = "Space “\(space.title)”. Goal: \(space.goal.isEmpty ? "not set" : space.goal)."
                 + (space.dueAt.map { " Due \($0.formatted(date: .abbreviated, time: .omitted))." } ?? "")
                 + "\nOpen tasks:\n\(open.isEmpty ? "none yet" : open)"
+                + "\nNotes:\n\(notes.isEmpty ? "none yet" : notes)"
             return [Suggestion("Plan the next steps", "Plan the next steps for this space. Ask me before adding tasks.", context: context),
                     Suggestion("What's at risk?", "What's at risk of slipping in this space, and what should I do about it?", context: context)]
         }

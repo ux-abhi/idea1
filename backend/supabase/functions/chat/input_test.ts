@@ -1,5 +1,5 @@
 // © Pexilim
-import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule } from "./input.ts";
+import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule, parseSpace } from "./input.ts";
 
 Deno.test("chat requests are checked at the boundary", () => {
   const ok = parseChatRequest({ message: " hi ", history: [{ role: "user", text: "a" }], timeZone: "Asia/Kolkata" });
@@ -71,4 +71,14 @@ Deno.test("streaming is asked for explicitly", () => {
   if (typeof plain === "string" || plain.stream || typeof streamed === "string" || !streamed.stream || typeof odd === "string" || odd.stream) {
     throw new Error("stream flag");
   }
+});
+
+Deno.test("a task goes only into a Space Blink showed the model, and the request's space_id must be an id", () => {
+  const spaces = new Map([["3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90", "Blink launch"]]);
+  if (parseSpace({ space_id: "3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90" }, spaces)?.title !== "Blink launch") throw new Error("known space");
+  if (parseSpace({ space_id: null }, spaces) !== null) throw new Error("no space");
+  if (parseSpace({ space_id: "someone-else" }, spaces) !== undefined) throw new Error("unknown space accepted");
+  const ok = parseChatRequest({ message: "hi", space_id: "3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90" });
+  if (typeof ok === "string" || ok.spaceID !== "3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90") throw new Error("space_id dropped");
+  if (typeof parseChatRequest({ message: "hi", space_id: "x' or 1=1" }) !== "string") throw new Error("bad space_id accepted");
 });

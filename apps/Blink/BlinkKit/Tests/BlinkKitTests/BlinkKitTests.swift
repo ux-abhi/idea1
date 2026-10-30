@@ -1217,3 +1217,10 @@ extension Tokens {
     #expect(QuickCommand.parse("/clear") == .clear && QuickCommand.parse("  /CLEAR ") == .clear)
     #expect(QuickCommand.suggestions(for: "/cl").map(\.name) == ["/clear"])
 }
+
+@Test func chatTaskJoinsOnlyAKnownSpace() {
+    let spaces = [Space(id: "s1", title: "Launch")]
+    #expect(Space.known("s1", in: spaces) == "s1")
+    #expect(Space.known("gone", in: spaces) == nil)
+    #expect(Space.known(nil, in: spaces) == nil)
+}

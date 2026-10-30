@@ -38,10 +38,12 @@ public struct BlinkAction: Decodable, Identifiable, Equatable, Sendable {
         public let note: String?
         public let to: String?
         public let subject: String?
+        /// For `task.add` from chat: the Space the task goes into.
+        public let spaceID: String?
 
         enum CodingKeys: String, CodingKey {
             case title, summary, verb, reminder, due, note, to, subject
-            case targetID = "target_id", emailID = "email_id", sendAt = "send_at"
+            case targetID = "target_id", emailID = "email_id", sendAt = "send_at", spaceID = "space_id"
         }
     }
 

@@ -3,6 +3,12 @@ import Foundation
 
 /// A Space (ARCHITECTURE §35, "segment" on the server): a project with a goal, its tasks and notes.
 public struct Space: Codable, Identifiable, Equatable, Sendable {
+    /// A Space id from the server (an approved chat task), kept only when that Space is on this Mac; else nil, so a task
+    /// never points at a Space no page shows.
+    public static func known(_ id: String?, in spaces: [Space]) -> String? {
+        id.flatMap { id in spaces.contains { $0.id == id } ? id : nil }
+    }
+
     public enum Status: String, Codable, Sendable, CaseIterable { case active, paused, done, archived }
 
     public let id: String

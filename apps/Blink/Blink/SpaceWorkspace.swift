@@ -557,7 +557,7 @@ private struct SpaceCanvasView: View {
         showPanel = true
         Task {
             await model.ask("Look at this Space's plan. In a few lines, say where it stands and what's at risk, then suggest the next tasks it's missing as tasks I can approve.",
-                            context: planSummary())
+                            context: planSummary(), space: space.id)
         }
     }
 

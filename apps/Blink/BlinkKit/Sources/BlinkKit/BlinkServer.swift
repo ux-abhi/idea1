@@ -943,14 +943,16 @@ public final class BlinkServer: Sendable {
 
     /// Asks Blink and streams the answer as it's written. Same request as `chat`, plus `stream: true`.
     public func chatStream(_ message: String, history: [ChatTurn], timeZone: String,
-                           reminders: [AgendaReminder] = [], context: String? = nil) -> AsyncThrowingStream<ChatEvent, Error> {
+                           reminders: [AgendaReminder] = [], context: String? = nil,
+                           spaceID: String? = nil) -> AsyncThrowingStream<ChatEvent, Error> {
         struct Reminder: Encodable { let id: String; let title: String; let due: String? }
         struct Body: Encodable {
-            let message: String; let history: [ChatTurn]; let timeZone: String; let reminders: [Reminder]; let context: String?; let stream = true
+            let message: String; let history: [ChatTurn]; let timeZone: String; let reminders: [Reminder]; let context: String?
+            let space_id: String?; let stream = true
         }
         let body = Body(message: message, history: Self.recent(history), timeZone: timeZone,
                         reminders: reminders.map { Reminder(id: $0.id, title: $0.title, due: $0.due?.ISO8601Format()) },
-                        context: context.map { String($0.prefix(4000)) })
+                        context: context.map { String($0.prefix(4000)) }, space_id: spaceID)
         let endpoint = config.url.appending(path: "functions/v1/chat"), key = config.publishableKey, client = client
         return AsyncThrowingStream { continuation in
             let task = Task {
