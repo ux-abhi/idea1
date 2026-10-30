@@ -12,7 +12,7 @@ enum ConnectorApp: String, Identifiable {
 
     var steps: [String] {
         switch self {
-        case .claude: ["Open Claude › Settings › Connectors.", "Click Add custom connector, name it Blink, and paste the link.",
+        case .claude: ["Open Claude › Settings › Connectors.", "Click Add custom connector, name it Blink, paste the link, and pick No sign-in (the link itself is the key).",
                        "Ask Claude: “What's on my schedule this week?”"]
         case .chatGPT: ["Open ChatGPT › Settings › Apps & Connectors › Advanced, and turn on Developer mode.",
                         "Click Create, name it Blink, paste the link, and pick No authentication.",
