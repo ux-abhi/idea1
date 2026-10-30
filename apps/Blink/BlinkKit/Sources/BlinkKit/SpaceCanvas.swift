@@ -42,11 +42,12 @@ public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
         return (w ?? standard.width, h ?? standard.height)
     }
 
-    public var resizable: Bool { kind == .note || kind == .image }
+    /// Everything but the project can be made bigger, so long text can be read on the card itself.
+    public var resizable: Bool { kind != .project }
 
     /// The sizes a sticky or image can be dragged to (the server allows a little more).
     public static func clamped(width: Double, height: Double) -> (width: Double, height: Double) {
-        (min(max(width, 120), 1200), min(max(height, 90), 1200))
+        (min(max(width, 120), 1200), min(max(height, 60), 1200))
     }
 
     public func contains(x px: Double, y py: Double) -> Bool {

@@ -460,7 +460,8 @@ private struct ContentPlan: View {
 }
 
 /// One post, opened: the full editor, and Blink's questions for its idea.
-private struct PieceSheet: View {
+/// Also opened from a Space's canvas, so a post can be read and edited without leaving the Space.
+struct PieceSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let id: String

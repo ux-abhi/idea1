@@ -104,6 +104,8 @@ private enum CardContent {
 }
 
 /// A card being written before it exists: where it goes, what kind, and what's typed so far.
+private struct OpenedPost: Identifiable { let id: String }
+
 private struct CardDraft: Equatable {
     var kind: SpaceNode.Kind
     var x: Double
@@ -134,6 +136,8 @@ private struct SpaceCanvasView: View {
     @GestureState private var linking: (from: String, end: CGPoint)?
     @GestureState private var resizing: (id: String, by: CGSize)?
     @State private var pickingImage = false
+    /// A post opened to read or edit, right over the canvas.
+    @State private var readingPost: String?
     @State private var scale = 1.0
     /// A pinch under way: how much it has zoomed so far and where the fingers are, in view points. Until it ends the
     /// sheet is only scaled on screen (cheap and smooth); the real zoom is applied once, when the fingers lift.
@@ -241,8 +245,9 @@ private struct SpaceCanvasView: View {
         .onDeleteCommand(perform: deleteSelected)
         .onExitCommand { draft != nil ? (draft = nil) : clearSelection() }
         .onKeyPress(.return) {
-            guard let selected, editing == nil, draft == nil, ![.project, .image].contains(nodes.first(where: { $0.id == selected })?.kind) else { return .ignored }
-            editing = selected
+            guard editing == nil, draft == nil, let node = nodes.first(where: { $0.id == selected }),
+                  ![.project, .image].contains(node.kind) else { return .ignored }
+            edit(node) // a post opens to read; the rest edit in place
             return .handled
         }
         .overlay {
@@ -276,6 +281,7 @@ private struct SpaceCanvasView: View {
             }
             .padding(.bottom, 18)
         }
+        .sheet(item: Binding(get: { readingPost.map(OpenedPost.init) }, set: { readingPost = $0?.id })) { PieceSheet(id: $0.id) }
         .fileImporter(isPresented: $pickingImage, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
             for (i, file) in ((try? result.get()) ?? []).prefix(10).enumerated() {
                 addImage(from: file, at: (viewCentre.x + Double(i) * 30, viewCentre.y + Double(i) * 30))
@@ -364,11 +370,10 @@ private struct SpaceCanvasView: View {
             .accessibilityAction(named: "Select") { selected = node.id }
     }
 
-    private func openPost() { model.openPage = "content" }
 
     private func edit(_ node: SpaceNode) {
         guard node.kind != .project, node.kind != .image else { return }
-        guard node.kind != .post else { return openPost() }
+        guard node.kind != .post else { readingPost = node.ref; return }
         if draft != nil { finishDraft() }
         selected = node.id
         editing = node.id
@@ -461,7 +466,7 @@ private struct SpaceCanvasView: View {
             .background(Color.accentColor, in: .circle)
             .padding(4)
             .contentShape(.rect)
-            .offset(x: 8, y: 8)
+            .offset(x: 8, y: 12) // clear of the link dot on short cards
             // High priority, so the card's own move gesture never runs alongside it (the card would move and resize at once).
             .highPriorityGesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .named("canvas"))
@@ -542,7 +547,8 @@ private struct SpaceCanvasView: View {
         case .image:
             sizeMenu(node)
         case .post(let post):
-            Button("Open in Content", action: openPost)
+            Button("Open") { readingPost = post.id }
+            Button("Show in Content") { model.openPage = "content" }
             Menu("Post On") {
                 ForEach(0..<7, id: \.self) { ahead in
                     if let date = Calendar.current.date(byAdding: .day, value: ahead, to: .now) {
@@ -561,7 +567,7 @@ private struct SpaceCanvasView: View {
         case nil:
             EmptyView()
         }
-        if node.kind == .note { sizeMenu(node) }
+        if node.resizable && node.kind != .image { sizeMenu(node) }
         let others = nodes.filter { other in
             other.id != node.id && !edges.contains { ($0.from == node.id && $0.to == other.id) || ($0.from == other.id && $0.to == node.id) }
         }
@@ -590,7 +596,7 @@ private struct SpaceCanvasView: View {
     private func sizeMenu(_ node: SpaceNode) -> some View {
         Menu("Size") {
             // Shrinks both sides by the same amount, so a picture keeps its shape at the smallest size.
-            let smaller = max(0.75, 120 / node.size.width, 90 / node.size.height)
+            let smaller = max(0.75, 120 / node.size.width, 60 / node.size.height)
             Button("Smaller") { model.resize(node, width: node.size.width * smaller, height: node.size.height * smaller) }
             Button("Larger") { model.resize(node, width: node.size.width * 1.33, height: node.size.height * 1.33) }
             if node.kind == .note { Button("Standard") { model.resize(node, width: 190, height: 150) } }
@@ -887,6 +893,7 @@ private struct CanvasCard: View {
                              (name: "Extra Large", scale: 2.2)]
 
     private var isEditing: Bool { editing == node.id }
+    private var growing: Bool { isEditing && node.kind != .note }
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: node.kind == .note ? 6 : 16, style: .continuous) }
 
     var body: some View {
@@ -896,9 +903,14 @@ private struct CanvasCard: View {
             default: if node.kind == .note { sticky } else { row }
             }
         }
-        .frame(width: node.size.width, height: node.size.height)
+        // A task being edited grows downward to fit its whole title (its own height, not the board's); its spot and
+        // centre stay put, so links and the line being typed don't move.
+        .frame(width: node.size.width, height: growing ? nil : node.size.height)
+        .frame(minHeight: node.size.height)
+        .fixedSize(horizontal: false, vertical: growing)
         .overlay(shape.strokeBorder(Color.accentColor, lineWidth: 2).opacity(selected ? 1 : 0))
         .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        .frame(height: node.size.height, alignment: .top)
         .onChange(of: isEditing, initial: true) { was, now in
             if now {
                 load()
@@ -915,16 +927,18 @@ private struct CanvasCard: View {
             tile
             VStack(alignment: .leading, spacing: 2) {
                 if isEditing {
-                    TextField("Title", text: $title)
+                    TextField("Title", text: $title, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.callout.weight(.semibold))
+                        .lineLimit(1...8)
                         .focused($field, equals: .title)
                         .onSubmit { editing = nil }
                         .onExitCommand(perform: cancel)
                 } else {
+                    // As many lines as the card has room for (drag its corner to see more); the rest on hover.
                     Text(displayTitle)
                         .font(.callout.weight(.semibold))
-                        .lineLimit(2)
+                        .help(displayTitle)
                         .strikethrough(isDone)
                         .foregroundStyle(isDone ? .secondary : .primary)
                 }
@@ -1090,7 +1104,7 @@ private struct CanvasCard: View {
     }
 
     private func commit() {
-        let newTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newTitle = title.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         switch content {
         case .project, .image, .post: break
         case .item(let item):
