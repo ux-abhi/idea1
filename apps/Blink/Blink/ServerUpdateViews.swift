@@ -33,7 +33,7 @@ struct UpdateServerButton: View {
         signingIn = true
         defer { signingIn = false }
         do {
-            let callback = try await webAuth.authenticate(using: url, callbackURLScheme: "blink", preferredBrowserSession: nil)
+            let callback = try await webAuth.blinkSignIn(url, for: installer.pkce, model: model)
             let token = try await installer.token(from: callback)
             await installer.update(token: token, model: model)
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
@@ -52,5 +52,25 @@ extension ServerInstaller.Step {
         case .functions: "Updating Blink's brain…"
         default: "Updating…"
         }
+    }
+}
+
+extension WebAuthenticationSession {
+    /// The Supabase sign-in in the browser. Someone new to Supabase confirms their email in a new tab, and that tab's
+    /// blink://signin link reaches Blink through macOS (AppDelegate), not this session: either one ends it.
+    func blinkSignIn(_ url: URL, for attempt: ServerSetup.PKCE, model: AppModel) async throws -> URL {
+        model.openedSignin = nil
+        // Whichever answers first wins; the other is cancelled (the browser one may stay open until closed by hand).
+        let (answers, answer) = AsyncStream<Result<URL, any Error>>.makeStream()
+        let browser = Task {
+            do { answer.yield(.success(try await authenticate(using: url, callbackURLScheme: "blink", preferredBrowserSession: nil))) }
+            catch { answer.yield(.failure(error)) }
+        }
+        let link = Task {
+            for await opened in Observations({ model.openedSignin }) { if let opened, attempt.answers(opened) { answer.yield(.success(opened)); break } }
+        }
+        defer { browser.cancel(); link.cancel(); answer.finish() }
+        for await result in answers { return try result.get() }
+        throw CancellationError()
     }
 }

@@ -18,6 +18,11 @@ public enum ServerSetup {
             state = Self.randomURLSafe(24)
         }
 
+        /// A blink://signin link answers this attempt only when it carries this attempt's state (links can come from any tab or app).
+        public func answers(_ callback: URL) -> Bool {
+            URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "state" })?.value == state
+        }
+
         public static func challenge(for verifier: String) -> String {
             base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
         }

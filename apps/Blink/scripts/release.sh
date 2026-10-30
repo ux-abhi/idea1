@@ -1,7 +1,7 @@
 #!/bin/sh
 # © Pexilim
 # Builds the free Mac download: a Release build, ad-hoc signed (no paid Apple account needed), in a DMG with a
-# checksum. macOS asks once to "Open Anyway" because it isn't notarized (see marketing/site/install.html).
+# checksum. macOS asks once to "Open Anyway" because it isn't notarized (see scripts/INSTALL.txt, copied into the DMG).
 # Usage: apps/Blink/scripts/release.sh            → apps/Blink/build/release/Blink-<version>.dmg
 # Needs Config/Local.xcconfig for the bundle ID prefix and the sign-in helper address.
 # shortcut: ad-hoc signed and not notarized; switch to Developer ID + notarytool when the Apple Developer Program is paid.
@@ -33,7 +33,8 @@ STAGE="$OUT/dmg"
 mkdir -p "$STAGE"
 ditto "$APP" "$STAGE/Blink.app"
 ln -s /Applications "$STAGE/Applications"
-printf '[InternetShortcut]\nURL=https://www.blinkk.app/install.html\n' > "$STAGE/How to open Blink.url"
+cp scripts/INSTALL.txt "$STAGE/How to install Blink.txt"
+printf '[InternetShortcut]\nURL=https://www.blinkk.app/install\n' > "$STAGE/How to open Blink.url"
 DMG="$OUT/Blink-$VERSION.dmg"
 # The disk shows Blink's eyes when mounted: the app's icon as the volume icon (a writable image first, then compressed).
 RW="$OUT/rw.dmg"

@@ -31,7 +31,7 @@ final class ServerInstaller {
     }
 
     /// Fresh for every attempt, so a retry never reuses a challenge or state.
-    private var pkce = ServerSetup.PKCE()
+    private(set) var pkce = ServerSetup.PKCE()
     let progress = ServerSetup.Progress()
 
     /// The page the browser opens (the helper forwards it to Supabase's consent screen); each call starts a new attempt.
@@ -47,7 +47,7 @@ final class ServerInstaller {
     func token(from callback: URL) async throws -> String {
         let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
         // Only answers to this attempt count, errors included, and only fixed words are shown (never text from the link).
-        guard items.first(where: { $0.name == "state" })?.value == pkce.state else {
+        guard pkce.answers(callback) else {
             throw ServerSetup.Problem(message: "That sign-in didn't come from this Blink. Start again.")
         }
         if let error = items.first(where: { $0.name == "error" })?.value {

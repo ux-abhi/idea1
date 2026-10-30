@@ -24,6 +24,8 @@ struct BlinkApp: App {
                 }
         }
         #if os(macOS)
+        // blink://signin goes to the app delegate; no scene opens a window for a link (each would stack another copy).
+        .handlesExternalEvents(matching: [])
         .defaultSize(width: 920, height: 640)
         .commands { HelpCommands() }
         #endif
@@ -31,10 +33,12 @@ struct BlinkApp: App {
         #if os(macOS)
         Window("Keyboard Shortcuts", id: "shortcuts") { ShortcutsView() }
             .windowResizability(.contentSize)
+            .handlesExternalEvents(matching: [])
         // The first-run tour, in its own borderless window, like a product film.
         Window("Meet Blink", id: "tour") { MeetBlinkTour().environment(model) }
             .windowStyle(.hiddenTitleBar)
             .defaultPosition(.center)
+            .handlesExternalEvents(matching: [])
         #endif
 
         #if os(macOS)
@@ -80,6 +84,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+
+    /// blink://signin from a browser tab Blink didn't open (a new Supabase account confirmed by email). Taken here, not
+    /// with onOpenURL, which opens a window per link. Only sign-in links; the waiting sign-in checks the state.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if let url = urls.last(where: { $0.scheme == "blink" && $0.host == "signin" }) { app?.openedSignin = url }
     }
 
     func startNotch(_ app: AppModel) {

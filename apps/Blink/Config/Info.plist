@@ -10,6 +10,16 @@
 	<string>$(BLINK_GOOGLE_CLIENT_ID)</string>
 	<key>BlinkGoogleClientSecret</key>
 	<string>$(BLINK_GOOGLE_CLIENT_SECRET)</string>
+	<!-- blink://signin: the Supabase sign-in coming back from a browser tab Blink didn't open (after confirming a new account). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Blink sign-in</string>
+			<key>CFBundleURLSchemes</key>
+			<array><string>blink</string></array>
+		</dict>
+	</array>
 	<!-- Services menu (Mac): select text in any app, then Services › Add to Blink as Task / Save to Blink as Note. -->
 	<key>NSServices</key>
 	<array>

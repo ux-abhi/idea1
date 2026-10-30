@@ -1106,6 +1106,10 @@ extension Tokens {
     #expect(ServerSetup.PKCE.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk") == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
     let pkce = ServerSetup.PKCE()
     #expect(pkce.verifier.count >= 43 && pkce.challenge.count == 43 && !pkce.state.isEmpty)
+    // A sign-in link from another tab or app counts only with this attempt's state.
+    #expect(pkce.answers(URL(string: "blink://signin?code=c&state=\(pkce.state)")!))
+    #expect(!pkce.answers(URL(string: "blink://signin?code=c&state=wrong")!))
+    #expect(!pkce.answers(URL(string: "blink://signin?code=c")!))
     #expect(ServerSetup.region(for: "Asia/Kolkata") == "ap-south-1" && ServerSetup.region(for: "Europe/Berlin") == "eu-central-1")
     #expect(ServerSetup.region(for: "America/New_York") == "us-east-1")
     let fns = ServerSetup.installable(["chat", "_shared", "signin", "mail", "money", "mail-probe", "capture"])

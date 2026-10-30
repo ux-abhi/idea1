@@ -213,7 +213,7 @@ private struct SupabaseSignIn: View {
         signingIn = true
         defer { signingIn = false }
         do {
-            let callback = try await webAuth.authenticate(using: url, callbackURLScheme: "blink", preferredBrowserSession: nil)
+            let callback = try await webAuth.blinkSignIn(url, for: installer.pkce, model: model)
             let token = try await installer.token(from: callback)
             await installer.signInToExisting(token: token, model: model)
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
@@ -270,7 +270,8 @@ private struct CreateServer: View {
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
                 .disabled(signingIn)
-                Text("Opens Supabase, the free service that hosts it. Sign in or sign up there; Blink does the rest. We never see your account.")
+                // The sign-up email's confirm link opens in a new tab, which can't hand the sign-in back to Blink.
+                Text("Opens Supabase, the free service that hosts it; Blink does the rest. New to Supabase? Make your account at supabase.com and confirm your email first. We never see your account.")
                     .font(.caption).foregroundStyle(.secondary)
                 // Hidden while setup runs: switching away mid-install would hide its progress, not stop it.
                 if !signingIn { Button("I already have a server", action: useExisting).buttonStyle(.borderless) }
@@ -283,7 +284,7 @@ private struct CreateServer: View {
         signingIn = true
         defer { signingIn = false }
         do {
-            let callback = try await webAuth.authenticate(using: url, callbackURLScheme: "blink", preferredBrowserSession: nil)
+            let callback = try await webAuth.blinkSignIn(url, for: installer.pkce, model: model)
             let token = try await installer.token(from: callback)
             await installer.install(token: token, model: model)
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {

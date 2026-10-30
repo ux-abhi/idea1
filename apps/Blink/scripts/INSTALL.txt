@@ -1,0 +1,28 @@
+How to install Blink
+====================
+
+1. Drag Blink onto the Applications folder in this window.
+
+2. The first time, macOS blocks Blink because it isn't from the App Store.
+   Use ONE of these two ways:
+
+   A) Terminal (easiest)
+      Open Terminal (press Command-Space, type Terminal, press Return).
+      Paste this line and press Return:
+
+      xattr -dr com.apple.quarantine /Applications/Blink.app && open /Applications/Blink.app
+
+      It removes the "downloaded from the internet" mark from Blink only.
+
+   B) System Settings
+      Double-click Blink in Applications and close the warning.
+      Right away, open System Settings > Privacy & Security and scroll to the bottom.
+      Next to "Blink was blocked", click Open Anyway and enter your Mac password.
+      The button shows for about an hour after you try to open Blink.
+      If you can't see it, double-click Blink again first.
+
+3. In Blink, choose Create My Server.
+   You need a free Supabase account (supabase.com). Blink makes your server in it.
+
+Blink needs macOS 26 or later.
+More help: https://www.blinkk.app/install

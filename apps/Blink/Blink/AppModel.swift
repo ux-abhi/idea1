@@ -105,9 +105,13 @@ final class AppModel {
     /// Brings the Blink window forward, or opens it again if it was closed.
     func showWindow() {
         #if os(macOS)
+        NSApp.unhide(nil)
         NSApp.activate()
-        // The main window only (WindowGroup id "main"), never the Keyboard Shortcuts window.
-        if let window = NSApp.windows.first(where: { $0.canBecomeMain && $0.identifier?.rawValue.hasPrefix("main") == true }) {
+        // The main window only (WindowGroup id "main"), never the Keyboard Shortcuts window. A closed window stays in
+        // NSApp.windows but can't be shown again, so only an open or minimised one is reused.
+        if let window = NSApp.windows.first(where: { $0.canBecomeMain && $0.identifier?.rawValue.hasPrefix("main") == true
+                                                     && ($0.isVisible || $0.isMiniaturized) }) {
+            if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
         } else {
             windowOpener?()
@@ -2082,6 +2086,8 @@ final class AppModel {
 
     /// A page for the window to show (from the notch's "Open" buttons); MainWindow clears it once shown.
     var openPage: String?
+    /// A blink://signin link macOS handed to Blink (the sign-in finished in another browser tab).
+    var openedSignin: URL?
 
     var readyToPost: [ContentPiece] { content.filter { $0.status == .approved } }
 

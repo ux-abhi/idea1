@@ -976,6 +976,9 @@ struct GlanceView: View {
                             done()
                         }
                         .buttonStyle(.plain).foregroundStyle(.mint)
+                        Button("Clear") { Task { await app.finish(waiting) } }
+                            .help("Clear these emails from Blink. You can undo this.")
+                            .buttonStyle(.plain).foregroundStyle(.mint)
                     }
                     .accessibilityElement(children: .combine)
                 }
