@@ -279,8 +279,8 @@ private struct SpaceCanvasView: View {
                     zoomBar.hidden().disabled(true).accessibilityHidden(true) // disabled: its ⌘ shortcuts must not fire twice
                     Spacer(minLength: 12)
                     ViewThatFits(in: .horizontal) {
-                        addBar(words: true)
-                        addBar(words: false)
+                        addBar(askInWords: true)
+                        addBar(askInWords: false)
                     }
                     Spacer(minLength: 12)
                     zoomBar
@@ -750,7 +750,8 @@ private struct SpaceCanvasView: View {
         Task { await model.addImage(from: file, in: space, at: spot) }
     }
 
-    private func addBar(words: Bool) -> some View {
+    /// Icons only, each named in its tooltip; Ask Blink keeps its words (unless the window is very narrow).
+    private func addBar(askInWords: Bool) -> some View {
         HStack(spacing: 2) {
             barButton("Task", symbol: "checkmark.circle") { add(.task) }
             barButton("Sticky", symbol: "note.text") { add(.note) }
@@ -761,10 +762,11 @@ private struct SpaceCanvasView: View {
             barButton("Section", symbol: "rectangle.dashed") { addMark(.section) }
             Divider().frame(height: 18).padding(.horizontal, 6)
             barButton("Ask Blink", symbol: "sparkles", action: askBlink)
+                .environment(\.showsWords, askInWords)
                 .foregroundStyle(Color.accentColor)
                 .disabled(model.thinking)
         }
-        .environment(\.showsWords, words)
+        .environment(\.showsWords, false)
         .font(.callout.weight(.medium))
         .padding(5)
         .glassEffect(.regular, in: .capsule)
@@ -773,15 +775,16 @@ private struct SpaceCanvasView: View {
 
     private func barButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            IconLabel(title: title, symbol: symbol).padding(.horizontal, 10).padding(.vertical, 7).contentShape(.capsule)
+            IconLabel(title: title, symbol: symbol).padding(.horizontal, 9).padding(.vertical, 7).contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .help(title == "Ask Blink" ? "Ask Blink to explain this plan and suggest what's missing"
-              : title == "Picture" ? "Add a picture (or drop one onto the canvas)"
-              : title == "Post" ? "Write a post for the platforms you pick; Blink drafts it into Content"
-              : title == "Heading" ? "Add a heading to label part of the canvas"
-              : title == "Section" ? "Add a section to group cards; drag its title to move it with everything inside"
-              : "Add a \(title.lowercased()), linked to the selected card if one is selected")
+        // The tooltip names it first, since the bar shows only icons.
+        .help(title == "Ask Blink" ? "Ask Blink: explain this plan and suggest what's missing"
+              : title == "Picture" ? "Picture: add one, or drop it onto the canvas"
+              : title == "Post" ? "Post: write one for the platforms you pick"
+              : title == "Heading" ? "Heading: label part of the canvas"
+              : title == "Section" ? "Section: group cards; drag its title to move them all"
+              : "\(title): add one, linked to the selected card")
     }
 
     // MARK: Moving around
