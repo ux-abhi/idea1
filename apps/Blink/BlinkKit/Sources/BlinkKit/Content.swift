@@ -37,10 +37,13 @@ public struct ContentPiece: Codable, Identifiable, Equatable, Sendable {
     public let createdAt: Date
     /// The day it's planned for in the weekly plan ("2026-10-14"), if any.
     public var plannedFor: String?
+    /// The Space it was written for, if any (it then sits on that Space's canvas).
+    public let spaceID: String?
 
     enum CodingKeys: String, CodingKey {
         case id, idea, platform, format, hook, body, parts, hashtags, status
         case lintScore = "lint_score", publishedAt = "published_at", createdAt = "created_at", plannedFor = "planned_for"
+        case spaceID = "segment_id"
     }
 
     /// What gets copied to post: a thread or carousel as numbered parts, then the hashtags.

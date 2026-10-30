@@ -1,5 +1,5 @@
 // © Pexilim
-import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule, parseSpace } from "./input.ts";
+import { parseChange, parseChatRequest, parseMailSend, parsePostProposal, parseProposal, parseReschedule, parseSpace } from "./input.ts";
 
 Deno.test("chat requests are checked at the boundary", () => {
   const ok = parseChatRequest({ message: " hi ", history: [{ role: "user", text: "a" }], timeZone: "Asia/Kolkata" });
@@ -81,4 +81,12 @@ Deno.test("a task goes only into a Space Blink showed the model, and the request
   const ok = parseChatRequest({ message: "hi", space_id: "3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90" });
   if (typeof ok === "string" || ok.spaceID !== "3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90") throw new Error("space_id dropped");
   if (typeof parseChatRequest({ message: "hi", space_id: "x' or 1=1" }) !== "string") throw new Error("bad space_id accepted");
+});
+
+Deno.test("a proposed post names only real platforms and has an idea", () => {
+  const ok = parsePostProposal({ idea: " Why I paused features ", platforms: ["instagram", "x", "x"] });
+  if (ok?.idea !== "Why I paused features" || ok.platforms.join() !== "instagram,x") throw new Error("valid post");
+  if (parsePostProposal({ idea: "Hi", platforms: [] }) !== null) throw new Error("no platform");
+  if (parsePostProposal({ idea: "Hi", platforms: ["tiktok"] }) !== null) throw new Error("unknown platform");
+  if (parsePostProposal({ idea: "", platforms: ["x"] }) !== null) throw new Error("empty idea");
 });

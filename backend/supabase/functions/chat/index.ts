@@ -6,7 +6,7 @@
 // shortcut: no rate limit; add a per-owner limit when chat moves past one user (§24).
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
-import { parseChange, parseChatRequest, parseMailSend, parseProposal, parseReschedule, parseSpace } from "./input.ts";
+import { parseChange, parseChatRequest, parseMailSend, parsePostProposal, parseProposal, parseReschedule, parseSpace } from "./input.ts";
 import { capProblem, claudeUsageCost, compatibleStream, cost, lastDay, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";
 import { ownsServer } from "../_shared/owner.ts";
@@ -30,12 +30,14 @@ propose_complete, propose_delete or propose_reschedule with its kind and id from
 To reply to an email in mail_waiting (now or at a later time, e.g. "send the reply to Sam on the 15th"), call
 propose_mail_send with its id, the send time and what the reply should say. Blink then writes the draft and the owner
 reviews the exact text and sends it with Touch ID; you never send mail yourself.
+When the owner wants a social post, call propose_post: Blink then writes the drafts into Content (and the current Space).
+If they haven't said which platform (Instagram, LinkedIn or X), ask which in one short question first, and never pick one
+for them. For post ideas, give a short numbered list in the reply, then offer to propose the ones they like as posts.
 All of these only propose: the owner sees a card and approves it.
 When asked to plan a day, fit the open tasks around the calendar with realistic times and propose them; keep the reply
 to a few short lines.
 After proposing, say in one line what you proposed, e.g. "Proposed: call Sam, Fri 16:00. It's waiting for your OK."
-Never claim something is done before the owner approves it. If you don't know, say so.
-When asked for social post ideas or drafts, give a short answer and end with: "Type /ideas or /post in the notch to save them to Content."`;
+Never claim something is done before the owner approves it. If you don't know, say so.`;
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -101,6 +103,21 @@ const TOOLS: Anthropic.Tool[] = [
         kind: { type: "string", enum: ["task", "reminder"] },
         id: { type: "string" },
         due_at: { type: "string", description: "ISO 8601 date-time with offset." },
+      },
+    },
+  },
+  {
+    name: "propose_post",
+    description: "Propose writing a social post. On approval Blink writes one draft per platform into Content. Only use platforms the owner named.",
+    strict: true,
+    input_schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["idea", "platforms", "space_id"],
+      properties: {
+        idea: { type: "string", description: "What the post is about, in the owner's words, with any facts they gave." },
+        platforms: { type: "array", items: { type: "string", enum: ["instagram", "linkedin", "x"] }, description: "The platforms the owner asked for." },
+        space_id: { type: ["string", "null"], description: "Id of the Space (from spaces) the post belongs to, or null." },
       },
     },
   },
@@ -250,6 +267,21 @@ Deno.serve(async (req) => {
           reminder: proposal.title,
           due: proposal.due,
           space_id: target?.id ?? null,
+        },
+      };
+    } else if (name === "propose_post") {
+      const post = parsePostProposal(input);
+      if (!post) return { content: "Invalid post; give the idea and at least one of instagram, linkedin, x.", isError: true };
+      const target = parseSpace(input, spaceNames);
+      if (target === undefined) return { content: "Unknown space_id; use one from spaces, or null.", isError: true };
+      const names: Record<string, string> = { instagram: "Instagram", linkedin: "LinkedIn", x: "X" };
+      row = {
+        kind: "post.draft",
+        payload: {
+          title: `Write a post: “${post.idea.length > 60 ? post.idea.slice(0, 60) + "…" : post.idea}”?`,
+          summary: `${post.platforms.map((p) => names[p]).join(", ")}${target ? ` · ${target.title}` : ""}`,
+          verb: "Write drafts",
+          note: post.idea, platforms: post.platforms, space_id: target?.id ?? null,
         },
       };
     } else if (name === "propose_mail_send") {

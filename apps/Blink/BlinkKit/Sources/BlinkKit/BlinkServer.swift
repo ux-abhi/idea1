@@ -681,6 +681,9 @@ public final class BlinkServer: Sendable {
         try await client.from("space_node").upsert(node).execute()
     }
 
+    /// The row already exists (a unique constraint said no), e.g. another Mac made the same canvas card first.
+    public static func isDuplicate(_ error: Error) -> Bool { (error as? PostgrestError)?.code == "23505" }
+
     /// Removes a node; the links to it go with it on the server.
     public func delete(_ node: SpaceNode) async throws {
         try await client.from("space_node").delete().eq("id", value: node.id).execute()
@@ -855,7 +858,7 @@ public final class BlinkServer: Sendable {
 
     public func contentPieces() async throws -> [ContentPiece] {
         try await client.from("content_piece")
-            .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for")
+            .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for, segment_id")
             .neq("status", value: "archived")
             .order("created_at", ascending: false)
             .limit(200)

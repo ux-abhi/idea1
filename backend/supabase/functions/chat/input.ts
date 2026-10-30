@@ -69,6 +69,16 @@ export function parseProposal(input: unknown): { title: string; due: string | nu
   return { title: title.trim(), due: null };
 }
 
+const PLATFORMS = ["instagram", "linkedin", "x"];
+
+/** A proposed post: the idea in a sentence or a few, and only the platforms the owner named (Blink writes the drafts). */
+export function parsePostProposal(input: unknown): { idea: string; platforms: string[] } | null {
+  const { idea, platforms } = (input ?? {}) as Record<string, unknown>;
+  if (typeof idea !== "string" || idea.trim().length === 0 || idea.length > 1000) return null;
+  if (!Array.isArray(platforms) || platforms.length === 0 || platforms.some((p) => !PLATFORMS.includes(p))) return null;
+  return { idea: idea.trim(), platforms: [...new Set(platforms as string[])] };
+}
+
 /** The Space a proposed task goes into: null, or one of the owner's Spaces Blink showed the model. undefined = unknown id. */
 export function parseSpace(input: unknown, spaces: Map<string, string>): { id: string; title: string } | null | undefined {
   const { space_id } = (input ?? {}) as Record<string, unknown>;

@@ -525,6 +525,21 @@ final class AppModel {
                 try? await server.setStatus("failed", for: action, result: ["error": error.localizedDescription])
                 throw error
             }
+        case "post.draft":
+            // From chat: the idea and the platforms the owner named; the drafts land in Content (and the Space's canvas).
+            let platforms = (action.payload.platforms ?? []).compactMap(ContentPiece.Platform.init(rawValue:))
+            guard let idea = action.payload.note, !platforms.isEmpty else {
+                try await server.setStatus("failed", for: action, result: ["error": "The post had no idea or platform."])
+                return
+            }
+            while drafting { try await Task.sleep(for: .milliseconds(300)) } // another post is being written; wait for it
+            if await draft(idea: idea, platforms: platforms, space: Space.known(action.payload.spaceID, in: spaces)) {
+                try await server.setStatus("done", for: action, result: [:])
+            } else {
+                let problem = contentProblem ?? "Couldn't write the drafts."
+                actionProblem = problem
+                try? await server.setStatus("failed", for: action, result: ["error": problem])
+            }
         case "mail.compose":
             // From chat ("send the reply to Sam on the 15th"): write or reuse the draft, then show it for review.
             if !emails.contains(where: { $0.id == action.payload.emailID }) { await loadMail() }
@@ -1117,13 +1132,13 @@ final class AppModel {
     }
 
     /// Asks Claude for one draft per platform; they arrive saved, at the top of the list.
-    func draft(idea: String, platforms: [ContentPiece.Platform], plannedFor: String? = nil) async -> Bool {
+    func draft(idea: String, platforms: [ContentPiece.Platform], plannedFor: String? = nil, space: String? = nil) async -> Bool {
         guard let server, !drafting else { return false }
         drafting = true
         defer { drafting = false }
         contentProblem = nil
         do {
-            questions[idea] = try await server.draftContent(idea: idea, platforms: platforms, plannedFor: plannedFor)
+            questions[idea] = try await server.draftContent(idea: idea, platforms: platforms, spaceID: space, plannedFor: plannedFor)
             await loadContent()
             if !batchingDrafts {
                 announce("✍︎ Drafts ready: \(idea.split(separator: "\n").first.map(String.init)?.prefix(40) ?? "your post")")
@@ -1368,7 +1383,7 @@ final class AppModel {
             startFocus()
         case .post(let idea):
             let platforms = contentPlatforms
-            if await draft(idea: idea, platforms: platforms) {
+            if await draft(idea: idea, platforms: platforms, space: space) {
                 let asked = questions[idea] ?? []
                 chat.append(.init(role: .assistant, text: "Wrote drafts for \(platforms.map(\.name).formatted()). Edit and approve them in **Content**."
                     + (asked.isEmpty ? "" : "\nTo make them stronger, answer on the Content page: " + asked.joined(separator: " · "))))
@@ -2222,30 +2237,54 @@ final class AppModel {
         }
         // Keep anything added here while the load was on its way.
         let local = canvasNodes[space.id] ?? []
-        var nodes = loaded.nodes + local.filter { node in !loaded.nodes.contains { $0.id == node.id || ($0.ref != nil && $0.ref == node.ref) } }
+        let nodes = loaded.nodes + local.filter { node in !loaded.nodes.contains { $0.id == node.id || ($0.ref != nil && $0.ref == node.ref) } }
         let edges = loaded.edges + (canvasEdges[space.id] ?? []).filter { edge in !loaded.edges.contains { $0.id == edge.id } }
         var added: [SpaceNode] = []
         if !nodes.contains(where: { $0.kind == .project }) {
             // The project node's id is the Space's own, so two Macs adding it at once make the same row.
             added.append(SpaceNode(id: space.id, spaceID: space.id, kind: .project, x: Self.canvasCenter.x, y: Self.canvasCenter.y, color: space.color))
         }
-        let mine = items.filter { $0.spaceID == space.id && $0.status != .archived }
-        let reminders = spaceReminders[space.id] ?? []
-        let wanted: [(SpaceNode.Kind, String)] = mine.map { ($0.type == .note ? .note : .task, $0.id) } + reminders.map { (.reminder, $0.id) }
-        for (kind, ref) in wanted where !(nodes + added).contains(where: { $0.ref == ref }) {
-            let spot = CanvasLayout.freeSpot(around: Self.canvasCenter, taken: nodes + added)
-            added.append(SpaceNode(spaceID: space.id, kind: kind, ref: ref, x: spot.x, y: spot.y, color: kind == .note ? "yellow" : space.color))
-        }
-        nodes += added
-        canvasNodes[space.id] = nodes
+        canvasNodes[space.id] = nodes + added
         canvasEdges[space.id] = edges
         for node in added { await canvasWrite { try await server.save(node) } }
+        canvasLoaded.insert(space.id)
+        await addMissingNodes(space)
+    }
+
+    /// Spaces whose canvas has loaded; only those get new nodes added (before, the server's nodes aren't known yet).
+    private var canvasLoaded: Set<String> = []
+
+    /// A node for every task, note, reminder and post in the Space that hasn't one yet, e.g. one just approved in chat
+    /// or added on another page while the canvas is open.
+    func addMissingNodes(_ space: Space, near spot: (x: Double, y: Double) = canvasCenter) async {
+        guard canvasLoaded.contains(space.id), let server else { return }
+        let nodes = canvasNodes[space.id] ?? []
+        let mine = items.filter { $0.spaceID == space.id && $0.status != .archived }
+        let posts = content.filter { $0.spaceID == space.id && $0.status != .archived }
+        let wanted: [(SpaceNode.Kind, String)] = mine.map { ($0.type == .note ? .note : .task, $0.id) }
+            + (spaceReminders[space.id] ?? []).map { (.reminder, $0.id) } + posts.map { (.post, $0.id) }
+        var added: [SpaceNode] = []
+        for (kind, ref) in wanted where !(nodes + added).contains(where: { $0.ref == ref }) {
+            let place = CanvasLayout.onSheet(CanvasLayout.freeSpot(around: spot, taken: nodes + added, radius: 200))
+            added.append(SpaceNode(spaceID: space.id, kind: kind, ref: ref, x: place.x, y: place.y, color: kind == .note ? "yellow" : space.color))
+        }
+        guard !added.isEmpty else { return }
+        canvasNodes[space.id] = nodes + added
+        do {
+            for node in added { try await server.save(node) }
+        } catch where BlinkServer.isDuplicate(error) {
+            // Another Mac placed it first: take the server's cards instead of showing a problem.
+            await loadCanvas(space)
+        } catch {
+            await canvasWrite { throw error }
+        }
     }
 
     /// A canvas change saved behind the screen; a failure says so instead of quietly snapping back on the next load.
     private func canvasWrite(_ write: () async throws -> Void) async {
         do { try await write() } catch {
-            saveProblem = "Couldn't save a change to the canvas. Check your connection and try again."
+            saveProblem = serverBehind ? "Update your server (Settings › Update Server) to save canvas changes."
+                : "Couldn't save a change to the canvas. Check your connection and try again."
         }
     }
 
@@ -2260,7 +2299,7 @@ final class AppModel {
         case .note: ref = create(.note, title: title, space: space.id).id
         case .reminder:
             ref = await addReminder(title, due: due, to: space)
-        case .project, .image: ref = nil
+        case .project, .image, .post: ref = nil
         }
         guard let ref else { return nil }
         var nodes = canvasNodes[space.id] ?? []

@@ -100,6 +100,7 @@ private enum CardContent {
     case item(BlinkItem)
     case reminder(AgendaReminder)
     case image(String)
+    case post(ContentPiece)
 }
 
 /// A card being written before it exists: where it goes, what kind, and what's typed so far.
@@ -109,6 +110,8 @@ private struct CardDraft: Equatable {
     var y: Double
     var parentID: String?
     var text = ""
+    /// For a post: the platforms to write for; none is picked for the owner.
+    var platforms: Set<ContentPiece.Platform> = []
 }
 
 /// The plan as cards on a dotted sheet that pans and zooms. Double-click empty space to add a card there, double-click
@@ -145,6 +148,13 @@ private struct SpaceCanvasView: View {
     @FocusState private var canvasFocused: Bool
 
     private static let zoomRange = 0.3...2.0
+
+    /// Everything that belongs on this canvas, by id.
+    private var spaceContents: [String] {
+        model.items.filter { $0.spaceID == space.id && $0.status != .archived }.map(\.id)
+            + model.content.filter { $0.spaceID == space.id && $0.status != .archived }.map(\.id)
+            + (model.spaceReminders[space.id] ?? []).map(\.id)
+    }
 
     private var nodes: [SpaceNode] { (model.canvasNodes[space.id] ?? []).filter { content(of: $0) != nil } }
     private var edges: [SpaceEdge] {
@@ -209,6 +219,8 @@ private struct SpaceCanvasView: View {
             centreOnceLoaded()
         }
         .onChange(of: nodes.isEmpty) { centreOnceLoaded() }
+        // Something new in this Space (approved in chat, added on another page, drafts written): its card appears here.
+        .onChange(of: spaceContents) { Task { await model.addMissingNodes(space) } }
         .simultaneousGesture(
             MagnifyGesture()
                 .updating($pinch) { change, state, _ in state = (pinched(change.magnification) / scale, change.startLocation) }
@@ -240,7 +252,11 @@ private struct SpaceCanvasView: View {
         .overlay(alignment: .topTrailing) { SpaceProgressPill(space: space).padding(16) }
         .overlay(alignment: .bottom) {
             VStack(spacing: 10) {
-                if nodes.count <= 1 && draft == nil {
+                if model.drafting {
+                    Label("Writing your post…", systemImage: "ellipsis").font(.callout).foregroundStyle(.secondary)
+                } else if draft?.kind == .post, let problem = model.contentProblem {
+                    Text(problem).font(.callout).foregroundStyle(.red)
+                } else if nodes.count <= 1 && draft == nil {
                     Text("Double-click anywhere to add a card. Drag a card's dot onto another to link them.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
@@ -267,6 +283,7 @@ private struct SpaceCanvasView: View {
         case .task, .note: model.items.first { $0.id == node.ref && $0.status != .archived }.map(CardContent.item)
         case .reminder: model.spaceReminders[space.id]?.first { $0.id == node.ref }.map(CardContent.reminder)
         case .image: node.ref.map(CardContent.image)
+        case .post: model.content.first { $0.id == node.ref && $0.status != .archived }.map(CardContent.post)
         }
     }
 
@@ -333,8 +350,11 @@ private struct SpaceCanvasView: View {
             .accessibilityAction(named: "Select") { selected = node.id }
     }
 
+    private func openPost() { model.openPage = "content" }
+
     private func edit(_ node: SpaceNode) {
         guard node.kind != .project, node.kind != .image else { return }
+        guard node.kind != .post else { return openPost() }
         if draft != nil { finishDraft() }
         selected = node.id
         editing = node.id
@@ -440,6 +460,12 @@ private struct SpaceCanvasView: View {
             }
         case .image:
             sizeMenu(node)
+        case .post(let post):
+            Button("Open in Content", action: openPost)
+            Button("Copy Post") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(post.postText, forType: .string)
+            }
         case nil:
             EmptyView()
         }
@@ -485,6 +511,7 @@ private struct SpaceCanvasView: View {
         case .item(let item): item.title.isEmpty ? "Untitled" : item.title
         case .reminder(let reminder): reminder.title
         case .image: "Picture"
+        case .post(let post): post.hook.isEmpty ? post.idea : post.hook
         case nil: ""
         }
     }
@@ -519,6 +546,20 @@ private struct SpaceCanvasView: View {
         draft = nil
         let text = done.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        if done.kind == .post {
+            // Blink writes one draft per platform picked; they land in Content and here, where the card was.
+            let platforms = ContentPiece.Platform.allCases.filter(done.platforms.contains)
+            // Keep what's typed until a platform is picked and no other post is being written.
+            guard !platforms.isEmpty, !model.drafting else { draft = done; return }
+            Task {
+                if await model.draft(idea: text, platforms: platforms, space: space.id) {
+                    await model.addMissingNodes(space, near: (done.x, done.y))
+                } else if draft == nil {
+                    draft = done // it didn't work: the text comes back, with the reason under the bar
+                }
+            }
+            return
+        }
         let parsed = done.kind == .note ? (title: text, due: Date?.none) : { let p = TaskInput.parse(text); return (title: p.title, due: p.due) }()
         let parent = nodes.first { $0.id == done.parentID }
         Task {
@@ -569,6 +610,7 @@ private struct SpaceCanvasView: View {
             barButton("Task", symbol: "checkmark.circle") { add(.task) }
             barButton("Sticky", symbol: "note.text") { add(.note) }
             barButton("Reminder", symbol: "bell") { add(.reminder) }
+            barButton("Post", symbol: "megaphone") { add(.post) }
             barButton("Picture", symbol: "photo") { pickingImage = true }
             Divider().frame(height: 18).padding(.horizontal, 6)
             barButton("Ask Blink", symbol: "sparkles", action: askBlink)
@@ -587,6 +629,7 @@ private struct SpaceCanvasView: View {
         .buttonStyle(.plain)
         .help(title == "Ask Blink" ? "Ask Blink to explain this plan and suggest what's missing"
               : title == "Picture" ? "Add a picture (or drop one onto the canvas)"
+              : title == "Post" ? "Write a post for the platforms you pick; Blink drafts it into Content"
               : "Add a \(title.lowercased()), linked to the selected card if one is selected")
     }
 
@@ -716,6 +759,9 @@ private struct SpaceCanvasView: View {
                 names[node.id] = reminder.title
                 lines.append("Reminder: \(reminder.title)\(reminder.due.map { " · \(Agenda.dueLabel($0))" } ?? "")")
             case .image: names[node.id] = "a picture"
+            case .post(let post):
+                names[node.id] = post.hook
+                lines.append("Post (\(post.platform.name), \(post.status.rawValue)): \(post.hook)")
             case nil: break
             }
         }
@@ -833,6 +879,13 @@ private struct CanvasCard: View {
             .accessibilityLabel("Mark \(reminder.title) done")
         case .image:
             EmptyView()
+        case .post(let post):
+            Text(post.platform.short)
+                .font(.callout.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(tint.gradient, in: .rect(cornerRadius: 10, style: .continuous))
+                .accessibilityHidden(true)
         }
     }
 
@@ -897,7 +950,7 @@ private struct CanvasCard: View {
         case .project: space.dueAt
         case .item(let item): item.dueAt
         case .reminder(let reminder): reminder.due
-        case .image: nil
+        case .image, .post: nil
         }
     }
 
@@ -909,6 +962,7 @@ private struct CanvasCard: View {
         case .item(let item): item.title.isEmpty ? "Untitled" : item.title
         case .reminder(let reminder): reminder.title
         case .image: "Picture"
+        case .post(let post): post.hook.isEmpty ? post.idea : post.hook
         }
     }
 
@@ -921,6 +975,7 @@ private struct CanvasCard: View {
         case .item: return "Task\(when)"
         case .reminder: return "Reminder\(when)"
         case .image: return ""
+        case .post(let post): return "\(post.platform.name) \(post.format.replacingOccurrences(of: "_", with: " ")) · \(post.status.rawValue)"
         }
     }
 
@@ -935,14 +990,14 @@ private struct CanvasCard: View {
         case .project: title = space.title
         case .item(let item): (title, text) = (item.title, item.body)
         case .reminder(let reminder): title = reminder.title
-        case .image: break
+        case .image, .post: break
         }
     }
 
     private func commit() {
         let newTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         switch content {
-        case .project, .image: break
+        case .project, .image, .post: break
         case .item(let item):
             var changed = model.items.first { $0.id == item.id } ?? item
             if !newTitle.isEmpty { changed.title = newTitle }
@@ -970,7 +1025,7 @@ private struct DraftCard: View {
         let kind = draft?.kind ?? .task
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 4) {
-                ForEach([SpaceNode.Kind.task, .note, .reminder], id: \.self) { option in
+                ForEach([SpaceNode.Kind.task, .note, .reminder, .post], id: \.self) { option in
                     Button {
                         draft?.kind = option
                         focused = true
@@ -991,6 +1046,26 @@ private struct DraftCard: View {
                 .focused($focused)
                 .onSubmit(commit)
                 .onExitCommand { draft = nil }
+            if kind == .post {
+                HStack(spacing: 4) {
+                    ForEach(ContentPiece.Platform.allCases, id: \.self) { platform in
+                        let on = draft?.platforms.contains(platform) == true
+                        Button {
+                            if on { draft?.platforms.remove(platform) } else { draft?.platforms.insert(platform) }
+                        } label: {
+                            Label(platform.name, systemImage: on ? "checkmark.circle.fill" : "circle")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 9).padding(.vertical, 4)
+                                .background(on ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.05), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                    }
+                }
+                if draft?.platforms.isEmpty == true {
+                    Text("Pick where it goes, then press Return.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(12)
         .frame(width: 260, alignment: .leading)
@@ -1007,6 +1082,7 @@ private struct DraftCard: View {
         case .reminder: "Reminder"
         case .project: "Project"
         case .image: "Picture"
+        case .post: "Post"
         }
     }
 
@@ -1017,6 +1093,7 @@ private struct DraftCard: View {
         case .reminder: "bell"
         case .project: "folder"
         case .image: "photo"
+        case .post: "megaphone"
         }
     }
 
@@ -1026,6 +1103,7 @@ private struct DraftCard: View {
         case .note: "Sticky note"
         case .reminder: "Remind me, e.g. “Call the printer friday 10am”"
         case .project, .image: ""
+        case .post: "What's the post about? Add any facts to use"
         }
     }
 }
