@@ -18,9 +18,20 @@ struct MoneyView: View {
         let summary = MoneyMath.summary(model.spends, today: today)
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Money").font(.system(.largeTitle, design: .rounded, weight: .bold)).accessibilityAddTraits(.isHeader)
-                    Text(pageSummary(summary)).foregroundStyle(.secondary)
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Money").font(.system(.largeTitle, design: .rounded, weight: .bold)).accessibilityAddTraits(.isHeader)
+                        Text(pageSummary(summary)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    // By hand: an empty row in "Check before saving", today, from the default account.
+                    Button("Add Spend", systemImage: "plus") {
+                        model.spendDrafts.append(SpendDraft(amount: 0, note: "", category: .other, spentOn: HabitDay.key(.now),
+                                                            accountID: model.accounts.first(where: \.isDefault)?.id))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut("n")
+                    .help("Add a spend by hand (⌘N)")
                 }
                 if let problem = model.moneyProblem {
                     Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
@@ -211,7 +222,8 @@ struct MoneyView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(model.spendDrafts.contains { $0.amount <= 0 })
+                // What the server takes: at least 0.01 once rounded to cents, under a million, a note of up to 300 characters.
+                .disabled(model.spendDrafts.contains { $0.amount < 0.005 || $0.amount >= 1_000_000 || $0.note.count > 300 })
             }
         }
         .padding(16)
@@ -377,7 +389,8 @@ private struct DraftRow: View {
             TextField("Amount", text: $amount)
                 .textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing)
                 // No thousands separators: "1.250,40" would be ambiguous to read back.
-                .onAppear { amount = draft.amount.formatted(.number.grouping(.never).precision(.fractionLength(2))) }
+                // Empty for a new row, so typing "12" means 12 (not "0.0012").
+                .onAppear { amount = draft.amount > 0 ? draft.amount.formatted(.number.grouping(.never).precision(.fractionLength(2))) : "" }
                 .onChange(of: amount) { draft.amount = MoneyMath.parseAmount(amount) ?? 0 }
             TextField("What", text: $draft.note).textFieldStyle(.roundedBorder)
         }
@@ -393,8 +406,13 @@ private struct DraftRow: View {
                 }
                 .labelsHidden().frame(width: 120)
             }
-            Text(HabitDay.date(fromKey: draft.spentOn).map { $0.formatted(.dateTime.weekday(.abbreviated).day()) } ?? draft.spentOn)
-                .font(.caption).foregroundStyle(.secondary).frame(width: 50)
+            DatePicker("Day", selection: Binding(
+                get: { HabitDay.date(fromKey: draft.spentOn) ?? .now },
+                set: { draft.spentOn = HabitDay.key($0) }
+            ), in: ...Date.now, displayedComponents: .date)
+            .labelsHidden()
+            .datePickerStyle(.field)
+            .fixedSize()
             Spacer(minLength: 0)
             Button("Remove", systemImage: "xmark.circle.fill", action: remove)
                 .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.secondary)
