@@ -646,6 +646,24 @@ do $$ begin
 end $$;
 reset role;
 
+-- Canvas images: each owner reads and writes only their own folder of the private bucket.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  insert into storage.objects (bucket_id, name) values ('canvas', '00000000-0000-0000-0000-00000000000a/space/one.jpg');
+  begin
+    insert into storage.objects (bucket_id, name) values ('canvas', '00000000-0000-0000-0000-00000000000b/space/two.jpg');
+    raise exception 'A wrote into B''s folder';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  assert (select count(*) from storage.objects) = 0, 'B can''t see A''s images';
+end $$;
+reset role;
+do $$ begin assert not (select public from storage.buckets where id = 'canvas'), 'the canvas bucket is private'; end $$;
+
 -- Server package: the installer writes it; the owner reads it; nobody else reads it and no client writes it.
 insert into public.server_info (key, value) values ('package', 'abc123');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');

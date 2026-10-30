@@ -2211,7 +2211,8 @@ final class AppModel {
         await loadReminders(for: space)
         let loaded: (nodes: [SpaceNode], edges: [SpaceEdge])
         do { loaded = try await server.canvas(of: space.id) } catch {
-            saveProblem = "Couldn't load this Space's canvas. Check your connection and try again."
+            saveProblem = serverBehind ? "Update your server (Settings › Update Server) to open this canvas."
+                : "Couldn't load this Space's canvas. Check your connection and try again."
             return
         }
         // Keep anything added here while the load was on its way.
@@ -2254,7 +2255,7 @@ final class AppModel {
         case .note: ref = create(.note, title: title, space: space.id).id
         case .reminder:
             ref = await addReminder(title, due: due, to: space)
-        case .project: ref = nil
+        case .project, .image: ref = nil
         }
         guard let ref else { return nil }
         var nodes = canvasNodes[space.id] ?? []
@@ -2278,12 +2279,90 @@ final class AppModel {
         Task { await canvasWrite { try await server?.save(moved) } }
     }
 
-    func recolor(_ node: SpaceNode, to color: String) {
+    func recolor(_ node: SpaceNode, to color: String) { change(node) { $0.color = color } }
+
+    /// A sticky or image dragged to a new size, its top-left corner staying put.
+    func resize(_ node: SpaceNode, width: Double, height: Double) {
+        let size = SpaceNode.clamped(width: width, height: height)
+        let centre = CanvasLayout.onSheet((node.x + (size.width - node.size.width) / 2, node.y + (size.height - node.size.height) / 2))
+        change(node) { ($0.w, $0.h, $0.x, $0.y) = (size.width, size.height, centre.x, centre.y) }
+    }
+
+    // Standard is stored as 1, not nil: an upsert leaves nil out, so the old size would stay on the server.
+    func setTextScale(_ node: SpaceNode, to scale: Double) { change(node) { $0.textScale = scale } }
+
+    /// A change to how a node looks: shown at once, saved behind.
+    private func change(_ node: SpaceNode, _ edit: (inout SpaceNode) -> Void) {
         guard var nodes = canvasNodes[node.spaceID], let i = nodes.firstIndex(where: { $0.id == node.id }) else { return }
-        nodes[i].color = color
+        edit(&nodes[i])
         canvasNodes[node.spaceID] = nodes
         let changed = nodes[i]
         Task { await canvasWrite { try await server?.save(changed) } }
+    }
+
+    #if os(macOS)
+    /// Pictures already fetched for the canvas, by their path on the server.
+    private(set) var canvasImages: [String: NSImage] = [:]
+
+    func loadCanvasImage(_ path: String) async {
+        guard canvasImages[path] == nil, let server else { return }
+        // shortcut: pictures stay in memory while Blink runs; cache them on disk if Spaces get heavy with images.
+        if let data = try? await server.canvasImage(path), let image = NSImage(data: data) { canvasImages[path] = image }
+    }
+
+    /// A picture added to the canvas (from a file chosen or dropped): made small and stripped of its metadata, stored on the
+    /// owner's server, and placed at `spot`.
+    func addImage(from file: URL, in space: Space, at spot: (x: Double, y: Double)) async {
+        guard let server else { return }
+        let access = file.startAccessingSecurityScopedResource()
+        defer { if access { file.stopAccessingSecurityScopedResource() } }
+        // Huge files are refused before they're read; the picture is shrunk far below this anyway.
+        let bytes = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        // Read and shrink off the main thread, so a drop of big photos doesn't freeze the window.
+        let ready = bytes > 60_000_000 ? nil : await Task.detached(operation: { (try? Data(contentsOf: file)).flatMap { CanvasImage.jpeg(from: $0) } }).value
+        guard let ready else {
+            saveProblem = bytes > 60_000_000 ? "That picture is too big. Pictures up to 60 MB work." : "That file isn't a picture Blink can read."
+            return
+        }
+        let path: String
+        do { path = try await server.uploadCanvasImage(ready.data, space: space.id) } catch {
+            saveProblem = "Couldn't upload the picture. Check your connection and try again."
+            return
+        }
+        canvasImages[path] = NSImage(data: ready.data)
+        let size = CanvasImage.size(width: ready.width, height: ready.height)
+        let place = CanvasLayout.onSheet(spot)
+        let node = SpaceNode(spaceID: space.id, kind: .image, ref: path, x: place.x, y: place.y, w: size.width, h: size.height)
+        canvasNodes[space.id, default: []].append(node)
+        await canvasWrite { try await server.save(node) }
+    }
+    #endif
+
+    /// Takes an image off the canvas with its links, with Undo; its file goes once Undo has passed.
+    func removeImage(_ node: SpaceNode) async {
+        guard let server, let path = node.ref else { return }
+        let links = canvasEdges[node.spaceID]?.filter { $0.from == node.id || $0.to == node.id } ?? []
+        do { try await server.delete(node) } catch {
+            saveProblem = "Couldn't remove the picture. Check your connection and try again."
+            return
+        }
+        canvasNodes[node.spaceID]?.removeAll { $0.id == node.id }
+        canvasEdges[node.spaceID]?.removeAll { links.contains($0) }
+        offerUndo("Removed a picture") { [weak self] in
+            guard let self else { return }
+            canvasNodes[node.spaceID, default: []].append(node)
+            canvasEdges[node.spaceID, default: []] += links
+            await canvasWrite {
+                try await server.save(node)
+                for edge in links { try await server.save(edge) }
+            }
+        }
+        try? await Task.sleep(for: .seconds(Tokens.Hold.undoChip + 5))
+        // A later action can keep the same Undo chip up longer; wait it out.
+        while undoChip != nil { try? await Task.sleep(for: .seconds(1)) }
+        guard canvasNodes[node.spaceID]?.contains(where: { $0.id == node.id }) != true else { return }
+        // shortcut: a file whose removal fails (or Blink quits first) stays in the bucket unseen; sweep files with no node if storage grows.
+        try? await server.removeCanvasImage(path)
     }
 
     func connect(_ from: SpaceNode, to: SpaceNode, in space: Space) async {

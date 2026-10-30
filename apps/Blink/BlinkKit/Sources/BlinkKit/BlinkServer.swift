@@ -244,8 +244,14 @@ public final class BlinkServer: Sendable {
     }
 
     /// Deletes the space; its tasks and notes stay, outside any space (the database clears segment_id).
+    /// Deletes a Space (its canvas goes with it) and its pictures' files.
     public func delete(_ space: Space) async throws {
         try await client.from("segment").delete().eq("id", value: space.id).execute()
+        let folder = "\(try await client.auth.session.user.id.uuidString.lowercased())/\(space.id)"
+        // shortcut: lists the first 100 files only; page through if a Space ever holds more pictures.
+        if let files = try? await client.storage.from("canvas").list(path: folder), !files.isEmpty {
+            _ = try? await client.storage.from("canvas").remove(paths: files.map { "\(folder)/\($0.name)" })
+        }
     }
 
     // MARK: Habits
@@ -662,7 +668,7 @@ public final class BlinkServer: Sendable {
     // MARK: Space canvas
 
     public func canvas(of spaceID: String) async throws -> (nodes: [SpaceNode], edges: [SpaceEdge]) {
-        async let nodes: [SpaceNode] = client.from("space_node").select("id, segment_id, kind, ref, x, y, color")
+        async let nodes: [SpaceNode] = client.from("space_node").select("id, segment_id, kind, ref, x, y, color, w, h, text_scale")
             .eq("segment_id", value: spaceID).execute().value
         async let edges: [SpaceEdge] = client.from("space_edge").select("id, segment_id, from_node, to_node")
             .eq("segment_id", value: spaceID).execute().value
@@ -671,6 +677,27 @@ public final class BlinkServer: Sendable {
 
     public func save(_ node: SpaceNode) async throws {
         try await client.from("space_node").upsert(node).execute()
+    }
+
+    /// Removes a node; the links to it go with it on the server.
+    public func delete(_ node: SpaceNode) async throws {
+        try await client.from("space_node").delete().eq("id", value: node.id).execute()
+    }
+
+    public func removeCanvasImage(_ path: String) async throws {
+        try await client.storage.from("canvas").remove(paths: [path])
+    }
+
+    /// Stores a canvas picture (already made ready by `CanvasImage.jpeg`) in the owner's own folder; returns its path.
+    public func uploadCanvasImage(_ jpeg: Data, space spaceID: String) async throws -> String {
+        let user = try await client.auth.session.user.id
+        let path = "\(user.uuidString.lowercased())/\(spaceID)/\(UUID().uuidString.lowercased()).jpg"
+        try await client.storage.from("canvas").upload(path, data: jpeg, options: FileOptions(cacheControl: "31536000", contentType: "image/jpeg"))
+        return path
+    }
+
+    public func canvasImage(_ path: String) async throws -> Data {
+        try await client.storage.from("canvas").download(path: path)
     }
 
     public func save(_ edge: SpaceEdge) async throws {

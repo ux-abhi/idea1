@@ -2,6 +2,7 @@
 #if os(macOS)
 import BlinkKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A Space as a canvas, FigJam-style: the plan as cards you add, edit, drag and link right where they are. The project
 /// sits in the middle; the tasks, sticky notes and reminders around it are the real ones from the rest of Blink (a
@@ -98,6 +99,7 @@ private enum CardContent {
     case project
     case item(BlinkItem)
     case reminder(AgendaReminder)
+    case image(String)
 }
 
 /// A card being written before it exists: where it goes, what kind, and what's typed so far.
@@ -127,6 +129,8 @@ private struct SpaceCanvasView: View {
     /// A card being dragged, and the link being drawn: they reset on their own if a gesture is cancelled.
     @GestureState private var moving: (id: String, offset: CGSize)?
     @GestureState private var linking: (from: String, end: CGPoint)?
+    @GestureState private var resizing: (id: String, by: CGSize)?
+    @State private var pickingImage = false
     @State private var scale = 1.0
     @State private var pinch: (start: Double, centre: (x: Double, y: Double))?
     @State private var position = ScrollPosition()
@@ -179,6 +183,13 @@ private struct SpaceCanvasView: View {
             }
             .frame(width: AppModel.canvasSize.width * scale, height: AppModel.canvasSize.height * scale)
             .coordinateSpace(.named("canvas"))
+            .dropDestination(for: URL.self) { urls, spot in
+                let files = urls.filter(\.isFileURL).prefix(10)
+                for (i, file) in files.enumerated() {
+                    addImage(from: file, at: (spot.x / scale + Double(i) * 30, spot.y / scale + Double(i) * 30))
+                }
+                return !files.isEmpty
+            }
         }
         .scrollPosition($position)
         // Opens on the middle of the sheet, where the project starts, even before the cards have loaded.
@@ -204,7 +215,7 @@ private struct SpaceCanvasView: View {
         .onDeleteCommand(perform: deleteSelected)
         .onExitCommand { draft != nil ? (draft = nil) : clearSelection() }
         .onKeyPress(.return) {
-            guard let selected, editing == nil, draft == nil, nodes.first(where: { $0.id == selected })?.kind != .project else { return .ignored }
+            guard let selected, editing == nil, draft == nil, ![.project, .image].contains(nodes.first(where: { $0.id == selected })?.kind) else { return .ignored }
             editing = selected
             return .handled
         }
@@ -224,6 +235,11 @@ private struct SpaceCanvasView: View {
             .padding(.bottom, 18)
         }
         .overlay(alignment: .bottomTrailing) { zoomBar.padding(18) }
+        .fileImporter(isPresented: $pickingImage, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
+            for (i, file) in ((try? result.get()) ?? []).prefix(10).enumerated() {
+                addImage(from: file, at: (viewCentre.x + Double(i) * 30, viewCentre.y + Double(i) * 30))
+            }
+        }
         .onChange(of: editing) { _, now in if now == nil && draft == nil { canvasFocused = true } }
         .onDisappear(perform: finishDraft)
     }
@@ -236,13 +252,24 @@ private struct SpaceCanvasView: View {
         case .project: .project
         case .task, .note: model.items.first { $0.id == node.ref && $0.status != .archived }.map(CardContent.item)
         case .reminder: model.spaceReminders[space.id]?.first { $0.id == node.ref }.map(CardContent.reminder)
+        case .image: node.ref.map(CardContent.image)
         }
     }
 
     /// Where a node is drawn now, in sheet points: its spot plus any drag under way.
     private func point(_ node: SpaceNode) -> CGPoint {
         let offset = moving?.id == node.id ? moving?.offset ?? .zero : .zero
-        return CGPoint(x: node.x + offset.width, y: node.y + offset.height)
+        let size = shown(node).size
+        let grown = (width: size.width - node.size.width, height: size.height - node.size.height)
+        return CGPoint(x: node.x + offset.width + grown.width / 2, y: node.y + offset.height + grown.height / 2)
+    }
+
+    /// A node as drawn now: with the size it's being dragged to, if any.
+    private func shown(_ node: SpaceNode) -> SpaceNode {
+        guard let resizing, resizing.id == node.id else { return node }
+        var live = node
+        (live.w, live.h) = SpaceNode.clamped(width: node.size.width + resizing.by.width, height: node.size.height + resizing.by.height)
+        return live
     }
 
     /// A link leaves the side of one card facing the other and arrives at the other's near side, in zoomed points.
@@ -266,9 +293,13 @@ private struct SpaceCanvasView: View {
     private func card(_ node: SpaceNode) -> some View {
         let isSelected = selected == node.id
         let isEditing = editing == node.id
-        return CanvasCard(node: node, space: space, content: content(of: node) ?? .project, selected: isSelected, editing: $editing)
+        let active = isSelected || hovered == node.id
+        return CanvasCard(node: shown(node), space: space, content: content(of: node) ?? .project, selected: isSelected, editing: $editing)
             .overlay(alignment: .trailing) {
-                linkPort(node).opacity(isSelected || hovered == node.id || linking?.from == node.id ? 1 : 0)
+                linkPort(node).opacity(active || linking?.from == node.id ? 1 : 0)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if node.resizable && !isEditing { resizeHandle(node).opacity(active || resizing?.id == node.id ? 1 : 0) }
             }
             .onHover { inside in hovered = inside ? node.id : (hovered == node.id ? nil : hovered) }
             .scaleEffect(scale)
@@ -287,7 +318,7 @@ private struct SpaceCanvasView: View {
     }
 
     private func edit(_ node: SpaceNode) {
-        guard node.kind != .project else { return }
+        guard node.kind != .project, node.kind != .image else { return }
         if draft != nil { finishDraft() }
         selected = node.id
         editing = node.id
@@ -302,6 +333,30 @@ private struct SpaceCanvasView: View {
             .onEnded { drag in
                 model.moveNode(node, x: node.x + drag.translation.width / scale, y: node.y + drag.translation.height / scale)
             }
+    }
+
+    /// The corner of a sticky or picture: drag it to make the card bigger or smaller.
+    private func resizeHandle(_ node: SpaceNode) -> some View {
+        Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white)
+            .frame(width: 20, height: 20)
+            .background(Color.accentColor, in: .circle)
+            .padding(4)
+            .contentShape(.rect)
+            .offset(x: 8, y: 8)
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .named("canvas"))
+                    .updating($resizing) { drag, state, _ in
+                        state = (node.id, CGSize(width: drag.translation.width / scale, height: drag.translation.height / scale))
+                    }
+                    .onEnded { drag in
+                        model.resize(node, width: node.size.width + drag.translation.width / scale,
+                                     height: node.size.height + drag.translation.height / scale)
+                    }
+            )
+            .help("Drag to resize")
+            .accessibilityHidden(true)
     }
 
     /// The dot on a card's right edge: drop it on another card to link the two, or on empty space for a new linked task.
@@ -345,6 +400,9 @@ private struct SpaceCanvasView: View {
                         Button(name.capitalized) { model.recolor(node, to: name) }
                     }
                 }
+                Picker("Text Size", selection: Binding(get: { node.textScale ?? 1 }, set: { model.setTextScale(node, to: $0) })) {
+                    ForEach(CanvasCard.textScales, id: \.scale) { Text($0.name).tag($0.scale) }
+                }
             } else {
                 Button(item.status == .done ? "Mark Not Done" : "Mark Done") { Task { await model.toggle(item) } }
                 dueMenu { due in
@@ -363,9 +421,12 @@ private struct SpaceCanvasView: View {
                     await model.loadReminders(for: space)
                 }
             }
+        case .image:
+            sizeMenu(node)
         case nil:
             EmptyView()
         }
+        if node.kind == .note { sizeMenu(node) }
         let others = nodes.filter { other in
             other.id != node.id && !edges.contains { ($0.from == node.id && $0.to == other.id) || ($0.from == other.id && $0.to == node.id) }
         }
@@ -384,6 +445,20 @@ private struct SpaceCanvasView: View {
         if case .item(let item) = content(of: node) {
             Divider()
             Button(item.type == .note ? "Delete Note" : "Delete Task", role: .destructive) { Task { await model.deleteWithUndo(item) } }
+        } else if node.kind == .image {
+            Divider()
+            Button("Remove Picture", role: .destructive) { Task { await model.removeImage(node) } }
+        }
+    }
+
+    /// Sizes to pick for a sticky or picture, for when dragging its corner isn't handy (and for VoiceOver).
+    private func sizeMenu(_ node: SpaceNode) -> some View {
+        Menu("Size") {
+            // Shrinks both sides by the same amount, so a picture keeps its shape at the smallest size.
+            let smaller = max(0.75, 120 / node.size.width, 90 / node.size.height)
+            Button("Smaller") { model.resize(node, width: node.size.width * smaller, height: node.size.height * smaller) }
+            Button("Larger") { model.resize(node, width: node.size.width * 1.33, height: node.size.height * 1.33) }
+            if node.kind == .note { Button("Standard") { model.resize(node, width: 190, height: 150) } }
         }
     }
 
@@ -392,6 +467,7 @@ private struct SpaceCanvasView: View {
         case .project: space.title
         case .item(let item): item.title.isEmpty ? "Untitled" : item.title
         case .reminder(let reminder): reminder.title
+        case .image: "Picture"
         case nil: ""
         }
     }
@@ -455,9 +531,20 @@ private struct SpaceCanvasView: View {
     }
 
     private func deleteSelected() {
-        guard editing == nil, let node = nodes.first(where: { $0.id == selected }), case .item(let item) = content(of: node) else { return }
-        selected = nil
-        Task { await model.deleteWithUndo(item) }
+        guard editing == nil, let node = nodes.first(where: { $0.id == selected }) else { return }
+        switch content(of: node) {
+        case .item(let item):
+            selected = nil
+            Task { await model.deleteWithUndo(item) }
+        case .image:
+            selected = nil
+            Task { await model.removeImage(node) }
+        default: break
+        }
+    }
+
+    private func addImage(from file: URL, at spot: (x: Double, y: Double)) {
+        Task { await model.addImage(from: file, in: space, at: spot) }
     }
 
     private var addBar: some View {
@@ -465,6 +552,7 @@ private struct SpaceCanvasView: View {
             barButton("Task", symbol: "checkmark.circle") { add(.task) }
             barButton("Sticky", symbol: "note.text") { add(.note) }
             barButton("Reminder", symbol: "bell") { add(.reminder) }
+            barButton("Picture", symbol: "photo") { pickingImage = true }
             Divider().frame(height: 18).padding(.horizontal, 6)
             barButton("Ask Blink", symbol: "sparkles", action: askBlink)
                 .foregroundStyle(Color.accentColor)
@@ -481,6 +569,7 @@ private struct SpaceCanvasView: View {
         }
         .buttonStyle(.plain)
         .help(title == "Ask Blink" ? "Ask Blink to explain this plan and suggest what's missing"
+              : title == "Picture" ? "Add a picture (or drop one onto the canvas)"
               : "Add a \(title.lowercased()), linked to the selected card if one is selected")
     }
 
@@ -581,6 +670,7 @@ private struct SpaceCanvasView: View {
             case .reminder(let reminder):
                 names[node.id] = reminder.title
                 lines.append("Reminder: \(reminder.title)\(reminder.due.map { " · \(Agenda.dueLabel($0))" } ?? "")")
+            case .image: names[node.id] = "a picture"
             case nil: break
             }
         }
@@ -608,13 +698,18 @@ private struct CanvasCard: View {
 
     enum Field { case title, text }
     static let stickyColors = ["yellow", "orange", "pink", "green", "mint", "teal"]
+    static let textScales = [(name: "Small", scale: 0.85), (name: "Standard", scale: 1.0), (name: "Large", scale: 1.5),
+                             (name: "Extra Large", scale: 2.2)]
 
     private var isEditing: Bool { editing == node.id }
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: node.kind == .note ? 6 : 16, style: .continuous) }
 
     var body: some View {
         Group {
-            if node.kind == .note { sticky } else { row }
+            switch content {
+            case .image(let path): picture(path)
+            default: if node.kind == .note { sticky } else { row }
+            }
         }
         .frame(width: node.size.width, height: node.size.height)
         .overlay(shape.strokeBorder(Color.accentColor, lineWidth: 2).opacity(selected ? 1 : 0))
@@ -691,25 +786,32 @@ private struct CanvasCard: View {
             .buttonStyle(.plain)
             .help("Mark done")
             .accessibilityLabel("Mark \(reminder.title) done")
+        case .image:
+            EmptyView()
         }
+    }
+
+    /// A sticky's text, at the size picked for it (Text Size in its menu).
+    private func stickyFont(_ weight: Font.Weight = .regular) -> Font {
+        .system(size: NSFont.preferredFont(forTextStyle: .callout).pointSize * (node.textScale ?? 1), weight: weight)
     }
 
     private var sticky: some View {
         VStack(alignment: .leading, spacing: 6) {
             if isEditing {
                 TextField("Title", text: $title, axis: .vertical)
-                    .font(.callout.weight(.semibold))
-                    .lineLimit(1...2)
+                    .font(stickyFont(.semibold))
+                    .lineLimit(1...3)
                     .focused($field, equals: .title)
                     .onSubmit { field = .text }
                 TextField("Write something…", text: $text, axis: .vertical)
-                    .font(.callout)
-                    .lineLimit(1...5)
+                    .font(stickyFont())
+                    .lineLimit(1...30)
                     .focused($field, equals: .text)
                     .onExitCommand(perform: cancel)
             } else if case .item(let note) = content {
-                Text(note.title.isEmpty ? "Untitled note" : note.title).font(.callout.weight(.semibold)).lineLimit(2)
-                if !note.body.isEmpty { Text(note.body).font(.callout).lineLimit(5).opacity(0.75) }
+                Text(note.title.isEmpty ? "Untitled note" : note.title).font(stickyFont(.semibold)).lineLimit(3)
+                if !note.body.isEmpty { Text(note.body).font(stickyFont()).opacity(0.75) }
             }
             Spacer(minLength: 0)
         }
@@ -723,6 +825,23 @@ private struct CanvasCard: View {
         .accessibilityHint(isEditing ? "" : "Double-click to edit")
     }
 
+    /// A picture, filling its card; a soft placeholder while it loads.
+    private func picture(_ path: String) -> some View {
+        Group {
+            if let image = model.canvasImages[path] {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else {
+                Rectangle().fill(.quaternary).overlay(ProgressView().controlSize(.small))
+            }
+        }
+        .frame(width: node.size.width, height: node.size.height)
+        .clipShape(shape)
+        .task(id: path) { await model.loadCanvasImage(path) }
+        .accessibilityElement()
+        .accessibilityLabel("Picture")
+        .accessibilityAddTraits(.isImage)
+    }
+
     private var isDone: Bool { if case .item(let item) = content { item.status == .done } else { false } }
 
     private var due: Date? {
@@ -730,6 +849,7 @@ private struct CanvasCard: View {
         case .project: space.dueAt
         case .item(let item): item.dueAt
         case .reminder(let reminder): reminder.due
+        case .image: nil
         }
     }
 
@@ -740,6 +860,7 @@ private struct CanvasCard: View {
         case .project: space.title
         case .item(let item): item.title.isEmpty ? "Untitled" : item.title
         case .reminder(let reminder): reminder.title
+        case .image: "Picture"
         }
     }
 
@@ -751,6 +872,7 @@ private struct CanvasCard: View {
             return progress.total == 0 ? "Project" : "Project · \(progress.done) of \(progress.total) done"
         case .item: return "Task\(when)"
         case .reminder: return "Reminder\(when)"
+        case .image: return ""
         }
     }
 
@@ -765,13 +887,14 @@ private struct CanvasCard: View {
         case .project: title = space.title
         case .item(let item): (title, text) = (item.title, item.body)
         case .reminder(let reminder): title = reminder.title
+        case .image: break
         }
     }
 
     private func commit() {
         let newTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         switch content {
-        case .project: break
+        case .project, .image: break
         case .item(let item):
             var changed = model.items.first { $0.id == item.id } ?? item
             if !newTitle.isEmpty { changed.title = newTitle }
@@ -835,6 +958,7 @@ private struct DraftCard: View {
         case .note: "Sticky"
         case .reminder: "Reminder"
         case .project: "Project"
+        case .image: "Picture"
         }
     }
 
@@ -844,6 +968,7 @@ private struct DraftCard: View {
         case .note: "note.text"
         case .reminder: "bell"
         case .project: "folder"
+        case .image: "photo"
         }
     }
 
@@ -852,7 +977,7 @@ private struct DraftCard: View {
         case .task: "New task, e.g. “Draft homepage friday”"
         case .note: "Sticky note"
         case .reminder: "Remind me, e.g. “Call the printer friday 10am”"
-        case .project: ""
+        case .project, .image: ""
         }
     }
 }

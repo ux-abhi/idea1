@@ -1,5 +1,6 @@
 // © Pexilim
 import Foundation
+import ImageIO
 import LocalAuthentication
 import Supabase
 import Testing
@@ -327,6 +328,24 @@ extension Tokens {
         #expect(CanvasLayout.onSheet((4130, 1300)) == (3860, 1300))
         #expect(CanvasLayout.onSheet((-50, -50)) == (140, 90))
         #expect(CanvasLayout.onSheet((2000, 1300)) == (2000, 1300))
+    }
+
+    @Test func canvasImagesShrinkAndLoseTheirLocation() throws {
+        let context = try #require(CGContext(data: nil, width: 3000, height: 1500, bitsPerComponent: 8, bytesPerRow: 0,
+                                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        let photo = NSMutableData()
+        let dest = try #require(CGImageDestinationCreateWithData(photo, "public.jpeg" as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, try #require(context.makeImage()),
+                                   [kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 51.5]] as CFDictionary)
+        #expect(CGImageDestinationFinalize(dest))
+        let ready = try #require(CanvasImage.jpeg(from: photo as Data))
+        #expect(ready.width == 2000 && ready.height == 1000)
+        let source = try #require(CGImageSourceCreateWithData(ready.data as CFData, nil))
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        #expect(properties?[kCGImagePropertyGPSDictionary] == nil)
+        #expect(CanvasImage.jpeg(from: Data("not a picture".utf8)) == nil)
+        #expect(CanvasImage.size(width: 2000, height: 1000) == (280, 140))
+        #expect(SpaceNode.clamped(width: 10, height: 5000) == (120, 1200))
     }
 
     @Test func oldSpacesDecodeWithDefaults() {
