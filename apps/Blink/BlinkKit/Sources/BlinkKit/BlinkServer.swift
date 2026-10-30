@@ -681,6 +681,17 @@ public final class BlinkServer: Sendable {
         try await client.from("space_node").upsert(node).execute()
     }
 
+    /// Text cut to `limit` UTF-16 units, the way the server counts (JavaScript's length), never splitting a character:
+    /// an emoji counts as two or more, so cutting by characters could still be too long for the server.
+    public static func capped(_ text: String, to limit: Int) -> String {
+        var out = ""
+        for character in text {
+            if out.utf16.count + character.utf16.count > limit { break }
+            out.append(character)
+        }
+        return out
+    }
+
     /// The row already exists (a unique constraint said no), e.g. another Mac made the same canvas card first.
     public static func isDuplicate(_ error: Error) -> Bool { (error as? PostgrestError)?.code == "23505" }
 
@@ -979,7 +990,7 @@ public final class BlinkServer: Sendable {
         }
         let body = Body(message: message, history: Self.recent(history), timeZone: timeZone,
                         reminders: reminders.map { Reminder(id: $0.id, title: $0.title, due: $0.due?.ISO8601Format()) },
-                        context: context.map { String($0.prefix(4000)) }, space_id: spaceID)
+                        context: context.map { Self.capped($0, to: 4000) }, space_id: spaceID)
         let endpoint = config.url.appending(path: "functions/v1/chat"), key = config.publishableKey, client = client
         return AsyncThrowingStream { continuation in
             let task = Task {

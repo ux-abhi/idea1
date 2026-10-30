@@ -330,6 +330,13 @@ extension Tokens {
         #expect(CanvasLayout.onSheet((2000, 1300)) == (2000, 1300))
     }
 
+    @Test func chatContextIsCutTheWayTheServerCounts() {
+        let emoji = String(repeating: "🚀", count: 3000) // 6000 UTF-16 units
+        let cut = BlinkServer.capped(emoji, to: 4000)
+        #expect(cut.utf16.count == 4000 && cut.count == 2000)
+        #expect(BlinkServer.capped("abc", to: 4000) == "abc")
+    }
+
     @Test func clearingAPostsDateSendsNull() throws {
         let json = #"{"id":"p","idea":"i","platform":"x","format":"post","hook":"h","body":"b","parts":[],"hashtags":[],"status":"idea","created_at":"2026-10-30T10:00:00Z","planned_for":"2026-11-02"}"#
         let decoder = JSONDecoder()

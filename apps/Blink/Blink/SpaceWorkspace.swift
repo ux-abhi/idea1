@@ -191,7 +191,7 @@ private struct SpaceCanvasView: View {
                         .position(x: point(node).x * scale, y: point(node).y * scale)
                 }
                 if draft != nil {
-                    DraftCard(draft: $draft, commit: finishDraft)
+                    DraftCard(draft: $draft, commit: finishDraft, ideas: postIdeas)
                         .scaleEffect(scale)
                         .position(x: (draft?.x ?? 0) * scale, y: (draft?.y ?? 0) * scale)
                 }
@@ -260,11 +260,22 @@ private struct SpaceCanvasView: View {
                     Text("Double-click anywhere to add a card. Drag a card's dot onto another to link them.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
-                addBar
+                // The zoom bar sits on the right; an invisible twin on the left keeps the add bar centred. When the window is
+                // narrow the add bar drops its words and keeps its icons, so the two never overlap.
+                HStack(spacing: 0) {
+                    zoomBar.hidden().disabled(true).accessibilityHidden(true) // disabled: its ⌘ shortcuts must not fire twice
+                    Spacer(minLength: 12)
+                    ViewThatFits(in: .horizontal) {
+                        addBar(words: true)
+                        addBar(words: false)
+                    }
+                    Spacer(minLength: 12)
+                    zoomBar
+                }
+                .padding(.horizontal, 18)
             }
             .padding(.bottom, 18)
         }
-        .overlay(alignment: .bottomTrailing) { zoomBar.padding(18) }
         .fileImporter(isPresented: $pickingImage, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
             for (i, file) in ((try? result.get()) ?? []).prefix(10).enumerated() {
                 addImage(from: file, at: (viewCentre.x + Double(i) * 30, viewCentre.y + Double(i) * 30))
@@ -334,6 +345,9 @@ private struct SpaceCanvasView: View {
             .overlay(alignment: .bottomTrailing) {
                 if node.resizable && !isEditing { resizeHandle(node).opacity(active || resizing?.id == node.id ? 1 : 0) }
             }
+            .overlay(alignment: .topTrailing) {
+                if isSelected && !isEditing && node.kind != .image { helper(node) }
+            }
             .onHover { inside in hovered = inside ? node.id : (hovered == node.id ? nil : hovered) }
             .scaleEffect(scale)
             .onTapGesture(count: 2) { edit(node) }
@@ -369,6 +383,73 @@ private struct SpaceCanvasView: View {
             .onEnded { drag in
                 model.moveNode(node, x: node.x + drag.translation.width / scale, y: node.y + drag.translation.height / scale)
             }
+    }
+
+    /// Blink's help for the selected card, at its corner: a few things it can do with this card, answered in the panel
+    /// (anything it proposes waits there as a card to approve).
+    private func helper(_ node: SpaceNode) -> some View {
+        Menu {
+            ForEach(helps(for: node), id: \.title) { help in
+                Button(help.title, systemImage: help.symbol) { askAbout(node, help.prompt) }
+            }
+        } label: {
+            Image(systemName: "sparkles")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(Color.accentColor.gradient, in: .circle)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .offset(x: 10, y: -10)
+        .scaleEffect(1 / scale, anchor: .bottomLeading) // same size at every zoom, still on the corner
+        .disabled(model.thinking)
+        .help("Ask Blink about this card")
+        .accessibilityLabel("Ask Blink about \(name(of: node))")
+    }
+
+    private struct Help { let title: String; let symbol: String; let prompt: String }
+
+    private func helps(for node: SpaceNode) -> [Help] {
+        switch node.kind {
+        case .project:
+            [Help(title: "Suggest Next Tasks", symbol: "checklist", prompt: "Suggest the next 3 tasks this Space is missing, as tasks I can approve."),
+             Help(title: "Post Ideas for This", symbol: "lightbulb", prompt: "Give me 5 specific post ideas about this Space's work. Ask which platform before proposing any.")]
+        case .task, .reminder:
+            [Help(title: "Break Into Steps", symbol: "list.bullet", prompt: "Break this into 3 to 5 small steps and propose them as tasks in this Space."),
+             Help(title: "What's the Next Step?", symbol: "arrow.forward.circle", prompt: "What's the very next concrete step for this? One or two lines.")]
+        case .note:
+            [Help(title: "Turn Into Tasks", symbol: "checklist", prompt: "Turn this note into tasks and propose them in this Space."),
+             Help(title: "Turn Into a Post", symbol: "megaphone", prompt: "Turn this note into a post idea. Ask me which platform first, then propose it.")]
+        case .post:
+            [Help(title: "Stronger Hooks", symbol: "text.quote", prompt: "Give me 5 stronger opening lines for this post, in my voice."),
+             Help(title: "More Ideas Like This", symbol: "lightbulb", prompt: "Give me 5 more post ideas in the same direction as this one.")]
+        case .image:
+            []
+        }
+    }
+
+    /// Asks in the panel, with the card itself and the plan around it as context.
+    private func askAbout(_ node: SpaceNode, _ prompt: String) {
+        showPanel = true
+        let card: String = switch content(of: node) {
+        case .item(let item): "\(item.type == .note ? "Sticky note" : "Task"): \(item.title)\(item.body.isEmpty ? "" : " — \(item.body.prefix(600))")"
+        case .reminder(let reminder): "Reminder: \(reminder.title)"
+        case .post(let post): "Post (\(post.platform.name)): \(post.hook)\n\(post.body.prefix(600))"
+        default: "The Space itself"
+        }
+        Task { await model.ask(prompt, context: String("This card: \(card)\n\n\(planSummary())".prefix(3900)), space: space.id) }
+    }
+
+    /// From the post draft card: ideas for this Space, in the panel.
+    private func postIdeas() {
+        showPanel = true
+        Task {
+            await model.ask("Give me 5 specific post ideas for this Space, each with a one-line hook. Ask which platform before proposing any.",
+                            context: planSummary(), space: space.id)
+        }
     }
 
     /// The corner of a sticky or picture: drag it to make the card bigger or smaller.
@@ -616,7 +697,7 @@ private struct SpaceCanvasView: View {
         Task { await model.addImage(from: file, in: space, at: spot) }
     }
 
-    private var addBar: some View {
+    private func addBar(words: Bool) -> some View {
         HStack(spacing: 2) {
             barButton("Task", symbol: "checkmark.circle") { add(.task) }
             barButton("Sticky", symbol: "note.text") { add(.note) }
@@ -628,14 +709,16 @@ private struct SpaceCanvasView: View {
                 .foregroundStyle(Color.accentColor)
                 .disabled(model.thinking)
         }
+        .environment(\.showsWords, words)
         .font(.callout.weight(.medium))
         .padding(5)
         .glassEffect(.regular, in: .capsule)
+        .fixedSize()
     }
 
     private func barButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: symbol).padding(.horizontal, 10).padding(.vertical, 7).contentShape(.capsule)
+            IconLabel(title: title, symbol: symbol).padding(.horizontal, 10).padding(.vertical, 7).contentShape(.capsule)
         }
         .buttonStyle(.plain)
         .help(title == "Ask Blink" ? "Ask Blink to explain this plan and suggest what's missing"
@@ -1031,24 +1114,36 @@ private struct CanvasCard: View {
 private struct DraftCard: View {
     @Binding var draft: CardDraft?
     let commit: () -> Void
+    let ideas: () -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
         let kind = draft?.kind ?? .task
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 4) {
+                // The picked kind shows its name; the others only their icon, so the card stays calm.
                 ForEach([SpaceNode.Kind.task, .note, .reminder, .post], id: \.self) { option in
                     Button {
                         draft?.kind = option
                         focused = true
                     } label: {
-                        Label(Self.name(option), systemImage: Self.symbol(option))
+                        IconLabel(title: Self.name(option), symbol: Self.symbol(option))
+                            .environment(\.showsWords, kind == option)
                             .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 9).padding(.vertical, 4)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
                             .background(kind == option ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.05), in: .capsule)
+                            .fixedSize()
                     }
                     .buttonStyle(.plain)
+                    .help(Self.name(option))
                     .accessibilityAddTraits(kind == option ? .isSelected : [])
+                }
+                Spacer(minLength: 0)
+                if kind == .post {
+                    Button("Ideas", systemImage: "sparkles", action: ideas)
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderless)
+                        .help("Ask Blink for post ideas for this Space")
                 }
             }
             TextField(Self.placeholder(kind), text: Binding(get: { draft?.text ?? "" }, set: { draft?.text = $0 }), axis: .vertical)
@@ -1067,20 +1162,21 @@ private struct DraftCard: View {
                         } label: {
                             Label(platform.name, systemImage: on ? "checkmark.circle.fill" : "circle")
                                 .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 9).padding(.vertical, 4)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
                                 .background(on ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.05), in: .capsule)
+                                .fixedSize()
                         }
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(on ? .isSelected : [])
                     }
                 }
                 if draft?.platforms.isEmpty == true {
-                    Text("Pick where it goes, then press Return.").font(.caption).foregroundStyle(.secondary)
+                    Text("Pick a platform, then press Return.").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
         .padding(12)
-        .frame(width: 260, alignment: .leading)
+        .frame(width: 300, alignment: .leading)
         .background(.thickMaterial, in: .rect(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.accentColor, lineWidth: 2))
         .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
@@ -1115,9 +1211,29 @@ private struct DraftCard: View {
         case .note: "Sticky note"
         case .reminder: "Remind me, e.g. “Call the printer friday 10am”"
         case .project, .image: ""
-        case .post: "What's the post about? Add any facts to use"
+        case .post: "What's the post about?"
         }
     }
+}
+
+/// An icon with its name, or only the icon when there's no room (the name is still read by VoiceOver).
+private struct IconLabel: View {
+    @Environment(\.showsWords) private var showsWords
+    let title: String
+    let symbol: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+            if showsWords { Text(title) }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var showsWords = true
 }
 
 // MARK: Floating title and progress
