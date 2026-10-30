@@ -674,9 +674,14 @@ final class AppModel {
         }
     }
 
+    /// True while an Undo is still being carried out (the chip is already gone).
+    private(set) var undoing = false
+
     func undo() async {
         guard let chip = undoChip else { return }
         undoChip = nil
+        undoing = true
+        defer { undoing = false }
         await chip.undo()
     }
 
@@ -2359,7 +2364,7 @@ final class AppModel {
         }
         try? await Task.sleep(for: .seconds(Tokens.Hold.undoChip + 5))
         // A later action can keep the same Undo chip up longer; wait it out.
-        while undoChip != nil { try? await Task.sleep(for: .seconds(1)) }
+        while undoChip != nil || undoing { try? await Task.sleep(for: .seconds(1)) }
         guard canvasNodes[node.spaceID]?.contains(where: { $0.id == node.id }) != true else { return }
         // shortcut: a file whose removal fails (or Blink quits first) stays in the bucket unseen; sweep files with no node if storage grows.
         try? await server.removeCanvasImage(path)

@@ -247,7 +247,9 @@ public final class BlinkServer: Sendable {
     /// Deletes a Space (its canvas goes with it) and its pictures' files.
     public func delete(_ space: Space) async throws {
         try await client.from("segment").delete().eq("id", value: space.id).execute()
-        let folder = "\(try await client.auth.session.user.id.uuidString.lowercased())/\(space.id)"
+        // The Space is gone by now; a failure from here on only leaves files behind, never says the delete failed.
+        guard let user = try? await client.auth.session.user.id else { return }
+        let folder = "\(user.uuidString.lowercased())/\(space.id)"
         // shortcut: lists the first 100 files only; page through if a Space ever holds more pictures.
         if let files = try? await client.storage.from("canvas").list(path: folder), !files.isEmpty {
             _ = try? await client.storage.from("canvas").remove(paths: files.map { "\(folder)/\($0.name)" })

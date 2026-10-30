@@ -132,7 +132,12 @@ private struct SpaceCanvasView: View {
     @GestureState private var resizing: (id: String, by: CGSize)?
     @State private var pickingImage = false
     @State private var scale = 1.0
-    @State private var pinch: (start: Double, centre: (x: Double, y: Double))?
+    /// A pinch under way: how much it has zoomed so far and where the fingers are, in view points. Until it ends the
+    /// sheet is only scaled on screen (cheap and smooth); the real zoom is applied once, when the fingers lift.
+    @GestureState private var pinch: (by: Double, at: CGPoint)? // resets itself if the pinch is cancelled
+    /// After a zoom, where the view is scrolling to: until the scroll lands (a frame later than the new size), the sheet
+    /// is shifted there on screen, so the zoom doesn't jump for a frame.
+    @State private var settling: CGPoint?
     @State private var position = ScrollPosition()
     /// The part of the sheet on screen, in zoomed points.
     @State private var viewport = CGRect.zero
@@ -152,7 +157,7 @@ private struct SpaceCanvasView: View {
         let edges = edges
         ScrollView([.horizontal, .vertical]) {
             ZStack(alignment: .topLeading) {
-                DotGrid(spacing: 24 * scale)
+                Color.clear
                     .contentShape(.rect)
                     .gesture(SpatialTapGesture(count: 2).onEnded { tap in
                         startDraft(.task, at: (tap.location.x / scale, tap.location.y / scale), parent: nil)
@@ -182,6 +187,7 @@ private struct SpaceCanvasView: View {
                 }
             }
             .frame(width: AppModel.canvasSize.width * scale, height: AppModel.canvasSize.height * scale)
+            // Sheet points are read before the on-screen pinch and settle shifts, so drops and links land where they look.
             .coordinateSpace(.named("canvas"))
             .dropDestination(for: URL.self) { urls, spot in
                 let files = urls.filter(\.isFileURL).prefix(10)
@@ -190,25 +196,33 @@ private struct SpaceCanvasView: View {
                 }
                 return !files.isEmpty
             }
+            .scaleEffect(pinch?.by ?? 1, anchor: pinchAnchor)
+            .offset(x: settling.map { viewport.minX - $0.x } ?? 0, y: settling.map { viewport.minY - $0.y } ?? 0)
         }
         .scrollPosition($position)
         // Opens on the middle of the sheet, where the project starts, even before the cards have loaded.
         .defaultScrollAnchor(.center)
         .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, rect in
             viewport = rect
+            // The scroll has landed (where the sheet's edges allow), so the on-screen shift can go.
+            settling = nil
             centreOnceLoaded()
         }
         .onChange(of: nodes.isEmpty) { centreOnceLoaded() }
         .simultaneousGesture(
             MagnifyGesture()
-                .onChanged { change in
-                    if pinch == nil { pinch = (scale, viewCentre) }
-                    guard let pinch else { return }
-                    zoom(to: pinch.start * change.magnification, around: pinch.centre)
+                .updating($pinch) { change, state, _ in state = (pinched(change.magnification) / scale, change.startLocation) }
+                .onEnded { change in
+                    let at = change.startLocation
+                    zoom(to: pinched(change.magnification), keeping: ((viewport.minX + at.x) / scale, (viewport.minY + at.y) / scale), at: at)
                 }
-                .onEnded { _ in pinch = nil }
         )
-        .background(CanvasBackdrop(tint: Color.system(space.color)))
+        .background {
+            ZStack {
+                CanvasBackdrop(tint: Color.system(space.color))
+                DotGrid(spacing: 24 * scale * (pinch?.by ?? 1), origin: dotOrigin)
+            }
+        }
         .focusable()
         .focusEffectDisabled()
         .focused($canvasFocused)
@@ -268,7 +282,9 @@ private struct SpaceCanvasView: View {
     private func shown(_ node: SpaceNode) -> SpaceNode {
         guard let resizing, resizing.id == node.id else { return node }
         var live = node
-        (live.w, live.h) = SpaceNode.clamped(width: node.size.width + resizing.by.width, height: node.size.height + resizing.by.height)
+        // Whole points: a fraction-of-a-point size each frame makes the text rewrap and the edges shimmer.
+        (live.w, live.h) = SpaceNode.clamped(width: (node.size.width + resizing.by.width).rounded(),
+                                             height: (node.size.height + resizing.by.height).rounded())
         return live
     }
 
@@ -345,14 +361,15 @@ private struct SpaceCanvasView: View {
             .padding(4)
             .contentShape(.rect)
             .offset(x: 8, y: 8)
-            .gesture(
+            // High priority, so the card's own move gesture never runs alongside it (the card would move and resize at once).
+            .highPriorityGesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .named("canvas"))
                     .updating($resizing) { drag, state, _ in
                         state = (node.id, CGSize(width: drag.translation.width / scale, height: drag.translation.height / scale))
                     }
                     .onEnded { drag in
-                        model.resize(node, width: node.size.width + drag.translation.width / scale,
-                                     height: node.size.height + drag.translation.height / scale)
+                        model.resize(node, width: (node.size.width + drag.translation.width / scale).rounded(),
+                                     height: (node.size.height + drag.translation.height / scale).rounded())
                     }
             )
             .help("Drag to resize")
@@ -590,11 +607,39 @@ private struct SpaceCanvasView: View {
         }
     }
 
-    /// Zooms around the middle of the view (or a pinch's own centre), so what you're looking at stays put.
-    private func zoom(to new: Double, around anchor: (x: Double, y: Double)? = nil) {
-        let keep = anchor ?? viewCentre
+    /// Zooms so the sheet point `spot` stays at `at` in the view (by default: the middle stays the middle).
+    private func zoom(to new: Double, keeping spot: (x: Double, y: Double)? = nil, at: CGPoint? = nil) {
+        let at = at ?? CGPoint(x: viewport.width / 2, y: viewport.height / 2)
+        let keep = spot ?? viewCentre
         scale = min(max(new, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
-        centre(on: keep, animated: false)
+        // Where the scroll can really go: never past the sheet's edges.
+        let target = CGPoint(x: min(max(keep.x * scale - at.x, 0), max(AppModel.canvasSize.width * scale - viewport.width, 0)),
+                             y: min(max(keep.y * scale - at.y, 0), max(AppModel.canvasSize.height * scale - viewport.height, 0)))
+        settling = target
+        position.scrollTo(point: target)
+        // If the scroll lands anywhere else (or not at all), stop shifting soon anyway.
+        Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            if settling == target { settling = nil }
+        }
+    }
+
+    private func pinched(_ magnification: Double) -> Double {
+        min(max(scale * magnification, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+    }
+
+    /// The point a pinch scales the sheet around, as a fraction of the (zoomed) sheet.
+    private var pinchAnchor: UnitPoint {
+        guard let pinch else { return .center }
+        return UnitPoint(x: (viewport.minX + pinch.at.x) / (AppModel.canvasSize.width * scale),
+                         y: (viewport.minY + pinch.at.y) / (AppModel.canvasSize.height * scale))
+    }
+
+    /// Where a dot of the grid sits in the view, so the dots move with scrolling and with a pinch under way.
+    private var dotOrigin: CGPoint {
+        let by = pinch?.by ?? 1, at = pinch?.at ?? .zero
+        let shown = settling ?? viewport.origin // the dots shift with the sheet while a zoom settles
+        return CGPoint(x: (12 * scale - shown.x - at.x) * by + at.x, y: (12 * scale - shown.y - at.y) * by + at.y)
     }
 
     /// Zooms and scrolls so every card fits in the view.
@@ -804,11 +849,13 @@ private struct CanvasCard: View {
                     .lineLimit(1...3)
                     .focused($field, equals: .title)
                     .onSubmit { field = .text }
-                TextField("Write something…", text: $text, axis: .vertical)
+                // Scrolls inside the sticky, so a long note can all be read and edited at any card size.
+                TextEditor(text: $text)
                     .font(stickyFont())
-                    .lineLimit(1...30)
+                    .scrollContentBackground(.hidden)
                     .focused($field, equals: .text)
                     .onExitCommand(perform: cancel)
+                    .accessibilityLabel("Note text")
             } else if case .item(let note) = content {
                 Text(note.title.isEmpty ? "Untitled note" : note.title).font(stickyFont(.semibold)).lineLimit(3)
                 if !note.body.isEmpty { Text(note.body).font(stickyFont()).opacity(0.75) }
@@ -820,6 +867,7 @@ private struct CanvasCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.system(node.color).opacity(0.9), in: shape)
+        .clipShape(shape) // long text is cut at the card's edge instead of spilling out
         .environment(\.colorScheme, .light)
         .accessibilityElement(children: isEditing ? .contain : .combine)
         .accessibilityHint(isEditing ? "" : "Double-click to edit")
@@ -1098,14 +1146,20 @@ private struct CanvasBackdrop: View {
 }
 
 /// Faint dots, drawn once as one path.
+/// Drawn behind the scrolling sheet and only as big as the view, so zooming never redraws thousands of dots.
 private struct DotGrid: View {
     let spacing: Double
+    /// Where one dot sits, in view points; the rest repeat from it.
+    let origin: CGPoint
 
     var body: some View {
         Canvas { context, size in
+            guard spacing > 3 else { return }
             var dots = Path()
-            for x in stride(from: spacing / 2, to: size.width, by: spacing) {
-                for y in stride(from: spacing / 2, to: size.height, by: spacing) {
+            let first = CGPoint(x: origin.x - (origin.x / spacing).rounded(.down) * spacing,
+                                y: origin.y - (origin.y / spacing).rounded(.down) * spacing)
+            for x in stride(from: first.x, to: size.width, by: spacing) {
+                for y in stride(from: first.y, to: size.height, by: spacing) {
                     dots.addEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2))
                 }
             }
