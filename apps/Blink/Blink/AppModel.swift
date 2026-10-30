@@ -403,7 +403,7 @@ final class AppModel {
         habits = []; habitAnswers = [:]
         agenda = .empty; calendarEvents = []; allReminders = []; quickReplies = []
         content = []; voice = VoiceProfile(); contentProblem = nil
-        ideas = []; questions = [:]; pageRead = nil; weekPlan = []; designed = []
+        ideas = []; questions = [:]; pageRead = nil; designed = []
         spends = []; budgets = []; accounts = []; captureTokens = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
         emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil
         modelPrefs = [:]; modelProblem = nil; dailyCap = nil; spaces = []; openPage = nil; keyStatus = nil
@@ -533,7 +533,8 @@ final class AppModel {
                 return
             }
             while drafting { try await Task.sleep(for: .milliseconds(300)) } // another post is being written; wait for it
-            if await draft(idea: idea, platforms: platforms, space: Space.known(action.payload.spaceID, in: spaces)) {
+            if await draft(idea: idea, platforms: platforms, plannedFor: action.payload.postOn,
+                           space: Space.known(action.payload.spaceID, in: spaces)) {
                 try await server.setStatus("done", for: action, result: [:])
             } else {
                 let problem = contentProblem ?? "Couldn't write the drafts."
@@ -1259,8 +1260,10 @@ final class AppModel {
         }
     }
 
-    /// The week plan: ideas already placed on the next 7 days.
-    private(set) var weekPlan: [ContentIdea] = []
+    /// The plan's ideas not written yet (kept on the server, each on its day), soonest first.
+    var plannedIdeas: [ContentPiece] {
+        content.filter { $0.status == .idea }.sorted { ($0.plannedFor ?? "9") < ($1.plannedFor ?? "9") }
+    }
 
     func planWeek(theme: String, platforms: [ContentPiece.Platform]) async {
         guard let server, !thinkingOfIdeas else { return }
@@ -1268,8 +1271,9 @@ final class AppModel {
         defer { thinkingOfIdeas = false }
         contentProblem = nil
         do {
-            weekPlan = try await server.contentIdeas(theme: theme, platforms: platforms, days: HabitDay.nextDays())
-            announce("📅 Week planned: \(weekPlan.count) posts")
+            let planned = try await server.contentIdeas(theme: theme, platforms: platforms, days: HabitDay.nextDays())
+            await loadContent() // the server kept them, each on its day
+            announce("📅 Week planned: \(planned.count) posts")
             return
         }
         catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
@@ -1277,27 +1281,51 @@ final class AppModel {
         announceProblem()
     }
 
-    func clearWeekPlan() { weekPlan = [] }
+    /// Removes every idea of the plan that isn't written yet (written posts stay).
+    func clearPlannedIdeas() async {
+        for idea in plannedIdeas { await setStatus(.archived, of: idea) }
+    }
 
-    /// Drafts for every planned day, one after another.
-    func writeWeek() async {
-        let count = weekPlan.count
+    /// Drafts for the given planned ideas, one after another.
+    func writeAll(_ list: [ContentPiece]) async {
         batchingDrafts = true
         defer { batchingDrafts = false }
-        for idea in weekPlan { await write(idea) }
-        if contentProblem == nil { announce("✍︎ \(count) drafts written for your week") }
+        var written = 0
+        for idea in list {
+            while drafting { try? await Task.sleep(for: .milliseconds(300)) } // a Write clicked meanwhile
+            if await write(idea) { written += 1 }
+        }
+        if written > 0 { announce("✍︎ \(written) of \(list.count) ideas written for your plan") }
+    }
+
+    /// A planned idea becomes drafts on the same day (and Space); the idea goes once they're written.
+    @discardableResult
+    func write(_ idea: ContentPiece) async -> Bool {
+        // The live copy: it may have been written (or removed) since the list was read.
+        guard content.contains(where: { $0.id == idea.id && $0.status == .idea }) else { return false }
+        guard await draft(idea: "\(idea.idea). Hook: \(idea.hook). Format: \(idea.format.replacingOccurrences(of: "_", with: " ")).",
+                       platforms: [idea.platform], plannedFor: idea.plannedFor, space: idea.spaceID) else { return false }
+        await setStatus(.archived, of: idea)
+        return true
+    }
+
+    /// The day a post (or planned idea) goes out; nil takes it off the plan.
+    func setDay(_ day: String?, of piece: ContentPiece) async {
+        guard var changed = content.first(where: { $0.id == piece.id }), changed.plannedFor != day else { return }
+        changed.plannedFor = day
+        edit(changed)
+        await saveContent(piece.id)
     }
 
     /// Planned for today and not out yet: the notch and Today show these.
     var postsToday: [ContentPiece] {
         let today = HabitDay.key(.now)
-        return content.filter { $0.plannedFor == today && $0.status != .published && $0.status != .archived }
+        return content.filter { $0.plannedFor == today && $0.status != .idea && $0.status != .published && $0.status != .archived }
     }
 
     /// "Write this": one idea becomes drafts for its platform.
     func write(_ idea: ContentIdea) async {
         ideas.removeAll { $0.id == idea.id }
-        weekPlan.removeAll { $0.id == idea.id }
         _ = await draft(idea: "\(idea.title). Hook: \(idea.hook). Format: \(idea.formatName).", platforms: [idea.platform],
                         plannedFor: idea.day)
     }
@@ -1316,7 +1344,7 @@ final class AppModel {
             try await server.save(piece)
             // Only clear if nothing was typed while saving.
             if let now = content.first(where: { $0.id == id }), now.body == piece.body, now.parts == piece.parts,
-               now.status == piece.status { contentUnsaved.remove(id) }
+               now.status == piece.status, now.plannedFor == piece.plannedFor { contentUnsaved.remove(id) }
             contentProblem = nil
         } catch {
             contentProblem = "Not saved yet. Blink will try again on your next change."
@@ -1329,7 +1357,8 @@ final class AppModel {
         changed.publishedAt = status == .published ? .now : nil
         edit(changed)
         await saveContent(piece.id)
-        if status == .archived { content.removeAll { $0.id == piece.id } }
+        // Only once the server has it: an unsaved archive stays in the list so the next load retries it.
+        if status == .archived && !contentUnsaved.contains(piece.id) { content.removeAll { $0.id == piece.id } }
     }
 
     func saveVoice(_ new: VoiceProfile) async {

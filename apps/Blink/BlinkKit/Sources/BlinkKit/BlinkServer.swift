@@ -866,13 +866,8 @@ public final class BlinkServer: Sendable {
     }
 
     public func save(_ piece: ContentPiece) async throws {
-        struct Row: Encodable {
-            let hook: String, body: String, parts: [String], hashtags: [String], status: String
-            let lint_score: Int?, published_at: Date?
-        }
         try await client.from("content_piece")
-            .update(Row(hook: piece.hook, body: piece.body, parts: piece.parts, hashtags: piece.hashtags,
-                        status: piece.status.rawValue, lint_score: piece.lintScore, published_at: piece.publishedAt))
+            .update(ContentPiece.Update(piece: piece))
             .eq("id", value: piece.id)
             .execute()
     }

@@ -273,6 +273,24 @@ private struct DayTimelineCard: View {
                         late: entry.kind != .meeting && entry.start < now)
                 }
                 if !plan.timed.isEmpty && plan.nowIndex == plan.timed.count { nowLine }
+                if !model.postsToday.isEmpty {
+                    group("To post")
+                    ForEach(model.postsToday) { post in
+                        Button { model.openPage = "content" } label: {
+                            HStack(spacing: 10) {
+                                Text(post.platform.short).font(.callout.weight(.bold)).foregroundStyle(.secondary)
+                                    .frame(width: 56, alignment: .trailing)
+                                Capsule().fill(.purple).frame(width: 4, height: 24)
+                                Text(post.hook.isEmpty ? post.idea : post.hook).lineLimit(1)
+                                Spacer(minLength: 8)
+                                StatusChip(status: post.status)
+                            }
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(post.platform.name) post to put out today: \(post.hook), \(StatusChip.name(post.status))")
+                    }
+                }
             }
         }
     }

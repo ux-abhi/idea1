@@ -154,6 +154,8 @@ end $$;
 
 -- Content: A drafts a post and sets a voice; a bad platform or status is refused.
 insert into public.content_piece (idea, platform, format, body, planned_for) values ('Launch week', 'x', 'thread', 'Day 1', '2026-10-14');
+-- A week plan's idea is kept as a post with status 'idea'.
+insert into public.content_piece (idea, platform, format, status, planned_for) values ('Plan idea', 'linkedin', 'post', 'idea', '2026-10-15');
 insert into public.voice_profile (notes, never_say, page, brief) values ('Plain, short sentences', '{delve}', '@yourname on Instagram', '# Brief');
 do $$ begin
   begin

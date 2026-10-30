@@ -32,7 +32,7 @@ propose_mail_send with its id, the send time and what the reply should say. Blin
 reviews the exact text and sends it with Touch ID; you never send mail yourself.
 When the owner wants a social post, call propose_post: Blink then writes the drafts into Content (and the current Space).
 If they haven't said which platform (Instagram, LinkedIn or X), ask which in one short question first, and never pick one
-for them. For post ideas, give a short numbered list in the reply, then offer to propose the ones they like as posts.
+for them. If they name a day to post, put it in post_on. For post ideas, give a short numbered list in the reply, then offer to propose the ones they like as posts.
 All of these only propose: the owner sees a card and approves it.
 When asked to plan a day, fit the open tasks around the calendar with realistic times and propose them; keep the reply
 to a few short lines.
@@ -113,11 +113,12 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       additionalProperties: false,
-      required: ["idea", "platforms", "space_id"],
+      required: ["idea", "platforms", "space_id", "post_on"],
       properties: {
         idea: { type: "string", description: "What the post is about, in the owner's words, with any facts they gave." },
         platforms: { type: "array", items: { type: "string", enum: ["instagram", "linkedin", "x"] }, description: "The platforms the owner asked for." },
         space_id: { type: ["string", "null"], description: "Id of the Space (from spaces) the post belongs to, or null." },
+        post_on: { type: ["string", "null"], description: "The day to post it, YYYY-MM-DD in the owner's time zone, if they named one; else null." },
       },
     },
   },
@@ -279,9 +280,9 @@ Deno.serve(async (req) => {
         kind: "post.draft",
         payload: {
           title: `Write a post: “${post.idea.length > 60 ? post.idea.slice(0, 60) + "…" : post.idea}”?`,
-          summary: `${post.platforms.map((p) => names[p]).join(", ")}${target ? ` · ${target.title}` : ""}`,
+          summary: `${post.platforms.map((p) => names[p]).join(", ")}${post.postOn ? ` · post ${new Date(`${post.postOn}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}` : ""}${target ? ` · ${target.title}` : ""}`,
           verb: "Write drafts",
-          note: post.idea, platforms: post.platforms, space_id: target?.id ?? null,
+          note: post.idea, platforms: post.platforms, space_id: target?.id ?? null, post_on: post.postOn,
         },
       };
     } else if (name === "propose_mail_send") {

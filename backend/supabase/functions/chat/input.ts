@@ -72,11 +72,16 @@ export function parseProposal(input: unknown): { title: string; due: string | nu
 const PLATFORMS = ["instagram", "linkedin", "x"];
 
 /** A proposed post: the idea in a sentence or a few, and only the platforms the owner named (Blink writes the drafts). */
-export function parsePostProposal(input: unknown): { idea: string; platforms: string[] } | null {
-  const { idea, platforms } = (input ?? {}) as Record<string, unknown>;
+export function parsePostProposal(input: unknown): { idea: string; platforms: string[]; postOn: string | null } | null {
+  const { idea, platforms, post_on = null } = (input ?? {}) as Record<string, unknown>;
   if (typeof idea !== "string" || idea.trim().length === 0 || idea.length > 1000) return null;
   if (!Array.isArray(platforms) || platforms.length === 0 || platforms.some((p) => !PLATFORMS.includes(p))) return null;
-  return { idea: idea.trim(), platforms: [...new Set(platforms as string[])] };
+  // Round-trips, so an impossible day ("2026-02-30") is refused here, not after the drafts are paid for.
+  if (post_on !== null) {
+    const day = typeof post_on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(post_on) ? new Date(`${post_on}T00:00:00Z`) : null;
+    if (!day || Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== post_on) return null;
+  }
+  return { idea: idea.trim(), platforms: [...new Set(platforms as string[])], postOn: post_on as string | null };
 }
 
 /** The Space a proposed task goes into: null, or one of the owner's Spaces Blink showed the model. undefined = unknown id. */

@@ -171,10 +171,11 @@ private struct DayToDos: View {
         let cal = Calendar.current
         let tasks = model.openTasks.filter { $0.dueAt.map { cal.isDate($0, inSameDayAs: day) } ?? false }
         let reminders = model.allReminders.filter { $0.due.map { cal.isDate($0, inSameDayAs: day) } ?? false }
+        let posts = model.content.filter { $0.plannedFor == HabitDay.key(day) && $0.status != .archived }
         VStack(alignment: .leading, spacing: 10) {
             Text(cal.isDateInToday(day) ? "Due today" : "Due \(day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))")
                 .font(.headline)
-            if tasks.isEmpty && reminders.isEmpty {
+            if tasks.isEmpty && reminders.isEmpty && posts.isEmpty {
                 Text("Nothing due.").font(.callout).foregroundStyle(.secondary)
             }
             ForEach(tasks) { task in
@@ -184,6 +185,19 @@ private struct DayToDos: View {
                 row(reminder.title, symbol: "circle", tint: .orange, tag: Tag(text: "Reminder", tint: .orange)) {
                     Task { await model.complete(reminder) }
                 }
+            }
+            ForEach(posts) { post in
+                Button { model.openPage = "content" } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "megaphone").foregroundStyle(.purple).accessibilityHidden(true)
+                        Text(post.status == .idea ? post.idea : post.hook).font(.callout).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Tag(text: "\(post.platform.short) · \(StatusChip.name(post.status))", tint: .purple)
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Open in Content")
             }
         }
         .padding(16)

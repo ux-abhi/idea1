@@ -4,7 +4,7 @@
 // The model is the owner's pick in Settings (Claude, a free Groq model or an OpenRouter pick).
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
-import { parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
+import { ideaRows, parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
 import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";
 import { ownsServer } from "../_shared/owner.ts";
@@ -242,7 +242,14 @@ Deno.serve(async (req) => {
   if (ideas) {
     const list = parseIdeas(output, parsed.platforms, week ? parsed.days : []);
     if (list.length === 0) return json(502, { error: "The model didn't return usable ideas. Try again, or pick another model in Settings." });
-    return json(200, { ideas: list }); // shown to pick from, not saved
+    if (week) {
+      // The week plan is kept: each idea sits on its day until it's written, moved or removed. A new plan replaces the
+      // ideas still unwritten on those days (written posts stay).
+      await db.from("content_piece").update({ status: "archived" }).eq("status", "idea").in("planned_for", parsed.days);
+      const { error } = await db.from("content_piece").insert(ideaRows(list, parsed.spaceID));
+      if (error) return json(500, { error: "Couldn't save the week plan." });
+    }
+    return json(200, { ideas: list }); // plain ideas are shown to pick from, not saved
   }
   const drafts = parseDrafts(output, parsed.platforms);
   if (drafts.length === 0) return json(502, { error: "The model didn't return usable drafts. Try again, or pick another model in Settings." });

@@ -89,4 +89,7 @@ Deno.test("a proposed post names only real platforms and has an idea", () => {
   if (parsePostProposal({ idea: "Hi", platforms: [] }) !== null) throw new Error("no platform");
   if (parsePostProposal({ idea: "Hi", platforms: ["tiktok"] }) !== null) throw new Error("unknown platform");
   if (parsePostProposal({ idea: "", platforms: ["x"] }) !== null) throw new Error("empty idea");
+  if (parsePostProposal({ idea: "Hi", platforms: ["x"], post_on: "2026-11-03" })?.postOn !== "2026-11-03") throw new Error("post day");
+  if (parsePostProposal({ idea: "Hi", platforms: ["x"], post_on: "next tuesday" }) !== null) throw new Error("bad day");
+  if (parsePostProposal({ idea: "Hi", platforms: ["x"], post_on: "2026-02-30" }) !== null) throw new Error("impossible day");
 });

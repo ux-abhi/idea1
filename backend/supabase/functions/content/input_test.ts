@@ -1,5 +1,5 @@
 // © Pexilim
-import { parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
+import { ideaRows, parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
 
 Deno.test("content requests are checked at the boundary", () => {
   const ok = parseContentRequest({ idea: " Why I build Blink ", platforms: ["x", "linkedin", "x"] });
@@ -51,4 +51,9 @@ Deno.test("questions for the owner are short and at most three", () => {
   const q = parseQuestions({ questions: ["How many users?", "", 5, "Which city?", "When?", "Extra?"] });
   if (q.length !== 3 || q[0] !== "How many users?") throw new Error(JSON.stringify(q));
   if (parseQuestions({}).length !== 0) throw new Error("missing questions should be empty");
+});
+
+Deno.test("a week plan's ideas are kept on their days as ideas", () => {
+  const rows = ideaRows([{ title: "Checkout mistakes", hook: "Stop losing buyers", platform: "x", format: "post", why: "Teaches one thing", day: "2026-11-02" }], null);
+  if (rows[0].status !== "idea" || rows[0].planned_for !== "2026-11-02" || rows[0].body !== "Teaches one thing") throw new Error("idea row");
 });

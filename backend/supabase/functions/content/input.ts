@@ -86,6 +86,14 @@ export function parseIdeas(output: unknown, asked: Platform[], days: string[] = 
   return clean.slice(0, 8);
 }
 
+/** A week plan's ideas as rows to keep: each on its day, status "idea", the reason it works in body. */
+export function ideaRows(ideas: Idea[], spaceID: string | null) {
+  return ideas.map((i) => ({
+    idea: i.title, platform: i.platform, format: i.format, hook: i.hook, body: i.why, status: "idea",
+    planned_for: i.day ?? null, segment_id: spaceID,
+  }));
+}
+
 /** Up to 3 short questions the model wants answered for a stronger post (asking beats inventing). */
 export function parseQuestions(output: unknown): string[] {
   const questions = (output as { questions?: unknown })?.questions;

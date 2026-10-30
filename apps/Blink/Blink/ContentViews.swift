@@ -22,6 +22,8 @@ struct ContentView: View {
     @State private var opened: String?
     @State private var query = ""
     @State private var platform: ContentPiece.Platform?
+    /// The day a new post is written for (from + on a plan day); nil from New Post.
+    @State private var composeDay: String?
 
     var body: some View {
         let live = model.content.filter { $0.status != .archived }
@@ -40,7 +42,7 @@ struct ContentView: View {
                 // The window toolbar stays the same on every page: items that come and go between pages crash AppKit's toolbar.
                 Button { editingVoice = true } label: { Label("Voice", systemImage: "person.wave.2") }
                     .help("How you write")
-                Button { composing = true } label: { Label("New Post", systemImage: "square.and.pencil") }
+                Button { composeDay = nil; composing = true } label: { Label("New Post", systemImage: "square.and.pencil") }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut("n")
                     .help("Write drafts from an idea (⌘N)")
@@ -58,7 +60,10 @@ struct ContentView: View {
         .confirmationDialog("Clear all ideas?", isPresented: $clearingIdeas) {
             Button("Clear Ideas", role: .destructive) { Task { await model.clearIdeas() } }
         }
-        .sheet(isPresented: $composing) { NewPostSheet(written: { tab = .posts }, editVoice: { composing = false; editingVoice = true }) }
+        .sheet(isPresented: $composing) {
+            NewPostSheet(day: composeDay, written: { if composeDay == nil { tab = .posts } },
+                         editVoice: { composing = false; editingVoice = true })
+        }
         .sheet(isPresented: $editingVoice) { VoiceSheet() }
         .sheet(item: Binding(get: { opened.map(OpenedPiece.init) }, set: { opened = $0?.id })) { PieceSheet(id: $0.id) }
         .task {
@@ -70,7 +75,8 @@ struct ContentView: View {
     // MARK: Posts: one line each, folded by status, searchable
 
     @ViewBuilder
-    private func posts(_ live: [ContentPiece]) -> some View {
+    private func posts(_ all: [ContentPiece]) -> some View {
+        let live = all.filter { $0.status != .idea } // ideas live on the Plan
         let shown = live.filter(matches)
         HStack {
             Picker("Platform", selection: $platform) {
@@ -110,65 +116,10 @@ struct ContentView: View {
         }
     }
 
-    // MARK: Plan: the next 7 days
+    // MARK: Plan: a calendar of what goes out when
 
-    @ViewBuilder
     private func plan(_ live: [ContentPiece]) -> some View {
-        DashCard("Next 7 days") {
-            HStack {
-                Button { Task { await model.planWeek(theme: "", platforms: model.contentPlatforms) } } label: {
-                    if model.thinkingOfIdeas { ProgressView().controlSize(.small) } else { Label("Plan My Week", systemImage: "calendar") }
-                }
-                .disabled(model.thinkingOfIdeas)
-                if !model.weekPlan.isEmpty {
-                    Button { Task { await model.writeWeek() } } label: { Label("Write All \(model.weekPlan.count)", systemImage: "square.and.pencil") }
-                        .buttonStyle(.borderedProminent).disabled(model.drafting)
-                    Button("Clear Plan") { model.clearWeekPlan() }
-                }
-                Spacer()
-            }
-            ForEach(HabitDay.nextDays(), id: \.self) { day in
-                let planned = model.weekPlan.filter { $0.day == day }
-                let pieces = live.filter { $0.plannedFor == day }
-                HStack(alignment: .top, spacing: 12) {
-                    Text(HabitDay.label(day)).font(.callout.weight(.semibold))
-                        .foregroundStyle(day == HabitDay.key(.now) ? Color.accentColor : .primary)
-                        .frame(width: 90, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 6) {
-                        if planned.isEmpty && pieces.isEmpty { Text("Nothing planned").font(.callout).foregroundStyle(.tertiary) }
-                        ForEach(pieces) { piece in PostRow(piece: piece, compact: true) { opened = piece.id } }
-                        ForEach(planned) { item in
-                            HStack {
-                                Image(systemName: "lightbulb").foregroundStyle(.secondary).accessibilityHidden(true)
-                                Text("\(item.platform.name) · \(item.title)").lineLimit(1)
-                                Spacer()
-                                Button("Write") { Task { await model.write(item) } }.controlSize(.small).disabled(model.drafting)
-                            }
-                        }
-                    }
-                }
-                .padding(.vertical, 4)
-                if day != HabitDay.nextDays().last { Divider() }
-            }
-            // Plan items for days already past or without a day: still written by Write All, so shown here too.
-            let later = model.weekPlan.filter { item in !HabitDay.nextDays().contains(item.day ?? "") }
-            if !later.isEmpty {
-                Divider()
-                HStack(alignment: .top, spacing: 12) {
-                    Text("Other").font(.callout.weight(.semibold)).frame(width: 90, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(later) { item in
-                            HStack {
-                                Image(systemName: "lightbulb").foregroundStyle(.secondary).accessibilityHidden(true)
-                                Text("\(item.day.map { HabitDay.label($0) + " · " } ?? "")\(item.platform.name) · \(item.title)").lineLimit(1)
-                                Spacer()
-                                Button("Write") { Task { await model.write(item) } }.controlSize(.small).disabled(model.drafting)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        ContentPlan(live: live, open: { opened = $0 }, compose: { day in composeDay = day; composing = true })
     }
 
     // MARK: Ideas
@@ -231,18 +182,280 @@ private struct PostRow: View {
                 if let at = piece.publishedAt {
                     Text(at, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.secondary)
                 } else {
-                    Text(piece.status == .approved ? "Ready" : "Draft")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background((piece.status == .approved ? Color.green : Color.secondary).opacity(0.15), in: .capsule)
-                        .foregroundStyle(piece.status == .approved ? .green : .secondary)
+                    StatusChip(status: piece.status)
                 }
                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary).accessibilityHidden(true)
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(piece.platform.name): \(piece.hook.isEmpty ? piece.body : piece.hook), \(piece.status == .approved ? "ready" : piece.status == .published ? "posted" : "draft")")
+        .draggable(piece.id) // onto a day of the plan
+        .accessibilityLabel("\(piece.platform.name): \(piece.hook.isEmpty ? piece.body : piece.hook), \(StatusChip.name(piece.status))")
+    }
+}
+
+/// The day a post goes out: "Add day", or the day; click to pick another or take it off the plan.
+struct DayChip: View {
+    @Binding var day: String?
+    @State private var picking = false
+
+    var body: some View {
+        Button { picking = true } label: {
+            Label(day.map { HabitDay.label($0) } ?? "Add Day", systemImage: "calendar")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(day == HabitDay.key(.now) ? Color.orange : day == nil ? .secondary : .primary)
+        }
+        .buttonStyle(.borderless)
+        .help("The day it goes out")
+        .popover(isPresented: $picking) {
+            VStack(alignment: .leading, spacing: 8) {
+                DatePicker("Post on", selection: Binding(
+                    get: { day.flatMap { HabitDay.date(fromKey: $0) } ?? .now },
+                    set: { day = HabitDay.key($0) }
+                ), displayedComponents: .date)
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                if day != nil {
+                    Button("Remove Day", role: .destructive) { day = nil; picking = false }
+                }
+            }
+            .padding(12)
+        }
+    }
+}
+
+/// Where a post is: Idea → Draft → Ready → Posted.
+struct StatusChip: View {
+    let status: ContentPiece.Status
+
+    static func name(_ status: ContentPiece.Status) -> String {
+        switch status {
+        case .idea: "Idea"
+        case .drafted: "Draft"
+        case .approved: "Ready"
+        case .published: "Posted"
+        case .archived: "Archived"
+        }
+    }
+
+    var body: some View {
+        let tint: Color = switch status {
+        case .idea: .purple
+        case .approved: .green
+        case .published: .blue
+        default: .secondary
+        }
+        Text(Self.name(status))
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .background(tint.opacity(0.15), in: .capsule)
+            .foregroundStyle(tint)
+    }
+}
+
+/// The plan as a calendar: a week (or a month) of days, each with what goes out that day. Drag a post onto a day to
+/// move it, + on a day to write one for it, and the posts with no day wait at the bottom.
+private struct ContentPlan: View {
+    @Environment(AppModel.self) private var model
+    let live: [ContentPiece]
+    let open: (String) -> Void
+    let compose: (String) -> Void
+    @AppStorage("content.planMonth") private var month = false
+    /// Weeks (or months) away from now.
+    @State private var offset = 0
+    @State private var target: String?
+    @State private var removingIdeas = false
+
+    private var calendar: Calendar { .current }
+
+    /// The days on screen: one week from its first weekday, or the whole month in whole weeks.
+    private var days: [Date] {
+        let now = Date.now
+        if month {
+            guard let anchor = calendar.date(byAdding: .month, value: offset, to: now),
+                  let range = calendar.dateInterval(of: .month, for: anchor),
+                  let first = calendar.dateInterval(of: .weekOfYear, for: range.start)?.start else { return [] }
+            let last = calendar.date(byAdding: .day, value: -1, to: range.end) ?? range.end
+            let end = calendar.dateInterval(of: .weekOfYear, for: last)?.end ?? range.end
+            return stride(from: 0, to: 42, by: 1).compactMap { calendar.date(byAdding: .day, value: $0, to: first) }.filter { $0 < end }
+        }
+        guard let anchor = calendar.date(byAdding: .weekOfYear, value: offset, to: now),
+              let first = calendar.dateInterval(of: .weekOfYear, for: anchor)?.start else { return [] }
+        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: first) }
+    }
+
+    private var title: String {
+        guard let first = days.first, let last = days.last else { return "" }
+        if month, let anchor = calendar.date(byAdding: .month, value: offset, to: .now) {
+            return anchor.formatted(.dateTime.month(.wide).year())
+        }
+        return "\(first.formatted(.dateTime.day().month(.abbreviated))) – \(last.formatted(.dateTime.day().month(.abbreviated)))"
+    }
+
+    var body: some View {
+        let today = HabitDay.key(.now)
+        let ideas = model.plannedIdeas
+        DashCard {
+            HStack(spacing: 8) {
+                Button("Previous", systemImage: "chevron.left") { offset -= 1 }.labelStyle(.iconOnly)
+                Text(title).font(.headline).monospacedDigit().frame(minWidth: 130)
+                Button("Next", systemImage: "chevron.right") { offset += 1 }.labelStyle(.iconOnly)
+                if offset != 0 { Button("Today") { offset = 0 } }
+                Picker("View", selection: $month) {
+                    Text("Week").tag(false)
+                    Text("Month").tag(true)
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                .onChange(of: month) { offset = 0 }
+                Spacer()
+                Button { Task { await model.planWeek(theme: "", platforms: model.contentPlatforms) } } label: {
+                    if model.thinkingOfIdeas { ProgressView().controlSize(.small) } else { Label("Plan My Week", systemImage: "sparkles") }
+                }
+                .disabled(model.thinkingOfIdeas)
+                .help("Blink puts post ideas on the next 7 days; write each when you're ready")
+                if !ideas.isEmpty {
+                    Menu("\(ideas.count) Idea\(ideas.count == 1 ? "" : "s")") {
+                        Button("Write All \(ideas.count)") { Task { await model.writeAll(ideas) } }.disabled(model.drafting)
+                        Button("Remove All Ideas…", role: .destructive) { removingIdeas = true }
+                    }
+                    .fixedSize()
+                    .confirmationDialog("Remove all \(ideas.count) ideas from the plan?", isPresented: $removingIdeas) {
+                        Button("Remove Ideas", role: .destructive) { Task { await model.clearPlannedIdeas() } }
+                    } message: { Text("Posts you've already written stay.") }
+                }
+            }
+            if model.drafting {
+                HStack { ProgressView().controlSize(.small); Text("Writing drafts…").foregroundStyle(.secondary) }
+            }
+            if month { monthGrid(today: today) } else { weekList(today: today) }
+        }
+        let unscheduled = live.filter { $0.plannedFor == nil && ($0.status == .drafted || $0.status == .approved || $0.status == .idea) }
+        if !unscheduled.isEmpty {
+            DashCard("Not scheduled") {
+                Text("Drag a post onto a day to plan it.").font(.caption).foregroundStyle(.secondary)
+                CardRows(items: unscheduled) { piece in PostRow(piece: piece) { open(piece.id) } }
+            }
+            .dropDestination(for: String.self) { ids, _ in move(ids, to: nil) }
+        }
+    }
+
+    private func pieces(on key: String) -> [ContentPiece] {
+        live.filter { $0.plannedFor == key && $0.status != .archived }
+    }
+
+    private func weekList(today: String) -> some View {
+        VStack(spacing: 0) {
+            ForEach(days, id: \.self) { date in
+                let key = HabitDay.key(date)
+                let list = pieces(on: key)
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(date.formatted(.dateTime.weekday(.abbreviated))).font(.caption).foregroundStyle(.secondary)
+                        Text(date.formatted(.dateTime.day())).font(.title3.weight(.semibold)).monospacedDigit()
+                            .foregroundStyle(key == today ? Color.accentColor : .primary)
+                    }
+                    .frame(width: 44, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 6) {
+                        if list.isEmpty { Text("Nothing planned").font(.callout).foregroundStyle(.tertiary) }
+                        ForEach(list) { piece in row(piece) }
+                    }
+                    Spacer(minLength: 0)
+                    addButton(key, past: key < today)
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 6)
+                .background(target == key ? Color.accentColor.opacity(0.12) : .clear, in: .rect(cornerRadius: 8))
+                .contentShape(.rect)
+                .dropDestination(for: String.self) { ids, _ in move(ids, to: key) } isTargeted: { target = $0 ? key : (target == key ? nil : target) }
+                if date != days.last { Divider() }
+            }
+        }
+    }
+
+    /// A planned post, or an idea with Write (and a menu to take it off the plan).
+    @ViewBuilder
+    private func row(_ piece: ContentPiece) -> some View {
+        if piece.status == .idea {
+            HStack {
+                Image(systemName: "lightbulb").foregroundStyle(.purple).accessibilityHidden(true)
+                Text("\(piece.platform.name) · \(piece.idea)").lineLimit(1)
+                Spacer()
+                Button("Write") { Task { await model.write(piece) } }.controlSize(.small).disabled(model.drafting)
+                Menu {
+                    Button("Remove From Plan", role: .destructive) { Task { await model.setStatus(.archived, of: piece) } }
+                } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .accessibilityLabel("More for \(piece.idea)")
+            }
+            .help(piece.body) // why it works
+            .draggable(piece.id)
+        } else {
+            PostRow(piece: piece, compact: true) { open(piece.id) }
+        }
+    }
+
+    private func addButton(_ key: String, past: Bool) -> some View {
+        Button("Add a post on this day", systemImage: "plus") { compose(key) }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .disabled(past)
+            .help("Write a post for this day")
+    }
+
+    private func monthGrid(today: String) -> some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
+        let shownMonth = calendar.date(byAdding: .month, value: offset, to: .now).map { calendar.component(.month, from: $0) }
+        return LazyVGrid(columns: columns, spacing: 4) {
+            ForEach(days.prefix(7), id: \.self) { date in
+                Text(date.formatted(.dateTime.weekday(.abbreviated))).font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(days, id: \.self) { date in monthCell(date, today: today, month: shownMonth) }
+        }
+    }
+
+    private func monthCell(_ date: Date, today: String, month shownMonth: Int?) -> some View {
+        let key = HabitDay.key(date)
+        let list = pieces(on: key)
+        let inMonth = calendar.component(.month, from: date) == shownMonth
+        let dayColor: Color = key == today ? .accentColor : inMonth ? .primary : .secondary
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(date.formatted(.dateTime.day())).font(.callout.weight(key == today ? .bold : .regular)).monospacedDigit()
+                    .foregroundStyle(dayColor)
+                Spacer()
+                addButton(key, past: key < today).controlSize(.small)
+            }
+            ForEach(list.prefix(3)) { piece in monthChip(piece) }
+            if list.count > 3 { Text("+\(list.count - 3) more").font(.caption2).foregroundStyle(.secondary) }
+            Spacer(minLength: 0)
+        }
+        .padding(5)
+        .frame(minHeight: 86, alignment: .top)
+        .background(target == key ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.03), in: .rect(cornerRadius: 8))
+        .contentShape(.rect)
+        .dropDestination(for: String.self) { ids, _ in move(ids, to: key) } isTargeted: { target = $0 ? key : (target == key ? nil : target) }
+    }
+
+    private func monthChip(_ piece: ContentPiece) -> some View {
+        let isIdea = piece.status == .idea
+        let tint: Color = isIdea ? .purple : .accentColor
+        return Button { if !isIdea { open(piece.id) } } label: {
+            Text("\(piece.platform.short) \(isIdea ? piece.idea : piece.hook)")
+                .font(.caption).lineLimit(1)
+                .padding(.horizontal, 4).padding(.vertical, 1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(tint.opacity(0.14), in: .rect(cornerRadius: 4))
+        }
+        .buttonStyle(.plain)
+        .draggable(piece.id)
+        .help(isIdea ? "Idea: write it from the week view, or drag it to another day" : piece.hook)
+    }
+
+    /// Posts dropped on a day (or on Not scheduled) move there.
+    private func move(_ ids: [String], to day: String?) -> Bool {
+        let moving = ids.compactMap { id in model.content.first { $0.id == id } }
+        Task { for piece in moving { await model.setDay(day, of: piece) } }
+        return !moving.isEmpty
     }
 }
 
@@ -289,6 +502,10 @@ private struct NewPostSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("contentPlatforms") private var picked = "instagram,linkedin,x"
     @State private var idea = ""
+    /// The day it goes out; nil leaves it unscheduled.
+    @State private var postOn: String?
+    /// The plan day it was opened from, if any.
+    let day: String?
     let written: () -> Void
     let editVoice: () -> Void
 
@@ -306,6 +523,7 @@ private struct NewPostSheet: View {
                         .toggleStyle(.button)
                 }
                 Spacer()
+                DayChip(day: $postOn)
                 ModelMenu(feature: "content", compact: true).menuStyle(.borderlessButton).controlSize(.small)
             }
             if let problem = model.contentProblem { Text(problem).font(.callout).foregroundStyle(.orange) }
@@ -325,7 +543,7 @@ private struct NewPostSheet: View {
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button {
                     Task {
-                        if await model.draft(idea: idea, platforms: platforms) { written(); dismiss() }
+                        if await model.draft(idea: idea, platforms: platforms, plannedFor: postOn) { written(); dismiss() }
                     }
                 } label: {
                     if model.drafting { ProgressView().controlSize(.small) } else { Label("Write Drafts", systemImage: "sparkles") }
@@ -337,6 +555,7 @@ private struct NewPostSheet: View {
         }
         .padding(20)
         .frame(width: 560)
+        .onAppear { postOn = day }
     }
 
     private var platforms: [ContentPiece.Platform] {
@@ -361,11 +580,7 @@ private struct PieceEditor: View {
             HStack(spacing: 8) {
                 Text(piece.platform.name).font(.headline)
                 Text(formatName).font(.caption).foregroundStyle(.secondary)
-                if let day = piece.plannedFor {
-                    Label(HabitDay.label(day), systemImage: "calendar")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(day == HabitDay.key(.now) ? Color.orange : .secondary)
-                }
+                DayChip(day: Binding(get: { piece.plannedFor }, set: { day in Task { await model.setDay(day, of: piece) } }))
                 Spacer()
                 ScoreBadge(score: check.score)
                 Menu {
@@ -421,6 +636,10 @@ private struct PieceEditor: View {
                     Button { model.copyAndOpen(piece) } label: { Label("Copy & Open \(piece.platform.name)", systemImage: "arrow.up.forward.app") }
                         .buttonStyle(.borderedProminent)
                     Button("Back to Draft") { Task { await model.setStatus(.drafted, of: piece) } }
+                case .idea:
+                    Button("Write") { Task { await model.write(piece) } }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.drafting)
                 case .published, .archived:
                     EmptyView()
                 }

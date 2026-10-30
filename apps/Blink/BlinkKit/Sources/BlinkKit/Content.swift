@@ -21,7 +21,8 @@ public struct ContentPiece: Codable, Identifiable, Equatable, Sendable {
             }
         }
     }
-    public enum Status: String, Codable, Sendable { case drafted, approved, published, archived }
+    /// idea: a planned post not written yet (from the week plan); its `body` holds why it works.
+    public enum Status: String, Codable, Sendable { case idea, drafted, approved, published, archived }
 
     public let id: String
     public let idea: String
@@ -44,6 +45,24 @@ public struct ContentPiece: Codable, Identifiable, Equatable, Sendable {
         case id, idea, platform, format, hook, body, parts, hashtags, status
         case lintScore = "lint_score", publishedAt = "published_at", createdAt = "created_at", plannedFor = "planned_for"
         case spaceID = "segment_id"
+    }
+
+    /// The columns the app may change, as the server update sends them. Every key is always sent (nil as null), so
+    /// clearing a date clears it on the server too; a left-out key would keep the old value.
+    struct Update: Encodable {
+        let piece: ContentPiece
+        enum Keys: String, CodingKey { case hook, body, parts, hashtags, status, lint_score, published_at, planned_for }
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: Keys.self)
+            try c.encode(piece.hook, forKey: .hook)
+            try c.encode(piece.body, forKey: .body)
+            try c.encode(piece.parts, forKey: .parts)
+            try c.encode(piece.hashtags, forKey: .hashtags)
+            try c.encode(piece.status.rawValue, forKey: .status)
+            try c.encode(piece.lintScore, forKey: .lint_score)
+            try c.encode(piece.publishedAt, forKey: .published_at)
+            try c.encode(piece.plannedFor, forKey: .planned_for)
+        }
     }
 
     /// What gets copied to post: a thread or carousel as numbered parts, then the hashtags.

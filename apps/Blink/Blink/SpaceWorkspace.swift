@@ -462,6 +462,17 @@ private struct SpaceCanvasView: View {
             sizeMenu(node)
         case .post(let post):
             Button("Open in Content", action: openPost)
+            Menu("Post On") {
+                ForEach(0..<7, id: \.self) { ahead in
+                    if let date = Calendar.current.date(byAdding: .day, value: ahead, to: .now) {
+                        Button(HabitDay.label(HabitDay.key(date))) { Task { await model.setDay(HabitDay.key(date), of: post) } }
+                    }
+                }
+                if post.plannedFor != nil {
+                    Divider()
+                    Button("No Day") { Task { await model.setDay(nil, of: post) } }
+                }
+            }
             Button("Copy Post") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(post.postText, forType: .string)
@@ -975,7 +986,8 @@ private struct CanvasCard: View {
         case .item: return "Task\(when)"
         case .reminder: return "Reminder\(when)"
         case .image: return ""
-        case .post(let post): return "\(post.platform.name) \(post.format.replacingOccurrences(of: "_", with: " ")) · \(post.status.rawValue)"
+        case .post(let post):
+            return "\(post.platform.name) · \(StatusChip.name(post.status))\(post.plannedFor.map { " · \(HabitDay.label($0))" } ?? "")"
         }
     }
 

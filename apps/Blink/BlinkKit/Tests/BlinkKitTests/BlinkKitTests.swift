@@ -330,6 +330,17 @@ extension Tokens {
         #expect(CanvasLayout.onSheet((2000, 1300)) == (2000, 1300))
     }
 
+    @Test func clearingAPostsDateSendsNull() throws {
+        let json = #"{"id":"p","idea":"i","platform":"x","format":"post","hook":"h","body":"b","parts":[],"hashtags":[],"status":"idea","created_at":"2026-10-30T10:00:00Z","planned_for":"2026-11-02"}"#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var piece = try decoder.decode(ContentPiece.self, from: Data(json.utf8))
+        #expect(piece.status == .idea && piece.plannedFor == "2026-11-02")
+        piece.plannedFor = nil
+        let sent = String(decoding: try JSONEncoder().encode(ContentPiece.Update(piece: piece)), as: UTF8.self)
+        #expect(sent.contains(#""planned_for":null"#))
+    }
+
     @Test func canvasImagesShrinkAndLoseTheirLocation() throws {
         let context = try #require(CGContext(data: nil, width: 3000, height: 1500, bitsPerComponent: 8, bytesPerRow: 0,
                                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
