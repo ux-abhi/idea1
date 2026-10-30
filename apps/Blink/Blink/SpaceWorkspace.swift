@@ -101,6 +101,8 @@ private enum CardContent {
     case reminder(AgendaReminder)
     case image(String)
     case post(ContentPiece)
+    /// A heading or a section: its own text.
+    case mark(String)
 }
 
 /// A card being written before it exists: where it goes, what kind, and what's typed so far.
@@ -132,7 +134,8 @@ private struct SpaceCanvasView: View {
     @State private var hovered: String?
     @State private var draft: CardDraft?
     /// A card being dragged, and the link being drawn: they reset on their own if a gesture is cancelled.
-    @GestureState private var moving: (id: String, offset: CGSize)?
+    /// A card being dragged; for a section, also the cards it carries along (worked out once, when the drag starts).
+    @GestureState private var moving: (id: String, offset: CGSize, carried: Set<String>)?
     @GestureState private var linking: (from: String, end: CGPoint)?
     @GestureState private var resizing: (id: String, by: CGSize)?
     @State private var pickingImage = false
@@ -177,6 +180,11 @@ private struct SpaceCanvasView: View {
                         startDraft(.task, at: (tap.location.x / scale, tap.location.y / scale), parent: nil)
                     })
                     .simultaneousGesture(TapGesture().onEnded { clearSelection() })
+                // Sections sit behind the links and cards.
+                ForEach(nodes.filter { $0.kind == .section }) { node in
+                    card(node)
+                        .position(x: point(node).x * scale, y: point(node).y * scale)
+                }
                 Canvas { context, _ in
                     for edge in edges {
                         guard let a = nodes.first(where: { $0.id == edge.from }), let b = nodes.first(where: { $0.id == edge.to }) else { continue }
@@ -190,7 +198,7 @@ private struct SpaceCanvasView: View {
                     }
                 }
                 .allowsHitTesting(false)
-                ForEach(nodes) { node in
+                ForEach(nodes.filter { $0.kind != .section }) { node in
                     card(node)
                         .position(x: point(node).x * scale, y: point(node).y * scale)
                 }
@@ -301,12 +309,13 @@ private struct SpaceCanvasView: View {
         case .reminder: model.spaceReminders[space.id]?.first { $0.id == node.ref }.map(CardContent.reminder)
         case .image: node.ref.map(CardContent.image)
         case .post: model.content.first { $0.id == node.ref && $0.status != .archived }.map(CardContent.post)
+        case .heading, .section: .mark(node.label ?? "")
         }
     }
 
     /// Where a node is drawn now, in sheet points: its spot plus any drag under way.
     private func point(_ node: SpaceNode) -> CGPoint {
-        let offset = moving?.id == node.id ? moving?.offset ?? .zero : .zero
+        let offset = moving.map { $0.id == node.id || $0.carried.contains(node.id) ? $0.offset : .zero } ?? .zero
         let size = shown(node).size
         let grown = (width: size.width - node.size.width, height: size.height - node.size.height)
         return CGPoint(x: node.x + offset.width + grown.width / 2, y: node.y + offset.height + grown.height / 2)
@@ -346,13 +355,13 @@ private struct SpaceCanvasView: View {
         let active = isSelected || hovered == node.id
         return CanvasCard(node: shown(node), space: space, content: content(of: node) ?? .project, selected: isSelected, editing: $editing)
             .overlay(alignment: .trailing) {
-                linkPort(node).opacity(active || linking?.from == node.id ? 1 : 0)
+                if node.linkable { linkPort(node).opacity(active || linking?.from == node.id ? 1 : 0) }
             }
             .overlay(alignment: .bottomTrailing) {
                 if node.resizable && !isEditing { resizeHandle(node).opacity(active || resizing?.id == node.id ? 1 : 0) }
             }
             .overlay(alignment: .topTrailing) {
-                if isSelected && !isEditing && node.kind != .image { helper(node) }
+                if isSelected && !isEditing && node.kind != .image && node.kind != .heading { helper(node) }
             }
             .onHover { inside in hovered = inside ? node.id : (hovered == node.id ? nil : hovered) }
             .scaleEffect(scale)
@@ -382,11 +391,17 @@ private struct SpaceCanvasView: View {
     private func moveGesture(_ node: SpaceNode) -> some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .named("canvas"))
             .updating($moving) { drag, state, _ in
-                state = (node.id, CGSize(width: drag.translation.width / scale, height: drag.translation.height / scale))
+                let carried = state?.carried ?? Set(node.carried(in: nodes).map(\.id))
+                state = (node.id, CGSize(width: drag.translation.width / scale, height: drag.translation.height / scale), carried)
             }
             .onChanged { _ in if selected != node.id { selected = node.id } }
             .onEnded { drag in
-                model.moveNode(node, x: node.x + drag.translation.width / scale, y: node.y + drag.translation.height / scale)
+                let (dx, dy) = (drag.translation.width / scale, drag.translation.height / scale)
+                if node.kind == .section {
+                    model.moveSection(node, carrying: node.carried(in: nodes), by: dx, dy)
+                } else {
+                    model.moveNode(node, x: node.x + dx, y: node.y + dy)
+                }
             }
     }
 
@@ -431,7 +446,10 @@ private struct SpaceCanvasView: View {
         case .post:
             [Help(title: "Stronger Hooks", symbol: "text.quote", prompt: "Give me 5 stronger opening lines for this post, in my voice."),
              Help(title: "More Ideas Like This", symbol: "lightbulb", prompt: "Give me 5 more post ideas in the same direction as this one.")]
-        case .image:
+        case .section:
+            [Help(title: "What's Left Here?", symbol: "checklist", prompt: "Look at the cards in this section. What's done, what's left, and what's at risk? A few short lines."),
+             Help(title: "Suggest Next Tasks Here", symbol: "plus.circle", prompt: "Suggest the next 3 tasks for this section, as tasks I can approve in this Space.")]
+        case .image, .heading:
             []
         }
     }
@@ -443,6 +461,8 @@ private struct SpaceCanvasView: View {
         case .item(let item): "\(item.type == .note ? "Sticky note" : "Task"): \(item.title)\(item.body.isEmpty ? "" : " — \(item.body.prefix(600))")"
         case .reminder(let reminder): "Reminder: \(reminder.title)"
         case .post(let post): "Post (\(post.platform.name)): \(post.hook)\n\(post.body.prefix(600))"
+        case .mark(let label) where node.kind == .section:
+            "Section \"\(label)\" holding: \(node.carried(in: nodes).map(name(of:)).joined(separator: "; "))"
         default: "The Space itself"
         }
         Task { await model.ask(prompt, context: String("This card: \(card)\n\n\(planSummary())".prefix(3900)), space: space.id) }
@@ -498,7 +518,7 @@ private struct SpaceCanvasView: View {
                     }
                     .onEnded { drag in
                         let end = CGPoint(x: drag.location.x / scale, y: drag.location.y / scale)
-                        if let target = nodes.first(where: { $0.id != node.id && $0.contains(x: end.x, y: end.y) }) {
+                        if let target = nodes.first(where: { $0.id != node.id && $0.linkable && $0.contains(x: end.x, y: end.y) }) {
                             Task { await model.connect(node, to: target, in: space) }
                         } else if hypot(end.x - node.x, end.y - node.y) > node.size.width / 2 + 40 {
                             startDraft(.task, at: (end.x + 130, end.y), parent: node)
@@ -546,6 +566,19 @@ private struct SpaceCanvasView: View {
             }
         case .image:
             sizeMenu(node)
+        case .mark:
+            Button("Rename") { edit(node) }
+            if node.kind == .section {
+                Menu("Colour") {
+                    ForEach(["blue", "purple", "pink", "orange", "yellow", "green", "teal", "gray"], id: \.self) { name in
+                        Button(name.capitalized) { model.recolor(node, to: name) }
+                    }
+                }
+            } else {
+                Picker("Text Size", selection: Binding(get: { node.textScale ?? 1 }, set: { model.setTextScale(node, to: $0) })) {
+                    ForEach(CanvasCard.textScales, id: \.scale) { Text($0.name).tag($0.scale) }
+                }
+            }
         case .post(let post):
             Button("Open") { readingPost = post.id }
             Button("Show in Content") { model.openPage = "content" }
@@ -567,9 +600,9 @@ private struct SpaceCanvasView: View {
         case nil:
             EmptyView()
         }
-        if node.resizable && node.kind != .image { sizeMenu(node) }
-        let others = nodes.filter { other in
-            other.id != node.id && !edges.contains { ($0.from == node.id && $0.to == other.id) || ($0.from == other.id && $0.to == node.id) }
+        if node.resizable && node.kind != .image && node.kind != .heading { sizeMenu(node) }
+        let others = !node.linkable ? [] : nodes.filter { other in
+            other.id != node.id && other.linkable && !edges.contains { ($0.from == node.id && $0.to == other.id) || ($0.from == other.id && $0.to == node.id) }
         }
         if !others.isEmpty {
             Menu("Link To") {
@@ -578,7 +611,9 @@ private struct SpaceCanvasView: View {
                 }
             }
         }
-        Button("Add Linked Task") { startDraft(.task, at: (node.x + node.size.width / 2 + 170, node.y), parent: node) }
+        if node.linkable {
+            Button("Add Linked Task") { startDraft(.task, at: (node.x + node.size.width / 2 + 170, node.y), parent: node) }
+        }
         let links = edges.filter { $0.from == node.id || $0.to == node.id }
         if !links.isEmpty {
             Button("Remove Links") { Task { for edge in links { await model.disconnect(edge) } } }
@@ -586,9 +621,10 @@ private struct SpaceCanvasView: View {
         if case .item(let item) = content(of: node) {
             Divider()
             Button(item.type == .note ? "Delete Note" : "Delete Task", role: .destructive) { Task { await model.deleteWithUndo(item) } }
-        } else if node.kind == .image {
+        } else if [.image, .heading, .section].contains(node.kind) {
             Divider()
-            Button("Remove Picture", role: .destructive) { Task { await model.removeImage(node) } }
+            let what = node.kind == .image ? "Remove Picture" : node.kind == .heading ? "Delete Heading" : "Delete Section (Keeps Its Cards)"
+            Button(what, role: .destructive) { Task { await model.removeNode(node) } }
         }
     }
 
@@ -610,6 +646,7 @@ private struct SpaceCanvasView: View {
         case .reminder(let reminder): reminder.title
         case .image: "Picture"
         case .post(let post): post.hook.isEmpty ? post.idea : post.hook
+        case .mark(let label): label
         case nil: ""
         }
     }
@@ -692,10 +729,20 @@ private struct SpaceCanvasView: View {
         case .item(let item):
             selected = nil
             Task { await model.deleteWithUndo(item) }
-        case .image:
+        case .image, .mark:
             selected = nil
-            Task { await model.removeImage(node) }
+            Task { await model.removeNode(node) }
         default: break
+        }
+    }
+
+    /// A heading or section in the middle of the view, named right away.
+    private func addMark(_ kind: SpaceNode.Kind) {
+        if draft != nil { finishDraft() }
+        Task {
+            let node = await model.addMark(kind, in: space, at: viewCentre)
+            selected = node.id
+            editing = node.id
         }
     }
 
@@ -710,6 +757,8 @@ private struct SpaceCanvasView: View {
             barButton("Reminder", symbol: "bell") { add(.reminder) }
             barButton("Post", symbol: "megaphone") { add(.post) }
             barButton("Picture", symbol: "photo") { pickingImage = true }
+            barButton("Heading", symbol: "textformat") { addMark(.heading) }
+            barButton("Section", symbol: "rectangle.dashed") { addMark(.section) }
             Divider().frame(height: 18).padding(.horizontal, 6)
             barButton("Ask Blink", symbol: "sparkles", action: askBlink)
                 .foregroundStyle(Color.accentColor)
@@ -730,6 +779,8 @@ private struct SpaceCanvasView: View {
         .help(title == "Ask Blink" ? "Ask Blink to explain this plan and suggest what's missing"
               : title == "Picture" ? "Add a picture (or drop one onto the canvas)"
               : title == "Post" ? "Write a post for the platforms you pick; Blink drafts it into Content"
+              : title == "Heading" ? "Add a heading to label part of the canvas"
+              : title == "Section" ? "Add a section to group cards; drag its title to move it with everything inside"
               : "Add a \(title.lowercased()), linked to the selected card if one is selected")
     }
 
@@ -859,6 +910,13 @@ private struct SpaceCanvasView: View {
                 names[node.id] = reminder.title
                 lines.append("Reminder: \(reminder.title)\(reminder.due.map { " · \(Agenda.dueLabel($0))" } ?? "")")
             case .image: names[node.id] = "a picture"
+            case .mark(let label):
+                names[node.id] = label
+                if node.kind == .section {
+                    lines.append("Section \"\(label)\": \(node.carried(in: nodes).map(name(of:)).joined(separator: "; "))")
+                } else {
+                    lines.append("Heading: \(label)")
+                }
             case .post(let post):
                 names[node.id] = post.hook
                 lines.append("Post (\(post.platform.name), \(post.status.rawValue)): \(post.hook)")
@@ -894,12 +952,17 @@ private struct CanvasCard: View {
 
     private var isEditing: Bool { editing == node.id }
     private var growing: Bool { isEditing && node.kind != .note }
-    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: node.kind == .note ? 6 : 16, style: .continuous) }
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: node.kind == .note || node.kind == .heading ? 6 : node.kind == .section ? 22 : 16, style: .continuous)
+    }
+    /// Headings and sections lie flat on the sheet; cards float above it.
+    private var flat: Bool { node.kind == .heading || node.kind == .section }
 
     var body: some View {
         Group {
             switch content {
             case .image(let path): picture(path)
+            case .mark(let label): if node.kind == .section { section(label) } else { heading(label) }
             default: if node.kind == .note { sticky } else { row }
             }
         }
@@ -908,8 +971,8 @@ private struct CanvasCard: View {
         .frame(width: node.size.width, height: growing ? nil : node.size.height)
         .frame(minHeight: node.size.height)
         .fixedSize(horizontal: false, vertical: growing)
-        .overlay(shape.strokeBorder(Color.accentColor, lineWidth: 2).opacity(selected ? 1 : 0))
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        .overlay(shape.strokeBorder(Color.accentColor, lineWidth: 2).opacity(selected ? 1 : 0).allowsHitTesting(false))
+        .shadow(color: .black.opacity(flat ? 0 : 0.18), radius: 10, y: 4)
         .frame(height: node.size.height, alignment: .top)
         .onChange(of: isEditing, initial: true) { was, now in
             if now {
@@ -985,7 +1048,7 @@ private struct CanvasCard: View {
             .buttonStyle(.plain)
             .help("Mark done")
             .accessibilityLabel("Mark \(reminder.title) done")
-        case .image:
+        case .image, .mark:
             EmptyView()
         case .post(let post):
             Text(post.platform.short)
@@ -1034,6 +1097,60 @@ private struct CanvasCard: View {
         .accessibilityHint(isEditing ? "" : "Double-click to edit")
     }
 
+    /// A heading: big text straight on the sheet, at the size picked for it (Text Size in its menu).
+    @ViewBuilder
+    private func heading(_ label: String) -> some View {
+        let font = Font.system(size: 22 * (node.textScale ?? 1), weight: .bold)
+        Group {
+            if isEditing {
+                TextField("Heading", text: $title)
+                    .textFieldStyle(.plain)
+                    .focused($field, equals: .title)
+                    .onSubmit { editing = nil }
+                    .onExitCommand(perform: cancel)
+            } else {
+                Text(label.isEmpty ? "Heading" : label).lineLimit(2).minimumScaleFactor(0.6)
+            }
+        }
+        .font(font)
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .contentShape(.rect)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    /// A section: a soft tinted area behind its cards, with its title in a chip at the top. Only the chip takes clicks
+    /// (drag it to move the section with everything inside, double-click to rename), so clicks inside reach the sheet.
+    private func section(_ label: String) -> some View {
+        let tint = Color.system(node.color)
+        return ZStack(alignment: .topLeading) {
+            shape.fill(tint.opacity(0.08))
+                .overlay(shape.strokeBorder(tint.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [7, 5])))
+                .allowsHitTesting(false)
+            Group {
+                if isEditing {
+                    TextField("Section", text: $title)
+                        .textFieldStyle(.plain)
+                        .focused($field, equals: .title)
+                        .onSubmit { editing = nil }
+                        .onExitCommand(perform: cancel)
+                        .frame(width: 200)
+                } else {
+                    Text(label.isEmpty ? "Section" : label).lineLimit(1)
+                }
+            }
+            .font(.headline)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(tint.opacity(0.22), in: .capsule)
+            .contentShape(.capsule)
+            .padding(12)
+            .accessibilityAddTraits(.isHeader)
+            .help("Drag to move the section with its cards; double-click to rename")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
     /// A picture, filling its card; a soft placeholder while it loads.
     private func picture(_ path: String) -> some View {
         Group {
@@ -1058,7 +1175,7 @@ private struct CanvasCard: View {
         case .project: space.dueAt
         case .item(let item): item.dueAt
         case .reminder(let reminder): reminder.due
-        case .image, .post: nil
+        case .image, .post, .mark: nil
         }
     }
 
@@ -1071,6 +1188,7 @@ private struct CanvasCard: View {
         case .reminder(let reminder): reminder.title
         case .image: "Picture"
         case .post(let post): post.hook.isEmpty ? post.idea : post.hook
+        case .mark(let label): label
         }
     }
 
@@ -1082,7 +1200,7 @@ private struct CanvasCard: View {
             return progress.total == 0 ? "Project" : "Project · \(progress.done) of \(progress.total) done"
         case .item: return "Task\(when)"
         case .reminder: return "Reminder\(when)"
-        case .image: return ""
+        case .image, .mark: return ""
         case .post(let post):
             return "\(post.platform.name) · \(StatusChip.name(post.status))\(post.plannedFor.map { " · \(HabitDay.label($0))" } ?? "")"
         }
@@ -1100,6 +1218,7 @@ private struct CanvasCard: View {
         case .item(let item): (title, text) = (item.title, item.body)
         case .reminder(let reminder): title = reminder.title
         case .image, .post: break
+        case .mark(let label): title = label
         }
     }
 
@@ -1107,6 +1226,8 @@ private struct CanvasCard: View {
         let newTitle = title.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         switch content {
         case .project, .image, .post: break
+        case .mark(let label):
+            if !newTitle.isEmpty, newTitle != label { model.relabel(node, to: newTitle) }
         case .item(let item):
             var changed = model.items.first { $0.id == item.id } ?? item
             if !newTitle.isEmpty { changed.title = newTitle }
@@ -1205,6 +1326,8 @@ private struct DraftCard: View {
         case .project: "Project"
         case .image: "Picture"
         case .post: "Post"
+        case .heading: "Heading"
+        case .section: "Section"
         }
     }
 
@@ -1216,6 +1339,8 @@ private struct DraftCard: View {
         case .project: "folder"
         case .image: "photo"
         case .post: "megaphone"
+        case .heading: "textformat"
+        case .section: "rectangle.dashed"
         }
     }
 
@@ -1224,7 +1349,7 @@ private struct DraftCard: View {
         case .task: "New task, e.g. “Draft homepage friday”"
         case .note: "Sticky note"
         case .reminder: "Remind me, e.g. “Call the printer friday 10am”"
-        case .project, .image: ""
+        case .project, .image, .heading, .section: ""
         case .post: "What's the post about?"
         }
     }

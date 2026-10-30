@@ -619,6 +619,12 @@ do $$ begin
   insert into public.space_node (id, segment_id, kind, ref, x, y) values ('00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-0000000000d1', 'task', 'item-1', 300, 40);
   insert into public.space_edge (segment_id, from_node, to_node) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-0000000000d3');
   assert (select count(*) from public.space_edge) = 1, 'A links two of their nodes';
+  insert into public.space_node (segment_id, kind, x, y, w, h, label) values ('00000000-0000-0000-0000-0000000000d1', 'section', 500, 500, 600, 400, 'Research');
+  begin
+    insert into public.space_node (segment_id, kind, label) values ('00000000-0000-0000-0000-0000000000d1', 'heading', repeat('x', 201));
+    raise exception 'a heading over 200 characters';
+  exception when check_violation then null;
+  end;
   begin
     insert into public.space_edge (segment_id, from_node, to_node) values ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000d3', '00000000-0000-0000-0000-0000000000d3');
     raise exception 'a node linked to itself';

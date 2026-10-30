@@ -670,7 +670,7 @@ public final class BlinkServer: Sendable {
     // MARK: Space canvas
 
     public func canvas(of spaceID: String) async throws -> (nodes: [SpaceNode], edges: [SpaceEdge]) {
-        async let nodes: [SpaceNode] = client.from("space_node").select("id, segment_id, kind, ref, x, y, color, w, h, text_scale")
+        async let nodes: [SpaceNode] = client.from("space_node").select("id, segment_id, kind, ref, x, y, color, w, h, text_scale, label")
             .eq("segment_id", value: spaceID).execute().value
         async let edges: [SpaceEdge] = client.from("space_edge").select("id, segment_id, from_node, to_node")
             .eq("segment_id", value: spaceID).execute().value
@@ -679,6 +679,11 @@ public final class BlinkServer: Sendable {
 
     public func save(_ node: SpaceNode) async throws {
         try await client.from("space_node").upsert(node).execute()
+    }
+
+    /// Several nodes in one request: all saved, or none (a section and the cards it carried).
+    public func save(_ nodes: [SpaceNode]) async throws {
+        try await client.from("space_node").upsert(nodes).execute()
     }
 
     /// Text cut to `limit` UTF-16 units, the way the server counts (JavaScript's length), never splitting a character:

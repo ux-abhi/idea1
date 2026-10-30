@@ -2328,7 +2328,7 @@ final class AppModel {
         case .note: ref = create(.note, title: title, space: space.id).id
         case .reminder:
             ref = await addReminder(title, due: due, to: space)
-        case .project, .image, .post: ref = nil
+        case .project, .image, .post, .heading, .section: ref = nil
         }
         guard let ref else { return nil }
         var nodes = canvasNodes[space.id] ?? []
@@ -2354,15 +2354,52 @@ final class AppModel {
 
     func recolor(_ node: SpaceNode, to color: String) { change(node) { $0.color = color } }
 
+    /// A section dropped somewhere else, with the cards it carries: the section stays on the sheet and everything shifts
+    /// by the same amount, saved in one go so they can't end up split between old and new places.
+    func moveSection(_ section: SpaceNode, carrying carried: [SpaceNode], by dx: Double, _ dy: Double) {
+        let spot = CanvasLayout.onSheet((section.x + dx, section.y + dy))
+        let (sx, sy) = (spot.x - section.x, spot.y - section.y)
+        let ids = Set(([section] + carried).map(\.id))
+        guard var nodes = canvasNodes[section.spaceID] else { return }
+        for i in nodes.indices where ids.contains(nodes[i].id) { (nodes[i].x, nodes[i].y) = (nodes[i].x + sx, nodes[i].y + sy) }
+        canvasNodes[section.spaceID] = nodes
+        let moved = nodes.filter { ids.contains($0.id) }
+        Task { await canvasWrite { try await server?.save(moved) } }
+    }
+
     /// A sticky or image dragged to a new size, its top-left corner staying put.
     func resize(_ node: SpaceNode, width: Double, height: Double) {
-        let size = SpaceNode.clamped(width: width, height: height)
+        var size = SpaceNode.clamped(width: width, height: height)
+        // A heading's height follows its text size; only its width is dragged.
+        if node.kind == .heading { size.height = node.size.height }
         let centre = CanvasLayout.onSheet((node.x + (size.width - node.size.width) / 2, node.y + (size.height - node.size.height) / 2))
-        change(node) { ($0.w, $0.h, $0.x, $0.y) = (size.width, size.height, centre.x, centre.y) }
+        let keepsHeight = node.kind == .heading
+        change(node) {
+            ($0.w, $0.x, $0.y) = (size.width, centre.x, centre.y)
+            if !keepsHeight { $0.h = size.height }
+        }
     }
 
     // Standard is stored as 1, not nil: an upsert leaves nil out, so the old size would stay on the server.
     func setTextScale(_ node: SpaceNode, to scale: Double) { change(node) { $0.textScale = scale } }
+
+    /// A heading's text or a section's title, edited in place.
+    func relabel(_ node: SpaceNode, to label: String) {
+        // 200 as the database counts (code points), so a title of emoji can't pass here and fail there.
+        let clean = label.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
+        let text = String(String.UnicodeScalarView(clean.unicodeScalars.prefix(200)))
+        change(node) { $0.label = text }
+    }
+
+    /// A new heading or section at `spot`, ready to name.
+    func addMark(_ kind: SpaceNode.Kind, in space: Space, at spot: (x: Double, y: Double)) async -> SpaceNode {
+        let place = CanvasLayout.onSheet(spot)
+        let node = SpaceNode(spaceID: space.id, kind: kind, x: place.x, y: place.y, color: kind == .section ? space.color : "gray",
+                             label: kind == .section ? "Section" : "Heading")
+        canvasNodes[space.id, default: []].append(node)
+        await canvasWrite { try await server?.save(node) }
+        return node
+    }
 
     /// A change to how a node looks: shown at once, saved behind.
     private func change(_ node: SpaceNode, _ edit: (inout SpaceNode) -> Void) {
@@ -2411,17 +2448,19 @@ final class AppModel {
     }
     #endif
 
-    /// Takes an image off the canvas with its links, with Undo; its file goes once Undo has passed.
-    func removeImage(_ node: SpaceNode) async {
-        guard let server, let path = node.ref else { return }
+    /// Takes a picture, heading or section off the canvas with its links, with Undo (a section's cards stay); a
+    /// picture's file goes once Undo has passed.
+    func removeNode(_ node: SpaceNode) async {
+        guard let server else { return }
         let links = canvasEdges[node.spaceID]?.filter { $0.from == node.id || $0.to == node.id } ?? []
         do { try await server.delete(node) } catch {
-            saveProblem = "Couldn't remove the picture. Check your connection and try again."
+            saveProblem = "Couldn't remove that. Check your connection and try again."
             return
         }
         canvasNodes[node.spaceID]?.removeAll { $0.id == node.id }
         canvasEdges[node.spaceID]?.removeAll { links.contains($0) }
-        offerUndo("Removed a picture") { [weak self] in
+        let what = switch node.kind { case .heading: "a heading"; case .section: "a section"; default: "a picture" }
+        offerUndo("Removed \(what)") { [weak self] in
             guard let self else { return }
             canvasNodes[node.spaceID, default: []].append(node)
             canvasEdges[node.spaceID, default: []] += links
@@ -2430,6 +2469,7 @@ final class AppModel {
                 for edge in links { try await server.save(edge) }
             }
         }
+        guard node.kind == .image, let path = node.ref else { return }
         try? await Task.sleep(for: .seconds(Tokens.Hold.undoChip + 5))
         // A later action can keep the same Undo chip up longer; wait it out.
         while undoChip != nil || undoing { try? await Task.sleep(for: .seconds(1)) }

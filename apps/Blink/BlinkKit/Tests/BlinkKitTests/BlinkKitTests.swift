@@ -330,6 +330,17 @@ extension Tokens {
         #expect(CanvasLayout.onSheet((2000, 1300)) == (2000, 1300))
     }
 
+    @Test func aSectionCarriesWhatSitsInsideIt() {
+        let section = SpaceNode(spaceID: "s", kind: .section, x: 500, y: 500, w: 400, h: 300)
+        let inside = SpaceNode(spaceID: "s", kind: .task, ref: "a", x: 600, y: 550)
+        let outside = SpaceNode(spaceID: "s", kind: .task, ref: "b", x: 900, y: 500)
+        let small = SpaceNode(spaceID: "s", kind: .section, x: 450, y: 450, w: 100, h: 100)
+        let overlapping = SpaceNode(spaceID: "s", kind: .section, x: 700, y: 500, w: 300, h: 100)
+        let ids = section.carried(in: [section, inside, outside, small, overlapping]).map(\.id)
+        #expect(ids == [inside.id, small.id])
+        #expect(inside.carried(in: [section]).isEmpty)
+    }
+
     @Test func chatContextIsCutTheWayTheServerCounts() {
         let emoji = String(repeating: "🚀", count: 3000) // 6000 UTF-16 units
         let cut = BlinkServer.capped(emoji, to: 4000)

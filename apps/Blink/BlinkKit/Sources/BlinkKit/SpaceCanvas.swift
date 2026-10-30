@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// image (`ref` is its file on the server), with where it sits, its colour, and for stickies and images the size and
 /// text size the owner gave it. The node is only a place; the thing it points at lives in Blink as usual.
 public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
-    public enum Kind: String, Codable, Sendable { case project, task, note, reminder, image, post }
+    public enum Kind: String, Codable, Sendable { case project, task, note, reminder, image, post, heading, section }
     public let id: String
     public let spaceID: String
     public let kind: Kind
@@ -18,15 +18,17 @@ public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
     /// A size set by hand (stickies and images); nil draws the kind's own size.
     public var w: Double?
     public var h: Double?
-    /// How much bigger a sticky's text is drawn; nil is 1.
+    /// How much bigger a sticky's or heading's text is drawn; nil is 1.
     public var textScale: Double?
+    /// A heading's text, or a section's title (the only nodes that hold text themselves).
+    public var label: String?
 
-    enum CodingKeys: String, CodingKey { case id, kind, ref, x, y, color, w, h; case spaceID = "segment_id", textScale = "text_scale" }
+    enum CodingKeys: String, CodingKey { case id, kind, ref, x, y, color, w, h, label; case spaceID = "segment_id", textScale = "text_scale" }
 
     public init(id: String = UUID().uuidString.lowercased(), spaceID: String, kind: Kind, ref: String? = nil,
-                x: Double, y: Double, color: String = "yellow", w: Double? = nil, h: Double? = nil) {
+                x: Double, y: Double, color: String = "yellow", w: Double? = nil, h: Double? = nil, label: String? = nil) {
         (self.id, self.spaceID, self.kind, self.ref, self.x, self.y, self.color) = (id, spaceID, kind, ref, x, y, color)
-        (self.w, self.h) = (w, h)
+        (self.w, self.h, self.label) = (w, h, label)
     }
 
     /// The size the node is drawn at, also used to find what a link was dropped on.
@@ -38,6 +40,8 @@ public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
         case .reminder: (220, 60)
         case .image: (260, 190)
         case .post: (240, 76)
+        case .heading: (320, 56 * (textScale ?? 1))
+        case .section: (640, 420)
         }
         return (w ?? standard.width, h ?? standard.height)
     }
@@ -52,6 +56,23 @@ public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
 
     public func contains(x px: Double, y py: Double) -> Bool {
         abs(px - x) <= size.width / 2 && abs(py - y) <= size.height / 2
+    }
+
+    /// Headings and sections organise the canvas; they aren't linked like cards.
+    public var linkable: Bool { kind != .heading && kind != .section }
+
+    /// What moves along when this section is dragged: every other node whose middle sits inside it (a section only
+    /// when it fits inside whole).
+    public func carried(in nodes: [SpaceNode]) -> [SpaceNode] {
+        guard kind == .section else { return [] }
+        return nodes.filter { other in
+            guard other.id != id else { return false }
+            if other.kind == .section {
+                return contains(x: other.x - other.size.width / 2, y: other.y - other.size.height / 2)
+                    && contains(x: other.x + other.size.width / 2, y: other.y + other.size.height / 2)
+            }
+            return contains(x: other.x, y: other.y)
+        }
     }
 }
 
