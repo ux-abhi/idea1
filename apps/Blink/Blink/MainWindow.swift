@@ -137,11 +137,11 @@ struct MainWindow: View {
                             await model.syncMail()
                         }
                     } label: {
-                        if model.status == .checking {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("Sync Now", systemImage: "arrow.clockwise")
-                        }
+                        // The same item while syncing, only its arrow turns: swapping it for a spinner changed the toolbar's
+                        // size on every sync, and in full screen that set the toolbar and the split view re-measuring each
+                        // other until AppKit gave up (NSGenericException, "Update Constraints in Window").
+                        Label("Sync Now", systemImage: "arrow.clockwise")
+                            .symbolEffect(.rotate, options: .repeat(.continuous), isActive: model.status == .checking)
                     }
                     .keyboardShortcut("r")
                     .disabled(model.status == .checking)
@@ -243,7 +243,9 @@ struct MainWindow: View {
     /// "Last synced" in the toolbar (§36.2); the server's address only when it can't be reached (it's in Settings).
     private var subtitle: String {
         switch model.status {
-        case .checking: return "Syncing…"
+        // No "Syncing…": the subtitle sits in the toolbar, and changing its width on every sync made the full-screen
+        // toolbar re-measure the window. The turning Sync arrow shows a sync is running.
+        case .checking: return model.lastSync.map { "Synced \($0.formatted(.relative(presentation: .named)))" } ?? "Synced"
         case .unreachable: return model.pausedProject != nil ? "Your free server is asleep: Settings › Server"
                                                               : "Can't reach \(model.server?.config.host ?? "your server")"
         case .connected:

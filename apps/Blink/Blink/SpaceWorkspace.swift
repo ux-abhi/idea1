@@ -273,15 +273,11 @@ private struct SpaceCanvasView: View {
                     Text("Double-click anywhere to add a card. Drag a card's dot onto another to link them.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
-                // The zoom bar sits on the right; an invisible twin on the left keeps the add bar centred. When the window is
-                // narrow the add bar drops its words and keeps its icons, so the two never overlap.
+                // One glass bar, measured once: a ViewThatFits of two glass bars (and a hidden copy of the zoom bar) made
+                // glassEffect update several times a frame, and the window's layout looped until AppKit crashed.
                 HStack(spacing: 0) {
-                    zoomBar.hidden().disabled(true).accessibilityHidden(true) // disabled: its ⌘ shortcuts must not fire twice
                     Spacer(minLength: 12)
-                    ViewThatFits(in: .horizontal) {
-                        addBar(askInWords: true)
-                        addBar(askInWords: false)
-                    }
+                    addBar
                     Spacer(minLength: 12)
                     zoomBar
                 }
@@ -750,8 +746,8 @@ private struct SpaceCanvasView: View {
         Task { await model.addImage(from: file, in: space, at: spot) }
     }
 
-    /// Icons only, each named in its tooltip; Ask Blink keeps its words (unless the window is very narrow).
-    private func addBar(askInWords: Bool) -> some View {
+    /// Icons only, each named in its tooltip; Ask Blink keeps its words.
+    private var addBar: some View {
         HStack(spacing: 2) {
             barButton("Task", symbol: "checkmark.circle") { add(.task) }
             barButton("Sticky", symbol: "note.text") { add(.note) }
@@ -762,7 +758,7 @@ private struct SpaceCanvasView: View {
             barButton("Section", symbol: "rectangle.dashed") { addMark(.section) }
             Divider().frame(height: 18).padding(.horizontal, 6)
             barButton("Ask Blink", symbol: "sparkles", action: askBlink)
-                .environment(\.showsWords, askInWords)
+                .environment(\.showsWords, true)
                 .foregroundStyle(Color.accentColor)
                 .disabled(model.thinking)
         }

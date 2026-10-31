@@ -24,11 +24,15 @@ struct InboxView: View {
         @Bindable var model = model
         let shown = model.emails.filter(matches)
         let picked = shown.filter { selection.contains($0.id) }
-        HSplitView {
+        // A plain row, not an HSplitView: a second AppKit split inside the window's split view and inspector made them
+        // re-measure each other in full screen until AppKit crashed ("Update Constraints in Window", on opening Inbox).
+        // shortcut: the list has a fixed width; make it draggable again only with a split that doesn't loop.
+        HStack(spacing: 0) {
             list(shown)
-                .frame(minWidth: 320, idealWidth: 400, maxWidth: 520)
+                .frame(width: 380)
+            Divider()
             reader(picked)
-                .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .sheet(item: $model.reviewing) { ReplyReviewSheet(review: $0) }
         .task {
