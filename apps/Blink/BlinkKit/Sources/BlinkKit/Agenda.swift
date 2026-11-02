@@ -42,11 +42,14 @@ public struct AgendaEvent: Sendable, Equatable, Identifiable {
     public let end: Date
     public let location: String?
     public let url: URL?
+    /// A whole-day event (holiday, trip, birthday): only the Calendar page asks for these.
+    public let allDay: Bool
 
     public var id: String { "\(source)|\(extID)|\(start.timeIntervalSince1970)" }
 
     public init(extID: String, source: String = "eventkit", title: String, start: Date, end: Date,
-                location: String? = nil, url: URL? = nil) {
+                location: String? = nil, url: URL? = nil, allDay: Bool = false) {
+        self.allDay = allDay
         self.extID = extID
         self.source = source
         self.title = title
@@ -332,7 +335,8 @@ public actor CalendarReader {
     }
 
     /// Creates a reminder in the default list; returns its identifier for the action's result (undo later).
-    public func addReminder(_ title: String, due: Date?, notes: String? = nil, url: URL? = nil, list: String? = nil,
+    /// `timed` false: a day without a time, so it never cues at midnight.
+    public func addReminder(_ title: String, due: Date?, timed: Bool = true, notes: String? = nil, url: URL? = nil, list: String? = nil,
                             calendar: Calendar = .current) throws -> String {
         let reminder = EKReminder(eventStore: store)
         reminder.title = title
@@ -340,7 +344,7 @@ public actor CalendarReader {
         reminder.url = url
         reminder.calendar = try list.map { try reminderList(named: $0) } ?? store.defaultCalendarForNewReminders()
         if let due {
-            reminder.dueDateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: due)
+            reminder.dueDateComponents = calendar.dateComponents(timed ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day], from: due)
         }
         try store.save(reminder, commit: true)
         return reminder.calendarItemIdentifier
@@ -446,18 +450,18 @@ public actor CalendarReader {
         return DateInterval(start: now, end: max(end, now))
     }
 
-    /// Timed events in `window`, plus incomplete reminders due by the end of today.
-    public func agenda(in window: DateInterval, calendar: Calendar = .current) async -> Agenda {
+    /// Timed events in `window` (and all-day ones when asked), plus incomplete reminders due by the end of today.
+    public func agenda(in window: DateInterval, allDay: Bool = false, calendar: Calendar = .current) async -> Agenda {
         guard Self.access == .granted else { return .empty }
         let now = window.start
         let predicate = store.predicateForEvents(withStart: window.start, end: window.end, calendars: nil)
         let found = store.events(matching: predicate).compactMap { event -> AgendaEvent? in
             let declined = event.attendees?.contains { $0.isCurrentUser && $0.participantStatus == .declined } ?? false
-            guard !event.isAllDay, !declined, let start = event.startDate, let finish = event.endDate else { return nil }
+            guard allDay || !event.isAllDay, !declined, let start = event.startDate, let finish = event.endDate else { return nil }
             return AgendaEvent(extID: event.calendarItemExternalIdentifier ?? event.calendarItemIdentifier,
                                title: event.title ?? "Untitled", start: start, end: finish,
                                location: event.location, url: AgendaEvent.meetingLink(in: event.url?.absoluteString) ?? AgendaEvent.meetingLink(in: event.location)
-                                ?? AgendaEvent.meetingLink(in: event.notes) ?? event.url)
+                                ?? AgendaEvent.meetingLink(in: event.notes) ?? event.url, allDay: event.isAllDay)
         }
 
         let events = Agenda.uniqued(found)

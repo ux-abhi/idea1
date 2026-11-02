@@ -311,6 +311,8 @@ struct DueMenu: View {
 struct HabitRow: View {
     @Environment(AppModel.self) private var model
     let habit: Habit
+    @State private var renaming = false
+    @State private var newName = ""
 
     var body: some View {
         let progress = model.progress(habit)
@@ -362,7 +364,13 @@ struct HabitRow: View {
             Button("Weekdays") { Task { await model.setWeekdays(habit, to: [2, 3, 4, 5, 6]) } }
             Button("Weekends") { Task { await model.setWeekdays(habit, to: [1, 7]) } }
             Divider()
+            Button("Rename…") { newName = habit.name; renaming = true }
             Button("Remove Habit", role: .destructive) { Task { await model.archive(habit) } }
+        }
+        .alert("Rename Habit", isPresented: $renaming) {
+            TextField("Name", text: $newName)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") { Task { await model.rename(habit, to: newName) } }
         }
     }
 
@@ -380,7 +388,8 @@ struct HabitRow: View {
     }
 }
 
-/// Seven small marks, oldest first: done, skipped, not done (neutral dashed), rest day, today still open.
+/// Seven small marks, oldest first: done, skipped, not done (neutral dashed), rest day, today still open. Each is a
+/// menu, so a day the owner forgot can still be answered.
 struct LastSevenDays: View {
     @Environment(AppModel.self) private var model
     let habit: Habit
@@ -392,12 +401,29 @@ struct LastSevenDays: View {
                 let day = cal.date(byAdding: .day, value: -offset, to: model.habitToday) ?? model.habitToday
                 let answer = model.habitAnswers[habit.id]?[HabitDay.key(day)]
                 let scheduled = habit.weekdays.contains(cal.component(.weekday, from: day))
-                Image(systemName: mark(answer: answer, scheduled: scheduled, isToday: offset == 0))
+                let mark = Image(systemName: mark(answer: answer, scheduled: scheduled, isToday: offset == 0))
                     .foregroundStyle(answer == .done ? .green : .secondary)
                     .font(.caption2)
+                if !habit.canAnswer(day) {
+                    mark.accessibilityHidden(true) // before the habit existed
+                } else {
+                Menu {
+                    Button("Done", systemImage: "checkmark.circle") { Task { await model.answer(habit, .done, on: day) } }
+                    Button("Not Done", systemImage: "circle.dashed") { Task { await model.answer(habit, .notToday, on: day) } }
+                    Button("Skipped", systemImage: "forward.end") { Task { await model.answer(habit, .skipped, on: day) } }
+                    if answer != nil { Button("Clear") { Task { await model.answer(habit, nil, on: day) } } }
+                } label: { mark }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                .help(day.formatted(.dateTime.weekday(.wide).day().month()))
+                .accessibilityLabel("\(habit.name), \(day.formatted(.dateTime.weekday(.wide).day().month()))")
+                .accessibilityValue(answer.map(word) ?? "No answer")
+                }
             }
         }
-        .accessibilityHidden(true) // the summary text says the same in words
+    }
+
+    private func word(_ a: HabitAnswer) -> String {
+        switch a { case .done: "Done"; case .notToday: "Not done"; case .skipped: "Skipped" }
     }
 
     private func mark(answer: HabitAnswer?, scheduled: Bool, isToday: Bool) -> String {
@@ -441,6 +467,9 @@ struct ReminderRow: View {
         .onAppear { title = reminder.title }
         .onChange(of: reminder.title) { old, new in if title == old { title = new } }
         .help("From Apple Reminders")
+        .contextMenu {
+            Button("Delete", role: .destructive) { Task { await model.deleteWithUndo(reminder) } }
+        }
     }
 
     private func commit() {

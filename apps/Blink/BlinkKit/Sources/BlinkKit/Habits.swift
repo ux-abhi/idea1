@@ -83,6 +83,13 @@ public struct HabitProgress: Equatable, Sendable {
 }
 
 extension Habit {
+    /// Days that can be answered: from the day before it was made (habit days start at wake time), never earlier,
+    /// since answers before that aren't loaded and would move the streak around after a relaunch.
+    public func canAnswer(_ day: Date, calendar: Calendar = .current) -> Bool {
+        let first = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: createdAt)) ?? createdAt
+        return calendar.startOfDay(for: day) >= first
+    }
+
     /// Streak rules (§36.2): rest days and skips never break it; one missed day per week is forgiven
     /// automatically; an unanswered today doesn't count against it yet.
     public func progress(answers: [String: HabitAnswer], today: Date, calendar: Calendar = .current) -> HabitProgress {

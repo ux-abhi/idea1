@@ -751,11 +751,15 @@ final class AppModel {
     }
 
     /// Deletes one reminder from Apple Reminders; Undo adds it back with its title and time (a new reminder).
+    /// Undo adds it back with its title, day and time (in the default list; its notes don't come back).
     func deleteWithUndo(_ reminder: AgendaReminder) async {
-        await deleteAll(tasks: [], reminders: [reminder])
+        agenda.reminders.removeAll { $0.id == reminder.id }
+        allReminders.removeAll { $0.id == reminder.id }
+        // Only a delete that worked gets Undo: otherwise Undo would add a second copy.
+        guard await writeReminder({ try await calendarReader.deleteReminder(id: reminder.id) }) else { return }
         offerUndo("Deleted: \(reminder.title)") { [weak self] in
             guard let self else { return }
-            await writeReminder { _ = try await self.calendarReader.addReminder(reminder.title, due: reminder.due) }
+            await writeReminder { _ = try await self.calendarReader.addReminder(reminder.title, due: reminder.due, timed: reminder.timed) }
         }
     }
 
@@ -872,11 +876,33 @@ final class AppModel {
         }
     }
 
+    func rename(_ habit: Habit, to name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = habits.firstIndex(where: { $0.id == habit.id }) else { return }
+        habits[index].name = trimmed
+        do { try await server?.save(habits[index]) } catch {
+            if let i = habits.firstIndex(where: { $0.id == habit.id }) { habits[i].name = habit.name }
+            saveProblem = "Couldn't rename that habit. Check your connection and try again."
+        }
+    }
+
+    /// Removes the habit (its history is kept on the server); Undo brings it back.
     func archive(_ habit: Habit) async {
         habits.removeAll { $0.id == habit.id }
         do { try await server?.archive(habit) } catch {
             habits.append(habit)
             saveProblem = "Couldn't remove that habit. Check your connection and try again."
+            return
+        }
+        offerUndo("Removed habit: \(habit.name)") { [weak self] in
+            guard let self else { return }
+            do {
+                try await server?.unarchive(habit)
+                habits.append(habit)
+                habits.sort { $0.createdAt < $1.createdAt } // its old place
+            } catch {
+                saveProblem = "Couldn't bring it back. Check your connection."
+            }
         }
     }
 
@@ -886,12 +912,14 @@ final class AppModel {
         guard let server else { return }
         let day = HabitDay.key(date ?? habitToday)
         let before = habitAnswers[habit.id]?[day]
+        let wasMilestone = progress(habit).isMilestone
         habitAnswers[habit.id, default: [:]][day] = answer
         if answer == .done { playFinishSound() }
         do {
             if let answer { try await server.answer(habit, day: day, with: answer) }
             else { try await server.clearAnswer(habit, day: day) }
-            if answer == .done && progress(habit).isMilestone { celebrations += 1 }
+            // Only when this answer reaches the milestone (ticking an older day mustn't replay it).
+            if answer == .done && !wasMilestone && progress(habit).isMilestone { celebrations += 1 }
         } catch {
             habitAnswers[habit.id, default: [:]][day] = before
             saveProblem = "Couldn't save that. Check your connection and try again."
@@ -1821,6 +1849,7 @@ final class AppModel {
         moneyProblem = nil
         let before = spends[i]
         spends[i] = spend
+        spends.sort { $0.spentOn > $1.spentOn } // a new day moves it in the list
         do { try await server.save(spend); await reloadAccounts() } catch {
             if let j = spends.firstIndex(where: { $0.id == spend.id }) { spends[j] = before }
             moneyProblem = "Couldn't save that change. Check your connection."
@@ -2655,14 +2684,18 @@ final class AppModel {
         await writeReminder(reload: reload) { try await calendarReader.setReminderDue(id: reminder.id, due: due, timed: reminder.timed) }
     }
 
-    private func writeReminder(reload: Bool = true, _ write: () async throws -> Void) async {
+    @discardableResult
+    private func writeReminder(reload: Bool = true, _ write: () async throws -> Void) async -> Bool {
+        var worked = true
         do {
             try await write()
             saveProblem = nil
         } catch {
             saveProblem = "Couldn't change that reminder. It may have been deleted in Reminders."
+            worked = false
         }
         if reload { await reloadAgenda() } // show what Reminders really holds now
+        return worked
     }
 
     // MARK: Calendar
@@ -2713,7 +2746,7 @@ final class AppModel {
     /// Every timed meeting in `window` from this Mac's calendars, for the Calendar page's week and month.
     func events(in window: DateInterval) async -> [AgendaEvent] {
         guard calendarAccess == .granted else { return [] }
-        return await calendarReader.agenda(in: window).events
+        return await calendarReader.agenda(in: window, allDay: true).events
     }
 
     func finishMeeting(_ event: AgendaEvent) {

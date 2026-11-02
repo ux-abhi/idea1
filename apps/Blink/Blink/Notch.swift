@@ -917,10 +917,13 @@ struct GlanceView: View {
     var planDay: (() -> Void)?
 
     var body: some View {
-        let events = Array(agenda.today(now: now).prefix(3))
-        // Reminders and tasks due today, after the meetings; four lines at most.
+        let allEvents = agenda.today(now: now)
+        let events = Array(allEvents.prefix(3))
+        // Reminders and tasks due today, after the meetings; four lines at most, then "N more today".
         let endOfToday = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) ?? now
-        let due = Array(agenda.dueItems(adding: tasks).filter { $0.due < endOfToday }.prefix(max(0, 4 - events.count)))
+        let allDue = agenda.dueItems(adding: tasks).filter { $0.due < endOfToday }
+        let due = Array(allDue.prefix(max(0, 4 - events.count)))
+        let hidden = allEvents.count + allDue.count - events.count - due.count
         VStack(alignment: .leading, spacing: 6) {
             if let card {
                 card
@@ -1083,6 +1086,14 @@ struct GlanceView: View {
                             .accessibilityLabel("Later: \(item.title)")
                     }
                 }
+            }
+            if hidden > 0, let app {
+                Button("\(hidden) more today") {
+                    app.openPage = "calendar"
+                    app.showWindow()
+                    done()
+                }
+                .buttonStyle(.plain).foregroundStyle(.mint)
             }
             if let app { UndoChipRow(app: app) }
             if let app { TimerQuickStarts(app: app).padding(.top, 2) }

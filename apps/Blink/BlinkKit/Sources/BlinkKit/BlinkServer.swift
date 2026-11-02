@@ -289,6 +289,11 @@ public final class BlinkServer: Sendable {
         try await client.from("habit").update(["archived_at": Date.now]).eq("id", value: habit.id).execute()
     }
 
+    /// Undo of Remove Habit: it's back, with its history.
+    public func unarchive(_ habit: Habit) async throws {
+        try await client.from("habit").update(["archived_at": AnyJSON.null]).eq("id", value: habit.id).execute()
+    }
+
     public func answer(_ habit: Habit, day: String, with answer: HabitAnswer) async throws {
         try await client.from("habit_log")
             .upsert(HabitLog(habitID: habit.id, day: day, status: answer), onConflict: "habit_id,day", returning: .minimal)

@@ -11,6 +11,7 @@ struct MoneyView: View {
     @State private var editingLimit: SpendCategory?
     @State private var editingAccount: AccountEditor.Mode?
     @State private var editingBill: FixedBill?
+    @State private var editingSpend: Spend?
     /// An earlier month picked with the arrows; nil is this month.
     @State private var earlier: String?
 
@@ -72,6 +73,7 @@ struct MoneyView: View {
         .sheet(item: $editingLimit) { LimitEditor(category: $0) }
         .sheet(item: $editingAccount) { AccountEditor(mode: $0) }
         .sheet(item: $editingBill) { BillEditor(bill: $0) }
+        .sheet(item: $editingSpend) { SpendEditor(spend: $0) }
     }
 
     private func leftColumn(_ s: MoneyMath.Summary) -> some View {
@@ -287,7 +289,7 @@ struct MoneyView: View {
             }
             ForEach(Array(recent.enumerated()), id: \.element.id) { index, spend in
                 if index > 0 { Divider().padding(.leading, 60) }
-                SpendRow(spend: spend) { editingBill = $0 }.padding(.horizontal, 14).padding(.vertical, 10)
+                SpendRow(spend: spend, edit: { editingSpend = spend }) { editingBill = $0 }.padding(.horizontal, 14).padding(.vertical, 10)
             }
         }
         .cardSurface(radius: Tokens.Radius.tile)
@@ -471,6 +473,7 @@ private struct DraftRow: View {
 private struct SpendRow: View {
     @Environment(AppModel.self) private var model
     let spend: Spend
+    let edit: () -> Void
     /// Opens the fixed-bill editor, filled in from this spend.
     let makeMonthly: (FixedBill) -> Void
 
@@ -498,6 +501,7 @@ private struct SpendRow: View {
 
     @ViewBuilder
     private var menu: some View {
+        Button("Edit…", systemImage: "pencil", action: edit)
         Menu("Category") {
             ForEach(SpendCategory.allCases) { c in
                 Button(c.title, systemImage: c.symbol) {
@@ -530,6 +534,43 @@ private struct SpendRow: View {
             }
         }
         Button("Delete", systemImage: "trash", role: .destructive) { Task { await model.deleteSpend(spend) } }
+    }
+}
+
+/// Changes a saved spend: amount, what and day (category and account are in the row's menu too).
+private struct SpendEditor: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State var spend: Spend
+    @State private var amount = ""
+
+    var body: some View {
+        Form {
+            TextField("Amount", text: $amount)
+            TextField("What", text: $spend.note)
+            DatePicker("Day", selection: Binding(
+                get: { HabitDay.date(fromKey: spend.spentOn) ?? .now },
+                set: { spend.spentOn = HabitDay.key($0) }
+            ), in: ...Date.now, displayedComponents: .date)
+            Picker("Category", selection: $spend.category) {
+                ForEach(SpendCategory.allCases) { Label($0.title, systemImage: $0.symbol).tag($0) }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 360)
+        .onAppear { amount = spend.amount.formatted(.number.grouping(.never).precision(.fractionLength(2))) }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    spend.amount = MoneyMath.parseAmount(amount) ?? spend.amount
+                    let saving = spend
+                    Task { await model.saveSpend(saving); dismiss() }
+                }
+                // What the server takes: a real amount under a million and a note of up to 300 characters.
+                .disabled(MoneyMath.parseAmount(amount) == nil || spend.note.count > 300)
+            }
+        }
     }
 }
 

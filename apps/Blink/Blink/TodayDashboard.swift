@@ -227,7 +227,7 @@ private struct WeekCard: View {
                      symbol: "creditcard")
             }
         }
-        .task { meetings = await model.events(in: DateInterval(start: weekStart, end: .now)).count }
+        .task { meetings = await model.events(in: DateInterval(start: weekStart, end: .now)).filter { !$0.allDay }.count }
     }
 
     private func stat(_ value: String, _ label: String, symbol: String) -> some View {

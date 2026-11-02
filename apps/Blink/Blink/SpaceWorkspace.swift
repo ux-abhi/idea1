@@ -21,7 +21,7 @@ struct SpaceView: View {
         .confirmationDialog("Delete “\(space.title)”?", isPresented: $confirmDelete) {
             Button("Delete Space", role: .destructive) { Task { await model.deleteSpace(space) } }
         } message: {
-            Text("Its tasks and notes are kept and move out of the space.")
+            Text("Its tasks, notes and posts are kept and move out of the space. Its canvas (layout, headings, sections, links and pictures) is deleted for good.")
         }
         .safeAreaInset(edge: .bottom) { SaveProblemBar() }
     }

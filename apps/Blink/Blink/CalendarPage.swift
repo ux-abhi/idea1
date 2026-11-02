@@ -42,7 +42,7 @@ struct CalendarListView: View {
             } else {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(spacing: 16) {
-                        MiniMonth(day: $day, busy: Set(events.map { cal.startOfDay(for: $0.start) }))
+                        MiniMonth(day: $day, busy: Set(events.filter { !$0.allDay }.map { cal.startOfDay(for: $0.start) }))
                         DayToDos(day: day)
                     }
                     .frame(width: 270)
@@ -251,7 +251,7 @@ private struct WeekGrid: View {
                                     if cal.isDate(date, inSameDayAs: picked) && days.count > 1 {
                                         Rectangle().fill(Color.accentColor.opacity(0.04)).frame(width: column, height: hour * 24).offset(x: x)
                                     }
-                                    ForEach(EventLane.layout(events.filter { cal.isDate($0.start, inSameDayAs: date) }), id: \.event.id) { lane in
+                                    ForEach(EventLane.layout(events.filter { !$0.allDay && cal.isDate($0.start, inSameDayAs: date) }), id: \.event.id) { lane in
                                         block(lane, day: date, x: x, column: column)
                                     }
                                 }
@@ -284,15 +284,31 @@ private struct WeekGrid: View {
                             .foregroundStyle(today ? Color.white : .primary)
                             .frame(width: 34, height: 34)
                             .background(today ? Color.accentColor : .clear, in: .circle)
+                        // All-day events (holidays, trips, birthdays) sit under the date, one line each.
+                        ForEach(allDay(on: date)) { event in
+                            Text(event.title)
+                                .font(.caption2.weight(.semibold)).lineLimit(1)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .frame(maxWidth: .infinity)
+                                .background(Color.accentColor.opacity(0.15), in: .capsule)
+                                .padding(.horizontal, 4)
+                                .help(event.title)
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(date.formatted(date: .complete, time: .omitted))
+                .accessibilityLabel(([date.formatted(date: .complete, time: .omitted)] + allDay(on: date).map(\.title)).joined(separator: ", "))
             }
         }
+    }
+
+    /// All-day events that cover `date` (a trip covers each of its days; the end is the next midnight).
+    private func allDay(on date: Date) -> [AgendaEvent] {
+        let next = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: date)) ?? date
+        return events.filter { $0.allDay && $0.start < next && $0.end > cal.startOfDay(for: date) }
     }
 
     private func hourLines(width: Double) -> some View {

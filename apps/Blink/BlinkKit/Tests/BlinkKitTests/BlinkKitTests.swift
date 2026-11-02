@@ -391,6 +391,14 @@ extension Tokens {
         #expect(MoneyMath.startingNow(FixedBill(id: "w", day: 25), today: "2026-11-20").addedThrough == "2026-10")
     }
 
+    @Test func aHabitTakesAnswersFromTheDayBeforeItWasMadeOn() {
+        let cal = Calendar.current
+        let made = cal.date(from: DateComponents(year: 2026, month: 11, day: 2, hour: 9))!
+        let habit = Habit(id: "h", name: "Run", createdAt: made)
+        #expect(habit.canAnswer(cal.date(byAdding: .day, value: -1, to: made)!))
+        #expect(!habit.canAnswer(cal.date(byAdding: .day, value: -2, to: made)!))
+    }
+
     @Test func monthsStepAcrossTheYear() {
         #expect(MoneyMath.next(month: "2026-12") == "2027-01" && MoneyMath.next(month: "2026-09") == "2026-10")
         #expect(MoneyMath.previous(month: MoneyMath.next(month: "2026-01")) == "2026-01")
