@@ -52,10 +52,37 @@ public struct Spend: Codable, Identifiable, Equatable, Sendable {
     public var accountID: String?
     /// When it was entered: spends entered after an account's balance was set come off that balance.
     public var createdAt: Date?
+    /// Where it came from: "manual", "applepay", "bill" (added by a fixed bill), …
+    public var source: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, amount, note, category
+        case id, amount, note, category, source
         case spentOn = "spent_on", accountID = "account_id", createdAt = "created_at"
+    }
+}
+
+/// A fixed monthly bill (`fixed_bill`): rent, phone, a subscription. On its day Blink adds the month's spend itself.
+public struct FixedBill: Codable, Identifiable, Equatable, Sendable {
+    public var id: String
+    public var note: String
+    public var amount: Decimal
+    public var category: SpendCategory
+    public var accountID: String?
+    /// Day of the month, 1–31; 31 (or 29, 30) means the last day in shorter months.
+    public var day: Int
+    public var paused: Bool
+    /// The last month whose spend was added ("2026-11"); nil for a new bill.
+    public var addedThrough: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, note, amount, category, day, paused
+        case accountID = "account_id", addedThrough = "added_through"
+    }
+
+    public init(id: String = UUID().uuidString.lowercased(), note: String = "", amount: Decimal = 0, category: SpendCategory = .bills,
+                accountID: String? = nil, day: Int = 1, paused: Bool = false, addedThrough: String? = nil) {
+        (self.id, self.note, self.amount, self.category, self.accountID) = (id, note, amount, category, accountID)
+        (self.day, self.paused, self.addedThrough) = (day, paused, addedThrough)
     }
 }
 
@@ -176,6 +203,39 @@ public enum MoneyMath {
     /// Cut to `limit` Unicode scalars, which is how Postgres length() counts, so a server length check never fails.
     public static func clip(_ text: String, to limit: Int) -> String {
         String(String.UnicodeScalarView(text.unicodeScalars.prefix(limit)))
+    }
+
+    /// The bills whose spend is due by `today` and not added yet, each with the day it falls on ("2026-11-01").
+    /// A new bill starts with this month; a bill not seen for a while catches up on this month and the one before only.
+    // shortcut: catches up two months at most, and only while Blink runs; move to a server cron when that's not enough.
+    public static func billsDue(_ bills: [FixedBill], today: String, calendar: Calendar = .current) -> [(bill: FixedBill, day: String)] {
+        let now = month(of: today)
+        let months = [previous(month: now), now]
+        return bills.filter { !$0.paused }.flatMap { bill in
+            months.filter { $0 > (bill.addedThrough ?? previous(month: now)) }.compactMap { m in
+                let day = "\(m)-\(String(format: "%02d", min(bill.day, daysIn(month: m, calendar: calendar))))"
+                return day <= today ? (bill: bill, day: day) : nil
+            }
+        }
+    }
+
+    /// A bill that's new or resumed starts with its next day: a day already past this month counts as paid (the owner
+    /// logged it, or it was paused), so nothing is added for it until next month.
+    public static func startingNow(_ bill: FixedBill, today: String, calendar: Calendar = .current) -> FixedBill {
+        let now = month(of: today)
+        let dueDay = "\(now)-\(String(format: "%02d", min(bill.day, daysIn(month: now, calendar: calendar))))"
+        var started = bill
+        started.addedThrough = max(bill.addedThrough ?? "", dueDay <= today ? now : previous(month: now))
+        return started
+    }
+
+    /// What the bills still to come this month add up to (after `today`, not paused, not added yet).
+    public static func billsAhead(_ bills: [FixedBill], today: String, calendar: Calendar = .current) -> Decimal {
+        let now = month(of: today)
+        return bills.filter { bill in
+            !bill.paused && (bill.addedThrough ?? "") < now
+                && "\(now)-\(String(format: "%02d", min(bill.day, daysIn(month: now, calendar: calendar))))" > today
+        }.reduce(Decimal.zero) { $0 + $1.amount }
     }
 
     /// The month after a "2026-10" key ("2026-11"; "2026-12" → "2027-01").

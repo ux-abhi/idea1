@@ -290,6 +290,20 @@ do $$ begin
   assert (select array_agg(name) from public.money_account where is_default) = array['N26'], 'one step moves the default';
   perform public.set_default_account(gen_random_uuid());
   assert (select array_agg(name) from public.money_account where is_default) = array['N26'], 'an unknown account leaves the default alone';
+  -- Fixed bills: the owner's own, on a real day of the month; their spends are added once per month.
+  insert into public.fixed_bill (note, amount, day, account_id) values ('Rent', 850, 1, '00000000-0000-0000-0000-0000000000f1');
+  begin
+    insert into public.fixed_bill (note, amount, day) values ('Gym', 30, 32);
+    raise exception 'a bill on day 32 was accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.transaction (amount, note, category, source, dedupe_key) values (850, 'Rent', 'housing', 'bill', 'bill:x:2026-11');
+  begin
+    insert into public.transaction (amount, note, category, source, dedupe_key) values (850, 'Rent', 'housing', 'bill', 'bill:x:2026-11');
+    raise exception 'a bill was added twice in one month';
+  exception when unique_violation then null;
+  end;
+  delete from public.transaction where dedupe_key = 'bill:x:2026-11';
   begin
     insert into public.transaction (amount, note) values (-5, 'refund?');
     raise exception 'a negative spend was accepted';
@@ -363,6 +377,7 @@ do $$ begin
   assert (select count(*) from public.mail_sender_rule) = 0, 'B must not see A''s sender rules';
   assert (select count(*) from public.transaction) = 0, 'B must not see A''s spends';
   assert (select count(*) from public.budget) = 0, 'B must not see A''s budgets';
+  assert (select count(*) from public.fixed_bill) = 0, 'B must not see A''s fixed bills';
   assert (select count(*) from public.money_account) = 0, 'B must not see A''s accounts';
   assert (select count(*) from public.capture_token) = 0, 'B must not see A''s capture tokens';
   assert (select count(*) from public.money_account_now) = 0, 'B must not see A''s balances';
@@ -370,6 +385,11 @@ do $$ begin
   begin
     insert into public.transaction (amount, account_id) values (5, '00000000-0000-0000-0000-0000000000f1');
     raise exception 'B spent from A''s account';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.fixed_bill (note, amount, day, account_id) values ('Sneak', 5, 1, '00000000-0000-0000-0000-0000000000f1');
+    raise exception 'B put a bill on A''s account';
   exception when insufficient_privilege then null;
   end;
   update public.voice_profile set notes = 'hacked', page = 'hacked', brief = 'hacked';

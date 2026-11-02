@@ -758,7 +758,7 @@ public final class BlinkServer: Sendable {
 
     /// Spends from `since` ("2026-09-01") on, and before `before` when given, newest first.
     public func spends(since: String, before: String? = nil) async throws -> [Spend] {
-        var query = client.from("transaction").select("id, amount, note, category, spent_on, account_id, created_at")
+        var query = client.from("transaction").select("id, amount, note, category, spent_on, account_id, created_at, source")
             .gte("spent_on", value: since)
         if let before { query = query.lt("spent_on", value: before) }
         return try await query
@@ -785,7 +785,7 @@ public final class BlinkServer: Sendable {
 
     public func add(_ drafts: [SpendDraft]) async throws -> [Spend] {
         try await client.from("transaction").insert(drafts)
-            .select("id, amount, note, category, spent_on, account_id, created_at").execute().value
+            .select("id, amount, note, category, spent_on, account_id, created_at, source").execute().value
     }
 
     public func save(_ spend: Spend) async throws {
@@ -793,6 +793,45 @@ public final class BlinkServer: Sendable {
         try await client.from("transaction")
             .update(Row(amount: spend.amount, note: spend.note, category: spend.category, spent_on: spend.spentOn, account_id: spend.accountID))
             .eq("id", value: spend.id).execute()
+    }
+
+    // MARK: Fixed bills
+
+    public func fixedBills() async throws -> [FixedBill] {
+        try await client.from("fixed_bill").select("id, note, amount, category, account_id, day, paused, added_through")
+            .order("day").execute().value
+    }
+
+    /// Saves a bill. `added_through` is sent only when asked (new, resumed, restored): otherwise an old copy on another
+    /// Mac could move it back and a deleted bill spend would be added again.
+    public func save(_ bill: FixedBill, withAddedThrough: Bool) async throws {
+        struct Row: Encodable {
+            let id, note: String, amount: Decimal, category: SpendCategory, account_id: String?, day: Int, paused: Bool
+        }
+        let row = Row(id: bill.id, note: bill.note, amount: bill.amount, category: bill.category, account_id: bill.accountID,
+                      day: bill.day, paused: bill.paused)
+        if withAddedThrough { try await client.from("fixed_bill").upsert(bill).execute() }
+        else { try await client.from("fixed_bill").upsert(row).execute() }
+    }
+
+    public func delete(_ bill: FixedBill) async throws {
+        try await client.from("fixed_bill").delete().eq("id", value: bill.id).execute()
+    }
+
+    /// Adds a bill's spend for the month `day` is in, entered as of that day, so a balance set later doesn't count it
+    /// again. Already added (another Mac): nothing changes. Then the bill remembers the month.
+    public func addSpend(of bill: FixedBill, on day: String, enteredAt: Date) async throws {
+        struct Row: Encodable {
+            let amount: Decimal, note: String, category: SpendCategory, spent_on: String, account_id: String?
+            let source = "bill", dedupe_key: String, created_at: Date
+        }
+        let month = String(day.prefix(7))
+        do {
+            try await client.from("transaction").insert(Row(amount: bill.amount, note: bill.note, category: bill.category, spent_on: day,
+                                                             account_id: bill.accountID, dedupe_key: "bill:\(bill.id):\(month)", created_at: enteredAt))
+                .execute()
+        } catch where Self.isDuplicate(error) {}
+        try await client.from("fixed_bill").update(["added_through": month]).eq("id", value: bill.id).execute()
     }
 
     /// Undo of a delete: the same row again, with its id and entry time, so account balances come out as before.

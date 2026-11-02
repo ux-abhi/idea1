@@ -10,6 +10,7 @@ struct MoneyView: View {
     @Environment(AppModel.self) private var model
     @State private var editingLimit: SpendCategory?
     @State private var editingAccount: AccountEditor.Mode?
+    @State private var editingBill: FixedBill?
     /// An earlier month picked with the arrows; nil is this month.
     @State private var earlier: String?
 
@@ -70,6 +71,7 @@ struct MoneyView: View {
         }
         .sheet(item: $editingLimit) { LimitEditor(category: $0) }
         .sheet(item: $editingAccount) { AccountEditor(mode: $0) }
+        .sheet(item: $editingBill) { BillEditor(bill: $0) }
     }
 
     private func leftColumn(_ s: MoneyMath.Summary) -> some View {
@@ -94,6 +96,7 @@ struct MoneyView: View {
             spentCard(s, today: today)
             if let limits = limitsTotal { limitsCard(spent: s.total, limits: limits) }
             else if !model.accounts.isEmpty && earlier == nil { leftCard(s, today: today) } // about now, not a past month
+            BillsCard(editing: $editingBill)
         }
     }
 
@@ -182,8 +185,11 @@ struct MoneyView: View {
     /// With accounts and no limits: what's left at month end at this pace.
     private func leftCard(_ s: MoneyMath.Summary, today: String) -> some View {
         let total = MoneyMath.totalBalance(model.accounts)
-        let left = MoneyMath.leftAtMonthEnd(total: total, summary: s, today: today)
-        let runway = MoneyMath.runwayDays(total: total, average: s.average)
+        // The day-to-day pace leaves the fixed bills out (rent on the 1st isn't a daily habit); the bills still to come
+        // this month come off on top.
+        let pace = MoneyMath.summary(model.spends.filter { $0.source != "bill" }, today: today)
+        let left = MoneyMath.leftAtMonthEnd(total: total, summary: pace, today: today) - MoneyMath.billsAhead(model.fixedBills, today: today)
+        let runway = MoneyMath.runwayDays(total: total, average: pace.average)
         let share = total > 0 ? min(max(NSDecimalNumber(decimal: left / total).doubleValue, 0), 1) : 0
         return darkCard(caption: runway.map { "Left at month end · lasts \($0 >= 365 ? "over a year" : "\($0) days")" } ?? "Left at month end",
                         title: left.formatted(.currency(code: MoneyMath.currency).precision(.fractionLength(0))),
@@ -281,7 +287,7 @@ struct MoneyView: View {
             }
             ForEach(Array(recent.enumerated()), id: \.element.id) { index, spend in
                 if index > 0 { Divider().padding(.leading, 60) }
-                SpendRow(spend: spend).padding(.horizontal, 14).padding(.vertical, 10)
+                SpendRow(spend: spend) { editingBill = $0 }.padding(.horizontal, 14).padding(.vertical, 10)
             }
         }
         .cardSurface(radius: Tokens.Radius.tile)
@@ -465,6 +471,8 @@ private struct DraftRow: View {
 private struct SpendRow: View {
     @Environment(AppModel.self) private var model
     let spend: Spend
+    /// Opens the fixed-bill editor, filled in from this spend.
+    let makeMonthly: (FixedBill) -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -475,7 +483,7 @@ private struct SpendRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(spend.note.isEmpty ? spend.category.title : spend.note).font(.callout.weight(.medium)).lineLimit(1)
-                Text("\(spend.category.title) · \(HabitDay.date(fromKey: spend.spentOn).map { $0.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) } ?? spend.spentOn)")
+                Text("\(spend.source == "bill" ? "Fixed · " : "")\(spend.category.title) · \(HabitDay.date(fromKey: spend.spentOn).map { $0.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) } ?? spend.spentOn)")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -513,6 +521,12 @@ private struct SpendRow: View {
                     changed.accountID = nil
                     Task { await model.saveSpend(changed) }
                 }
+            }
+        }
+        if spend.source != "bill" {
+            Button("Make Monthly…", systemImage: "repeat") {
+                makeMonthly(FixedBill(note: spend.note, amount: spend.amount, category: spend.category, accountID: spend.accountID,
+                                      day: Int(spend.spentOn.suffix(2)) ?? 1))
             }
         }
         Button("Delete", systemImage: "trash", role: .destructive) { Task { await model.deleteSpend(spend) } }

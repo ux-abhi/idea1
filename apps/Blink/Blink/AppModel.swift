@@ -750,6 +750,15 @@ final class AppModel {
         if !reminders.isEmpty { await reloadAgenda() }
     }
 
+    /// Deletes one reminder from Apple Reminders; Undo adds it back with its title and time (a new reminder).
+    func deleteWithUndo(_ reminder: AgendaReminder) async {
+        await deleteAll(tasks: [], reminders: [reminder])
+        offerUndo("Deleted: \(reminder.title)") { [weak self] in
+            guard let self else { return }
+            await writeReminder { _ = try await self.calendarReader.addReminder(reminder.title, due: reminder.due) }
+        }
+    }
+
     func saveIfNeeded(_ id: String) async {
         if unsaved.contains(id) { await save(id) }
     }
@@ -872,9 +881,10 @@ final class AppModel {
     }
 
     /// Done / Not today / Skip for today, or nil to clear (answering again undoes it).
-    func answer(_ habit: Habit, _ answer: HabitAnswer?) async {
+    /// Answers for today, or for an earlier day (`on`) the owner forgot to tick.
+    func answer(_ habit: Habit, _ answer: HabitAnswer?, on date: Date? = nil) async {
         guard let server else { return }
-        let day = HabitDay.key(habitToday)
+        let day = HabitDay.key(date ?? habitToday)
         let before = habitAnswers[habit.id]?[day]
         habitAnswers[habit.id, default: [:]][day] = answer
         if answer == .done { playFinishSound() }
@@ -1647,6 +1657,8 @@ final class AppModel {
     /// iPhones (Shortcuts automations) that send Apple Pay taps to the server.
     private(set) var captureTokens: [CaptureToken] = []
     private(set) var budgets: [Budget] = []
+    /// Rent, phone, subscriptions: the same amount every month. Empty on a server without the table yet.
+    private(set) var fixedBills: [FixedBill] = []
     private(set) var moneyProblem: String?
     private(set) var sortingSpends = false
     /// Spending typed in the bar and sorted by Blink, waiting on the Money page to be checked and saved.
@@ -1706,13 +1718,62 @@ final class AppModel {
             let recent: [Spend]
             (recent, budgets, accounts) = try await (spent, limits, list)
             merge(recent, from: since, before: nil)
-            // Optional: a server without the capture table yet (older install) still shows its money.
+            // Optional: a server without the capture or bills table yet (older install) still shows its money.
             captureTokens = (try? await server.captureTokens()) ?? []
+            fixedBills = (try? await server.fixedBills()) ?? []
+            if await addDueBills() { merge(try await server.spends(since: since), from: since, before: nil); await reloadAccounts() }
             tellMoneyNews()
         } catch {
             // Never show €0 as if nothing was spent.
             moneyProblem = "Can't load your spending right now. Check your connection."
         }
+    }
+
+    /// Adds the spend of every fixed bill whose day has come this month (or last); true when any was added.
+    private func addDueBills() async -> Bool {
+        guard let server else { return false }
+        var added = false
+        for (bill, day) in MoneyMath.billsDue(fixedBills, today: HabitDay.key(.now)) {
+            // Entered at the start of its day: a balance set later that day already has it taken off.
+            let entered = HabitDay.date(fromKey: day).map { Calendar.current.startOfDay(for: $0) } ?? .now
+            do { try await server.addSpend(of: bill, on: day, enteredAt: entered) } catch { continue } // next load retries
+            if let i = fixedBills.firstIndex(where: { $0.id == bill.id }) { fixedBills[i].addedThrough = String(day.prefix(7)) }
+            added = true
+        }
+        return added
+    }
+
+    /// Adds or changes a fixed bill. A new or resumed one starts with its next day, so a payment already made this
+    /// month isn't added twice; `restoring` puts a deleted bill back as it was. True when saved.
+    @discardableResult
+    func saveBill(_ bill: FixedBill, restoring: Bool = false) async -> Bool {
+        guard let server else { return false }
+        moneyProblem = nil
+        let old = fixedBills.first { $0.id == bill.id }
+        let starts = !restoring && (old == nil || (old?.paused == true && !bill.paused))
+        let saving = starts ? MoneyMath.startingNow(bill, today: HabitDay.key(.now)) : bill
+        do {
+            try await server.save(saving, withAddedThrough: starts || restoring)
+            if let i = fixedBills.firstIndex(where: { $0.id == bill.id }) { fixedBills[i] = saving } else { fixedBills.append(saving) }
+            fixedBills.sort { $0.day < $1.day }
+            if await addDueBills() { await loadMoney() }
+            return true
+        } catch {
+            moneyProblem = serverBehind ? "Update your server (Settings › Update Server) to add fixed bills."
+                : "Couldn't save that bill. Try again in a moment."
+            return false
+        }
+    }
+
+    /// Stops the bill; spends it already added stay. Undo brings the bill back.
+    func deleteBill(_ bill: FixedBill) async {
+        guard let server else { return }
+        do { try await server.delete(bill) } catch {
+            moneyProblem = "Couldn't delete that bill. Check your connection."
+            return
+        }
+        fixedBills.removeAll { $0.id == bill.id }
+        offerUndo("Deleted bill: \(bill.note)") { [weak self] in await self?.saveBill(bill, restoring: true) }
     }
 
     /// An earlier month ("2026-08") and the one before it, for the Money page's month picker and its comparison.
