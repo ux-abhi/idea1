@@ -167,6 +167,24 @@ public enum MoneyMath {
         return parts[1] == 1 ? String(format: "%04d-12", parts[0] - 1) : String(format: "%04d-%02d", parts[0], parts[1] - 1)
     }
 
+    /// A fresh copy of the spends between two days (`before` excluded; nil: no end) swapped in, other days kept; newest first.
+    public static func merge(_ fresh: [Spend], into spends: [Spend], from since: String, before: String?) -> [Spend] {
+        let kept = spends.filter { spend in spend.spentOn < since || before.map { spend.spentOn >= $0 } == true }
+        return (fresh + kept).sorted { $0.spentOn > $1.spentOn }
+    }
+
+    /// Cut to `limit` Unicode scalars, which is how Postgres length() counts, so a server length check never fails.
+    public static func clip(_ text: String, to limit: Int) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.prefix(limit)))
+    }
+
+    /// The month after a "2026-10" key ("2026-11"; "2026-12" → "2027-01").
+    public static func next(month: String) -> String {
+        let parts = month.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2 else { return month }
+        return parts[1] == 12 ? String(format: "%04d-01", parts[0] + 1) : String(format: "%04d-%02d", parts[0], parts[1] + 1)
+    }
+
     /// Spent on each day of the month: index 0 is the 1st.
     public static func daily(_ spends: [Spend], month: String, calendar: Calendar = .current) -> [Decimal] {
         var days = Array(repeating: Decimal.zero, count: daysIn(month: month, calendar: calendar))

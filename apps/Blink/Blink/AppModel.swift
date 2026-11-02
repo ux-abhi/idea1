@@ -1309,6 +1309,38 @@ final class AppModel {
         return true
     }
 
+    /// A post written by hand, no AI: one draft per platform, saved as typed. Returns the first, to open it.
+    func writePost(_ text: String, platforms: [ContentPiece.Platform], plannedFor: String? = nil, space: String? = nil) async -> ContentPiece? {
+        guard let server, !drafting else { return nil }
+        drafting = true // a second click waits instead of saving twice
+        defer { drafting = false }
+        contentProblem = nil
+        var made: [ContentPiece] = []
+        do {
+            for platform in platforms {
+                made.append(try await server.create(ContentPiece.Written(text, platform: platform, plannedFor: plannedFor, spaceID: space)))
+            }
+        } catch {
+            contentProblem = "Couldn't save your post. Check your connection and try again."
+        }
+        content.insert(contentsOf: made, at: 0) // the ones that did save
+        return made.first
+    }
+
+    /// Delete on a post: it's archived (gone from Content and the canvas), with Undo.
+    func deletePost(_ piece: ContentPiece) async {
+        let before = content.first { $0.id == piece.id } ?? piece
+        await setStatus(.archived, of: piece)
+        guard !content.contains(where: { $0.id == piece.id }) else { return } // not saved; it stays
+        offerUndo("Deleted post: \(before.hook.isEmpty ? before.idea : before.hook)") { [weak self] in
+            guard let self else { return }
+            // As it was, publish date included.
+            content.insert(before, at: 0)
+            edit(before)
+            await saveContent(before.id)
+        }
+    }
+
     /// The day a post (or planned idea) goes out; nil takes it off the plan.
     func setDay(_ day: String?, of piece: ContentPiece) async {
         guard var changed = content.first(where: { $0.id == piece.id }), changed.plannedFor != day else { return }
@@ -1343,7 +1375,7 @@ final class AppModel {
         do {
             try await server.save(piece)
             // Only clear if nothing was typed while saving.
-            if let now = content.first(where: { $0.id == id }), now.body == piece.body, now.parts == piece.parts,
+            if let now = content.first(where: { $0.id == id }), now.hook == piece.hook, now.body == piece.body, now.parts == piece.parts,
                now.status == piece.status, now.plannedFor == piece.plannedFor { contentUnsaved.remove(id) }
             contentProblem = nil
         } catch {
@@ -1671,7 +1703,9 @@ final class AppModel {
             async let spent = server.spends(since: since)
             async let limits = server.budgets()
             async let list = server.accounts()
-            (spends, budgets, accounts) = try await (spent, limits, list)
+            let recent: [Spend]
+            (recent, budgets, accounts) = try await (spent, limits, list)
+            merge(recent, from: since, before: nil)
             // Optional: a server without the capture table yet (older install) still shows its money.
             captureTokens = (try? await server.captureTokens()) ?? []
             tellMoneyNews()
@@ -1679,6 +1713,19 @@ final class AppModel {
             // Never show €0 as if nothing was spent.
             moneyProblem = "Can't load your spending right now. Check your connection."
         }
+    }
+
+    /// An earlier month ("2026-08") and the one before it, for the Money page's month picker and its comparison.
+    func loadSpends(around month: String) async {
+        guard let server, email != nil else { return }
+        let since = MoneyMath.previous(month: month) + "-01", before = MoneyMath.next(month: month) + "-01"
+        do { merge(try await server.spends(since: since, before: before), from: since, before: before) } catch {
+            moneyProblem = "Can't load that month right now. Check your connection."
+        }
+    }
+
+    private func merge(_ fresh: [Spend], from since: String, before: String?) {
+        spends = MoneyMath.merge(fresh, into: spends, from: since, before: before)
     }
 
     /// The AI's reading of what was typed; empty (with a problem) when it found nothing.
@@ -1727,6 +1774,17 @@ final class AppModel {
             spends.append(spend)
             spends.sort { $0.spentOn > $1.spentOn }
             moneyProblem = "Couldn't delete that. Check your connection."
+            return
+        }
+        offerUndo("Deleted: \(spend.note.isEmpty ? spend.category.title : spend.note)") { [weak self] in
+            guard let self else { return }
+            do {
+                try await server.restore(spend)
+                spends = MoneyMath.merge([spend], into: spends, from: spend.spentOn, before: spend.spentOn) // adds it, keeps the rest
+                await reloadAccounts()
+            } catch {
+                moneyProblem = "Couldn't bring it back. Check your connection."
+            }
         }
     }
 

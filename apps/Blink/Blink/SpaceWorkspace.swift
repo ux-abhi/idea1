@@ -203,7 +203,7 @@ private struct SpaceCanvasView: View {
                         .position(x: point(node).x * scale, y: point(node).y * scale)
                 }
                 if draft != nil {
-                    DraftCard(draft: $draft, commit: finishDraft, ideas: postIdeas)
+                    DraftCard(draft: $draft, commit: { finishDraft() }, ideas: postIdeas, writeMyself: { finishDraft(byHand: true) })
                         .scaleEffect(scale)
                         .position(x: (draft?.x ?? 0) * scale, y: (draft?.y ?? 0) * scale)
                 }
@@ -292,7 +292,7 @@ private struct SpaceCanvasView: View {
             }
         }
         .onChange(of: editing) { _, now in if now == nil && draft == nil { canvasFocused = true } }
-        .onDisappear(perform: finishDraft)
+        .onDisappear { finishDraft() }
     }
 
     // MARK: Cards
@@ -617,6 +617,9 @@ private struct SpaceCanvasView: View {
         if case .item(let item) = content(of: node) {
             Divider()
             Button(item.type == .note ? "Delete Note" : "Delete Task", role: .destructive) { Task { await model.deleteWithUndo(item) } }
+        } else if case .post(let post) = content(of: node) {
+            Divider()
+            Button("Delete Post", role: .destructive) { Task { await model.deletePost(post) } }
         } else if [.image, .heading, .section].contains(node.kind) {
             Divider()
             let what = node.kind == .image ? "Remove Picture" : node.kind == .heading ? "Delete Heading" : "Delete Section (Keeps Its Cards)"
@@ -671,8 +674,9 @@ private struct SpaceCanvasView: View {
         if viewport.width > 0, !shown.insetBy(dx: 150, dy: 80).contains(CGPoint(x: spot.x, y: spot.y)) { centre(on: spot) }
     }
 
-    /// Makes the card from what's typed; an empty draft just goes away.
-    private func finishDraft() {
+    /// Makes the card from what's typed; an empty draft just goes away. A post is drafted by Blink, or saved as typed
+    /// `byHand` and opened to finish.
+    private func finishDraft(byHand: Bool = false) {
         guard let done = draft else { return }
         draft = nil
         let text = done.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -682,6 +686,17 @@ private struct SpaceCanvasView: View {
             let platforms = ContentPiece.Platform.allCases.filter(done.platforms.contains)
             // Keep what's typed until a platform is picked and no other post is being written.
             guard !platforms.isEmpty, !model.drafting else { draft = done; return }
+            if byHand {
+                Task {
+                    if let post = await model.writePost(text, platforms: platforms, space: space.id) {
+                        await model.addMissingNodes(space, near: (done.x, done.y))
+                        readingPost = post.id
+                    } else if draft == nil {
+                        draft = done
+                    }
+                }
+                return
+            }
             Task {
                 if await model.draft(idea: text, platforms: platforms, space: space.id) {
                     await model.addMissingNodes(space, near: (done.x, done.y))
@@ -728,6 +743,9 @@ private struct SpaceCanvasView: View {
         case .image, .mark:
             selected = nil
             Task { await model.removeNode(node) }
+        case .post(let post):
+            selected = nil
+            Task { await model.deletePost(post) }
         default: break
         }
     }
@@ -1249,6 +1267,7 @@ private struct DraftCard: View {
     @Binding var draft: CardDraft?
     let commit: () -> Void
     let ideas: () -> Void
+    let writeMyself: () -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -1304,8 +1323,15 @@ private struct DraftCard: View {
                         .accessibilityAddTraits(on ? .isSelected : [])
                     }
                 }
-                if draft?.platforms.isEmpty == true {
-                    Text("Pick a platform, then press Return.").font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Text(draft?.platforms.isEmpty == true ? "Pick a platform first." : "Return: Blink drafts it from your idea.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Button("Write It Myself", action: writeMyself)
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderless)
+                        .disabled(draft?.platforms.isEmpty != false || draft?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false)
+                        .help("Save your words as the post, no AI, and open it to finish")
                 }
             }
         }

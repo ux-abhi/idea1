@@ -359,6 +359,30 @@ extension Tokens {
         #expect(sent.contains(#""planned_for":null"#))
     }
 
+    @Test func mergingAMonthKeepsTheOthersAndARestoredSpendKeepsItsEntryTime() throws {
+        func spend(_ id: String, _ day: String) -> Spend {
+            Spend(id: id, amount: 1, note: "", category: .other, spentOn: day, accountID: nil, createdAt: Date(timeIntervalSince1970: 0))
+        }
+        let old = [spend("a", "2026-08-31"), spend("b", "2026-09-15"), spend("c", "2026-10-01"), spend("d", "2026-11-02")]
+        let merged = MoneyMath.merge([spend("e", "2026-09-20")], into: old, from: "2026-09-01", before: "2026-11-01")
+        #expect(merged.map(\.id) == ["d", "e", "a"])
+        #expect(MoneyMath.merge([], into: old, from: "2026-10-01", before: nil).map(\.id) == ["b", "a"])
+        #expect(String(decoding: try JSONEncoder().encode(spend("a", "2026-08-31")), as: UTF8.self).contains("created_at"))
+        #expect(MoneyMath.clip("👨‍👩‍👧", to: 3).unicodeScalars.count == 3)
+    }
+
+    @Test func monthsStepAcrossTheYear() {
+        #expect(MoneyMath.next(month: "2026-12") == "2027-01" && MoneyMath.next(month: "2026-09") == "2026-10")
+        #expect(MoneyMath.previous(month: MoneyMath.next(month: "2026-01")) == "2026-01")
+    }
+
+    @Test func aHandWrittenPostKeepsAllItsTextAndHooksOnItsFirstLine() {
+        let post = ContentPiece.Written("  Shipped it.\nThree things I learned.\n", platform: .instagram, spaceID: "s")
+        #expect(post.hook == "Shipped it." && post.idea == "Shipped it." && post.body == "Shipped it.\nThree things I learned.")
+        #expect(post.format == "caption" && ContentPiece.Written("a", platform: .x).format == "post")
+        #expect(ContentPiece.Written(String(repeating: "a", count: 900), platform: .x).hook.count == 500)
+    }
+
     @Test func canvasImagesShrinkAndLoseTheirLocation() throws {
         let context = try #require(CGContext(data: nil, width: 3000, height: 1500, bitsPerComponent: 8, bytesPerRow: 0,
                                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))

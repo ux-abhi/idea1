@@ -190,6 +190,10 @@ private struct PostRow: View {
         }
         .buttonStyle(.plain)
         .draggable(piece.id) // onto a day of the plan
+        .contextMenu {
+            Button("Open", action: open)
+            Button("Delete Post", role: .destructive) { Task { await model.deletePost(piece) } }
+        }
         .accessibilityLabel("\(piece.platform.name): \(piece.hook.isEmpty ? piece.body : piece.hook), \(StatusChip.name(piece.status))")
     }
 }
@@ -382,7 +386,8 @@ private struct ContentPlan: View {
                 Spacer()
                 Button("Write") { Task { await model.write(piece) } }.controlSize(.small).disabled(model.drafting)
                 Menu {
-                    Button("Remove From Plan", role: .destructive) { Task { await model.setStatus(.archived, of: piece) } }
+                    Button("Move to Not Scheduled") { Task { await model.setDay(nil, of: piece) } }
+                    Button("Delete Idea", role: .destructive) { Task { await model.deletePost(piece) } }
                 } label: { Image(systemName: "ellipsis") }
                     .menuStyle(.borderlessButton).fixedSize()
                     .accessibilityLabel("More for \(piece.idea)")
@@ -492,6 +497,8 @@ struct PieceSheet: View {
             }
         }
         .frame(width: 640, height: 640)
+        // Deleted (here or elsewhere): close, the Undo chip brings it back.
+        .onChange(of: model.content.contains { $0.id == id }) { _, here in if !here { dismiss() } }
         // Edits save a second after typing stops; closing sooner must not lose them.
         .onDisappear { Task { await model.saveContent(id) } }
     }
@@ -513,7 +520,7 @@ private struct NewPostSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New Post").font(.title3.weight(.semibold))
-            TextField("What's the idea? e.g. \"3 checkout mistakes that lose users\"", text: $idea, axis: .vertical)
+            TextField("Your idea for Blink to draft, or your own post to save as written", text: $idea, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(3...8)
                 .padding(10)
@@ -542,6 +549,12 @@ private struct NewPostSheet: View {
                 .disabled(platforms.isEmpty || model.thinkingOfIdeas)
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                // No AI: what's typed is the post, saved as a draft to finish in the list.
+                Button("Save As Written") {
+                    Task { if await model.writePost(idea, platforms: platforms, plannedFor: postOn) != nil { written(); dismiss() } }
+                }
+                .disabled(idea.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || platforms.isEmpty || model.drafting)
+                .help("Save your words as the post, without Blink writing it")
                 Button {
                     Task {
                         if await model.draft(idea: idea, platforms: platforms, plannedFor: postOn) { written(); dismiss() }
@@ -585,12 +598,17 @@ private struct PieceEditor: View {
                 Spacer()
                 ScoreBadge(score: check.score)
                 Menu {
-                    Button("Archive", role: .destructive) { Task { await model.setStatus(.archived, of: piece) } }
+                    Button("Delete Post", role: .destructive) { Task { await model.deletePost(piece) } }
                 } label: { Image(systemName: "ellipsis.circle") }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
                     .accessibilityLabel("More")
             }
+            // The first line people see, and the card's title on a Space.
+            TextField("Hook: the opening line", text: hookBinding, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.title3.weight(.semibold))
+                .lineLimit(1...3)
 
             if !piece.parts.isEmpty {
                 ForEach(piece.parts.indices, id: \.self) { index in
@@ -648,7 +666,7 @@ private struct PieceEditor: View {
             }
         }
         // Saves after a pause in typing.
-        .task(id: piece.body + piece.parts.joined()) {
+        .task(id: piece.hook + piece.body + piece.parts.joined()) {
             try? await Task.sleep(for: .seconds(1))
             await model.saveContent(piece.id)
         }
@@ -669,6 +687,14 @@ private struct PieceEditor: View {
         case "reel_script": "Shot \(index + 1)"
         default: "\(index + 1)/\(piece.parts.count)"
         }
+    }
+
+    private var hookBinding: Binding<String> {
+        Binding(get: { piece.hook }, set: { text in
+            var changed = piece
+            changed.hook = MoneyMath.clip(text, to: 500) // what the server takes
+            model.edit(changed)
+        })
     }
 
     private var bodyBinding: Binding<String> {

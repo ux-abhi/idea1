@@ -10,11 +10,21 @@ struct MoneyView: View {
     @Environment(AppModel.self) private var model
     @State private var editingLimit: SpendCategory?
     @State private var editingAccount: AccountEditor.Mode?
+    /// An earlier month picked with the arrows; nil is this month.
+    @State private var earlier: String?
 
-    private var month: String { MoneyMath.month(of: HabitDay.key(.now)) }
+    private var thisMonth: String { MoneyMath.month(of: HabitDay.key(.now)) }
+    private var month: String { earlier ?? thisMonth }
+    /// "this month", or "in September" for an earlier one.
+    private var monthWords: String { earlier == nil ? "this month" : "in \(Self.name(month, year: false))" }
+
+    static func name(_ month: String, year: Bool = true) -> String {
+        HabitDay.date(fromKey: month + "-01").map { $0.formatted(year ? .dateTime.month(.wide).year() : .dateTime.month(.wide)) } ?? month
+    }
 
     var body: some View {
-        let today = HabitDay.key(.now)
+        // An earlier month is read as of its last day, so its totals and comparison cover the whole month.
+        let today = earlier.map { "\($0)-\(String(format: "%02d", MoneyMath.daysIn(month: $0)))" } ?? HabitDay.key(.now)
         let summary = MoneyMath.summary(model.spends, today: today)
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -24,6 +34,7 @@ struct MoneyView: View {
                         Text(pageSummary(summary)).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    monthPicker
                     // By hand: an empty row in "Check before saving", today, from the default account.
                     Button("Add Spend", systemImage: "plus") {
                         model.spendDrafts.append(SpendDraft(amount: 0, note: "", category: .other, spentOn: HabitDay.key(.now),
@@ -54,7 +65,9 @@ struct MoneyView: View {
         }
         .background(BlinkCanvas())
         .animation(.default, value: model.spends)
-        .task { await model.loadMoney() }
+        .task(id: earlier) {
+            if let earlier { await model.loadSpends(around: earlier) } else { await model.loadMoney() }
+        }
         .sheet(item: $editingLimit) { LimitEditor(category: $0) }
         .sheet(item: $editingAccount) { AccountEditor(mode: $0) }
     }
@@ -64,12 +77,13 @@ struct MoneyView: View {
             section("Accounts", trailing: model.accounts.count > 1
                     ? "\(MoneyMath.totalBalance(model.accounts).formatted(.currency(code: MoneyMath.currency))) in total" : nil)
             AccountCards(editing: $editingAccount)
-            section("Where it went this month")
+            section("Where it went \(monthWords)")
             if MoneyMath.totals(model.spends, month: month).isEmpty {
-                Text("Nothing spent yet this month. Type what you spend in the bar below.").foregroundStyle(.secondary)
+                Text(earlier == nil ? "Nothing spent yet this month. Type what you spend in the bar below." : "Nothing logged \(monthWords).")
+                    .foregroundStyle(.secondary)
             }
             categoryTiles
-            section("Recent spending")
+            section(earlier == nil ? "Recent spending" : "Spending \(monthWords)")
             latest
             ApplePayCard()
         }
@@ -79,7 +93,7 @@ struct MoneyView: View {
         VStack(alignment: .leading, spacing: 16) {
             spentCard(s, today: today)
             if let limits = limitsTotal { limitsCard(spent: s.total, limits: limits) }
-            else if !model.accounts.isEmpty { leftCard(s, today: today) }
+            else if !model.accounts.isEmpty && earlier == nil { leftCard(s, today: today) } // about now, not a past month
         }
     }
 
@@ -92,9 +106,33 @@ struct MoneyView: View {
     }
 
     private func pageSummary(_ s: MoneyMath.Summary) -> String {
-        guard let change = s.change else { return "\(s.total.formatted(.currency(code: MoneyMath.currency))) this month" }
+        let spent = "\(s.total.formatted(.currency(code: MoneyMath.currency))) \(monthWords)"
+        guard let change = s.change else { return spent }
         let pct = Int((abs(change) * 100).rounded())
-        return "\(s.total.formatted(.currency(code: MoneyMath.currency))) this month · \(pct)% \(change >= 0 ? "more" : "less") than last month by today"
+        return "\(spent) · \(pct)% \(change >= 0 ? "more" : "less") than \(comparedWith)"
+    }
+
+    private var comparedWith: String {
+        earlier == nil ? "last month by today" : Self.name(MoneyMath.previous(month: month), year: false)
+    }
+
+    /// ‹ October 2026 › : step back through earlier months; this month is the newest.
+    private var monthPicker: some View {
+        HStack(spacing: 2) {
+            Button("Earlier Month", systemImage: "chevron.left") { earlier = MoneyMath.previous(month: month) }
+                .keyboardShortcut("[", modifiers: .command)
+                .help("Earlier month (⌘[)")
+            Text(Self.name(month)).font(.headline).monospacedDigit().frame(minWidth: 130)
+            Button("Later Month", systemImage: "chevron.right") {
+                let next = MoneyMath.next(month: month)
+                earlier = next >= thisMonth ? nil : next
+            }
+            .keyboardShortcut("]", modifiers: .command)
+            .help("Later month (⌘])")
+            .disabled(earlier == nil)
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
     }
 
     private var limitsTotal: Decimal? {
@@ -108,13 +146,13 @@ struct MoneyView: View {
         let day = Int(today.suffix(2)) ?? 1
         let daily = Array(MoneyMath.daily(model.spends, month: month).prefix(day))
         return VStack(spacing: 6) {
-            Text("Spent this month").font(.callout).foregroundStyle(.secondary)
+            Text("Spent \(monthWords)").font(.callout).foregroundStyle(.secondary)
             Text(s.total, format: .currency(code: MoneyMath.currency))
                 .font(.system(.largeTitle, design: .rounded, weight: .bold)).monospacedDigit()
                 .contentTransition(.numericText())
             if let change = s.change {
                 let pct = Int((abs(change) * 100).rounded())
-                Text("\(change >= 0 ? "▲" : "▼") \(pct)% vs last month by today")
+                Text("\(change >= 0 ? "▲" : "▼") \(pct)% vs \(comparedWith)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(change > 0.1 ? Color.orange : change < 0 ? .green : .secondary)
             }
@@ -123,7 +161,8 @@ struct MoneyView: View {
                           lastMonth: MoneyMath.cumulative(MoneyMath.daily(model.spends, month: MoneyMath.previous(month: month))),
                           limit: limitsTotal, daysInMonth: MoneyMath.daysIn(month: month))
                     .padding(.top, 8)
-                Text("Solid: this month · Dashed: last month").font(.caption2).foregroundStyle(.tertiary)
+                Text("Solid: \(Self.name(month, year: false)) · Dashed: \(Self.name(MoneyMath.previous(month: month), year: false))")
+                    .font(.caption2).foregroundStyle(.tertiary)
             } else {
                 Text("Your pace shows after your first spend.").font(.callout).foregroundStyle(.secondary).padding(.top, 8)
             }
@@ -234,7 +273,8 @@ struct MoneyView: View {
 
     /// The latest spends as one list: what, the day, the amount, and a menu to change or delete each.
     private var latest: some View {
-        let recent = Array(model.spends.prefix(30))
+        // This month: the latest 30, whatever the month. An earlier month: all of it.
+        let recent = earlier == nil ? Array(model.spends.prefix(30)) : model.spends.filter { MoneyMath.month(of: $0.spentOn) == month }
         return VStack(spacing: 0) {
             if recent.isEmpty {
                 Text("Spends you add show here.").foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(16)

@@ -14,7 +14,7 @@ final class NotchModel {
     func showsCard(_ app: AppModel) -> Bool {
         if meeting { return false }
         // Clicked open with nothing typed yet: the day, with the box below ready for a question or "remind me to…".
-        if chatting { return app.chat.isEmpty && input.isEmpty && app.ideas.isEmpty && !app.drafting && !app.thinkingOfIdeas && !app.thinking }
+        if chatting { return (app.chat.isEmpty || dayFirst) && input.isEmpty && app.ideas.isEmpty && !app.drafting && !app.thinkingOfIdeas && !app.thinking }
         return !clipboarding && !searching && app.timer == nil && app.finishedTimer == nil && !(evening || app.eveningDue)
     }
 
@@ -39,6 +39,8 @@ final class NotchModel {
     var briefing = false
     /// The open notch shows the chat (⌃⌥Space) instead of the glance.
     var chatting = false
+    /// Clicked open: the day shows above the ask box even when there's an earlier chat; asking something brings it back.
+    var dayFirst = false
     /// The evening nudge is showing ("Plan tomorrow?").
     var evening = false
     /// The open notch shows the clipboard history (⌃⌥V).
@@ -595,11 +597,12 @@ final class NotchController {
 
     func toggleChat() {
         guard !showLockInstead() else { return }
-        if model.level == .open && model.chatting { close(); return }
+        if model.level == .open && model.chatting && !model.dayFirst { close(); return }
         model.clipboarding = false
         model.searching = false
         model.meeting = false
         model.chatting = true
+        model.dayFirst = false
         if model.level == .open, let panel {
             panel.allowsKey = true
             panel.makeKey()
@@ -608,12 +611,13 @@ final class NotchController {
         }
     }
 
-    /// A click on the notch: the chat, with the keyboard in its box (the day shows above it until something is asked).
-    /// Already open on the day view: switches to the chat. Cards like the Meet invite or the clipboard stay as they are.
+    /// A click on the notch: the day, with the keyboard in the ask box below it; an earlier chat comes back once
+    /// something is asked (or with ⌃⌥Space). Cards like the Meet invite or the clipboard stay as they are.
     func openChat() {
         guard !showLockInstead(), !model.meeting, !model.clipboarding, !model.searching else { return }
         if model.level == .open && model.chatting { return }
         model.chatting = true
+        model.dayFirst = true
         if model.level == .open, let panel {
             panel.allowsKey = true
             panel.makeKey()
@@ -634,6 +638,7 @@ final class NotchController {
     /// Morning brief's "Plan my day": the chat, asked to fit today's open tasks around the calendar (proposals only).
     func planToday() {
         model.briefing = false
+        model.dayFirst = false // the plan shows when it arrives
         if !(model.level == .open && model.chatting) { toggleChat() }
         Task { await app.ask("Plan the rest of my day around my calendar and open tasks, with realistic times, and propose them.") }
     }
@@ -641,6 +646,7 @@ final class NotchController {
     /// Evening card's "Plan with Blink": switch the open notch to the chat and ask Claude for tomorrow's plan.
     func planTomorrow() {
         model.evening = false
+        model.dayFirst = false
         if !(model.level == .open && model.chatting) { toggleChat() }
         Task { await app.planTomorrow() }
     }
@@ -766,7 +772,7 @@ struct NotchView: View {
                        card: app.pending.first.map { CardView(action: $0, count: app.pending.count, problem: app.actionProblem, app: app) },
                        planDay: planDay)
         } else if model.chatting {
-            ChatPanel(app: app, input: model.input, pick: { [model] in model.input = $0 }, today: { [model] in model.chatting = false })
+            ChatPanel(app: app, input: model.input, pick: { [model] in model.input = $0 }, today: { [model] in model.dayFirst = true })
         } else if model.clipboarding {
             ClipboardPanel(store: clipboard, done: close)
         } else if model.searching {
@@ -1490,6 +1496,7 @@ struct SplitInput: View, Animatable {
         guard canSend else { return }
         let message = notch.input
         notch.input = ""
+        notch.dayFirst = false
         if let command = QuickCommand.parse(message) {
             if case .meet = command { notch.chatting = false; notch.meeting = true } // the invite card takes the notch
             Task { await app.run(command) }

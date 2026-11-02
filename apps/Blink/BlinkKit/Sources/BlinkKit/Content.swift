@@ -71,6 +71,30 @@ public struct ContentPiece: Codable, Identifiable, Equatable, Sendable {
         let tags = hashtags.map { "#\($0)" }.joined(separator: " ")
         return tags.isEmpty ? main : "\(main)\n\n\(tags)"
     }
+
+    /// A post the owner writes by hand, no AI: the whole text is the post, its first line the hook and what it's about.
+    /// Cut to what the table takes (idea 2000, hook 500, body 10000 characters).
+    public struct Written: Encodable, Equatable, Sendable {
+        let idea: String
+        let platform: String
+        let format: String
+        let hook: String
+        let body: String
+        let planned_for: String?
+        let segment_id: String?
+
+        public init(_ text: String, platform: Platform, plannedFor: String? = nil, spaceID: String? = nil) {
+            let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let first = body.split(separator: "\n", maxSplits: 1).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+            idea = MoneyMath.clip(first, to: 2000)
+            self.platform = platform.rawValue
+            format = platform == .instagram ? "caption" : "post"
+            hook = MoneyMath.clip(first, to: 500)
+            self.body = MoneyMath.clip(body, to: 10000)
+            planned_for = plannedFor
+            segment_id = spaceID
+        }
+    }
 }
 
 /// The writing check before approval (§36.4 "humanize and lint"): AI-sounding phrases, placeholders, platform limits

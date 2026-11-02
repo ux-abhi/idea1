@@ -756,10 +756,12 @@ public final class BlinkServer: Sendable {
 
     // MARK: Money (Phase 7, first slice)
 
-    /// Spends from `since` ("2026-09-01") on, newest first.
-    public func spends(since: String) async throws -> [Spend] {
-        try await client.from("transaction").select("id, amount, note, category, spent_on, account_id, created_at")
+    /// Spends from `since` ("2026-09-01") on, and before `before` when given, newest first.
+    public func spends(since: String, before: String? = nil) async throws -> [Spend] {
+        var query = client.from("transaction").select("id, amount, note, category, spent_on, account_id, created_at")
             .gte("spent_on", value: since)
+        if let before { query = query.lt("spent_on", value: before) }
+        return try await query
             .order("spent_on", ascending: false).order("created_at", ascending: false)
             .limit(1000)
             .execute().value
@@ -791,6 +793,11 @@ public final class BlinkServer: Sendable {
         try await client.from("transaction")
             .update(Row(amount: spend.amount, note: spend.note, category: spend.category, spent_on: spend.spentOn, account_id: spend.accountID))
             .eq("id", value: spend.id).execute()
+    }
+
+    /// Undo of a delete: the same row again, with its id and entry time, so account balances come out as before.
+    public func restore(_ spend: Spend) async throws {
+        try await client.from("transaction").insert(spend).execute()
     }
 
     public func delete(_ spend: Spend) async throws {
@@ -878,6 +885,14 @@ public final class BlinkServer: Sendable {
             .neq("status", value: "archived")
             .order("created_at", ascending: false)
             .limit(200)
+            .execute().value
+    }
+
+    /// Saves a post the owner wrote by hand, as a draft, and returns it.
+    public func create(_ post: ContentPiece.Written) async throws -> ContentPiece {
+        try await client.from("content_piece").insert(post)
+            .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for, segment_id")
+            .single()
             .execute().value
     }
 
