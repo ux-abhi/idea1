@@ -79,6 +79,8 @@ final class MeetingRecorder {
             let stream = SCStream(filter: SCContentFilter(display: display, excludingApplications: [], exceptingWindows: []),
                                   configuration: config, delegate: watcher)
             try stream.addStreamOutput(others, type: .audio, sampleHandlerQueue: queue)
+            // The 2×2 picture needs somewhere to go, or macOS logs "Dropping frame" every second; the feed ignores it.
+            try stream.addStreamOutput(others, type: .screen, sampleHandlerQueue: queue)
             try stream.addStreamOutput(you, type: .microphone, sampleHandlerQueue: queue)
             try await stream.startCapture()
             (self.stream, self.watcher, feeds, startedAt, self.meeting, isRunning) = (stream, watcher, made, begin, meeting, true)
