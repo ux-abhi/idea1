@@ -62,15 +62,20 @@ final class NotchModel {
     static let timerEar: CGFloat = 58
     var timerShown = false
     var earWidth: CGFloat { timerShown ? Self.timerEar : Self.ear }
+    /// Taking notes or dictating: at rest the notch keeps a strip below the camera (`NotesStrip`), so it's never only
+    /// in the dark.
+    var notesShown = false
+    static let notesStrip: CGFloat = 30
 
     func size(for level: Level) -> CGSize {
-        let rest = CGSize(width: notchSize.width + 2 * earWidth, height: notchSize.height)
+        let ears = CGSize(width: notchSize.width + 2 * earWidth, height: notchSize.height)
+        let rest = notesShown ? CGSize(width: max(ears.width, 280), height: ears.height + 8 + Self.notesStrip) : ears
         switch level {
         case .rest: return rest
-        case .peek: return CGSize(width: max(rest.width, 320), height: rest.height + 36)
+        case .peek: return CGSize(width: max(rest.width, 320), height: max(rest.height, ears.height + 36))
         // Eyes row, 8 pt gap, the measured content, 20 pt to breathe at the bottom.
         case .open: return CGSize(width: max(rest.width, chatting || searching || meeting ? Self.chatWidth : Self.openWidth),
-                                  height: rest.height + 8 + min(glanceHeight, Self.maxGlanceHeight) + 20)
+                                  height: ears.height + 8 + min(glanceHeight, Self.maxGlanceHeight) + 20)
         }
     }
 }
@@ -103,6 +108,8 @@ final class NotchController {
     private var autoPeeking = false
     private var autoOpened = false
     private var hotkeys: [GlobalHotkey] = []
+    private var fnMonitor: FnMonitor?
+    private var observers: [Any] = []
     private var eveningShown: String? // habit day the evening nudge last appeared
     private var spendNudgeShown: String? // day the "anything I missed?" money nudge last appeared
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
@@ -166,10 +173,15 @@ final class NotchController {
                 }
             }
         }
-        hotkeys = [
-            GlobalHotkey(id: 1, keyCode: kVK_Space) { [weak self] in self?.toggleChat() },
-            GlobalHotkey(id: 2, keyCode: kVK_ANSI_V) { [weak self] in self?.toggleClipboard() },
-            GlobalHotkey(id: 3, keyCode: kVK_ANSI_K) { [weak self] in self?.toggleSearch() },
+        registerShortcuts()
+        // Changed in Settings › Shortcuts: register again. While one is being recorded, none fire.
+        observers = [
+            NotificationCenter.default.addObserver(forName: BlinkShortcut.changed, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.registerShortcuts() }
+            },
+            NotificationCenter.default.addObserver(forName: BlinkShortcut.pausing, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.hotkeys = [] }
+            },
         ]
 
         // Thinking while Claude works, then Done for 2 s (§7).
@@ -205,6 +217,15 @@ final class NotchController {
             for await running in Observations({ app.timer != nil }) {
                 guard let self else { return }
                 withAnimation(self.reduceMotion ? nil : Tokens.Motion.peek.animation) { self.model.timerShown = running }
+            }
+        }
+        // Taking notes or dictating: the notch hangs a slim strip below the camera with the time and its buttons.
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await running in Observations({ app.noteTaker.isRunning || app.dictation.isListening || app.dictation.isWriting }) {
+                guard let self else { return }
+                withAnimation(self.reduceMotion ? nil : Tokens.Motion.peek.animation) { self.model.notesShown = running }
+                self.pointerMoved() // the shape grew or shrank under the pointer
             }
         }
         Task { [weak self] in
@@ -454,6 +475,34 @@ final class NotchController {
         }
     }
 
+    /// The owner's shortcuts (Settings › Shortcuts), and fn twice for dictation when it's on.
+    private func registerShortcuts() {
+        hotkeys = [] // the old ones go first, so a shortcut moved from one action to another never fires both
+        hotkeys = BlinkShortcut.allCases.enumerated().compactMap { index, shortcut in
+            shortcut.combo.map { GlobalHotkey(id: UInt32(index + 1), combo: $0) { [weak self] in self?.run(shortcut) } }
+        }
+        fnMonitor = nil
+        guard UserDefaults.standard.bool(forKey: BlinkShortcut.fnTwiceKey) else { return }
+        fnMonitor = FnMonitor(tapped: { [weak self] tap in
+            guard let app = self?.app else { return }
+            // Two presses start; once listening, one press types it.
+            if app.dictation.isListening || tap == .double { Task { await app.toggleDictation() } }
+        }, escape: { [weak self] in
+            guard let app = self?.app, app.dictation.isListening else { return }
+            Task { await app.cancelDictation() }
+        })
+    }
+
+    private func run(_ shortcut: BlinkShortcut) {
+        switch shortcut {
+        case .ask: toggleChat()
+        case .clipboard: toggleClipboard()
+        case .search: toggleSearch()
+        case .notes: Task { await app.toggleNotes() }
+        case .dictate: Task { await app.toggleDictation() }
+        }
+    }
+
     /// Opens a level by itself: never key, so typing stays in the user's app.
     private func show(_ level: NotchModel.Level, closingAfter seconds: Double?) {
         set(level)
@@ -536,7 +585,7 @@ final class NotchController {
     /// shortcut: fast pointer passes aren't filtered (only the 150 ms delay) and this has no test; add both if peeks fire by accident.
     private func pointerMoved() {
         // With a hidden rest style there is nothing to hover at rest.
-        let restVisible = model.level != .rest || RestStyle.current == .ears
+        let restVisible = model.level != .rest || RestStyle.current == .ears || model.notesShown
         let inside = restVisible && shapeRect().contains(NSEvent.mouseLocation)
         panel?.ignoresMouseEvents = !inside
         if model.hovering != inside { model.hovering = inside }
@@ -794,13 +843,15 @@ struct NotchView: View {
         let radius = model.level == .rest ? Tokens.Radius.notchRest : Tokens.Radius.notchOpen
         return VStack(spacing: 8) {
             let timerEars = app.timer != nil && model.level != .open && model.mood.letsTimerShow
+            // Notes below the camera (rest or a plain peek): the eyes step aside, the strip says what's happening.
+            let notesStrip = model.notesShown && model.level != .open && model.peekNote == nil
             ZStack {
                 // A running timer takes both ears: the eyes close to a line and fade, then the ring and clock come in.
                 BlinkEyes(mood: model.mood, notchGap: model.notchSize.width)
-                    .scaleEffect(y: timerEars && !reduceMotion ? 0.08 : 1)
-                    .opacity(timerEars ? 0 : 1)
+                    .scaleEffect(y: (timerEars || notesStrip) && !reduceMotion ? 0.08 : 1)
+                    .opacity(timerEars || notesStrip ? 0 : 1)
                     .animation(reduceMotion ? .easeInOut(duration: Tokens.Motion.eyeShapeReduceMotion.dur)
-                                            : Tokens.Motion.eyeShape.animation, value: timerEars)
+                                            : Tokens.Motion.eyeShape.animation, value: timerEars || notesStrip)
                 if timerEars, let timer = app.timer {
                     TimerEars(timer: timer, gap: model.notchSize.width)
                         .transition(contentTransition)
@@ -808,8 +859,8 @@ struct NotchView: View {
             }
                 .frame(width: model.size(for: .rest).width, height: model.notchSize.height)
                 .overlay(alignment: .bottomLeading) {
-                    // Taking notes: a small red dot in the left ear, as long as Blink is listening.
-                    if app.noteTaker.isRunning {
+                    // Taking notes while the notch shows something else: a small red dot in the left ear.
+                    if app.noteTaker.isRunning && !notesStrip {
                         Circle().fill(.red).frame(width: 5, height: 5).padding(.leading, 4).padding(.bottom, 5)
                     }
                 }
@@ -821,8 +872,10 @@ struct NotchView: View {
                 }
                 .accessibilityHidden(true)
             switch model.level {
-            case .rest:
-                EmptyView()
+            case .rest, .peek where notesStrip:
+                if notesStrip {
+                    NotesStrip(app: app).transition(contentTransition)
+                }
             case .peek:
                 HStack(spacing: 8) {
                     // Working on something: the pixel light says so before any words.
@@ -863,6 +916,7 @@ struct NotchView: View {
         .onTapGesture(perform: open)
         .contextMenu {
             if app.noteTaker.isRunning {
+                Button(app.noteTaker.isPaused ? "Resume Notes" : "Pause Notes") { app.noteTaker.setPaused(!app.noteTaker.isPaused) }
                 Button("Stop and Save Notes") { Task { await app.stopNotes() } }
             } else {
                 Button("Take Meeting Notes") { Task { _ = await app.startNotes() } }
@@ -885,9 +939,15 @@ struct NotchView: View {
             app.timer.map { "\($0.label) \($0.isPaused ? "paused, " : "")\(FocusTimer.clock($0.remaining(now: now))) left" },
             statusLine,
             app.pending.isEmpty ? nil : "\(app.pending.count) waiting for you",
+            app.noteTaker.isRunning ? (app.noteTaker.isPaused ? "Notes paused" : "Taking notes") : nil,
         ].compactMap(\.self).joined(separator: ". "))
         .accessibilityAction(named: "Open", open)
-        .opacity(model.level == .rest && restStyle != .ears ? 0 : 1)
+        .accessibilityActions {
+            if app.noteTaker.isRunning {
+                Button(app.noteTaker.isPaused ? "Resume Notes" : "Pause Notes") { app.noteTaker.setPaused(!app.noteTaker.isPaused) }
+            }
+        }
+        .opacity(model.level == .rest && restStyle != .ears && !model.notesShown ? 0 : 1)
         // Behind the notch, so the droplet's hidden sliver never covers what the notch shows.
         .background(alignment: .top) {
             SplitInput(app: app, notch: model, progress: model.inputOut ? 1 : 0, notchBottom: size.height,
@@ -926,6 +986,15 @@ struct GlanceView: View {
     let card: CardView?
     /// "Plan my day" on the morning brief.
     var planDay: (() -> Void)?
+
+    /// What else can happen to a post that's ready: posted another way, not yet, or not at all (Undo in Content).
+    @ViewBuilder
+    private func readyPostActions(_ piece: ContentPiece, app: AppModel) -> some View {
+        Button("Mark as Posted") { Task { await app.setStatus(.published, of: piece) } }
+        Button("Back to Drafts") { Task { await app.setStatus(.drafted, of: piece) } }
+        Divider()
+        Button("Delete Post", role: .destructive) { Task { await app.deletePost(piece) } }
+    }
 
     var body: some View {
         let allEvents = agenda.today(now: now)
@@ -1029,7 +1098,16 @@ struct GlanceView: View {
                             done()
                         }
                         .buttonStyle(.plain).foregroundStyle(.mint)
+                        // Taking it off the morning card without posting from here.
+                        Menu {
+                            readyPostActions(piece, app: app)
+                        } label: {
+                            Image(systemName: "ellipsis").foregroundStyle(.white.opacity(0.6))
+                        }
+                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                        .accessibilityLabel("More for this post")
                     }
+                    .contextMenu { readyPostActions(piece, app: app) }
                 }
                 if app.readyToPost.count > 2 {
                     Button("\(app.readyToPost.count - 2) more ready in Content") {
@@ -1621,6 +1699,72 @@ struct TimerEars: View {
         }
         // The ring winds up once when the timer appears (tokens: ringTrim), then only steps.
         .onAppear { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.6).delay(Tokens.Motion.contentDelay)) { wound = true } }
+    }
+}
+
+/// Under the camera while Blink listens. Dictating: a blue light, the time, ✓ to type it and ✕ to drop it. Taking
+/// notes: a red light, the time, Pause and Stop (paused, the light greys out and Pause turns into Resume).
+struct NotesStrip: View {
+    let app: AppModel
+
+    var body: some View {
+        let notes = app.noteTaker, dictation = app.dictation
+        HStack(spacing: 8) {
+            if dictation.isWriting {
+                PixelLoader(tint: .blue, size: 14)
+                Text("Writing it…").font(.callout.weight(.medium)).foregroundStyle(.white)
+                Spacer(minLength: 4)
+            } else if dictation.isListening {
+                PixelLoader(tint: .blue, size: 14)
+                elapsed(since: dictation.startedAt, label: "Dictating")
+                Spacer(minLength: 4)
+                Button("Cancel Dictation", systemImage: "xmark") { Task { await app.cancelDictation() } }
+                    .help("Drop it (Esc)")
+                Button("Type It", systemImage: "checkmark") { Task { await app.toggleDictation() } }
+                    .help("Type what you said where you were typing (fn)")
+            } else {
+                let paused = notes.isPaused
+                PixelLoader(tint: .red, size: 14)
+                    .saturation(paused ? 0 : 1)
+                    .opacity(paused ? 0.5 : 1)
+                elapsed(since: notes.startedAt, label: paused ? "Notes paused" : "Taking notes", shown: paused ? "Paused · " : "")
+                Spacer(minLength: 4)
+                Button(paused ? "Resume Notes" : "Pause Notes", systemImage: paused ? "play.fill" : "pause.fill") {
+                    notes.setPaused(!paused)
+                }
+                .help(paused ? "Resume the notes" : "Pause: nothing said is written down until you resume")
+                Button("Stop and Save Notes", systemImage: "stop.fill") { Task { await app.stopNotes() } }
+                    .help("Stop and save the notes")
+            }
+        }
+        .buttonStyle(NotesStripButton())
+        .labelStyle(.iconOnly)
+        .padding(.horizontal, 14)
+        .frame(height: NotchModel.notesStrip, alignment: .top)
+        .accessibilityElement(children: .contain)
+    }
+
+    /// "0:35" (or "Paused · 0:35"), ticking each second; VoiceOver hears "Taking notes, 0:35".
+    private func elapsed(since start: Date?, label: String, shown prefix: String = "") -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let time = MeetingNotes.clock(context.date.timeIntervalSince(start ?? context.date))
+            Text(prefix + time)
+                .font(.callout.weight(.medium).monospacedDigit())
+                .foregroundStyle(.white)
+                .accessibilityLabel("\(label), \(time)")
+        }
+    }
+}
+
+/// A small round button on the black notch: white glyph on a faint disc, brighter while pressed.
+private struct NotesStripButton: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .background(.white.opacity(configuration.isPressed ? 0.3 : 0.15), in: .circle)
+            .contentShape(.circle)
     }
 }
 

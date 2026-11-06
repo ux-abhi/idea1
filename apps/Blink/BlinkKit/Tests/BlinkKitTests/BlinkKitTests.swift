@@ -1357,3 +1357,43 @@ extension Tokens {
     #expect(Space.known("gone", in: spaces) == nil)
     #expect(Space.known(nil, in: spaces) == nil)
 }
+
+@Suite struct GlobalShortcutTests {
+    @Test func comboLabelAndUse() {
+        let k = KeyCombo(keyCode: 40, modifiers: KeyCombo.control | KeyCombo.option, key: "K")
+        #expect(k.label == "⌃⌥K")
+        #expect(k.isUsable)
+        #expect(!KeyCombo(keyCode: 40, modifiers: KeyCombo.shift, key: "K").isUsable)
+        #expect(!KeyCombo(keyCode: 40, modifiers: 0, key: "K").isUsable)
+        #expect(!KeyCombo(keyCode: 8, modifiers: KeyCombo.command, key: "C").isUsable) // would break ⌘C everywhere
+        #expect(KeyCombo(keyCode: 8, modifiers: KeyCombo.command | KeyCombo.shift, key: "C").isUsable)
+    }
+
+    @Test func fnTwiceQuicklyIsADoublePress() {
+        var taps = FnTaps()
+        #expect(taps.fn(down: true, at: 0) == nil)
+        #expect(taps.fn(down: false, at: 0.1) == .single)
+        #expect(taps.fn(down: true, at: 0.3) == nil)
+        #expect(taps.fn(down: false, at: 0.4) == .double)
+        // A third press starts over.
+        _ = taps.fn(down: true, at: 0.5)
+        #expect(taps.fn(down: false, at: 0.6) == .single)
+    }
+
+    @Test func slowHeldOrMixedPressesDontCount() {
+        var taps = FnTaps()
+        _ = taps.fn(down: true, at: 0); _ = taps.fn(down: false, at: 0.1)
+        _ = taps.fn(down: true, at: 1); #expect(taps.fn(down: false, at: 1.1) == .single) // too slow: a new first tap
+        _ = taps.fn(down: true, at: 1.2); #expect(taps.fn(down: false, at: 2) == nil) // held
+        _ = taps.fn(down: true, at: 3); taps.otherKey(); #expect(taps.fn(down: false, at: 3.1) == nil) // fn-arrow
+        _ = taps.fn(down: true, at: 4); _ = taps.fn(down: false, at: 4.1)
+        taps.otherKey() // typed between
+        _ = taps.fn(down: true, at: 4.2); #expect(taps.fn(down: false, at: 4.3) == .single)
+    }
+
+    @Test func dictationDropsFillers() {
+        #expect(Dictated.clean("um so I think uh we should ship, ähm, Friday") == "So I think we should ship, Friday")
+        #expect(Dictated.clean("  ") == "")
+        #expect(Dictated.clean("umbrella and hummus") == "Umbrella and hummus") // words that start like fillers stay
+    }
+}

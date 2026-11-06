@@ -25,6 +25,7 @@ public enum Shortcuts {
             ("⌃⌥Space", "Ask Blink in the notch"),
             ("⌃⌥V", "Clipboard history"),
             ("⌃⌥K", "Search everything, in the notch"),
+            ("fn fn", "Dictate into any app: speak, then fn again to type it (turn on in Settings › Shortcuts)"),
         ]),
         group("In the notch", [
             ("Esc", "Close the notch"),

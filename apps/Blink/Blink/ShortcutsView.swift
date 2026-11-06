@@ -41,7 +41,7 @@ struct ShortcutRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            KeysLabel(keys: item.keys).frame(minWidth: 110, alignment: .leading)
+            KeysLabel(keys: BlinkShortcut.liveKeys(item.keys)).frame(minWidth: 110, alignment: .leading)
             Text(item.what).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)

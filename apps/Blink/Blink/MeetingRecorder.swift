@@ -16,6 +16,8 @@ final class MeetingRecorder {
     /// Between "take notes" and listening (the first time, a language download): a second start waits for this one.
     private(set) var isStarting = false
     private(set) var startedAt: Date?
+    /// Paused: the sound still arrives (the Mac's mic light stays on) but none of it is turned into text.
+    private(set) var isPaused = false
     /// The meeting being noted, if the calendar had one now.
     private(set) var meeting: AgendaEvent?
 
@@ -88,10 +90,18 @@ final class MeetingRecorder {
         }
     }
 
+    /// Pauses or resumes: while paused nothing said is written down, and the transcript just has a gap.
+    func setPaused(_ paused: Bool) {
+        guard isRunning, paused != isPaused else { return }
+        isPaused = paused
+        let feeds = feeds
+        queue.async { for feed in feeds { feed.paused = paused } }
+    }
+
     /// Stops listening and returns every line heard, in time order.
     func stop() async -> [TranscriptLine] {
         guard isRunning else { return [] }
-        isRunning = false
+        (isRunning, isPaused) = (false, false)
         try? await stream?.stopCapture()
         (stream, watcher) = (nil, nil)
         for feed in feeds { await feed.finish() } // the last words are written out before this returns
@@ -162,19 +172,22 @@ nonisolated private final class StopWatcher: NSObject, SCStreamDelegate, Sendabl
     }
 }
 
-/// One voice source (mic or call sound) turned into text: audio in, finished lines out (to the main actor).
-/// nonisolated: ScreenCaptureKit calls it on the audio queue, and a main-actor class would trap there.
-nonisolated private final class SpeechFeed: NSObject, SCStreamOutput, @unchecked Sendable {
+/// One voice source (mic or call sound) turned into text: audio in, finished lines out (to the main actor). Used by
+/// meeting notes (ScreenCaptureKit) and dictation (the mic through AVAudioEngine).
+/// nonisolated: audio arrives on an audio thread, and a main-actor class would trap there.
+nonisolated final class SpeechFeed: NSObject, SCStreamOutput, @unchecked Sendable {
     private let speaker: String
     private let origin: CMTime
     private let analyzer: SpeechAnalyzer
     private let target: AVAudioFormat
     private let input: AsyncStream<AnalyzerInput>.Continuation
     private var results: Task<Void, Never>?
-    // Touched only on the capture queue.
+    // Touched only on the one thread audio arrives on (the capture queue, or the mic's tap).
     private var converter: AVAudioConverter?
     /// Where the last buffer ended: the analyzer refuses audio that starts before that (conversion rounding would).
     private var nextStart = CMTime.zero
+    /// Paused notes: buffers are dropped here, before any speech-to-text.
+    var paused = false
 
     init(speaker: String, locale: Locale, origin: CMTime, heard: @escaping @MainActor (TranscriptLine) -> Void) async throws {
         let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
@@ -201,8 +214,14 @@ nonisolated private final class SpeechFeed: NSObject, SCStreamOutput, @unchecked
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio || type == .microphone, buffer.isValid, let pcm = Self.pcm(buffer), let converted = convert(pcm) else { return }
-        let (at, end) = MeetingNotes.bufferTime(captured: buffer.presentationTimeStamp, origin: origin, frames: Int64(converted.frameLength),
+        guard type == .audio || type == .microphone, buffer.isValid, let pcm = Self.pcm(buffer) else { return }
+        listen(pcm, captured: buffer.presentationTimeStamp)
+    }
+
+    /// Audio captured at `captured` on the host clock, into the speech model (dropped while paused).
+    func listen(_ pcm: AVAudioPCMBuffer, captured: CMTime) {
+        guard !paused, let converted = convert(pcm) else { return }
+        let (at, end) = MeetingNotes.bufferTime(captured: captured, origin: origin, frames: Int64(converted.frameLength),
                                                 rate: CMTimeScale(target.sampleRate), previousEnd: nextStart)
         nextStart = end
         input.yield(AnalyzerInput(buffer: converted, bufferStartTime: at))

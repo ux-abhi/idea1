@@ -1128,6 +1128,20 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    /// Dictation through the server's Groq key: Whisper hears the recording (AAC), a small model tidies it. `language`
+    /// is the BCP 47 tag picked in Settings ("hi-IN"). Empty when nothing was said.
+    public func dictate(_ audio: Data, language: String) async throws -> String {
+        struct Body: Encodable { let audio: String; let language: String }
+        struct Reply: Decodable { let text: String }
+        do {
+            let reply: Reply = try await client.functions.invoke("dictate", options: .init(body: Body(audio: audio.base64EncodedString(), language: language)))
+            return reply.text
+        } catch let FunctionsError.httpError(_, data) {
+            struct ErrorBody: Decodable { let error: String }
+            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't hear that.")
+        }
+    }
+
     // MARK: Devices
 
     public struct DeviceInfo: Decodable, Identifiable, Sendable {

@@ -144,6 +144,10 @@ struct MenuBarContent: View {
     let ask: () -> Void
     let clipboard: () -> Void
     let search: () -> Void
+    // Read so the menu shows a shortcut changed in Settings › Shortcuts right away.
+    @AppStorage(BlinkShortcut.ask.defaultsKey) private var askKeys: Data?
+    @AppStorage(BlinkShortcut.clipboard.defaultsKey) private var clipboardKeys: Data?
+    @AppStorage(BlinkShortcut.search.defaultsKey) private var searchKeys: Data?
 
     var body: some View {
         if model.locked {
@@ -159,11 +163,11 @@ struct MenuBarContent: View {
         }
         Divider()
         Button("Ask Blink…", action: ask)
-            .keyboardShortcut(.space, modifiers: [.control, .option])
+            .keyboardShortcut(BlinkShortcut.ask.combo?.keyboardShortcut)
         Button("Clipboard…", action: clipboard)
-            .keyboardShortcut("v", modifiers: [.control, .option])
+            .keyboardShortcut(BlinkShortcut.clipboard.combo?.keyboardShortcut)
         Button("Search…", action: search)
-            .keyboardShortcut("k", modifiers: [.control, .option])
+            .keyboardShortcut(BlinkShortcut.search.combo?.keyboardShortcut)
         Button("Start Focus (25 min)") { model.startFocus() }
         Menu("Timer") {
             ForEach([5, 10, 15, 30, 60], id: \.self) { m in Button("\(m) min") { model.startTimer(minutes: Double(m)) } }

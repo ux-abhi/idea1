@@ -15,6 +15,10 @@
         {
           "keys": "⌃⌥K",
           "what": "Search everything, in the notch"
+        },
+        {
+          "keys": "fn fn",
+          "what": "Dictate into any app: speak, then fn again to type it (turn on in Settings › Shortcuts)"
         }
       ]
     },

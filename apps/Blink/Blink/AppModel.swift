@@ -224,6 +224,8 @@ final class AppModel {
     #if os(macOS)
     /// Meeting notes on this Mac ("take notes" / "stop notes").
     let noteTaker = MeetingRecorder()
+    /// Dictation into any app (fn twice, or its shortcut).
+    let dictation = Dictation()
     #endif
     private var watchingCalendar = false
     private var reloading = false
@@ -1525,6 +1527,39 @@ final class AppModel {
 
     /// Starts notes for `picked` (the meeting whose Take Notes was clicked), else the meeting on now (or starting
     /// within 10 minutes), else untitled notes.
+    /// Starts dictation, or ends it and types what was said where the owner was typing.
+    func toggleDictation() async {
+        guard dictation.isListening else {
+            if let problem = await dictation.start(language: MeetingRecorder.language) { announce(problem, failed: true) }
+            return
+        }
+        var (text, audio) = await dictation.stop()
+        // Groq's Whisper when it's picked and the server answers; the Mac's own text otherwise.
+        if let audio {
+            defer { try? FileManager.default.removeItem(at: audio) }
+            if Dictation.usesGroq, let server, let data = try? Data(contentsOf: audio) {
+                dictation.isWriting = true
+                do { text = try await server.dictate(data, language: MeetingRecorder.language.identifier(.bcp47)) } catch {
+                    announce("Groq couldn't hear it (\(error.localizedDescription)), so this is the Mac's version.", failed: true)
+                }
+                dictation.isWriting = false
+            }
+        }
+        guard !text.isEmpty else { return announce("Didn't catch anything. Try again a little closer to the mic.", failed: true) }
+        if !(await Paster.paste(text)) {
+            announce("Copied what you said: press ⌘V. To type it for you, allow Blink in System Settings › Privacy & Security › Accessibility.")
+        }
+    }
+
+    /// Stops dictation without typing anything (Esc, or ✕ in the notch).
+    func cancelDictation() async {
+        if let audio = await dictation.stop().audio { try? FileManager.default.removeItem(at: audio) }
+    }
+
+    func toggleNotes() async {
+        if noteTaker.isRunning { await stopNotes() } else { _ = await startNotes() }
+    }
+
     func startNotes(for picked: AgendaEvent? = nil) async -> String? {
         guard !noteTaker.isRunning, !noteTaker.isStarting else { return nil }
         let now = Date.now

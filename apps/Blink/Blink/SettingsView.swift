@@ -8,7 +8,7 @@ import SwiftUI
 /// Models & cost, Connections, Automatic rules and Data arrive with the features they control.
 struct SettingsRoot: View {
     /// The tabs, by key, so a prompt elsewhere ("Add a key") can open the right one.
-    enum Section: String { case general, usage, connections, privacy, server, devices }
+    enum Section: String { case general, shortcuts, usage, connections, privacy, server, devices }
 
     @Environment(AppModel.self) private var model
     @AppStorage("settings.tab") private var tab: Section = .general
@@ -27,6 +27,7 @@ struct SettingsRoot: View {
                         }
                         .formStyle(.grouped)
                     }
+                    Tab("Shortcuts", systemImage: "command", value: .shortcuts) { ShortcutSettings() }
                     Tab("AI", systemImage: "sparkles", value: .usage) { UsageSettings() }
                     Tab("Connections", systemImage: "key", value: .connections) { ConnectionsSettings() }
                     Tab("Privacy", systemImage: "lock.shield", value: .privacy) { PrivacySettings() }
@@ -369,17 +370,6 @@ struct DaySettings: View {
                 Toggle("I post on social media", isOn: $model.showsContent)
             } footer: {
                 Text("Shows Content: post ideas and drafts in your voice, and how your posts do.")
-            }
-            Section {
-                // Native Settings rows: what it does on the left, the keys on the right.
-                DisclosureGroup("Keyboard shortcuts") {
-                    ForEach(Shortcuts.all) { group in
-                        Text(group.name).font(.headline).padding(.top, 6).frame(maxWidth: .infinity, alignment: .leading)
-                        ForEach(group.items) { item in
-                            LabeledContent(item.what) { KeysLabel(keys: item.keys) }
-                        }
-                    }
-                }
             }
             if let problem = model.saveProblem {
                 Text(problem).foregroundStyle(.orange)
