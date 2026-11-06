@@ -44,7 +44,9 @@ struct MeetBlinkTour: View {
                 footer.padding(.horizontal, 40).padding(.bottom, 30)
             }
         }
-        .frame(minWidth: 900, idealWidth: 1080, minHeight: 600, idealHeight: 680)
+        // A chapter is 944 wide (text 360, gap 64, scene 520): the window never gets narrower than that plus margins,
+        // or the page spills off both sides and the window and its content resize each other until AppKit stops the app.
+        .frame(minWidth: 1040, idealWidth: 1120, minHeight: 600, idealHeight: 680)
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
         .focusable()
