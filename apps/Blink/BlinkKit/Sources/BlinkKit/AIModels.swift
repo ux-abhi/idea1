@@ -37,17 +37,17 @@ public struct AIModel: Identifiable, Hashable, Sendable {
         AIModel(id: customID, name: "Your own AI · added in Connections", isFree: false),
     ]
 
-    public static let defaultID = "claude-opus-5-5"
+    /// Free Groq, as on the server: paid models only when picked (owner, 2026-11-06).
+    public static let defaultID = "openai/gpt-oss-120b"
 
     /// Which model answers a feature. `serverPref` is what's saved on the server (server models only); the on-device
     /// choice is kept on this device, so server jobs that read the chat setting (mail drafts) keep their real model.
-    /// With nothing picked, chat goes on-device only when Claude is known not to work, or the server can't be reached.
+    /// With nothing picked, chat goes on-device only when the server can't be reached; otherwise free Groq answers.
     public static func choose(feature: String, serverPref: String?, onDevicePicked: Bool, onDeviceReady: Bool,
-                              claudeWorks: Bool?, serverReachable: Bool) -> String {
+                              serverReachable: Bool) -> String {
         if feature == "chat", onDevicePicked, onDeviceReady { return onDeviceID }
         if let serverPref, serverPref != onDeviceID, all.contains(where: { $0.id == serverPref }) { return serverPref }
-        let noClaude = claudeWorks.map { !$0 } ?? !serverReachable
-        return feature == "chat" && onDeviceReady && noClaude ? onDeviceID : defaultID
+        return feature == "chat" && onDeviceReady && !serverReachable ? onDeviceID : defaultID
     }
 
     /// "Opus 5.5", "GPT-OSS 120B": the name without the provider and the note, for small places.

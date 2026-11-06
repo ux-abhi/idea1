@@ -44,12 +44,15 @@ public struct AgendaEvent: Sendable, Equatable, Identifiable {
     public let url: URL?
     /// A whole-day event (holiday, trip, birthday): only the Calendar page asks for these.
     public let allDay: Bool
+    /// Who else is invited, by name (or address when there's no name); meeting notes list them.
+    public let attendees: [String]
 
     public var id: String { "\(source)|\(extID)|\(start.timeIntervalSince1970)" }
 
     public init(extID: String, source: String = "eventkit", title: String, start: Date, end: Date,
-                location: String? = nil, url: URL? = nil, allDay: Bool = false) {
+                location: String? = nil, url: URL? = nil, allDay: Bool = false, attendees: [String] = []) {
         self.allDay = allDay
+        self.attendees = attendees
         self.extID = extID
         self.source = source
         self.title = title
@@ -461,7 +464,9 @@ public actor CalendarReader {
             return AgendaEvent(extID: event.calendarItemExternalIdentifier ?? event.calendarItemIdentifier,
                                title: event.title ?? "Untitled", start: start, end: finish,
                                location: event.location, url: AgendaEvent.meetingLink(in: event.url?.absoluteString) ?? AgendaEvent.meetingLink(in: event.location)
-                                ?? AgendaEvent.meetingLink(in: event.notes) ?? event.url, allDay: event.isAllDay)
+                                ?? AgendaEvent.meetingLink(in: event.notes) ?? event.url, allDay: event.isAllDay,
+                               attendees: (event.attendees ?? []).filter { !$0.isCurrentUser }
+                                .compactMap { $0.name ?? $0.url.absoluteString.replacingOccurrences(of: "mailto:", with: "") })
         }
 
         let events = Agenda.uniqued(found)

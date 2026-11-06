@@ -5,7 +5,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseAnalysis, parseHandle, score, toRows } from "./input.ts";
-import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
+import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, FREE_MODELS, lastMonth, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";
 import { ownsServer } from "../_shared/owner.ts";
 
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
   const [{ data: voice }, { data: profile }, { data: spend }] = await Promise.all([
     db.from("voice_profile").select("page").maybeSingle(),
     db.from("profile").select("model_prefs, settings").maybeSingle(),
-    db.from("model_usage").select("model, cost_usd").gte("at", lastDay()),
+    db.from("model_usage").select("model, cost_usd, at").gte("at", lastMonth()).gt("cost_usd", 0).not("model", "in", FREE_MODELS),
   ]);
   // Only the owner's own page, the handle saved in their Voice; the request can't name another account.
   const handle = parseHandle(voice?.page ?? "");

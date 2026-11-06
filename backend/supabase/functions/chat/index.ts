@@ -7,7 +7,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { parseChange, parseChatRequest, parseMailSend, parsePostProposal, parseProposal, parseReschedule, parseSpace } from "./input.ts";
-import { capProblem, claudeUsageCost, compatibleStream, cost, lastDay, pickModel } from "../_shared/models.ts";
+import { capProblem, claudeUsageCost, compatibleStream, cost, FREE_MODELS, lastMonth, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";
 import { ownsServer } from "../_shared/owner.ts";
 
@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
       .order("updated_at", { ascending: false }).limit(20),
     db.from("habit").select("name, weekdays").is("archived_at", null),
     db.from("profile").select("model_prefs, settings").maybeSingle(),
-    db.from("model_usage").select("model, cost_usd").gte("at", lastDay()),
+    db.from("model_usage").select("model, cost_usd, at").gte("at", lastMonth()).gt("cost_usd", 0).not("model", "in", FREE_MODELS),
     db.from("email_msg").select("id, from_name, from_addr, subject, summary, status, triage, needs_reply").neq("status", "done")
       .neq("triage", "newsletter").gte("created_at", new Date(now.getTime() - 7 * 86_400_000).toISOString())
       .order("received_at", { ascending: false }).limit(25),

@@ -18,6 +18,8 @@ public enum QuickCommand: Equatable, Sendable {
     case clear
     /// Opens the Google Meet invite card, filled with whatever was typed ("/meet Review sam@x.com fri 3pm").
     case meet(title: String, start: Date?, guests: [String])
+    /// Meeting notes on this Mac: start ("take notes"), or stop and save them ("stop notes").
+    case notes(stop: Bool)
 
     /// Every command with an example, for the hint list.
     public static let all: [(name: String, example: String, about: String)] = [
@@ -30,6 +32,7 @@ public enum QuickCommand: Equatable, Sendable {
         ("/ideas", "/ideas video ideas for my page", "Post ideas for your page"),
         ("/spent", "/spent 8.50 lunch, 3 bus", "Add what you spent; Blink sorts it"),
         ("/meet", "/meet Design review sam@example.com tomorrow 3pm", "Set up a Google Meet and invite people"),
+        ("/notes", "/notes", "Take notes of this meeting (/notes stop saves them)"),
         ("/clear", "/clear", "Clear this chat"),
     ]
 
@@ -52,6 +55,11 @@ public enum QuickCommand: Equatable, Sendable {
             ("schedule a meeting ", "/meet"), ("set up a meeting ", "/meet"), ("meeting with ", "/meet"), ("meet with ", "/meet"), ("meet ", "/meet"),
         ]
         if ["focus", "start focus", "focus mode", "pomodoro"].contains(lower) { return "/focus" }
+        let ending = lower.trimmingCharacters(in: CharacterSet(charactersIn: ".!"))
+        if ["take notes", "take meeting notes", "start notes", "start taking notes", "take notes of this meeting"].contains(ending) {
+            return "/notes"
+        }
+        if ["stop notes", "stop taking notes", "end notes", "stop meeting notes", "save notes"].contains(ending) { return "/notes stop" }
         guard let (opening, command) = openings.first(where: { lower.hasPrefix($0.0) }) else { return nil }
         let rest = String(trimmed.dropFirst(opening.count))
         // "meeting with Sam …" keeps "with Sam" in the title.
@@ -74,6 +82,8 @@ public enum QuickCommand: Equatable, Sendable {
             return name == "/task" ? .task(title: parsed.title, due: parsed.due) : .remind(title: parsed.title, due: parsed.due)
         case "/note":
             return rest.isEmpty ? nil : .note(rest)
+        case "/notes":
+            return rest.isEmpty ? .notes(stop: false) : rest.lowercased() == "stop" ? .notes(stop: true) : nil
         case "/timer":
             // "10", "10m", "10 min", "1.5h", "1 hr"; anything else ("1h30") is refused rather than misread.
             guard let m = rest.lowercased().wholeMatch(of: /(\d{1,3}(?:\.\d+)?) ?(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)?/),

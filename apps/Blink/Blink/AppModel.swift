@@ -221,6 +221,10 @@ final class AppModel {
     private(set) var doneMeetings = Set(UserDefaults.standard.stringArray(forKey: "meetings.done") ?? [])
     private(set) var calendarAccess = CalendarReader.access
     private let calendarReader = CalendarReader()
+    #if os(macOS)
+    /// Meeting notes on this Mac ("take notes" / "stop notes").
+    let noteTaker = MeetingRecorder()
+    #endif
     private var watchingCalendar = false
     private var reloading = false
     private var reloadAgain = false
@@ -406,7 +410,7 @@ final class AppModel {
         ideas = []; questions = [:]; pageRead = nil; designed = []
         spends = []; budgets = []; accounts = []; captureTokens = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
         emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil
-        modelPrefs = [:]; modelProblem = nil; dailyCap = nil; spaces = []; openPage = nil; keyStatus = nil
+        modelPrefs = [:]; modelProblem = nil; aiCaps = BlinkServer.AICaps(); capsLoaded = false; spaces = []; openPage = nil; keyStatus = nil
     }
 
     // MARK: Ask-First
@@ -1497,6 +1501,10 @@ final class AppModel {
         case .meet(let title, let start, let guests):
             meetDraft = MeetDraft(title: title, start: start ?? MeetDraft.nextSlot(), guests: guests)
             Task { await loadGoogle() }
+        case .notes(let stop):
+            #if os(macOS)
+            if stop { await stopNotes() } else { return await startNotes() }
+            #endif
         case .spent(let text):
             // Typed on purpose in the notch: sorted and saved at once, with Undo (the Money page lets you check first).
             let drafts = await sortSpends(text)
@@ -1511,6 +1519,65 @@ final class AppModel {
         }
         return nil
     }
+
+    #if os(macOS)
+    // MARK: Meeting notes: speech to text and the summary both on this Mac (MeetingRecorder)
+
+    /// Starts notes for `picked` (the meeting whose Take Notes was clicked), else the meeting on now (or starting
+    /// within 10 minutes), else untitled notes.
+    func startNotes(for picked: AgendaEvent? = nil) async -> String? {
+        guard !noteTaker.isRunning, !noteTaker.isStarting else { return nil }
+        let now = Date.now
+        let meeting = picked ?? calendarEvents.filter { !$0.allDay && $0.start <= now.addingTimeInterval(600) && $0.end > now }
+            .min { abs($0.start.timeIntervalSince(now)) < abs($1.start.timeIntervalSince(now)) }
+        // Capture ending on its own (screen unplugged, permission withdrawn): save what was heard and say so.
+        let stopped: @MainActor () -> Void = { [weak self] in
+            guard let self, noteTaker.isRunning else { return }
+            announce("Notes stopped: Blink can't hear the call any more. What was said so far is saved.", failed: true)
+            Task { await self.stopNotes() }
+        }
+        if let problem = await noteTaker.start(meeting: meeting, language: MeetingRecorder.language, stopped: stopped) {
+            announce(problem, failed: true)
+            return problem
+        }
+        // Germany (§201 StGB) and elsewhere: others must know their words are being written down.
+        announce("Taking notes\(meeting.map { ": \($0.title)" } ?? ""). Let everyone know.")
+        let started = noteTaker.startedAt
+        // Stops on its own 5 minutes after the meeting's end, or after 3 hours without one.
+        let end = meeting.map { $0.end.addingTimeInterval(300) } ?? now.addingTimeInterval(3 * 3600)
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(60, end.timeIntervalSinceNow)))
+            guard let self, noteTaker.isRunning, noteTaker.startedAt == started else { return }
+            await stopNotes()
+        }
+        return nil
+    }
+
+    /// Stops and saves: the note with the transcript first (nothing is lost if the summary fails), then the summary.
+    func stopNotes() async {
+        guard noteTaker.isRunning, let started = noteTaker.startedAt else { return }
+        let meeting = noteTaker.meeting
+        let transcript = MeetingNotes.transcript(await noteTaker.stop())
+        let attendees = meeting?.attendees ?? []
+        let placeholder = MeetingNotes.body(attendees: attendees, digest: nil, noSummary: transcript.isEmpty ? nil : "Writing the summary…",
+                                            transcript: transcript)
+        let note = create(.note, title: MeetingNotes.title(meeting: meeting?.title, start: started), body: placeholder)
+        guard !transcript.isEmpty else {
+            announce("Notes saved, but nothing was heard. Check the mic in System Settings › Sound.", failed: true)
+            return
+        }
+        announce("Notes saved. Writing the summary…")
+        let (digest, problem) = await MeetingRecorder.summarize(transcript, language: MeetingRecorder.language)
+        if var current = items.first(where: { $0.id == note.id }) {
+            let finished = MeetingNotes.body(attendees: attendees, digest: digest, noSummary: problem, transcript: transcript)
+            // Typed into while the summary was written: keep their words, the summary goes on top.
+            current.body = current.body == placeholder ? finished : finished + "\n\n" + current.body
+            edit(current)
+            await save(note.id)
+        }
+        announce(digest == nil ? "📝 Notes saved (transcript only)" : "📝 Notes ready: \(note.title)")
+    }
+    #endif
 
     // MARK: Google Meet (/meet): an invite card in the notch, approved with Touch ID, created by the owner's server
 
@@ -2268,21 +2335,25 @@ final class AppModel {
     private(set) var modelPrefs: [String: String] = [:]
     private(set) var modelProblem: String?
 
-    /// Claude stops for the day at this many dollars (free Groq models keep working); nil = no limit.
-    private(set) var dailyCap: Double?
+    /// Paid models (Claude, OpenRouter) stop at these many dollars a day and a month; free Groq models keep working.
+    /// nil: the server's default ($1 a day, $10 a month).
+    private(set) var aiCaps = BlinkServer.AICaps()
+    /// Whether `aiCaps` came from the server; until then the pickers can't save.
+    private(set) var capsLoaded = false
 
     func loadModelPrefs() async {
         guard let server, email != nil, let prefs = try? await server.modelPrefs() else { return }
         modelPrefs = prefs
-        dailyCap = try? await server.dailyCap()
+        // A failed read keeps what's shown: saving a guess would wipe the other limit (settings is written whole).
+        if let caps = try? await server.aiCaps() { aiCaps = caps; capsLoaded = true }
     }
 
-    func setDailyCap(_ cap: Double?) async {
+    func setAICaps(_ caps: BlinkServer.AICaps) async {
         guard let server else { return }
-        let before = dailyCap
-        dailyCap = cap
-        do { try await server.setDailyCap(cap) } catch {
-            dailyCap = before
+        let before = aiCaps
+        aiCaps = caps
+        do { try await server.setAICaps(caps) } catch {
+            aiCaps = before
             modelProblem = "Couldn't change the limit. Check your connection and try again."
         }
     }
@@ -2302,8 +2373,7 @@ final class AppModel {
 
     func model(for feature: String) -> AIModel {
         let id = AIModel.choose(feature: feature, serverPref: modelPrefs[feature], onDevicePicked: onDevicePicked,
-                                onDeviceReady: OnDeviceChat.problem == nil,
-                                claudeWorks: keyStatus.map { $0["anthropic"] == "ok" }, serverReachable: status != .unreachable)
+                                onDeviceReady: OnDeviceChat.problem == nil, serverReachable: status != .unreachable)
         return AIModel.all.first { $0.id == id }!
     }
 

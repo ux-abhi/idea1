@@ -34,9 +34,10 @@ export const MODELS: Model[] = [
   { id: "custom", provider: "custom", inPerM: 0, outPerM: 0 },
 ];
 
-const FALLBACK = "claude-opus-5-5";
+// Free Groq unless the owner picks a paid model: AI is the last resort, and money is tight (owner, 2026-11-06).
+const FALLBACK = "openai/gpt-oss-120b";
 
-/** The owner's choice for a feature if it's on the list; otherwise the server's default (an env var or Opus). */
+/** The owner's choice for a feature if it's on the list; otherwise the server's default (an env var or free Groq). */
 export function pickModel(prefs: unknown, feature: Feature, envDefault?: string): Model {
   const wanted = (prefs as Record<string, unknown> | null)?.[feature];
   return MODELS.find((m) => m.id === wanted) ?? MODELS.find((m) => m.id === envDefault) ?? MODELS.find((m) => m.id === FALLBACK)!;
@@ -181,27 +182,41 @@ export async function compatibleStream(provider: Exclude<Provider, "claude">, bo
   return foldChunks(chunks);
 }
 
-/** The daily limit for paid models (§19), Claude and OpenRouter together: profile.settings.daily_cap_usd against the
- *  last 24 hours, or the server's BLINK_DAILY_CAP_USD (default $5) when the owner hasn't set one, so there is always a
- *  limit. Free Groq models never count and are never stopped. */
-export function capProblem(model: Model, settings: unknown, usage: { model: string; cost_usd: number | string }[],
-                           serverCap: unknown = envCap()): string | null {
+/** The limits for paid models (§19), Claude and OpenRouter together: a day (the last 24 hours) and a month (the last
+ *  30 days). Each is the owner's own (profile.settings.daily_cap_usd / monthly_cap_usd), else the server's
+ *  BLINK_DAILY_CAP_USD / BLINK_MONTHLY_CAP_USD, else $1 a day and $10 a month, so there is always a limit. `usage` is
+ *  the last 30 days (a row without `at` counts as today). Free Groq models never count and are never stopped. */
+export function capProblem(model: Model, settings: unknown, usage: { model: string; cost_usd: number | string; at?: string }[],
+                           serverCap: unknown = envCap("BLINK_DAILY_CAP_USD"),
+                           serverMonthCap: unknown = envCap("BLINK_MONTHLY_CAP_USD")): string | null {
   if (!isPaid(model.id)) return null;
   const positive = (value: unknown) => {
     const n = value === null || value === undefined || value === "" ? NaN : Number(value);
     return Number.isFinite(n) && n > 0 ? n : null;
   };
-  const cap = positive((settings as Record<string, unknown> | null)?.daily_cap_usd) ?? positive(serverCap) ?? 5;
-  const spent = usage.filter((u) => isPaid(String(u.model)) && !String(u.model).startsWith("@cf/") && !String(u.model).startsWith("apify/"))
-    .reduce((sum, u) => sum + Number(u.cost_usd || 0), 0);
-  return spent >= cap
-    ? `Today's limit for paid models ($${cap}) is used up. Switch to a free model in Settings, or raise the limit there.`
+  const own = settings as Record<string, unknown> | null;
+  const dayCap = positive(own?.daily_cap_usd) ?? positive(serverCap) ?? 1;
+  const monthCap = positive(own?.monthly_cap_usd) ?? positive(serverMonthCap) ?? 10;
+  const paid = usage.filter((u) => isPaid(String(u.model)) && !String(u.model).startsWith("@cf/") && !String(u.model).startsWith("apify/"));
+  const sum = (rows: typeof paid) => rows.reduce((total, u) => total + Number(u.cost_usd || 0), 0);
+  if (sum(paid) >= monthCap) {
+    return `This month's limit for paid models ($${monthCap}) is used up. Free models still work: pick one in Settings, or raise the limit there.`;
+  }
+  const dayStart = Date.now() - 86_400_000;
+  return sum(paid.filter((u) => !u.at || Date.parse(u.at) >= dayStart)) >= dayCap
+    ? `Today's limit for paid models ($${dayCap}) is used up. Switch to a free model in Settings, or raise the limit there.`
     : null;
 }
 
-function envCap(): string | undefined {
-  try { return Deno.env.get("BLINK_DAILY_CAP_USD"); } catch { return undefined; } // tests run without env access
+function envCap(name: string): string | undefined {
+  try { return Deno.env.get(name); } catch { return undefined; } // tests run without env access
 }
 
-/** Spend rows for the cap check: everything logged in the last 24 hours (the owner can read their own usage). */
-export const lastDay = () => new Date(Date.now() - 86_400_000).toISOString();
+/** Spend rows for the cap checks: the last 30 days (the owner can read their own usage). */
+export const lastMonth = () => new Date(Date.now() - 30 * 86_400_000).toISOString();
+
+/** For `.not("model", "in", FREE_MODELS)`: the cap queries skip free Groq rows, so the paid ones fit in one page of
+ *  results (Supabase returns 1,000 rows at most; mail sorting alone logs hundreds of Groq rows a month). */
+// shortcut: sums paid rows in code, fine below 1,000 paid calls in 30 days (the $10 default stops far sooner); move
+// the sums into SQL if someone raises the limit that high.
+export const FREE_MODELS = `(${MODELS.filter((m) => m.provider === "groq").map((m) => `"${m.id}"`).join(",")})`;

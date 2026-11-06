@@ -807,6 +807,12 @@ struct NotchView: View {
                 }
             }
                 .frame(width: model.size(for: .rest).width, height: model.notchSize.height)
+                .overlay(alignment: .bottomLeading) {
+                    // Taking notes: a small red dot in the left ear, as long as Blink is listening.
+                    if app.noteTaker.isRunning {
+                        Circle().fill(.red).frame(width: 5, height: 5).padding(.leading, 4).padding(.bottom, 5)
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     // Waiting for you: a small dot in the right ear (§4).
                     if !app.pending.isEmpty {
@@ -856,6 +862,11 @@ struct NotchView: View {
         .contentShape(UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous))
         .onTapGesture(perform: open)
         .contextMenu {
+            if app.noteTaker.isRunning {
+                Button("Stop and Save Notes") { Task { await app.stopNotes() } }
+            } else {
+                Button("Take Meeting Notes") { Task { _ = await app.startNotes() } }
+            }
             Button("Start Focus (25 min)") { app.startFocus() }
             Menu("Timer") {
                 ForEach([5, 10, 15, 30, 60], id: \.self) { m in Button("\(m) min") { app.startTimer(minutes: Double(m)) } }
@@ -1050,6 +1061,12 @@ struct GlanceView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
+                    }
+                    if event.joinable(at: now) || event.start <= now, let app, !app.noteTaker.isRunning {
+                        Button("Take Notes") { Task { _ = await app.startNotes(for: event) } }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help("Turn what's said into notes on this Mac. Tell everyone first.")
                     }
                     // Once it has started: the owner can say it's over, so the notch stops counting "started 16 min ago".
                     if event.start <= now, let app {
@@ -1332,6 +1349,7 @@ struct CommandHint: View {
         case .spent(let text): "Spent: \(text)"
         case .clear: "Clear this chat"
         case .meet(let title, _, _): title.isEmpty ? "New Google Meet" : "Meet: \(title)"
+        case .notes(let stop): stop ? "Stop and save meeting notes" : "Take meeting notes"
         }
     }
 
@@ -1347,6 +1365,7 @@ struct CommandHint: View {
         case .spent: "eurosign.circle"
         case .clear: "trash"
         case .meet: "video"
+        case .notes(let stop): stop ? "stop.circle" : "waveform"
         }
     }
 
@@ -1365,6 +1384,8 @@ struct CommandHint: View {
         case .meet(_, let start, let guests):
             let when = start.map { $0.formatted(.dateTime.weekday(.wide).day().month().hour().minute()) } ?? "the next half hour"
             return "Opens the invite card: \(when)\(guests.isEmpty ? "" : ", with \(guests.formatted())"). You check it, then Touch ID."
+        case .notes(let stop):
+            return stop ? "Saves the summary and transcript to Notes." : "Turns what's said into text on this Mac; the sound is never kept. Tell everyone first."
         }
     }
 }

@@ -32,6 +32,8 @@ ENABLE_INCOMING_NETWORK_CONNECTIONS = YES
 // Export… for post images: only folders the owner picks in the save panel.
 ENABLE_USER_SELECTED_FILES = readwrite
 ENABLE_RESOURCE_ACCESS_CALENDARS = YES
+// Meeting notes: your voice (the call's sound comes through screen and audio recording, asked when notes start).
+ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES
 ENABLE_HARDENED_RUNTIME = YES
 ENABLE_USER_SCRIPT_SANDBOXING = YES
 ENABLE_PREVIEWS = YES
@@ -46,6 +48,7 @@ INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.productivity
 INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = Blink reads your calendars to show your next meeting in the notch.
 INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = Blink shows what's due today, and adds, completes, moves or deletes reminders when you ask it to.
 INFOPLIST_KEY_NSFaceIDUsageDescription = Blink uses Face ID so only you can open it.
+INFOPLIST_KEY_NSMicrophoneUsageDescription = When you ask Blink to take meeting notes, it turns what's said into text on this Mac. The sound itself is never kept.
 INFOPLIST_KEY_UILaunchScreen_Generation = YES
 INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait
 LD_RUNPATH_SEARCH_PATHS[sdk=macosx*] = $(inherited) @executable_path/../Frameworks

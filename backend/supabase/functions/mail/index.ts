@@ -10,7 +10,7 @@ import { Imap, quote } from "./imap.ts";
 import { buildDraft, uidWindow, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle, splitResort } from "./message.ts";
 import { sendMail } from "./smtp.ts";
 import { type Mailer, sendDue, withTimeout } from "./outbox.ts";
-import { capProblem, compatible, cost, keepsSchema, lastDay, MODELS, type Model, pickModel } from "../_shared/models.ts";
+import { capProblem, compatible, cost, keepsSchema, FREE_MODELS, lastMonth, MODELS, type Model, pickModel } from "../_shared/models.ts";
 import { alreadyRecorded, CATEGORIES, localDay } from "../_shared/spend.ts";
 import { secret } from "../_shared/secrets.ts";
 import { isServerOwner } from "../_shared/owner.ts";
@@ -254,7 +254,7 @@ async function poll(admin: SupabaseClient, owner: string, account: Account): Pro
         // and sorted on a later check, the same as when the model is down).
         const [{ data: owned }, { data: usage }] = await Promise.all([
           admin.from("profile").select("settings").eq("owner_id", owner).maybeSingle(),
-          admin.from("model_usage").select("model, cost_usd").eq("owner_id", owner).gte("at", lastDay()),
+          admin.from("model_usage").select("model, cost_usd, at").eq("owner_id", owner).gte("at", lastMonth()).gt("cost_usd", 0).not("model", "in", FREE_MODELS),
         ]);
         const overCap = capProblem(model, owned?.settings, usage ?? []);
         if (overCap) throw new Error(overCap);
@@ -356,7 +356,7 @@ async function draft(admin: SupabaseClient, db: SupabaseClient, owner: string, i
   const [{ data: profile }, { data: voice }, { data: spend }] = await Promise.all([
     db.from("profile").select("model_prefs, settings").maybeSingle(),
     db.from("voice_profile").select("notes, brief").maybeSingle(),
-    db.from("model_usage").select("model, cost_usd").gte("at", lastDay()),
+    db.from("model_usage").select("model, cost_usd, at").gte("at", lastMonth()).gt("cost_usd", 0).not("model", "in", FREE_MODELS),
   ]);
   const model = pickModel(profile?.model_prefs, "chat", Deno.env.get("BLINK_CHAT_MODEL"));
   const overCap = capProblem(model, profile?.settings, spend ?? []);

@@ -969,19 +969,25 @@ public final class BlinkServer: Sendable {
         try await client.from("profile").update(["model_prefs": prefs]).eq("owner_id", value: user).execute()
     }
 
-    /// The daily limit for paid models in USD (profile.settings.daily_cap_usd); nil means the server default ($5).
-    public func dailyCap() async throws -> Double? {
-        struct Settings: Decodable { let daily_cap_usd: Double? }
-        struct Row: Decodable { let settings: Settings? }
-        let rows: [Row] = try await client.from("profile").select("settings").execute().value
-        return rows.first?.settings?.daily_cap_usd
+    /// The limits for paid models in USD (profile.settings); nil means the server default ($1 a day, $10 a month).
+    public struct AICaps: Codable, Equatable, Sendable {
+        public var day: Double?
+        public var month: Double?
+        enum CodingKeys: String, CodingKey { case day = "daily_cap_usd", month = "monthly_cap_usd" }
+        public init(day: Double? = nil, month: Double? = nil) { (self.day, self.month) = (day, month) }
     }
 
-    public func setDailyCap(_ cap: Double?) async throws {
-        struct Settings: Encodable { let daily_cap_usd: Double? }
-        struct Row: Encodable { let settings: Settings }
+    public func aiCaps() async throws -> AICaps {
+        struct Row: Decodable { let settings: AICaps? }
+        let rows: [Row] = try await client.from("profile").select("settings").execute().value
+        return rows.first?.settings ?? AICaps()
+    }
+
+    /// Both limits at once: settings holds only these, and is written whole.
+    public func setAICaps(_ caps: AICaps) async throws {
+        struct Row: Encodable { let settings: AICaps }
         let user = try await client.auth.session.user.id
-        try await client.from("profile").update(Row(settings: Settings(daily_cap_usd: cap))).eq("owner_id", value: user).execute()
+        try await client.from("profile").update(Row(settings: caps)).eq("owner_id", value: user).execute()
     }
 
     // MARK: Usage (cost meter, §24)

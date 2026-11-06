@@ -3,6 +3,7 @@ import Foundation
 import ImageIO
 import LocalAuthentication
 import Supabase
+import CoreMedia
 import Testing
 @testable import BlinkKit
 
@@ -389,6 +390,40 @@ extension Tokens {
         let resumed = MoneyMath.startingNow(FixedBill(id: "g", day: 15, addedThrough: "2026-09"), today: "2026-11-20")
         #expect(resumed.addedThrough == "2026-11")
         #expect(MoneyMath.startingNow(FixedBill(id: "w", day: 25), today: "2026-11-20").addedThrough == "2026-10")
+    }
+
+    @Test func meetingNotesReadWellAndFitTheSmallModel() {
+        let start = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 6, hour: 14, minute: 5))!
+        #expect(MeetingNotes.title(meeting: "Weekly sync", start: start).hasPrefix("Weekly sync · 6"))
+        #expect(MeetingNotes.title(meeting: "  ", start: start).hasPrefix("Meeting notes · 6"))
+        let lines = [TranscriptLine(speaker: "Others", at: 65, text: "Sounds good."),
+                     TranscriptLine(speaker: "You", at: 3, text: "Hello there."),
+                     TranscriptLine(speaker: "You", at: 9, text: " Shall we start? "),
+                     TranscriptLine(speaker: "Others", at: 70, text: "")]
+        #expect(MeetingNotes.transcript(lines) == "You (0:03): Hello there. Shall we start?\nOthers (1:05): Sounds good.")
+        #expect(MeetingNotes.clock(3725) == "1:02:05")
+        let pieces = MeetingNotes.chunks("aaaa\nbbbb\ncccccccccccc\ndd", size: 10)
+        #expect(pieces == ["aaaa\nbbbb", "cccccccccc", "cc\ndd"])
+        #expect(pieces.allSatisfy { $0.count <= 10 })
+        let body = MeetingNotes.body(attendees: ["Sam"], digest: MeetingDigest(summary: "Agreed the plan.", actions: ["Sam: send deck"]),
+                                     noSummary: nil, transcript: "You (0:03): Hi")
+        #expect(body == "With: Sam\n\nSummary\nAgreed the plan.\n\nNext steps\n• Sam: send deck\n\nTranscript\nYou (0:03): Hi")
+        #expect(QuickCommand.parse("Take notes.") == .notes(stop: false) && QuickCommand.parse("stop taking notes") == .notes(stop: true))
+        #expect(QuickCommand.parse("/notes stop") == .notes(stop: true) && QuickCommand.parse("note buy milk") == .note("buy milk"))
+    }
+
+    @Test func meetingAudioNeverOverlapsAndKeepsSilences() {
+        let origin = CMTime(value: 1_000, timescale: 1)
+        let first = MeetingNotes.bufferTime(captured: origin, origin: origin, frames: 16_000, rate: 16_000, previousEnd: .zero)
+        #expect(first.start == .zero && first.end.seconds == 1)
+        // The clock says 0.99 s, but the last buffer ran to 1.0 s: it starts at 1.0, never before.
+        let early = MeetingNotes.bufferTime(captured: CMTimeAdd(origin, CMTime(value: 99, timescale: 100)), origin: origin, frames: 160,
+                                            rate: 16_000, previousEnd: first.end)
+        #expect(early.start == first.end && early.end.seconds == 1.01)
+        // After 4 s of silence the gap stays.
+        let later = MeetingNotes.bufferTime(captured: CMTimeAdd(origin, CMTime(value: 5, timescale: 1)), origin: origin, frames: 160,
+                                            rate: 16_000, previousEnd: early.end)
+        #expect(later.start.seconds == 5)
     }
 
     @Test func aHabitTakesAnswersFromTheDayBeforeItWasMadeOn() {
@@ -959,18 +994,16 @@ extension Tokens {
 
 @Test func onDeviceIsChosenOnlyWhenItShouldBe() {
     func pick(_ feature: String = "chat", pref: String? = nil, picked: Bool = false, ready: Bool = true,
-              claude: Bool? = true, reachable: Bool = true) -> String {
-        AIModel.choose(feature: feature, serverPref: pref, onDevicePicked: picked, onDeviceReady: ready,
-                       claudeWorks: claude, serverReachable: reachable)
+              reachable: Bool = true) -> String {
+        AIModel.choose(feature: feature, serverPref: pref, onDevicePicked: picked, onDeviceReady: ready, serverReachable: reachable)
     }
     #expect(pick(picked: true) == AIModel.onDeviceID)                          // picked on this device
     #expect(pick(picked: true, ready: false) == AIModel.defaultID)             // picked, but Apple Intelligence is off
     #expect(pick("content", picked: true) == AIModel.defaultID)                // drafts never run on-device
-    #expect(pick(claude: false) == AIModel.onDeviceID)                         // new owner without a Claude key
-    #expect(pick(claude: nil) == AIModel.defaultID)                            // key status not known yet: the server
-    #expect(pick(claude: nil, reachable: false) == AIModel.onDeviceID)         // offline: still answers
-    #expect(pick(pref: "openai/gpt-oss-120b", claude: false) == "openai/gpt-oss-120b") // a saved server model wins
-    #expect(pick(pref: AIModel.onDeviceID, claude: true) == AIModel.defaultID) // an old on-device value on the server is ignored
+    #expect(pick() == "openai/gpt-oss-120b")                                   // nothing picked: free Groq, no Claude key needed
+    #expect(pick(reachable: false) == AIModel.onDeviceID)                      // offline: still answers
+    #expect(pick(pref: "claude-haiku-5-5", reachable: true) == "claude-haiku-5-5") // a saved server model wins
+    #expect(pick(pref: AIModel.onDeviceID) == AIModel.defaultID)               // an old on-device value on the server is ignored
 }
 
 @Test func modelShortNamesFitSmallPlaces() {

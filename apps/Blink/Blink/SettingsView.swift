@@ -262,6 +262,7 @@ struct CalendarSettings: View {
 struct NotchSettings: View {
     @AppStorage(RestStyle.key) private var restStyle = RestStyle.ears
     @AppStorage(AppModel.finishSoundKey) private var finishSound = true
+    @AppStorage(MeetingRecorder.languageKey) private var notesLanguage = Locale.current.identifier(.bcp47)
     @State private var mood = Mood.idle
     @State private var openAtLogin = false
     @State private var loginProblem: String?
@@ -280,6 +281,19 @@ struct NotchSettings: View {
             }
             Section("Sound") {
                 Toggle("Play a soft sound when you finish something", isOn: $finishSound)
+            }
+            Section {
+                Picker("Meetings are in", selection: $notesLanguage) {
+                    ForEach(MeetingRecorder.languages, id: \.id) { Text($0.name).tag($0.id) }
+                    // The Mac's own language, when it isn't one of these.
+                    if !MeetingRecorder.languages.contains(where: { $0.id == notesLanguage }) {
+                        Text(Locale.current.localizedString(forIdentifier: notesLanguage) ?? notesLanguage).tag(notesLanguage)
+                    }
+                }
+            } header: {
+                Text("Meeting Notes")
+            } footer: {
+                Text("Say or type “take notes” in the notch, or click Take Notes on a meeting. Speech becomes text on this Mac and the sound is never kept; the summary is written on this Mac too. Tell everyone on the call that you're taking notes.")
             }
             Section("Startup") {
                 Toggle("Open Blink when you log in", isOn: Binding(get: { openAtLogin }, set: { on in
@@ -403,20 +417,28 @@ struct UsageSettings: View {
                 LabeledContent("Content drafts") { ModelMenu(feature: "content") }
                 LabeledContent("Quick text edits", value: "GPT-OSS 20B on Groq")
                 Picker("Daily limit for paid models", selection: Binding(
-                    get: { model.dailyCap ?? 0 },
-                    set: { cap in Task { await model.setDailyCap(cap > 0 ? cap : nil) } })) {
-                    Text("Default ($5)").tag(0.0)
+                    get: { model.aiCaps.day ?? 0 },
+                    set: { cap in var caps = model.aiCaps; caps.day = cap > 0 ? cap : nil; Task { await model.setAICaps(caps) } })) {
+                    Text("Default ($1)").tag(0.0)
                     ForEach([0.5, 1, 2, 5, 10, 20], id: \.self) { Text($0.formatted(.currency(code: "USD").precision(.fractionLength(0...2)))).tag($0) }
                 }
+                .disabled(!model.capsLoaded)
+                Picker("Monthly limit for paid models", selection: Binding(
+                    get: { model.aiCaps.month ?? 0 },
+                    set: { cap in var caps = model.aiCaps; caps.month = cap > 0 ? cap : nil; Task { await model.setAICaps(caps) } })) {
+                    Text("Default ($10)").tag(0.0)
+                    ForEach([5.0, 10, 20, 30, 50, 100], id: \.self) { Text($0.formatted(.currency(code: "USD").precision(.fractionLength(0)))).tag($0) }
+                }
+                .disabled(!model.capsLoaded)
                 if let day {
                     LabeledContent("Paid models, last 24 hours", value: day.formatted(.currency(code: "USD").precision(.fractionLength(2))))
-                        .foregroundStyle(model.dailyCap.map { day >= $0 } == true ? .orange : .secondary)
+                        .foregroundStyle(day >= (model.aiCaps.day ?? 1) ? .orange : .secondary)
                 }
                 if let problem = model.modelProblem { Text(problem).foregroundStyle(.orange) }
             } header: {
                 Text("Models")
             } footer: {
-                Text("Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. Without a choice here, the server's default of $5 a day applies. Past the daily limit, Claude and OpenRouter models pause until the spend of the last 24 hours drops; free models keep working.")
+                Text("Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. Without a choice, free Groq writes everything and paid models stop at $1 a day and $10 a month. Past a limit, Claude and OpenRouter pause until the spend of the last 24 hours (or 30 days) drops; free models keep working.")
             }
             Section {
                 if let month {

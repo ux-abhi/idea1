@@ -5,7 +5,7 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 import { ideaRows, parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
-import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, lastDay, pickModel } from "../_shared/models.ts";
+import { capProblem, claudeUsageCost, compatible, cost, keepsSchema, FREE_MODELS, lastMonth, pickModel } from "../_shared/models.ts";
 import { secret } from "../_shared/secrets.ts";
 import { ownsServer } from "../_shared/owner.ts";
 
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
   const [{ data: voice }, { data: profile }, { data: spend }, { data: pagePosts }] = await Promise.all([
     db.from("voice_profile").select("notes, never_say, page, audience, topics, brief").maybeSingle(),
     db.from("profile").select("model_prefs, settings").maybeSingle(),
-    db.from("model_usage").select("model, cost_usd").gte("at", lastDay()),
+    db.from("model_usage").select("model, cost_usd, at").gte("at", lastMonth()).gt("cost_usd", 0).not("model", "in", FREE_MODELS),
     db.from("social_post").select("kind, caption, likes, comments, views").order("posted_at", { ascending: false }).limit(30),
   ]);
   const model = pickModel(profile?.model_prefs, "content", Deno.env.get("BLINK_CONTENT_MODEL"));
