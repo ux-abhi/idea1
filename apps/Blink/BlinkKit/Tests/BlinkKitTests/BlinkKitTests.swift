@@ -394,8 +394,9 @@ extension Tokens {
 
     @Test func meetingNotesReadWellAndFitTheSmallModel() {
         let start = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 6, hour: 14, minute: 5))!
-        #expect(MeetingNotes.title(meeting: "Weekly sync", start: start).hasPrefix("Weekly sync · 6"))
-        #expect(MeetingNotes.title(meeting: "  ", start: start).hasPrefix("Meeting notes · 6"))
+        let day = start.formatted(.dateTime.day().month(.abbreviated)) // "6 Nov" or "Nov 6", by the machine's locale
+        #expect(MeetingNotes.title(meeting: "Weekly sync", start: start) == "Weekly sync · \(day)")
+        #expect(MeetingNotes.title(meeting: "  ", start: start).hasPrefix("Meeting notes · \(day), "))
         let lines = [TranscriptLine(speaker: "Others", at: 65, text: "Sounds good."),
                      TranscriptLine(speaker: "You", at: 3, text: "Hello there."),
                      TranscriptLine(speaker: "You", at: 9, text: " Shall we start? "),
