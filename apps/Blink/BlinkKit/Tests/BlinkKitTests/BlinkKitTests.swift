@@ -376,20 +376,31 @@ extension Tokens {
         let rent = FixedBill(id: "r", note: "Rent", amount: 850, day: 1)
         let phone = FixedBill(id: "p", note: "Phone", amount: 20, day: 31, addedThrough: "2026-08")
         let gym = FixedBill(id: "g", note: "Gym", amount: 30, day: 15, paused: true)
-        let due = MoneyMath.billsDue([rent, phone, gym], today: "2026-11-02")
+        let due = MoneyMath.due([rent, phone, gym], today: "2026-11-02")
         // New rent: this month only. Phone, last added in August: October's (31st) only; November's 30th is ahead.
-        #expect(due.map { "\($0.bill.id) \($0.day)" } == ["r 2026-11-01", "p 2026-10-31"])
+        #expect(due.map { "\($0.plan.id) \($0.day)" } == ["r 2026-11-01", "p 2026-10-31"])
         var added = rent
         added.addedThrough = "2026-11"
-        #expect(MoneyMath.billsDue([added], today: "2026-11-30").isEmpty)
+        #expect(MoneyMath.due([added], today: "2026-11-30").isEmpty)
         // February has 28 days: a bill on the 31st falls on the 28th.
-        #expect(MoneyMath.billsDue([FixedBill(id: "x", day: 31, addedThrough: "2027-01")], today: "2027-02-28").map(\.day) == ["2027-02-28"])
+        #expect(MoneyMath.due([FixedBill(id: "x", day: 31, addedThrough: "2027-01")], today: "2027-02-28").map(\.day) == ["2027-02-28"])
         #expect(MoneyMath.billsAhead([rent, phone, gym], today: "2026-11-02") == 20)
         // A new or resumed bill whose day has passed starts next month; one still ahead this month counts this month.
-        #expect(MoneyMath.billsDue([MoneyMath.startingNow(rent, today: "2026-11-02")], today: "2026-11-02").isEmpty)
+        #expect(MoneyMath.due([MoneyMath.startingNow(rent, today: "2026-11-02")], today: "2026-11-02").isEmpty)
         let resumed = MoneyMath.startingNow(FixedBill(id: "g", day: 15, addedThrough: "2026-09"), today: "2026-11-20")
         #expect(resumed.addedThrough == "2026-11")
         #expect(MoneyMath.startingNow(FixedBill(id: "w", day: 25), today: "2026-11-20").addedThrough == "2026-10")
+        // Income for 6 months from November: due through April, never in May; and counted as still to come this month.
+        let salary = IncomePlan(id: "s", amount: 3000, day: 25, addedThrough: "2026-10",
+                                endsMonth: IncomePlan.lastMonth(startingWith: "2026-11", months: 6))
+        #expect(salary.endsMonth == "2027-04")
+        #expect(MoneyMath.ahead([salary], amount: \.amount, today: "2026-11-20") == 3000)
+        #expect(MoneyMath.due([salary], today: "2026-11-25").map(\.day) == ["2026-11-25"])
+        var april = salary; april.addedThrough = "2027-04"
+        #expect(MoneyMath.due([april], today: "2027-05-30").isEmpty && april.ended(by: "2027-05"))
+        let account = MoneyAccount(id: "a", name: "Bank", kind: .checking, balance: 100, balanceAt: .now, isDefault: true, spentSince: 30)
+        var paid = account; paid.receivedSince = 3000
+        #expect(MoneyMath.balance(of: paid) == 3070)
     }
 
     @Test func meetingNotesReadWellAndFitTheSmallModel() {

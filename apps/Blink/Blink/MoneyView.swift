@@ -11,6 +11,11 @@ struct MoneyView: View {
     @State private var editingLimit: SpendCategory?
     @State private var editingAccount: AccountEditor.Mode?
     @State private var editingBill: FixedBill?
+    @State private var editingIncome: IncomeEditing?
+    /// Recent spending folded away (remembered), and, when open, whether it shows every spend or the newest few.
+    @AppStorage("money.recentFolded") private var recentFolded = false
+    @State private var showAllRecent = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var editingSpend: Spend?
     /// An earlier month picked with the arrows; nil is this month.
     @State private var earlier: String?
@@ -73,6 +78,7 @@ struct MoneyView: View {
         .sheet(item: $editingLimit) { LimitEditor(category: $0) }
         .sheet(item: $editingAccount) { AccountEditor(mode: $0) }
         .sheet(item: $editingBill) { BillEditor(bill: $0) }
+        .sheet(item: $editingIncome) { IncomeEditor(editing: $0) }
         .sheet(item: $editingSpend) { SpendEditor(spend: $0) }
     }
 
@@ -87,8 +93,8 @@ struct MoneyView: View {
                     .foregroundStyle(.secondary)
             }
             categoryTiles
-            section(earlier == nil ? "Recent spending" : "Spending \(monthWords)")
-            latest
+            recentHeader
+            if !recentFolded { latest }
             ApplePayCard()
         }
     }
@@ -98,6 +104,7 @@ struct MoneyView: View {
             spentCard(s, today: today)
             if let limits = limitsTotal { limitsCard(spent: MoneyMath.spentOnLimits(model.spends, budgets: model.budgets, today: today), limits: limits) }
             else if !model.accounts.isEmpty && earlier == nil { leftCard(s, today: today) } // about now, not a past month
+            IncomeCard(month: month, spent: s.total, editing: $editingIncome)
             BillsCard(editing: $editingBill)
         }
     }
@@ -187,7 +194,7 @@ struct MoneyView: View {
     /// With accounts and no limits: what's left at month end at this pace.
     private func leftCard(_ s: MoneyMath.Summary, today: String) -> some View {
         let total = MoneyMath.totalBalance(model.accounts)
-        let (left, pace) = MoneyMath.leftAtMonthEnd(total: total, spends: model.spends, bills: model.fixedBills, today: today)
+        let (left, pace) = MoneyMath.leftAtMonthEnd(total: total, spends: model.spends, bills: model.fixedBills, income: model.incomePlans, today: today)
         let runway = MoneyMath.runwayDays(total: total, average: pace.average)
         let share = total > 0 ? min(max(NSDecimalNumber(decimal: left / total).doubleValue, 0), 1) : 0
         return darkCard(caption: runway.map { "Left at month end · lasts \($0 >= 365 ? "over a year" : "\($0) days")" } ?? "Left at month end",
@@ -277,16 +284,54 @@ struct MoneyView: View {
     // MARK: Recent spending
 
     /// The latest spends as one list: what, the day, the amount, and a menu to change or delete each.
+    /// Now: everything loaded (this month and last), newest first. An earlier month: all of that month.
+    private var recentSpends: [Spend] {
+        earlier == nil ? model.spends : model.spends.filter { MoneyMath.month(of: $0.spentOn) == month }
+    }
+
+    /// The section title as a button that folds the list away, with how many spends it holds.
+    private var recentHeader: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .snappy) { recentFolded.toggle() }
+        } label: {
+            HStack(alignment: .firstTextBaseline) {
+                Image(systemName: "chevron.right")
+                    .font(.callout.weight(.semibold))
+                    .rotationEffect(.degrees(recentFolded ? 0 : 90))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(earlier == nil ? "Recent spending" : "Spending \(monthWords)").font(.title3.weight(.semibold))
+                Spacer()
+                if !recentSpends.isEmpty { Text("\(recentSpends.count)").foregroundStyle(.secondary).monospacedDigit() }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(earlier == nil ? "Recent spending" : "Spending \(monthWords)")
+        .accessibilityValue(recentFolded ? "Collapsed, \(recentSpends.count) spends" : "Expanded")
+        .accessibilityHint(recentFolded ? "Show the list" : "Hide the list")
+    }
+
     private var latest: some View {
-        // This month: the latest 30, whatever the month. An earlier month: all of it.
-        let recent = earlier == nil ? Array(model.spends.prefix(30)) : model.spends.filter { MoneyMath.month(of: $0.spentOn) == month }
+        let all = recentSpends
+        let preview = 5
+        let shown = showAllRecent ? all : Array(all.prefix(preview))
         return VStack(spacing: 0) {
-            if recent.isEmpty {
+            if all.isEmpty {
                 Text("Spends you add show here.").foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(16)
             }
-            ForEach(Array(recent.enumerated()), id: \.element.id) { index, spend in
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, spend in
                 if index > 0 { Divider().padding(.leading, 60) }
                 SpendRow(spend: spend, edit: { editingSpend = spend }) { editingBill = $0 }.padding(.horizontal, 14).padding(.vertical, 10)
+            }
+            if all.count > preview {
+                Divider()
+                Button(showAllRecent ? "Show Less" : "Show All \(all.count)") {
+                    withAnimation(reduceMotion ? nil : .snappy) { showAllRecent.toggle() }
+                }
+                .buttonStyle(.borderless)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
             }
         }
         .cardSurface(radius: Tokens.Radius.tile)

@@ -810,6 +810,61 @@ public final class BlinkServer: Sendable {
             .eq("id", value: spend.id).execute()
     }
 
+    // MARK: Income
+
+    /// Income received since a day ("2026-10-01"), newest first.
+    public func income(since: String) async throws -> [Income] {
+        try await client.from("income").select("id, amount, note, account_id, received_on, plan_id")
+            .gte("received_on", value: since).order("received_on", ascending: false).limit(500).execute().value
+    }
+
+    /// Saves one income (new or changed). The server's clock dates its entry, so a balance set before it adds it.
+    public func save(_ income: Income) async throws {
+        struct Row: Encodable { let id: String, amount: Decimal, note: String, account_id: String?, received_on: String }
+        try await client.from("income").upsert(Row(id: income.id, amount: income.amount, note: income.note,
+                                                   account_id: income.accountID, received_on: income.receivedOn)).execute()
+    }
+
+    public func delete(_ income: Income) async throws {
+        try await client.from("income").delete().eq("id", value: income.id).execute()
+    }
+
+    public func incomePlans() async throws -> [IncomePlan] {
+        try await client.from("income_plan").select("id, note, amount, account_id, day, paused, added_through, ends_month")
+            .order("day").execute().value
+    }
+
+    /// Saves a recurring income. `added_through` only when asked (new, resumed, restored), as for bills.
+    public func save(_ plan: IncomePlan, withAddedThrough: Bool) async throws {
+        struct Row: Encodable {
+            let id, note: String, amount: Decimal, account_id: String?, day: Int, paused: Bool, ends_month: String?
+        }
+        let row = Row(id: plan.id, note: plan.note, amount: plan.amount, account_id: plan.accountID, day: plan.day,
+                      paused: plan.paused, ends_month: plan.endsMonth)
+        if withAddedThrough { try await client.from("income_plan").upsert(plan).execute() }
+        else { try await client.from("income_plan").upsert(row).execute() }
+    }
+
+    public func delete(_ plan: IncomePlan) async throws {
+        try await client.from("income_plan").delete().eq("id", value: plan.id).execute()
+    }
+
+    /// Adds a recurring income for the month `day` is in, entered as of that day. Already added (another Mac): nothing
+    /// changes. Then the plan remembers the month.
+    public func addIncome(of plan: IncomePlan, on day: String, enteredAt: Date) async throws {
+        struct Row: Encodable {
+            let amount: Decimal, note: String, account_id: String?, received_on: String, plan_id: String
+            let source = "plan", dedupe_key: String, created_at: Date
+        }
+        let month = String(day.prefix(7))
+        do {
+            try await client.from("income").insert(Row(amount: plan.amount, note: plan.note, account_id: plan.accountID, received_on: day,
+                                                       plan_id: plan.id, dedupe_key: "income:\(plan.id):\(month)", created_at: enteredAt))
+                .execute()
+        } catch where Self.isDuplicate(error) {}
+        try await client.from("income_plan").update(["added_through": month]).eq("id", value: plan.id).execute()
+    }
+
     // MARK: Fixed bills
 
     public func fixedBills() async throws -> [FixedBill] {
@@ -877,7 +932,13 @@ public final class BlinkServer: Sendable {
     }
 
     public func accounts() async throws -> [MoneyAccount] {
-        try await client.from("money_account_now").select("id, name, kind, balance, balance_at, is_default, spent_since").order("created_at").execute().value
+        let columns = "id, name, kind, balance, balance_at, is_default, spent_since"
+        do {
+            return try await client.from("money_account_now").select(columns + ", received_since").order("created_at").execute().value
+        } catch where (error as? PostgrestError)?.code == "42703" {
+            // A server from before income (no received_since yet): balances without it, until Update Server.
+            return try await client.from("money_account_now").select(columns).order("created_at").execute().value
+        }
     }
 
     /// A new account with today's balance; the first one becomes the default.

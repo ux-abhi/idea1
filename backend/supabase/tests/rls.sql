@@ -304,6 +304,32 @@ do $$ begin
   exception when unique_violation then null;
   end;
   delete from public.transaction where dedupe_key = 'bill:x:2026-11';
+  -- Income: adds to the account's balance; a recurring one comes in once per month; never negative or on day 32.
+  insert into public.income (amount, note, account_id) values (3000, 'Salary', '00000000-0000-0000-0000-0000000000f1');
+  assert (select received_since from public.money_account_now where name = 'Sparkasse') = 3000, 'balance view adds up income';
+  insert into public.income_plan (note, amount, day, ends_month, account_id)
+    values ('Salary', 3000, 1, '2027-04', '00000000-0000-0000-0000-0000000000f1');
+  insert into public.income (amount, note, source, dedupe_key) values (3000, 'Salary', 'plan', 'income:x:2026-11');
+  begin
+    insert into public.income (amount, note, source, dedupe_key) values (3000, 'Salary', 'plan', 'income:x:2026-11');
+    raise exception 'an income was added twice in one month';
+  exception when unique_violation then null;
+  end;
+  begin
+    insert into public.income (amount, note) values (0, 'Nothing');
+    raise exception 'an income of 0 was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.income_plan (note, amount, day) values ('Rent from a lodger', 400, 32);
+    raise exception 'an income plan on day 32 was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.income_plan (note, amount, day, ends_month) values ('Bonus', 400, 1, 'next year');
+    raise exception 'an end month that is not YYYY-MM was accepted';
+  exception when check_violation then null;
+  end;
   begin
     insert into public.transaction (amount, note) values (-5, 'refund?');
     raise exception 'a negative spend was accepted';
@@ -378,6 +404,8 @@ do $$ begin
   assert (select count(*) from public.transaction) = 0, 'B must not see A''s spends';
   assert (select count(*) from public.budget) = 0, 'B must not see A''s budgets';
   assert (select count(*) from public.fixed_bill) = 0, 'B must not see A''s fixed bills';
+  assert (select count(*) from public.income) = 0, 'B must not see A''s income';
+  assert (select count(*) from public.income_plan) = 0, 'B must not see A''s recurring income';
   assert (select count(*) from public.money_account) = 0, 'B must not see A''s accounts';
   assert (select count(*) from public.capture_token) = 0, 'B must not see A''s capture tokens';
   assert (select count(*) from public.money_account_now) = 0, 'B must not see A''s balances';

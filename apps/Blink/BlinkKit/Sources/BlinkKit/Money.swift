@@ -61,8 +61,19 @@ public struct Spend: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+/// Something that happens on the same day every month (a bill going out, income coming in): on that day Blink adds the
+/// month's entry itself, and remembers the month so it's never added twice.
+public protocol MonthlyPlan {
+    var day: Int { get }
+    var paused: Bool { get }
+    var addedThrough: String? { get set }
+    /// The last month it happens ("2027-04"); nil: until stopped.
+    var endsMonth: String? { get }
+}
+
 /// A fixed monthly bill (`fixed_bill`): rent, phone, a subscription. On its day Blink adds the month's spend itself.
-public struct FixedBill: Codable, Identifiable, Equatable, Sendable {
+public struct FixedBill: Codable, Identifiable, Equatable, Sendable, MonthlyPlan {
+    public var endsMonth: String? { nil } // bills go on until deleted
     public var id: String
     public var note: String
     public var amount: Decimal
@@ -83,6 +94,58 @@ public struct FixedBill: Codable, Identifiable, Equatable, Sendable {
                 accountID: String? = nil, day: Int = 1, paused: Bool = false, addedThrough: String? = nil) {
         (self.id, self.note, self.amount, self.category, self.accountID) = (id, note, amount, category, accountID)
         (self.day, self.paused, self.addedThrough) = (day, paused, addedThrough)
+    }
+}
+
+/// Money that came in (`income`): a one-time payment, or one month of a recurring one (`planID`).
+public struct Income: Codable, Identifiable, Equatable, Sendable {
+    public let id: String
+    public var amount: Decimal
+    public var note: String
+    public var accountID: String?
+    public var receivedOn: String
+    public var planID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, amount, note
+        case accountID = "account_id", receivedOn = "received_on", planID = "plan_id"
+    }
+
+    public init(id: String = UUID().uuidString.lowercased(), amount: Decimal, note: String, accountID: String?, receivedOn: String,
+                planID: String? = nil) {
+        (self.id, self.amount, self.note, self.accountID, self.receivedOn, self.planID) = (id, amount, note, accountID, receivedOn, planID)
+    }
+}
+
+/// Income that comes in every month (`income_plan`): a salary, rent from a lodger, a stipend; until `endsMonth`, or until
+/// stopped. On its day Blink adds that month's `Income` itself.
+public struct IncomePlan: Codable, Identifiable, Equatable, Sendable, MonthlyPlan {
+    public var id: String
+    public var note: String
+    public var amount: Decimal
+    public var accountID: String?
+    public var day: Int
+    public var paused: Bool
+    public var addedThrough: String?
+    public var endsMonth: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, note, amount, day, paused
+        case accountID = "account_id", addedThrough = "added_through", endsMonth = "ends_month"
+    }
+
+    public init(id: String = UUID().uuidString.lowercased(), note: String = "", amount: Decimal = 0, accountID: String? = nil,
+                day: Int = 1, paused: Bool = false, addedThrough: String? = nil, endsMonth: String? = nil) {
+        (self.id, self.note, self.amount, self.accountID) = (id, note, amount, accountID)
+        (self.day, self.paused, self.addedThrough, self.endsMonth) = (day, paused, addedThrough, endsMonth)
+    }
+
+    /// Whether it has stopped for good: its last month is before `month`.
+    public func ended(by month: String) -> Bool { endsMonth.map { $0 < month } ?? false }
+
+    /// The last month of a run of `months` months starting with `start` ("2026-11", 6 → "2027-04").
+    public static func lastMonth(startingWith start: String, months: Int) -> String {
+        (1..<max(months, 1)).reduce(start) { m, _ in MoneyMath.next(month: m) }
     }
 }
 
@@ -119,10 +182,12 @@ public struct MoneyAccount: Codable, Identifiable, Equatable, Sendable {
     public var isDefault: Bool
     /// Spends from this account entered since `balanceAt`, added up by the server (`money_account_now`).
     public var spentSince: Decimal?
+    /// Income into this account entered since `balanceAt` (nil on a server without income yet).
+    public var receivedSince: Decimal?
 
     enum CodingKeys: String, CodingKey {
         case id, name, kind, balance
-        case balanceAt = "balance_at", isDefault = "is_default", spentSince = "spent_since"
+        case balanceAt = "balance_at", isDefault = "is_default", spentSince = "spent_since", receivedSince = "received_since"
     }
 
     public init(id: String, name: String, kind: Kind, balance: Decimal, balanceAt: Date, isDefault: Bool, spentSince: Decimal? = nil) {
@@ -205,23 +270,24 @@ public enum MoneyMath {
         String(String.UnicodeScalarView(text.unicodeScalars.prefix(limit)))
     }
 
-    /// The bills whose spend is due by `today` and not added yet, each with the day it falls on ("2026-11-01").
-    /// A new bill starts with this month; a bill not seen for a while catches up on this month and the one before only.
+    /// The bills (or income) due by `today` and not added yet, each with the day it falls on ("2026-11-01"), never past
+    /// its last month. A new one starts with this month; one not seen for a while catches up on this month and the one
+    /// before only.
     // shortcut: catches up two months at most, and only while Blink runs; move to a server cron when that's not enough.
-    public static func billsDue(_ bills: [FixedBill], today: String, calendar: Calendar = .current) -> [(bill: FixedBill, day: String)] {
+    public static func due<P: MonthlyPlan>(_ plans: [P], today: String, calendar: Calendar = .current) -> [(plan: P, day: String)] {
         let now = month(of: today)
         let months = [previous(month: now), now]
-        return bills.filter { !$0.paused }.flatMap { bill in
-            months.filter { $0 > (bill.addedThrough ?? previous(month: now)) }.compactMap { m in
-                let day = "\(m)-\(String(format: "%02d", min(bill.day, daysIn(month: m, calendar: calendar))))"
-                return day <= today ? (bill: bill, day: day) : nil
+        return plans.filter { !$0.paused }.flatMap { plan in
+            months.filter { $0 > (plan.addedThrough ?? previous(month: now)) && $0 <= (plan.endsMonth ?? "9999-12") }.compactMap { m in
+                let day = "\(m)-\(String(format: "%02d", min(plan.day, daysIn(month: m, calendar: calendar))))"
+                return day <= today ? (plan: plan, day: day) : nil
             }
         }
     }
 
     /// A bill that's new or resumed starts with its next day: a day already past this month counts as paid (the owner
     /// logged it, or it was paused), so nothing is added for it until next month.
-    public static func startingNow(_ bill: FixedBill, today: String, calendar: Calendar = .current) -> FixedBill {
+    public static func startingNow<P: MonthlyPlan>(_ bill: P, today: String, calendar: Calendar = .current) -> P {
         let now = month(of: today)
         let dueDay = "\(now)-\(String(format: "%02d", min(bill.day, daysIn(month: now, calendar: calendar))))"
         var started = bill
@@ -229,13 +295,17 @@ public enum MoneyMath {
         return started
     }
 
-    /// What the bills still to come this month add up to (after `today`, not paused, not added yet).
-    public static func billsAhead(_ bills: [FixedBill], today: String, calendar: Calendar = .current) -> Decimal {
+    /// What the bills (or income) still to come this month add up to (after `today`, not paused, not added yet, not ended).
+    public static func ahead<P: MonthlyPlan>(_ plans: [P], amount: (P) -> Decimal, today: String, calendar: Calendar = .current) -> Decimal {
         let now = month(of: today)
-        return bills.filter { bill in
-            !bill.paused && (bill.addedThrough ?? "") < now
-                && "\(now)-\(String(format: "%02d", min(bill.day, daysIn(month: now, calendar: calendar))))" > today
-        }.reduce(Decimal.zero) { $0 + $1.amount }
+        return plans.filter { plan in
+            !plan.paused && (plan.addedThrough ?? "") < now && now <= (plan.endsMonth ?? "9999-12")
+                && "\(now)-\(String(format: "%02d", min(plan.day, daysIn(month: now, calendar: calendar))))" > today
+        }.reduce(Decimal.zero) { $0 + amount($1) }
+    }
+
+    public static func billsAhead(_ bills: [FixedBill], today: String, calendar: Calendar = .current) -> Decimal {
+        ahead(bills, amount: \.amount, today: today, calendar: calendar)
     }
 
     /// The month after a "2026-10" key ("2026-11"; "2026-12" → "2027-01").
@@ -294,9 +364,10 @@ public enum MoneyMath {
             lastMonthTotal: lastMonth.reduce(Decimal.zero, +))
     }
 
-    /// An account's balance now: what the owner last set, minus spends from it entered since then (summed by the server).
+    /// An account's balance now: what the owner last set, minus spends from it and plus income into it entered since then
+    /// (summed by the server).
     public static func balance(of account: MoneyAccount) -> Decimal {
-        account.balance - (account.spentSince ?? 0)
+        account.balance - (account.spentSince ?? 0) + (account.receivedSince ?? 0)
     }
 
     /// All accounts together, now.
@@ -313,11 +384,17 @@ public enum MoneyMath {
 
     /// What's left at month end, the one way both Today and Money work it out: the day-to-day pace leaves the fixed
     /// bills out (rent on the 1st isn't a daily habit), and the bills still to come this month come off on top.
-    public static func leftAtMonthEnd(total: Decimal, spends: [Spend], bills: [FixedBill], today: String,
+    public static func leftAtMonthEnd(total: Decimal, spends: [Spend], bills: [FixedBill], income: [IncomePlan] = [], today: String,
                                       calendar: Calendar = .current) -> (left: Decimal, pace: Summary) {
         let pace = summary(spends.filter { $0.source != "bill" }, today: today, calendar: calendar)
         return (leftAtMonthEnd(total: total, summary: pace, today: today, calendar: calendar)
-                - billsAhead(bills, today: today, calendar: calendar), pace)
+                - billsAhead(bills, today: today, calendar: calendar)
+                + ahead(income, amount: \.amount, today: today, calendar: calendar), pace) // salary still to come this month
+    }
+
+    /// Income received in one month ("2026-11").
+    public static func received(_ income: [Income], month m: String) -> Decimal {
+        income.filter { month(of: $0.receivedOn) == m }.reduce(Decimal.zero) { $0 + $1.amount }
     }
 
     /// This month's spending in the categories that have a limit: what the limits card compares against the limits

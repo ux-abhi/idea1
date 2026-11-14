@@ -417,7 +417,7 @@ final class AppModel {
         agenda = .empty; calendarEvents = []; allReminders = []; quickReplies = []
         content = []; voice = VoiceProfile(); contentProblem = nil
         ideas = []; questions = [:]; pageRead = nil; designed = []
-        spends = []; budgets = []; accounts = []; captureTokens = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
+        spends = []; budgets = []; accounts = []; income = []; incomePlans = []; captureTokens = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
         emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil
         modelPrefs = [:]; modelProblem = nil; aiCaps = BlinkServer.AICaps(); capsLoaded = false; spaces = []; openPage = nil; keyStatus = nil
     }
@@ -1849,6 +1849,9 @@ final class AppModel {
     private(set) var budgets: [Budget] = []
     /// Rent, phone, subscriptions: the same amount every month. Empty on a server without the table yet.
     private(set) var fixedBills: [FixedBill] = []
+    /// Money that came in this month and last, and the income that comes every month. Empty on an older server.
+    private(set) var income: [Income] = []
+    private(set) var incomePlans: [IncomePlan] = []
     private(set) var moneyProblem: String?
     private(set) var sortingSpends = false
     /// Spending typed in the bar and sorted by Blink, waiting on the Money page to be checked and saved.
@@ -1916,6 +1919,9 @@ final class AppModel {
             captureTokens = (try? await server.captureTokens()) ?? []
             fixedBills = (try? await server.fixedBills()) ?? []
             if await addDueBills() { merge(try await server.spends(since: since), from: since, before: nil); await reloadAccounts() }
+            incomePlans = (try? await server.incomePlans()) ?? []
+            if await addDueIncome() { await reloadAccounts() }
+            income = (try? await server.income(since: since)) ?? []
             tellMoneyNews()
         } catch {
             // Never show €0 as if nothing was spent.
@@ -1927,7 +1933,7 @@ final class AppModel {
     private func addDueBills() async -> Bool {
         guard let server else { return false }
         var added = false
-        for (bill, day) in MoneyMath.billsDue(fixedBills, today: HabitDay.key(.now)) {
+        for (bill, day) in MoneyMath.due(fixedBills, today: HabitDay.key(.now)) {
             // Entered at the start of its day: a balance set later that day already has it taken off.
             let entered = HabitDay.date(fromKey: day).map { Calendar.current.startOfDay(for: $0) } ?? .now
             do { try await server.addSpend(of: bill, on: day, enteredAt: entered) } catch { continue } // next load retries
@@ -1935,6 +1941,80 @@ final class AppModel {
             added = true
         }
         return added
+    }
+
+    /// Adds the income of every recurring income whose day has come this month (or last); true when any was added.
+    private func addDueIncome() async -> Bool {
+        guard let server else { return false }
+        var added = false
+        for (plan, day) in MoneyMath.due(incomePlans, today: HabitDay.key(.now)) {
+            let entered = HabitDay.date(fromKey: day).map { Calendar.current.startOfDay(for: $0) } ?? .now
+            do { try await server.addIncome(of: plan, on: day, enteredAt: entered) } catch { continue } // next load retries
+            if let i = incomePlans.firstIndex(where: { $0.id == plan.id }) { incomePlans[i].addedThrough = String(day.prefix(7)) }
+            added = true
+        }
+        return added
+    }
+
+    /// Saves money that came in once (new or changed). True when saved.
+    @discardableResult
+    func saveIncome(_ entry: Income) async -> Bool {
+        guard let server else { return false }
+        moneyProblem = nil
+        do {
+            try await server.save(entry)
+            if let i = income.firstIndex(where: { $0.id == entry.id }) { income[i] = entry } else { income.append(entry) }
+            income.sort { $0.receivedOn > $1.receivedOn }
+            await reloadAccounts()
+            return true
+        } catch {
+            moneyProblem = serverBehind ? "Update your server (Settings › Server) to add income." : "Couldn't save that income. Try again in a moment."
+            return false
+        }
+    }
+
+    func deleteIncome(_ entry: Income) async {
+        guard let server else { return }
+        do { try await server.delete(entry) } catch {
+            moneyProblem = "Couldn't delete that income. Check your connection."
+            return
+        }
+        income.removeAll { $0.id == entry.id }
+        await reloadAccounts()
+        offerUndo("Deleted income: \(entry.note)") { [weak self] in await self?.saveIncome(entry) }
+    }
+
+    /// Adds or changes a recurring income. A new one starts with its next day, unless `includeThisMonth` (its day has
+    /// passed and this month's already came in): then this month's is added now. `restoring` puts a deleted one back.
+    @discardableResult
+    func saveIncomePlan(_ plan: IncomePlan, includeThisMonth: Bool = false, restoring: Bool = false) async -> Bool {
+        guard let server else { return false }
+        moneyProblem = nil
+        let old = incomePlans.first { $0.id == plan.id }
+        let starts = !restoring && (old == nil || (old?.paused == true && !plan.paused))
+        var saving = starts ? MoneyMath.startingNow(plan, today: HabitDay.key(.now)) : plan
+        if starts, includeThisMonth { saving.addedThrough = MoneyMath.previous(month: MoneyMath.month(of: HabitDay.key(.now))) }
+        do {
+            try await server.save(saving, withAddedThrough: starts || restoring)
+            if let i = incomePlans.firstIndex(where: { $0.id == plan.id }) { incomePlans[i] = saving } else { incomePlans.append(saving) }
+            incomePlans.sort { $0.day < $1.day }
+            if await addDueIncome() { await loadMoney() }
+            return true
+        } catch {
+            moneyProblem = serverBehind ? "Update your server (Settings › Server) to add income." : "Couldn't save that income. Try again in a moment."
+            return false
+        }
+    }
+
+    /// Stops a recurring income; what it already added stays. Undo brings it back.
+    func deleteIncomePlan(_ plan: IncomePlan) async {
+        guard let server else { return }
+        do { try await server.delete(plan) } catch {
+            moneyProblem = "Couldn't delete that income. Check your connection."
+            return
+        }
+        incomePlans.removeAll { $0.id == plan.id }
+        offerUndo("Stopped income: \(plan.note)") { [weak self] in await self?.saveIncomePlan(plan, restoring: true) }
     }
 
     /// Adds or changes a fixed bill. A new or resumed one starts with its next day, so a payment already made this
@@ -1976,6 +2056,11 @@ final class AppModel {
         let since = MoneyMath.previous(month: month) + "-01", before = MoneyMath.next(month: month) + "-01"
         do { merge(try await server.spends(since: since, before: before), from: since, before: before) } catch {
             moneyProblem = "Can't load that month right now. Check your connection."
+        }
+        // Its income too, so the month's "in · spent" line isn't missing money that came in.
+        if let older = try? await server.income(since: since) {
+            let known = Set(older.map(\.id))
+            income = (older + income.filter { !known.contains($0.id) }).sorted { $0.receivedOn > $1.receivedOn }
         }
     }
 
