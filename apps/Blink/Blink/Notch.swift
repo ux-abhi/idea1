@@ -690,8 +690,13 @@ final class NotchController {
     func openChat() {
         guard !showLockInstead(), !model.meeting, !model.clipboarding, !model.searching else { return }
         if model.level == .open && model.chatting { return }
-        model.chatting = true
-        model.dayFirst = true
+        if app.meetDraft != nil {
+            model.meeting = true // a half-written invite comes back where it was left
+        } else if !(model.evening || app.eveningDue || app.timer != nil || app.finishedTimer != nil) {
+            // The evening card and a running timer keep their own controls; otherwise the click opens the day and chat.
+            model.chatting = true
+            model.dayFirst = true
+        }
         if model.level == .open, let panel {
             panel.allowsKey = true
             panel.makeKey()

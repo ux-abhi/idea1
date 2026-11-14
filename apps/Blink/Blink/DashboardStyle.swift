@@ -184,8 +184,15 @@ struct UndoToast: View {
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityHidden(true)
                 Text(chip.text).lineLimit(1)
-                Button("Undo") { Task { await model.undo() } }
-                    .keyboardShortcut("z", modifiers: .command)
+                Button("Undo") {
+                    // ⌘Z while typing belongs to the text: hand it to the field instead of bringing back the deletion.
+                    if NSApp.keyWindow?.firstResponder is NSTextView, NSApp.currentEvent?.type == .keyDown {
+                        NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+                    } else {
+                        Task { await model.undo() }
+                    }
+                }
+                .keyboardShortcut("z", modifiers: .command)
             }
             .padding(.leading, 16).padding(.trailing, 10).padding(.vertical, 8)
             .background(.regularMaterial, in: .capsule)

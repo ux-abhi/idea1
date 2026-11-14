@@ -35,8 +35,9 @@ struct SettingsRoot: View {
                     Tab("Devices", systemImage: "laptopcomputer.and.iphone", value: .devices) { DevicesSettings() }
                 }
             } else {
-                ContentUnavailableView("Connect your server first", systemImage: "server.rack",
-                                       description: Text("Settings appear once Blink is connected to your server and you're signed in."))
+                ContentUnavailableView(model.server == nil ? "Connect your server first" : "Sign in to see Settings", systemImage: "server.rack",
+                                       description: Text(model.server == nil ? "Settings appear once Blink is connected to your server and you're signed in."
+                                                                             : "Open Blink and sign in to your server; your settings are kept there."))
             }
         }
         .frame(width: 680, height: 560)
@@ -64,6 +65,7 @@ struct ServerSettings: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @State private var confirmSwitch = false
+    @State private var confirmSignOut = false
     @State private var confirmRestart = false
     @State private var shownPassword: String?
     @State private var loginProblem: String?
@@ -113,7 +115,12 @@ struct ServerSettings: View {
                 }
             }
             Section {
-                Button("Sign Out") { Task { await model.signOut() } }
+                Button("Sign Out…") { confirmSignOut = true }
+            }
+            .confirmationDialog("Sign out of Blink on this Mac?", isPresented: $confirmSignOut) {
+                Button("Sign Out", role: .destructive) { Task { await model.signOut() } }
+            } message: {
+                Text("Your tasks, notes, mail and money stay on your server. The chat history on this Mac is cleared.")
             }
             Section {
                 LabeledContent("Blink on your server") {
@@ -132,7 +139,7 @@ struct ServerSettings: View {
         .confirmationDialog("Sign out and run setup again?", isPresented: $confirmRestart) {
             Button("Sign Out and Restart Setup", role: .destructive) { Task { await model.restartSetup() } }
         } message: {
-            Text("You'll see the welcome steps again. Your data stays on \(model.server?.config.host ?? "your server"); pick \"I already have a server\" to reconnect.")
+            Text("You'll see the welcome steps again. Your data stays on \(model.server?.config.host ?? "your server"); “Reconnect” brings you back to it.")
         }
         .confirmationDialog("Use a different server?", isPresented: $confirmSwitch) {
             Button("Sign Out and Switch", role: .destructive) {
@@ -543,6 +550,8 @@ struct PrivacySettings: View {
                     Label("Your decisions on cards, and a signature for red ones", systemImage: "checkmark.seal")
                     Label("When you ask Blink: your question with your calendar, tasks, notes, habits and open reminders, sent to the AI through your server",
                           systemImage: "bubble.left")
+                    Label("Dictation and voice commands: the words go to your voice model through your server; the recording itself goes to Groq only if you chose Groq (Settings › Shortcuts), and isn't kept",
+                          systemImage: "waveform")
                     Label("Never: your fingerprint. Touch ID only unlocks a key that stays in the Secure Enclave", systemImage: "touchid")
                 }
             } footer: {

@@ -82,6 +82,10 @@ struct ReplyReviewSheet: View {
         }
         .padding(20)
         .frame(width: 560)
+        // Kept on the model as it's typed, so the app lock covering the window doesn't bring back Blink's first draft.
+        .onChange(of: review.draft.to) { _, now in model.reviewing?.draft.to = now }
+        .onChange(of: review.draft.subject) { _, now in model.reviewing?.draft.subject = now }
+        .onChange(of: review.draft.body) { _, now in model.reviewing?.draft.body = now }
     }
 
     private var edited: Bool {

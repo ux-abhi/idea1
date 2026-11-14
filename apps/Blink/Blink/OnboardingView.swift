@@ -150,11 +150,22 @@ private struct WelcomeStep: View {
 }
 
 private struct ServerStep: View {
+    @Environment(AppModel.self) private var model
     @State private var manual = ServerInstaller.helper == nil
 
     var body: some View {
         StepCard(title: "Your own server",
                  subtitle: "Blink keeps your notes, mail and money in your own private space online. Not even we can read them.") {
+            // Back after Restart Setup or a switch: one click to the server this Mac used, nothing to look up.
+            if let previous = model.previousServer {
+                Button {
+                    Task { try? await model.connect(url: previous.url.absoluteString, key: previous.publishableKey) }
+                } label: {
+                    Label("Reconnect to \(previous.host)", systemImage: "arrow.uturn.backward.circle").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                Text("Your data is still there. Or set up another server below.").font(.caption).foregroundStyle(.secondary)
+            }
             if manual {
                 ConnectView()
                     .frame(minHeight: 230, maxHeight: 340)

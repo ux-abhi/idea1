@@ -232,7 +232,9 @@ final class AppModel {
     private var reloading = false
     private var reloadAgain = false
 
-    private(set) var locked = true
+    /// Locked at launch only once setup is done: a brand-new install has nothing to protect, and Touch ID before the
+    /// welcome screen would be a strange first sight.
+    private(set) var locked = UserDefaults.standard.bool(forKey: "onboarding.done")
     private var awaySince: Date?
     /// The unlock prompt opens by itself once per lock; the prompt itself makes the scene inactive and active again.
     private var promptPending = true
@@ -286,6 +288,9 @@ final class AppModel {
         server = nil
         screen = .connect
     }
+
+    /// The server this Mac used before (Restart Setup, a switch), for "Reconnect" on the server step.
+    var previousServer: ServerConfig? { BlinkServer.previous(keychain: keychain) }
 
     /// Shown on the Sign in screen (e.g. when one-click setup finished but its sign-in didn't).
     func noteSignIn(_ message: String) { signInNotice = message }
@@ -376,6 +381,7 @@ final class AppModel {
 
     func signOut() async {
         signedOutOnPurpose = true
+        await saveUnsaved() // a note typed a moment ago goes to the server before the account's data is cleared here
         await endSession(notice: nil)
     }
 
@@ -441,12 +447,12 @@ final class AppModel {
             case .red where action.kind == "meet.create":
                 // Approved only on the /meet card, which shows the exact time and guests (like mail below).
                 try await server.setStatus("declined", for: action)
-                actionProblem = "Meetings are set up with /meet, where you can see the time and everyone invited."
+                announce("Not set up from here: type /meet in the notch to see the time and everyone invited first.", failed: true)
             case .red where action.kind == "mail.send":
                 // Mail is sent only from the review sheet, which shows the exact recipient and text. A card shows only its
                 // title, which whoever inserted it chose, so it is never approved from here.
                 try await server.setStatus("declined", for: action)
-                actionProblem = "Mail is sent from the Inbox, where you can see the whole message."
+                announce("Not sent: mail goes out from the Inbox, where you can read the whole message first.", failed: true)
             case .red:
                 // shortcut: approval only; the post executor lands with autoposting.
                 try await server.approveRed(action)
@@ -1099,7 +1105,12 @@ final class AppModel {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty, !thinking else { return }
         let onDevice = model(for: "chat").id == AIModel.onDeviceID
-        guard onDevice || server != nil else { return }
+        guard onDevice || server != nil else {
+            // Signed out or mid-setup: the question stays visible with what to do, instead of vanishing.
+            chat.append(.init(role: .user, text: message))
+            chat.append(.init(role: .assistant, text: "I can't answer yet: finish setup or sign in first (open Blink, or Settings › Server)."))
+            return
+        }
         quickReplies = []
         let history = chat
         chat.append(.init(role: .user, text: message))
@@ -1532,6 +1543,7 @@ final class AppModel {
     func toggleDictation() async {
         if dictation.isListening, dictation.purpose == .command { return await runCommand() }
         guard dictation.isListening else {
+            Dictation.askGroqOnce()
             if let problem = await dictation.start(language: MeetingRecorder.language) { announce(problem, failed: true) }
             else if Dictation.usesGroq, let server { Task { await server.warmDictate() } }
             return
@@ -1559,6 +1571,7 @@ final class AppModel {
     /// ⌃⌥B: listens for a command ("open Chrome and play Alphas"), which runs once the owner pauses or presses it again.
     func toggleCommand() async {
         if dictation.isListening { return dictation.purpose == .command ? await runCommand() : await toggleDictation() }
+        Dictation.askGroqOnce()
         if let problem = await dictation.start(language: MeetingRecorder.language, purpose: .command, quiet: { [weak self] in
             Task { await self?.runCommand() }
         }) {
@@ -2952,7 +2965,7 @@ final class AppModel {
     func scenePhaseChanged(_ phase: ScenePhase) {
         if phase == .active {
             let after = UserDefaults.standard.object(forKey: "lockAfter") as? Double ?? AppLock.defaultRelockAfter
-            if AppLock.shouldRelock(awaySince: awaySince, after: after) {
+            if UserDefaults.standard.bool(forKey: "onboarding.done"), AppLock.shouldRelock(awaySince: awaySince, after: after) {
                 locked = true
                 promptPending = true
             }

@@ -1000,6 +1000,8 @@ private struct CanvasCard: View {
             }
         }
         .onChange(of: field) { _, now in if now == nil && isEditing { editing = nil } }
+        // Gone mid-edit (the app lock covered the window, the page changed): keep what was typed.
+        .onDisappear { if isEditing && !cancelled { commit() } }
     }
 
     private var row: some View {

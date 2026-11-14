@@ -17,9 +17,24 @@ final class Dictation {
     enum Purpose { case type, command }
     private(set) var isListening = false
     private(set) var purpose = Purpose.type
-    /// Groq's Whisper (Settings › Shortcuts), on unless the owner keeps dictation on this Mac.
+    /// Groq's Whisper (Settings › Shortcuts): off until the owner says yes, asked once on the first dictation.
     static let groqKey = "dictation.groq"
-    static var usesGroq: Bool { UserDefaults.standard.object(forKey: groqKey) as? Bool ?? true }
+    static var usesGroq: Bool { UserDefaults.standard.object(forKey: groqKey) as? Bool ?? false }
+
+    /// The first time: asks whether the recording may go to Groq (far better at Hindi and Hinglish), before anything is
+    /// recorded, and puts the owner back in the app they were typing in.
+    static func askGroqOnce() {
+        guard UserDefaults.standard.object(forKey: groqKey) == nil else { return }
+        let previous = NSWorkspace.shared.frontmostApplication
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "Use Groq for speech to text?"
+        alert.informativeText = "Groq's Whisper understands Hindi, Hinglish and accents far better than this Mac. Your recording goes through your server to Groq (your own key) and isn't kept. With “This Mac only”, nothing you say leaves the Mac. You can change this in Settings › Shortcuts."
+        alert.addButton(withTitle: "Use Groq")
+        alert.addButton(withTitle: "This Mac Only")
+        UserDefaults.standard.set(alert.runModal() == .alertFirstButtonReturn, forKey: groqKey)
+        previous?.activate()
+    }
     /// Stopped and waiting for Groq's text.
     var isWriting = false
     private(set) var startedAt: Date?

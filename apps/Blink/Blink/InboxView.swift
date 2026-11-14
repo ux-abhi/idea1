@@ -29,7 +29,7 @@ struct InboxView: View {
         // shortcut: the list has a fixed width; make it draggable again only with a split that doesn't loop.
         HStack(spacing: 0) {
             list(shown)
-                .frame(width: 380)
+                .frame(minWidth: 240, idealWidth: 340, maxWidth: 380) // the reading pane gets the rest, even in a narrow window
             Divider()
             reader(picked)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -48,7 +48,7 @@ INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.productivity
 INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = Blink reads your calendars to show your next meeting in the notch.
 INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = Blink shows what's due today, and adds, completes, moves or deletes reminders when you ask it to.
 INFOPLIST_KEY_NSFaceIDUsageDescription = Blink uses Face ID so only you can open it.
-INFOPLIST_KEY_NSMicrophoneUsageDescription = When you ask Blink to take meeting notes, it turns what's said into text on this Mac. The sound itself is never kept.
+INFOPLIST_KEY_NSMicrophoneUsageDescription = Blink listens only when you ask: to dictate, for a voice command, or to take meeting notes. The sound itself is never kept.
 INFOPLIST_KEY_UILaunchScreen_Generation = YES
 INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait
 LD_RUNPATH_SEARCH_PATHS[sdk=macosx*] = $(inherited) @executable_path/../Frameworks

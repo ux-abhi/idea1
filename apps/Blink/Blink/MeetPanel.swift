@@ -85,6 +85,9 @@ struct MeetPanel: View {
                 else if let missing = missing(draft.wrappedValue) { Text(missing).font(.caption).foregroundStyle(.white.opacity(0.6)) }
                 Spacer()
                 if app.creatingMeet { ProgressView().controlSize(.small).accessibilityLabel("Creating meeting") }
+                // The draft survives clicking away, so dropping it is a choice of its own.
+                Button("Discard") { app.meetDraft = nil; done() }
+                    .disabled(app.creatingMeet)
                 Button("Create & Invite") { create(draft.wrappedValue) }
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(app.creatingMeet || app.googleAccount == nil || !ready(draft.wrappedValue))

@@ -38,8 +38,18 @@ public final class BlinkServer: Sendable {
         try keychain.set(JSONEncoder().encode(config), for: configKey)
     }
 
+    /// Forgets the server on this Mac, but keeps its address and public key aside so setup can offer "Reconnect"
+    /// (someone who used Create My Server never saw them).
     public static func forget(keychain: Keychain) async {
+        if let data = try? keychain.data(for: configKey) { try? keychain.set(data, for: previousKey) }
         try? keychain.remove(configKey)
+    }
+
+    private static let previousKey = "server.previous"
+
+    /// The server this Mac used before Restart Setup or a switch, if any.
+    public static func previous(keychain: Keychain) -> ServerConfig? {
+        (try? keychain.data(for: previousKey)).flatMap { try? JSONDecoder().decode(ServerConfig.self, from: $0) }
     }
 
     public func signIn(email: String, password: String) async throws -> String {

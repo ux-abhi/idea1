@@ -11,7 +11,7 @@ import SwiftUI
 struct ShortcutSettings: View {
     @AppStorage(BlinkShortcut.fnTwiceKey) private var fnTwice = false
     @AppStorage(BlinkShortcut.twiceKeyKey) private var twiceKey = kVK_Function
-    @AppStorage(Dictation.groqKey) private var groq = true
+    @AppStorage(Dictation.groqKey) private var groq = false
     @AppStorage(VoiceActions.speaksKey) private var speaks = true
     @State private var trusted = AXIsProcessTrusted()
 

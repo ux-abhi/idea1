@@ -26,7 +26,7 @@ struct BlinkApp: App {
         #if os(macOS)
         // blink://signin goes to the app delegate; no scene opens a window for a link (each would stack another copy).
         .handlesExternalEvents(matching: [])
-        .defaultSize(width: 920, height: 640)
+        .defaultSize(width: 1120, height: 700) // sidebar, Inbox list, a readable mail and the Blink panel side by side
         .commands { HelpCommands() }
         #endif
 
