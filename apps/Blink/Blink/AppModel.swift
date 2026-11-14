@@ -1844,7 +1844,11 @@ final class AppModel {
     /// This month and last, so the page can compare.
     /// A new capture link for one iPhone; the token is shown once (only its hash is stored).
     func makeCaptureLink(name: String) async -> String? {
-        guard let server, email != nil else { return nil }
+        guard let server, email != nil else {
+            moneyProblem = "Sign in to your server first (Settings › Server)."
+            return nil
+        }
+        moneyProblem = nil // an older money problem isn't about this link
         do {
             let token = try await server.makeCaptureToken(name: name)
             captureTokens = (try? await server.captureTokens()) ?? captureTokens
@@ -2435,21 +2439,30 @@ final class AppModel {
     }
 
     /// Renames the assistant everywhere: the app's labels at once, and the server (chat and voice commands use it).
-    func setAssistantName(_ name: String) async {
+    /// Returns false when the server didn't save it (the name is then back as it was).
+    @discardableResult
+    func setAssistantName(_ name: String) async -> Bool {
         var caps = aiCaps
         caps.name = name == AssistantName.standard ? nil : name
         UserDefaults.standard.set(caps.name, forKey: AssistantName.key)
         await setAICaps(caps)
-        if aiCaps != caps { UserDefaults.standard.set(aiCaps.name, forKey: AssistantName.key) } // not saved: back as it was
+        guard aiCaps == caps else {
+            UserDefaults.standard.set(aiCaps.name, forKey: AssistantName.key) // not saved: back as it was
+            return false
+        }
+        return true
     }
 
     func setAICaps(_ caps: BlinkServer.AICaps) async {
         guard let server else { return }
         let before = aiCaps
         aiCaps = caps
-        do { try await server.setAICaps(caps) } catch {
+        do {
+            try await server.setAICaps(caps)
+            modelProblem = nil // an earlier failure is fixed now
+        } catch {
             aiCaps = before
-            modelProblem = "Couldn't change the limit. Check your connection and try again."
+            modelProblem = "Couldn't save that. Check your connection and try again."
         }
     }
 

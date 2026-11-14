@@ -148,6 +148,10 @@ struct MenuBarContent: View {
     @AppStorage(BlinkShortcut.ask.defaultsKey) private var askKeys: Data?
     @AppStorage(BlinkShortcut.clipboard.defaultsKey) private var clipboardKeys: Data?
     @AppStorage(BlinkShortcut.search.defaultsKey) private var searchKeys: Data?
+    @AppStorage(BlinkShortcut.notes.defaultsKey) private var notesKeys: Data?
+    @AppStorage(BlinkShortcut.dictate.defaultsKey) private var dictateKeys: Data?
+    @AppStorage(BlinkShortcut.command.defaultsKey) private var commandKeys: Data?
+    @AppStorage(AssistantName.key) private var name: String?
 
     var body: some View {
         if model.locked {
@@ -168,6 +172,13 @@ struct MenuBarContent: View {
             .keyboardShortcut(BlinkShortcut.clipboard.combo?.keyboardShortcut)
         Button("Search…", action: search)
             .keyboardShortcut(BlinkShortcut.search.combo?.keyboardShortcut)
+        // Also VoiceOver's way in: everything the notch's right-click menu and the shortcuts can start.
+        Button(model.noteTaker.isRunning ? "Stop and Save Meeting Notes" : "Take Meeting Notes") { Task { await model.toggleNotes() } }
+            .keyboardShortcut(BlinkShortcut.notes.combo?.keyboardShortcut)
+        Button(model.dictation.isListening && model.dictation.purpose == .type ? "Type What I Said" : "Dictate") { Task { await model.toggleDictation() } }
+            .keyboardShortcut(BlinkShortcut.dictate.combo?.keyboardShortcut)
+        Button(model.dictation.isListening && model.dictation.purpose == .command ? "Do It Now" : "Voice Command…") { Task { await model.toggleCommand() } }
+            .keyboardShortcut(BlinkShortcut.command.combo?.keyboardShortcut)
         Button("Start Focus (25 min)") { model.startFocus() }
         Menu("Timer") {
             ForEach([5, 10, 15, 30, 60], id: \.self) { m in Button("\(m) min") { model.startTimer(minutes: Double(m)) } }

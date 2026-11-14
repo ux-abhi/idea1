@@ -50,6 +50,10 @@ enum BlinkShortcut: String, CaseIterable, Identifiable {
 
     var defaultsKey: String { "shortcut." + rawValue }
 
+    /// Shortcuts macOS refused to register (another app or macOS itself owns the keys), as raw values joined by
+    /// commas; the recorder shows "Taken" next to them. Only what macOS reports: some apps' keys aren't reported.
+    static let takenKey = "shortcuts.taken"
+
     var combo: KeyCombo? {
         guard let data = UserDefaults.standard.data(forKey: defaultsKey) else { return standard }
         return try? JSONDecoder().decode(KeyCombo.self, from: data) // cleared: empty data, no shortcut
@@ -101,6 +105,8 @@ final class GlobalHotkey {
     nonisolated(unsafe) private static var installed = false
     private let id: UInt32
     nonisolated(unsafe) private var ref: EventHotKeyRef?
+    /// Whether macOS took the keys (false: another app or macOS already has them).
+    private(set) var registered = false
 
     init(id: UInt32, combo: KeyCombo, action: @escaping @MainActor () -> Void) {
         self.id = id
@@ -122,6 +128,7 @@ final class GlobalHotkey {
         }
         let hotKeyID = EventHotKeyID(signature: OSType(0x424C_4E4B), id: id) // "BLNK"
         let status = RegisterEventHotKey(combo.keyCode, combo.modifiers, hotKeyID, GetApplicationEventTarget(), 0, &ref)
+        registered = status == noErr
         shortcutLog.info("hotkey \(id) \(combo.label, privacy: .public) registered: \(status)")
     }
 

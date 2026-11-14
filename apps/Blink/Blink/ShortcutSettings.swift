@@ -108,9 +108,13 @@ struct ShortcutRecorder: View {
     @State private var problem: String?
     /// The modifiers held so far while recording ("⌃⌥"), so the owner sees the keys arrive.
     @State private var held = ""
+    @AppStorage(BlinkShortcut.takenKey) private var taken = ""
 
     var body: some View {
         HStack(spacing: 8) {
+            if !recording, problem == nil, taken.split(separator: ",").contains(Substring(shortcut.rawValue)) {
+                Text("Taken by another app: pick other keys").font(.caption).foregroundStyle(.orange)
+            }
             if let problem {
                 // Wraps instead of being cut off next to the button.
                 Text(problem).font(.caption).foregroundStyle(.orange)

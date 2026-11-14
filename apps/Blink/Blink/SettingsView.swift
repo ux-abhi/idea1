@@ -565,6 +565,7 @@ struct AssistantNameField: View {
         LabeledContent("Name") {
             HStack {
                 if let problem { Text(problem).font(.caption).foregroundStyle(.orange) }
+                else if !model.capsLoaded { Text("Connecting to your server…").font(.caption).foregroundStyle(.secondary) }
                 TextField("Name", text: $typed, prompt: Text(AssistantName.standard))
                     .labelsHidden()
                     .multilineTextAlignment(.trailing)
@@ -586,6 +587,11 @@ struct AssistantNameField: View {
         problem = nil
         typed = name
         guard name != AssistantName.current else { return }
-        Task { await model.setAssistantName(name) }
+        Task {
+            if !(await model.setAssistantName(name)) {
+                typed = AssistantName.current
+                problem = "Couldn't save it. Check your connection and try again."
+            }
+        }
     }
 }

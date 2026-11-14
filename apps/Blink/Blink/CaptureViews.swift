@@ -7,6 +7,7 @@ import SwiftUI
 struct ApplePayCard: View {
     @Environment(AppModel.self) private var model
     @State private var settingUp = false
+    @State private var removing: CaptureToken?
 
     var body: some View {
         DashCard("Apple Pay", trailing: model.captureTokens.isEmpty ? nil : "Add Another iPhone", action: model.captureTokens.isEmpty ? nil : { settingUp = true }) {
@@ -30,13 +31,19 @@ struct ApplePayCard: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Button("Remove", role: .destructive) { Task { await model.removeCaptureLink(token) } }
+                        Button("Remove", role: .destructive) { removing = token }
                             .buttonStyle(.borderless)
                             .help("This iPhone stops sending taps. Make a new link to start again.")
                     }
                     .accessibilityElement(children: .combine)
                 }
             }
+        }
+        .confirmationDialog("Remove \(removing?.name ?? "this iPhone")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            presenting: removing) { token in
+            Button("Remove", role: .destructive) { Task { await model.removeCaptureLink(token) } }
+        } message: { _ in
+            Text("Its Apple Pay taps stop coming in. To start again you make a new link and redo the Shortcuts steps on the iPhone.")
         }
         .sheet(isPresented: $settingUp) { CaptureSetup() }
     }
@@ -74,6 +81,9 @@ private struct CaptureSetup: View {
                 Text("Blink makes a private link for this iPhone. Your iPhone sends each Apple Pay tap to your own server with it; nobody else sees your spending.")
                     .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 TextField("Name", text: $name, prompt: Text("e.g. iPhone 15")).textFieldStyle(.roundedBorder)
+                if let problem = model.moneyProblem, !making {
+                    Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                }
             }
             HStack {
                 Spacer()

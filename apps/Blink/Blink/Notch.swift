@@ -496,9 +496,15 @@ final class NotchController {
     /// The owner's shortcuts (Settings › Shortcuts), and fn twice for dictation when it's on.
     private func registerShortcuts() {
         hotkeys = [] // the old ones go first, so a shortcut moved from one action to another never fires both
+        var taken: [String] = []
         hotkeys = BlinkShortcut.allCases.enumerated().compactMap { index, shortcut in
-            shortcut.combo.map { GlobalHotkey(id: UInt32(index + 1), combo: $0) { [weak self] in self?.run(shortcut) } }
+            shortcut.combo.map {
+                let hotkey = GlobalHotkey(id: UInt32(index + 1), combo: $0) { [weak self] in self?.run(shortcut) }
+                if !hotkey.registered { taken.append(shortcut.rawValue) }
+                return hotkey
+            }
         }
+        UserDefaults.standard.set(taken.joined(separator: ","), forKey: BlinkShortcut.takenKey)
         fnMonitor = nil
         guard UserDefaults.standard.bool(forKey: BlinkShortcut.fnTwiceKey) else { return }
         fnMonitor = FnMonitor(key: BlinkShortcut.twiceKey, tapped: { [weak self] tap in

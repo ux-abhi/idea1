@@ -1,6 +1,7 @@
 // © Pexilim
 import CryptoKit
 import Foundation
+import os
 
 /// One-click server setup (owner decision 2026-10-12): after "Sign in with Supabase", Blink creates the owner's own free
 /// project and installs the database and server functions bundled in the app. The Supabase token is used only for this
@@ -129,12 +130,11 @@ public enum ServerSetup {
             let (data, response) = try await session.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(status) else {
-                let detail = String(data: data, encoding: .utf8).map { String($0.prefix(200)) } ?? ""
-                // Which call and Supabase's own words, so a refusal can be traced (a missing permission vs. an expired sign-in).
+                let detail = String(data: data, encoding: .utf8).map { String($0.prefix(300)) } ?? ""
+                // Which call and Supabase's own words go to the log, so a refusal can be traced; the owner gets a sentence.
                 let call = request.url?.path.split(separator: "/").suffix(2).joined(separator: "/") ?? ""
-                throw Problem(message: status == 401 || status == 403
-                              ? "Supabase didn't allow that (\(status), \(call)). Sign in with Supabase again. \(detail)"
-                              : "Supabase answered \(status) (\(call)). \(detail)")
+                setupLog.error("supabase \(status) \(call, privacy: .public): \(detail, privacy: .public)")
+                throw Problem(message: ServerSetup.plainProblem(status: status, detail: detail))
             }
             return data
         }
@@ -284,7 +284,7 @@ public enum ServerSetup {
         if status == 422 || status == 400, text.localizedCaseInsensitiveContains("already") { return }
         // Busy, or the no-email setting isn't live yet (Supabase then tries to send a confirmation and hits its limit).
         if status == 429 || status >= 500 { throw Busy() }
-        guard (200..<300).contains(status) else { throw Problem(message: "Couldn't create your login: \(text.prefix(160))") }
+        guard (200..<300).contains(status) else { throw loginProblem(status, text) }
     }
 
     /// The server isn't ready for the sign-up yet; try again in a few seconds.
@@ -304,7 +304,7 @@ public enum ServerSetup {
         let text = String(data: data, encoding: .utf8) ?? ""
         // Already there (a retry after a lost reply): that's the login we wanted.
         if status == 422, text.localizedCaseInsensitiveContains("already") { return }
-        guard (200..<300).contains(status) else { throw Problem(message: "Couldn't create your login: \(text.prefix(160))") }
+        guard (200..<300).contains(status) else { throw loginProblem(status, text) }
     }
 
     /// One bundled migration file, applied in a transaction together with its row in the migrations ledger: either both
@@ -371,5 +371,35 @@ public enum ServerSetup {
     public static func installable(_ names: [String]) -> [(slug: String, verifyJWT: Bool)] {
         names.filter { !$0.hasPrefix("_") && !["signin", "mail-probe"].contains($0) }.sorted()
             .map { ($0, !["mail", "capture", "google", "mcp"].contains($0)) } // google: Google's redirect carries no JWT; mcp: its link code
+    }
+}
+
+let setupLog = Logger(subsystem: "com.pexilim.blink", category: "setup")
+
+extension ServerSetup {
+    /// What a refusal from Supabase means for the owner, and what to do next; the raw reply goes to the log only.
+    public static func plainProblem(status: Int, detail: String) -> String {
+        let said = detail.lowercased()
+        switch status {
+        case 401, 403:
+            return "Supabase didn't allow that. Sign in with Supabase again, then try once more."
+        case _ where said.contains("limit") || said.contains("maximum") || status == 402:
+            return "Your Supabase account has no free project left (free accounts get two). Pause or delete one at supabase.com/dashboard, then try again."
+        case 404:
+            return "Supabase couldn't find that. Check you picked the right Supabase account, then try again."
+        case 409:
+            return "That already exists in your Supabase account. Pick it instead, or use another name."
+        case 429:
+            return "Supabase is busy. Wait a minute, then try again."
+        case 500...:
+            return "Supabase is having trouble right now. Try again in a few minutes (status: status.supabase.com)."
+        default:
+            return "Supabase couldn't do that (code \(status)). Try again; if it keeps happening, check status.supabase.com."
+        }
+    }
+
+    static func loginProblem(_ status: Int, _ text: String) -> Problem {
+        setupLog.error("create login \(status): \(String(text.prefix(300)), privacy: .public)")
+        return Problem(message: "Couldn't create your login on the new server. Wait a minute, then try again.")
     }
 }

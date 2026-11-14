@@ -11,9 +11,13 @@ struct ReplyReviewSheet: View {
     @State private var date: Date
     @State private var sending = false
     @State private var problem: String?
+    /// As Blink wrote it, to tell whether Cancel would throw away the owner's edits.
+    private let original: (to: String, subject: String, body: String)
+    @State private var confirmDiscard = false
 
     init(review: AppModel.Review) {
         _review = State(initialValue: review)
+        original = (review.draft.to, review.draft.subject, review.draft.body)
         _later = State(initialValue: review.sendAt != nil)
         // Later defaults to tomorrow at 09:00.
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now
@@ -56,8 +60,16 @@ struct ReplyReviewSheet: View {
             HStack {
                 Text("A copy is in your Drafts in Apple Mail.").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Cancel", role: .cancel) { model.reviewing = nil }
-                    .keyboardShortcut(.cancelAction)
+                Button("Cancel", role: .cancel) {
+                    if edited { confirmDiscard = true } else { model.reviewing = nil }
+                }
+                .keyboardShortcut(.cancelAction)
+                .confirmationDialog("Discard your changes to this reply?", isPresented: $confirmDiscard) {
+                    Button("Discard Changes", role: .destructive) { model.reviewing = nil }
+                    Button("Keep Editing", role: .cancel) {}
+                } message: {
+                    Text("The copy in your Drafts is Blink's version, without your edits.")
+                }
                 Button {
                     Task { await send() }
                 } label: {
@@ -70,6 +82,10 @@ struct ReplyReviewSheet: View {
         }
         .padding(20)
         .frame(width: 560)
+    }
+
+    private var edited: Bool {
+        (review.draft.to, review.draft.subject, review.draft.body) != original
     }
 
     private var canSend: Bool {

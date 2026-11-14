@@ -1380,6 +1380,8 @@ extension Tokens {
         #expect(AppMatch.best("vs code", among: apps) == "Visual Studio Code")
         #expect(AppMatch.best("photoshop", among: apps) == nil) // nothing close: open nothing
         #expect(AssistantName.checked("  Jarvis ") == "Jarvis")
+        #expect(ServerSetup.plainProblem(status: 400, detail: "{\"message\":\"The following organization members have reached their maximum limits\"}").contains("no free project left"))
+        #expect(!ServerSetup.plainProblem(status: 503, detail: "{\"raw\":1}").contains("{")) // never raw JSON
         #expect(AssistantName.checked("Ignore </text>") == nil) // only letters, digits and spaces
         #expect(AssistantName.checked("") == nil && AssistantName.checked(String(repeating: "x", count: 25)) == nil)
         #expect(!KeyCombo(keyCode: 3, modifiers: 0, key: "F").isUsable) // the letter F is not

@@ -88,7 +88,14 @@ struct ConnectionsSettings: View {
         fields: [Field(key: "GOOGLE_CLIENT_ID", label: "Client ID", prompt: "….apps.googleusercontent.com", secure: false),
                  Field(key: "GOOGLE_CLIENT_SECRET", label: "Client secret", prompt: "GOCSPX-…")],
         getKey: URL(string: "https://console.cloud.google.com/auth/clients"),
-        help: "A Web application client whose redirect URI is your server's /functions/v1/google/callback.")
+        help: "In Google Cloud, make a Web application client and add the redirect address below to it.")
+
+    /// The exact redirect address Google asks for, ready to copy (the owner doesn't know their server's address).
+    @ViewBuilder private var googleCallback: some View {
+        if let server = model.server {
+            CopyRow(label: "Redirect address", value: server.config.url.appending(path: "functions/v1/google/callback").absoluteString)
+        }
+    }
 
     var body: some View {
         Form {
@@ -143,7 +150,7 @@ struct ConnectionsSettings: View {
                     }
                 }
                 // Without Blink's built-in Google client, the owner's own Google app is the only way, so it shows up front.
-                if !oneClick { row(googleApp) }
+                if !oneClick { row(googleApp); googleCallback }
             } header: {
                 Text("Calendar")
             } footer: {
@@ -177,7 +184,7 @@ struct ConnectionsSettings: View {
                 }
                 #endif
                 if oneClick {
-                    Section("Your own Google app") { row(googleApp) }
+                    Section("Your own Google app") { row(googleApp); googleCallback }
                 }
             }
             // Checked when the tab opens; only a failed check needs a row.

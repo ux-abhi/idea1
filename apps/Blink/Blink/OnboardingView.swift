@@ -302,11 +302,15 @@ private struct AccountStep: View {
 
     var body: some View {
         StepCard(title: "Sign in", subtitle: "Sign in with the Supabase account that owns your server. Blink remembers it on this Mac.") {
-            SupabaseSignIn()
-            DisclosureGroup("Sign in with email instead", isExpanded: Binding(get: { withEmail ?? (model.savedLogin != nil) }, set: { withEmail = $0 })) {
+            // Without the sign-in helper (some builds) the Supabase button can't work: email is the way, shown open.
+            if ServerInstaller.helper != nil { SupabaseSignIn() }
+            DisclosureGroup("Sign in with email instead",
+                            isExpanded: Binding(get: { withEmail ?? (model.savedLogin != nil || ServerInstaller.helper == nil) }, set: { withEmail = $0 })) {
                 SignInView()
                     .frame(minHeight: 200, maxHeight: 300)
             }
+            Button("Wrong server? Use a different one") { Task { await model.useDifferentServer() } }
+                .buttonStyle(.borderless).font(.callout)
         }
     }
 }

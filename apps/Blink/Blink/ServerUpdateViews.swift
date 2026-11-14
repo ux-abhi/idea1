@@ -22,6 +22,10 @@ struct UpdateServerButton: View {
                     Text(installer.step?.updateTitle ?? "Signing in with Supabase…").font(.callout).foregroundStyle(.secondary)
                 }
             }
+            if ServerInstaller.helper == nil {
+                Text("This copy of Blink can't update the server by itself. Update it from the Blink project with the Supabase CLI, or use a full build of Blink.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
             if let problem = installer.problem {
                 Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.callout)
             }
