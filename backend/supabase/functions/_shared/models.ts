@@ -4,7 +4,7 @@
 import { secret } from "./secrets.ts";
 
 export type Provider = "claude" | "groq" | "openrouter" | "custom";
-export type Feature = "chat" | "content";
+export type Feature = "chat" | "content" | "voice";
 export type Model = {
   id: string;
   provider: Provider;
@@ -210,6 +210,14 @@ export function capProblem(model: Model, settings: unknown, usage: { model: stri
 
 function envCap(name: string): string | undefined {
   try { return Deno.env.get(name); } catch { return undefined; } // tests run without env access
+}
+
+/** What the owner calls their assistant (Settings › General, profile.settings.assistant_name): letters, digits and
+ *  spaces, up to 24 characters; "Blink" when unset or anything else. It goes inside prompts, so it's kept that plain. */
+export function assistantName(settings: unknown): string {
+  const raw = (settings as Record<string, unknown> | null)?.assistant_name;
+  const name = typeof raw === "string" ? raw.trim() : "";
+  return /^[\p{L}\p{N} ]{1,24}$/u.test(name) ? name : "Blink";
 }
 
 /** Spend rows for the cap checks: the last 30 days (the owner can read their own usage). */

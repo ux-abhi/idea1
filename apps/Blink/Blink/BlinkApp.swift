@@ -162,7 +162,7 @@ struct MenuBarContent: View {
             Text("\(timer.label): \(FocusTimer.clock(timer.remaining(now: .now))) left\(timer.isPaused ? " (paused)" : "")")
         }
         Divider()
-        Button("Ask Blink…", action: ask)
+        Button("Ask \(AssistantName.current)…", action: ask)
             .keyboardShortcut(BlinkShortcut.ask.combo?.keyboardShortcut)
         Button("Clipboard…", action: clipboard)
             .keyboardShortcut(BlinkShortcut.clipboard.combo?.keyboardShortcut)

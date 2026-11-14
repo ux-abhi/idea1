@@ -53,6 +53,9 @@ final class NotchModel {
     var input = ""
     /// A one-line announcement for the peek (e.g. important mail), instead of the day's status line.
     var peekNote: String?
+    /// Lines a peek note needs at the wide peek (about 55 characters each), up to 3.
+    // shortcut: counts characters instead of measuring the text; measure it if notes in other scripts wrap badly.
+    var peekLines: Int { min(3, max(1, Int((Double(peekNote?.count ?? 0) / 55).rounded(.up)))) }
     /// After the evening check-in the eyes stay Sleepy until the owner's wake time.
     var sleepyUntil: Date?
 
@@ -72,7 +75,10 @@ final class NotchModel {
         let rest = notesShown ? CGSize(width: max(ears.width, 280), height: ears.height + 8 + Self.notesStrip) : ears
         switch level {
         case .rest: return rest
-        case .peek: return CGSize(width: max(rest.width, 320), height: max(rest.height, ears.height + 36))
+        case .peek:
+            let long = (peekNote?.count ?? 0) > 38
+            return CGSize(width: max(rest.width, long ? 480 : 320),
+                          height: max(rest.height, ears.height + 36 + CGFloat(long ? peekLines - 1 : 0) * 18))
         // Eyes row, 8 pt gap, the measured content, 20 pt to breathe at the bottom.
         case .open: return CGSize(width: max(rest.width, chatting || searching || meeting ? Self.chatWidth : Self.openWidth),
                                   height: ears.height + 8 + min(glanceHeight, Self.maxGlanceHeight) + 20)
@@ -483,7 +489,7 @@ final class NotchController {
         }
         fnMonitor = nil
         guard UserDefaults.standard.bool(forKey: BlinkShortcut.fnTwiceKey) else { return }
-        fnMonitor = FnMonitor(tapped: { [weak self] tap in
+        fnMonitor = FnMonitor(key: BlinkShortcut.twiceKey, tapped: { [weak self] tap in
             guard let app = self?.app else { return }
             // Two presses start; once listening, one press types it.
             if app.dictation.isListening || tap == .double { Task { await app.toggleDictation() } }
@@ -500,6 +506,7 @@ final class NotchController {
         case .search: toggleSearch()
         case .notes: Task { await app.toggleNotes() }
         case .dictate: Task { await app.toggleDictation() }
+        case .command: Task { await app.toggleCommand() }
         }
     }
 
@@ -883,6 +890,9 @@ struct NotchView: View {
                     Text(model.peekNote ?? (app.thinking ? "Thinking" : app.drafting ? "Writing drafts" : model.evening ? "Plan tomorrow?" : statusLine))
                         .font(.callout.weight(.medium))
                         .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .transition(contentTransition)
             case .open:
@@ -1234,7 +1244,7 @@ struct ChatPanel: View {
                 CommandHint(input: input, pick: pick)
             } else if app.chat.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Ask Blink").font(.title3.weight(.semibold))
+                    Text("Ask \(AssistantName.current)").font(.title3.weight(.semibold))
                     Text("“What's left today?” · “Plan my afternoon”")
                         .font(.callout).foregroundStyle(.white.opacity(0.55))
                     Text("Or just say it: “remind me to call Sam at 4pm” · “task send invoice friday” · “timer 10 min”")
@@ -1567,7 +1577,7 @@ struct SplitInput: View, Animatable {
                 .fixedSize()
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
-            TextField(open ? "Ask Blink, or “remind me to…”" : "Ask Blink…", text: Bindable(notch).input)
+            TextField(open ? "Ask \(AssistantName.current), or “remind me to…”" : "Ask \(AssistantName.current)…", text: Bindable(notch).input)
                 .textFieldStyle(.plain)
                 .font(.body)
                 .foregroundStyle(.white)
@@ -1616,19 +1626,42 @@ struct SplitInput: View, Animatable {
     }
 }
 
-/// Hovered: a soft blue glow rising from inside the bottom edge, like the app icon. It doesn't move, so it costs
-/// nothing while shown; it only fades in and out.
+/// Hovered: a field of blue pixels rising from inside the bottom edge, brightest at its middle (the PixelLoader's look,
+/// at the size of the notch). Each pixel twinkles slowly on its own beat; 15 fps, and only while hovered. Still under
+/// Reduce Motion.
 struct HoverGlow: View {
     let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Grid pitch and lit square, in points: big enough to read as pixels, not as a gradient.
+    private static let pitch: CGFloat = 8, dot: CGFloat = 5
 
     var body: some View {
-        // A hint, not a light: well under the glow token, close to the edge.
-        EllipticalGradient(colors: [.blue.opacity(Tokens.Glow.alpha * 0.4), .clear], center: .bottom, startRadiusFraction: 0, endRadiusFraction: 0.5)
-            .blur(radius: Tokens.Glow.blur)
-            .opacity(active ? 1 : 0)
-            .animation(.easeInOut(duration: Tokens.Motion.moodTint.dur), value: active)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        TimelineView(.animation(minimumInterval: 1 / 15, paused: !active || reduceMotion)) { context in
+            let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
+            Canvas { gc, size in
+                let cols = Int(size.width / Self.pitch) + 1, rows = Int(size.height / Self.pitch) + 1
+                let inset = (Self.pitch - Self.dot) / 2
+                for row in 0..<rows {
+                    for col in 0..<cols {
+                        let x = CGFloat(col) * Self.pitch, y = CGFloat(row) * Self.pitch
+                        // Distance from the bottom middle, across an ellipse as wide as the notch and 70% as tall.
+                        let dx = (x - size.width / 2) / (size.width / 2), dy = (size.height - y) / (size.height * 0.7)
+                        let falloff = max(0, 1 - (dx * dx + dy * dy).squareRoot())
+                        guard falloff > 0 else { continue }
+                        // Each pixel's own phase and speed, so they twinkle apart rather than pulse together.
+                        let seed = Double((col &* 73 &+ row &* 151 &+ col &* row &* 17) % 101) / 100
+                        let twinkle = 0.5 + 0.5 * sin(t * (0.8 + seed * 1.2) + seed * 2 * .pi)
+                        let alpha = falloff * falloff * (0.25 + 0.75 * twinkle) * 0.38
+                        let rect = CGRect(x: x + inset, y: y + inset, width: Self.dot, height: Self.dot)
+                        gc.fill(Path(roundedRect: rect, cornerRadius: 1.2), with: .color(.blue.opacity(alpha)))
+                    }
+                }
+            }
+        }
+        .opacity(active ? 1 : 0)
+        .animation(.easeInOut(duration: Tokens.Motion.moodTint.dur), value: active)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -1712,16 +1745,16 @@ struct NotesStrip: View {
         HStack(spacing: 8) {
             if dictation.isWriting {
                 PixelLoader(tint: .blue, size: 14)
-                Text("Writing it…").font(.callout.weight(.medium)).foregroundStyle(.white)
+                Text(dictation.purpose == .command ? "On it…" : "Writing it…").font(.callout.weight(.medium)).foregroundStyle(.white)
                 Spacer(minLength: 4)
             } else if dictation.isListening {
                 PixelLoader(tint: .blue, size: 14)
-                elapsed(since: dictation.startedAt, label: "Dictating")
+                elapsed(since: dictation.startedAt, label: dictation.purpose == .command ? "Listening" : "Dictating")
                 Spacer(minLength: 4)
                 Button("Cancel Dictation", systemImage: "xmark") { Task { await app.cancelDictation() } }
                     .help("Drop it (Esc)")
-                Button("Type It", systemImage: "checkmark") { Task { await app.toggleDictation() } }
-                    .help("Type what you said where you were typing (fn)")
+                Button(dictation.purpose == .command ? "Do It" : "Type It", systemImage: "checkmark") { Task { await app.toggleDictation() } }
+                    .help(dictation.purpose == .command ? "Do it now (it also starts when you pause)" : "Type what you said where you were typing (fn)")
             } else {
                 let paused = notes.isPaused
                 PixelLoader(tint: .red, size: 14)

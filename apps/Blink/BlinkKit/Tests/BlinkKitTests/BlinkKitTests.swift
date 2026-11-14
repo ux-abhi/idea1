@@ -1368,6 +1368,16 @@ extension Tokens {
         #expect(!KeyCombo(keyCode: 40, modifiers: 0, key: "K").isUsable)
         #expect(!KeyCombo(keyCode: 8, modifiers: KeyCombo.command, key: "C").isUsable) // would break ⌘C everywhere
         #expect(KeyCombo(keyCode: 8, modifiers: KeyCombo.command | KeyCombo.shift, key: "C").isUsable)
+        #expect(KeyCombo(keyCode: 96, modifiers: 0, key: "F5").isUsable) // an F-key alone is fine
+        let apps = ["Google Chrome", "Figma", "Figma Agent", "Safari", "Visual Studio Code", "Notes"]
+        #expect(AppMatch.best("chrome", among: apps) == "Google Chrome")
+        #expect(AppMatch.best("Figma", among: apps) == "Figma") // the app, not its helper
+        #expect(AppMatch.best("vs code", among: apps) == "Visual Studio Code")
+        #expect(AppMatch.best("photoshop", among: apps) == nil) // nothing close: open nothing
+        #expect(AssistantName.checked("  Jarvis ") == "Jarvis")
+        #expect(AssistantName.checked("Ignore </text>") == nil) // only letters, digits and spaces
+        #expect(AssistantName.checked("") == nil && AssistantName.checked(String(repeating: "x", count: 25)) == nil)
+        #expect(!KeyCombo(keyCode: 3, modifiers: 0, key: "F").isUsable) // the letter F is not
     }
 
     @Test func fnTwiceQuicklyIsADoublePress() {

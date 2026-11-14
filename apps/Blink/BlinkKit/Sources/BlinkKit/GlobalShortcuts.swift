@@ -21,9 +21,10 @@ public struct KeyCombo: Codable, Hashable, Sendable {
     }
 
     /// A global shortcut needs ⌃ or ⌥, or ⌘ with ⇧: plain keys would swallow typing, and ⌘ alone would take over every
-    /// app's ⌘C, ⌘V and ⌘Q.
+    /// app's ⌘C, ⌘V and ⌘Q. An F-key (F1–F20) works alone: nobody types with it.
     public var isUsable: Bool {
         modifiers & (Self.option | Self.control) != 0 || modifiers & (Self.command | Self.shift) == Self.command | Self.shift
+            || (key.count > 1 && key.first == "F" && key.dropFirst().allSatisfy(\.isNumber))
     }
 }
 
@@ -78,4 +79,53 @@ public enum Dictated {
         guard let first = words.first else { return "" }
         return first.uppercased() + words.dropFirst()
     }
+}
+
+/// A voice command's actions, as the server sends them back: open an app, or open a link (in a named browser).
+public struct VoiceCommand: Decodable, Sendable {
+    public struct Action: Decodable, Sendable, Equatable {
+        public let type: String
+        public let app: String?
+        public let url: String?
+    }
+    /// What was heard, the actions to take, and the short reply to say.
+    public let text: String
+    public let actions: [Action]
+    public let say: String
+}
+
+/// Finds the installed app a spoken name means: "chrome" → "Google Chrome", "figma" → "Figma".
+public enum AppMatch {
+    private static let aliases = ["chrome": "google chrome", "vs code": "visual studio code", "vscode": "visual studio code",
+                                  "settings": "system settings", "whatsapp": "whatsapp", "mail": "mail", "word": "microsoft word",
+                                  "excel": "microsoft excel", "powerpoint": "microsoft powerpoint", "teams": "microsoft teams"]
+
+    /// The best of `installed` (names without ".app") for `spoken`: the same name, then one that starts with it, then one
+    /// that has it as a whole word. nil when nothing fits, rather than opening the wrong app.
+    public static func best(_ spoken: String, among installed: [String]) -> String? {
+        var want = spoken.lowercased().replacingOccurrences(of: ".app", with: "").trimmingCharacters(in: .whitespaces)
+        want = aliases[want] ?? want
+        guard !want.isEmpty else { return nil }
+        let names = installed.map { ($0, $0.lowercased()) }
+        if let exact = names.first(where: { $0.1 == want }) { return exact.0 }
+        if let prefix = names.filter({ $0.1.hasPrefix(want) }).min(by: { $0.1.count < $1.1.count }) { return prefix.0 }
+        return names.filter { $0.1.split(separator: " ").contains(Substring(want)) }.min { $0.1.count < $1.1.count }?.0
+    }
+}
+
+/// What the owner calls their assistant: "Blink" unless renamed in Settings › General. The same rule as the server's:
+/// letters, digits and spaces, up to 24 characters.
+public enum AssistantName {
+    public static let key = "assistant.name"
+    public static let standard = "Blink"
+
+    /// The name to save, or nil when it isn't usable (then the field says why and nothing changes).
+    public static func checked(_ typed: String) -> String? {
+        let name = typed.trimmingCharacters(in: .whitespaces)
+        guard (1...24).contains(name.count), name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == " " }) else { return nil }
+        return name
+    }
+
+    /// The current name, for text that isn't a SwiftUI view watching it.
+    public static var current: String { UserDefaults.standard.string(forKey: key).flatMap(checked) ?? standard }
 }

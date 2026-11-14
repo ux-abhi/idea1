@@ -17,8 +17,16 @@
           "what": "Search everything, in the notch"
         },
         {
+          "keys": "⌃⌥D",
+          "what": "Dictate into any app: speak, then ⌃⌥D again to type it"
+        },
+        {
+          "keys": "⌃⌥B",
+          "what": "Voice command: open an app, search the web or play a song (\"open Chrome and play Alphas\")"
+        },
+        {
           "keys": "fn fn",
-          "what": "Dictate into any app: speak, then fn again to type it (turn on in Settings › Shortcuts)"
+          "what": "Or press a key twice to dictate (turn on in Settings › Shortcuts)"
         }
       ]
     },

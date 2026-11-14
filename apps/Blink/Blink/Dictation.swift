@@ -6,13 +6,17 @@ import BlinkKit
 import Carbon.HIToolbox
 import CoreMedia
 import Speech
+import Synchronization
 
 /// Dictation: speak, then Blink types it where you were typing. While you speak, the Mac's own model writes it down
 /// and the sound is recorded (AAC, in a temporary file) for Groq's Whisper, which is far better at Hindi and Hinglish;
 /// the Mac's text is the fallback when the server can't be reached. The file is deleted once used.
 @Observable
 final class Dictation {
+    /// Typing what's said, or a voice command ("open Chrome and play Alphas"), which ends on its own after a pause.
+    enum Purpose { case type, command }
     private(set) var isListening = false
+    private(set) var purpose = Purpose.type
     /// Groq's Whisper (Settings › Shortcuts), on unless the owner keeps dictation on this Mac.
     static let groqKey = "dictation.groq"
     static var usesGroq: Bool { UserDefaults.standard.object(forKey: groqKey) as? Bool ?? true }
@@ -24,9 +28,11 @@ final class Dictation {
     private var engine: AVAudioEngine?
     private var feed: SpeechFeed?
     private var lines: [TranscriptLine] = []
+    private var silenceWatch: Task<Void, Never>?
 
-    /// Starts listening to the mic. Returns why it couldn't, in a sentence the owner can act on.
-    func start(language: Locale) async -> String? {
+    /// Starts listening to the mic. Returns why it couldn't, in a sentence the owner can act on. `quiet` runs once the
+    /// owner has spoken and then paused (commands end themselves this way).
+    func start(language: Locale, purpose: Purpose = .type, quiet: (@MainActor () -> Void)? = nil) async -> String? {
         guard !isListening, !starting else { return nil }
         starting = true
         defer { starting = false }
@@ -51,13 +57,24 @@ final class Dictation {
                 return "Blink can't find a microphone. Check System Settings › Sound › Input."
             }
             let recording = try Recording(format: format)
+            let level = Loudness()
             // On the audio thread: @Sendable keeps it off the main actor, where it would trap.
             mic.installTap(onBus: 0, bufferSize: 4096, format: format) { @Sendable buffer, time in
                 recording.write(buffer)
+                level.hear(buffer)
                 feed.listen(buffer, captured: CMClockMakeHostTimeFromSystemUnits(time.hostTime))
             }
             try engine.start()
             (self.engine, self.feed, self.recording, startedAt, isListening) = (engine, feed, recording, .now, true)
+            self.purpose = purpose
+            if let quiet {
+                silenceWatch = Task { [weak self] in
+                    while !Task.isCancelled, self?.isListening == true {
+                        try? await Task.sleep(for: .milliseconds(200))
+                        if level.paused(after: .now) { quiet(); return }
+                    }
+                }
+            }
             return nil
         } catch {
             await started?.finish()
@@ -65,38 +82,83 @@ final class Dictation {
         }
     }
 
-    /// Stops and returns what the Mac heard (filler sounds removed) and the recording (nil if empty); the caller
-    /// deletes the recording.
-    func stop() async -> (text: String, audio: URL?) {
-        guard isListening else { return ("", nil) }
+    /// Stops the mic and returns the recording (nil if empty) at once, so it can be sent while the Mac's own model is
+    /// still finishing; the caller deletes the recording.
+    func stopRecording() -> URL? {
+        guard isListening else { return nil }
         isListening = false
+        silenceWatch?.cancel()
+        silenceWatch = nil
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
-        await feed?.finish() // the last words come out before this returns
-        feed = nil
         let audio = recording?.close()
         recording = nil
-        return (Dictated.clean(lines.sorted { $0.at < $1.at }.map(\.text).joined(separator: " ")), audio)
+        return audio
+    }
+
+    /// What the Mac heard (filler sounds removed), once its model has written the last words.
+    func macText() async -> String {
+        guard let feed else { return "" }
+        self.feed = nil // taken first, so a dictation started meanwhile keeps its own
+        await feed.finish()
+        return Dictated.clean(lines.sorted { $0.at < $1.at }.map(\.text).joined(separator: " "))
     }
 }
 
-/// The mic's sound as AAC in a temporary file (about 4 KB a second). Written on the audio thread only.
+/// How loud the mic is, to end a voice command once the owner stops talking: spoken, then 2 s quiet (a pause after
+/// "Hey Blink" isn't the end); or nothing at all for 8 s. Written on the audio thread, read on the main one.
+nonisolated private final class Loudness: Sendable {
+    private struct State { var started = Date.now, lastLoud: Date? }
+    private let state = Mutex(State())
+
+    func hear(_ buffer: AVAudioPCMBuffer) {
+        guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
+        var peak: Float = 0
+        for i in 0..<Int(buffer.frameLength) { peak = max(peak, abs(samples[i])) }
+        guard peak > 0.04 else { return } // about speaking level on a laptop mic; room noise stays under it
+        state.withLock { $0.lastLoud = .now }
+    }
+
+    func paused(after now: Date) -> Bool {
+        state.withLock { s in
+            guard let lastLoud = s.lastLoud else { return now.timeIntervalSince(s.started) > 8 }
+            return now.timeIntervalSince(lastLoud) > 2
+        }
+    }
+}
+
+/// The mic's sound as mono 16 kHz AAC in a temporary file (what Whisper hears anyway; a few KB a second). Mics can
+/// have several channels (a MacBook's has 3), which the encoder can't take at a low rate, so the first one is kept.
+/// Written on the audio thread only.
 nonisolated private final class Recording: @unchecked Sendable {
     let url = FileManager.default.temporaryDirectory.appending(path: "dictation-\(UUID().uuidString).m4a")
     private var file: AVAudioFile?
+    private let converter: AVAudioConverter
+    private let mono: AVAudioFormat
     private var frames: AVAudioFramePosition = 0
 
     init(format: AVAudioFormat) throws {
+        guard let mono = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: format, to: mono) else { throw CocoaError(.fileWriteUnknown) }
+        (self.mono, self.converter) = (mono, converter)
         file = try AVAudioFile(forWriting: url, settings: [
-            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: format.channelCount, AVEncoderBitRateKey: 32_000,
-        ], commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1,
+        ], commonFormat: .pcmFormatFloat32, interleaved: false)
     }
 
     func write(_ buffer: AVAudioPCMBuffer) {
-        guard (try? file?.write(from: buffer)) != nil else { return }
-        frames += AVAudioFramePosition(buffer.frameLength)
+        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * mono.sampleRate / buffer.format.sampleRate) + 1
+        guard let out = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: capacity) else { return }
+        var given = false
+        let status = converter.convert(to: out, error: nil) { _, state in
+            if given { state.pointee = .noDataNow; return nil }
+            given = true
+            state.pointee = .haveData
+            return buffer
+        }
+        guard status != .error, out.frameLength > 0, (try? file?.write(from: out)) != nil else { return }
+        frames += AVAudioFramePosition(out.frameLength)
     }
 
     /// Finishes the file; nil (and no file) when nothing was recorded.

@@ -2,6 +2,7 @@
 import BlinkKit
 import EventKit
 import Foundation
+import os
 import SwiftUI
 #if os(iOS)
 import UIKit
@@ -1529,31 +1530,77 @@ final class AppModel {
     /// within 10 minutes), else untitled notes.
     /// Starts dictation, or ends it and types what was said where the owner was typing.
     func toggleDictation() async {
+        if dictation.isListening, dictation.purpose == .command { return await runCommand() }
         guard dictation.isListening else {
             if let problem = await dictation.start(language: MeetingRecorder.language) { announce(problem, failed: true) }
+            else if Dictation.usesGroq, let server { Task { await server.warmDictate() } }
             return
         }
-        var (text, audio) = await dictation.stop()
+        let audio = dictation.stopRecording()
+        defer { if let audio { try? FileManager.default.removeItem(at: audio) } }
+        let mac = Task { await dictation.macText() } // finishes alongside Groq; only waited for if Groq can't help
+        var text: String?
         // Groq's Whisper when it's picked and the server answers; the Mac's own text otherwise.
-        if let audio {
-            defer { try? FileManager.default.removeItem(at: audio) }
-            if Dictation.usesGroq, let server, let data = try? Data(contentsOf: audio) {
-                dictation.isWriting = true
-                do { text = try await server.dictate(data, language: MeetingRecorder.language.identifier(.bcp47)) } catch {
-                    announce("Groq couldn't hear it (\(error.localizedDescription)), so this is the Mac's version.", failed: true)
-                }
-                dictation.isWriting = false
+        if let audio, Dictation.usesGroq, let server, let data = try? Data(contentsOf: audio) {
+            dictation.isWriting = true
+            do { text = try await server.dictate(data, language: MeetingRecorder.language.identifier(.bcp47)) } catch {
+                announce("Groq couldn't hear it (\(error.localizedDescription)), so this is the Mac's version.", failed: true)
             }
+            dictation.isWriting = false
         }
-        guard !text.isEmpty else { return announce("Didn't catch anything. Try again a little closer to the mic.", failed: true) }
-        if !(await Paster.paste(text)) {
+        let said: String
+        if let text { said = text } else { said = await mac.value }
+        guard !said.isEmpty else { return announce("Didn't catch anything. Try again a little closer to the mic.", failed: true) }
+        if !(await Paster.paste(said)) {
             announce("Copied what you said: press ⌘V. To type it for you, allow Blink in System Settings › Privacy & Security › Accessibility.")
         }
     }
 
+    /// ⌃⌥B: listens for a command ("open Chrome and play Alphas"), which runs once the owner pauses or presses it again.
+    func toggleCommand() async {
+        if dictation.isListening { return dictation.purpose == .command ? await runCommand() : await toggleDictation() }
+        if let problem = await dictation.start(language: MeetingRecorder.language, purpose: .command, quiet: { [weak self] in
+            Task { await self?.runCommand() }
+        }) {
+            announce(problem, failed: true)
+        } else if let server { Task { await server.warmDictate() } }
+    }
+
+    /// Sends what was said to the voice model and does what it asks: opens apps and links, then says the reply.
+    private func runCommand() async {
+        guard dictation.isListening else { return }
+        let audio = dictation.stopRecording()
+        defer { if let audio { try? FileManager.default.removeItem(at: audio) } }
+        let mac = Task { await dictation.macText() } // finishes alongside Groq; only waited for when it's needed
+        guard let server else { return announce("Voice commands need your server. Sign in in Settings.", failed: true) }
+        dictation.isWriting = true
+        defer { dictation.isWriting = false }
+        let language = MeetingRecorder.language.identifier(.bcp47)
+        let plan: VoiceCommand
+        do {
+            // Groq's Whisper hears it when picked; otherwise (or with no recording) the Mac's words go instead.
+            if Dictation.usesGroq, let audio, let data = try? Data(contentsOf: audio) {
+                plan = try await server.command(data, language: language)
+            } else {
+                let heard = await mac.value
+                guard !heard.isEmpty else { return announce("Didn't catch that. Try again a little closer to the mic.", failed: true) }
+                plan = try await server.command(nil, text: heard, language: language)
+            }
+        } catch {
+            return announce(error.localizedDescription, failed: true)
+        }
+        shortcutLog.info("voice: heard \(plan.text, privacy: .public) → \(plan.actions.map { "\($0.type) \($0.app ?? "") \($0.url ?? "")" }, privacy: .public), says \(plan.say, privacy: .public)")
+        guard !plan.text.isEmpty else { return announce("Didn't catch that. Try again a little closer to the mic.", failed: true) }
+        let problem = await VoiceActions.run(plan.actions)
+        let reply = problem ?? plan.say
+        announce(reply, failed: problem != nil || plan.actions.isEmpty)
+        VoiceActions.say(reply)
+    }
+
     /// Stops dictation without typing anything (Esc, or ✕ in the notch).
     func cancelDictation() async {
-        if let audio = await dictation.stop().audio { try? FileManager.default.removeItem(at: audio) }
+        if let audio = dictation.stopRecording() { try? FileManager.default.removeItem(at: audio) }
+        _ = await dictation.macText() // ends the Mac's model too
     }
 
     func toggleNotes() async {
@@ -2380,7 +2427,20 @@ final class AppModel {
         guard let server, email != nil, let prefs = try? await server.modelPrefs() else { return }
         modelPrefs = prefs
         // A failed read keeps what's shown: saving a guess would wipe the other limit (settings is written whole).
-        if let caps = try? await server.aiCaps() { aiCaps = caps; capsLoaded = true }
+        if let caps = try? await server.aiCaps() {
+            aiCaps = caps
+            capsLoaded = true
+            UserDefaults.standard.set(caps.name, forKey: AssistantName.key) // the app's labels read it from here
+        }
+    }
+
+    /// Renames the assistant everywhere: the app's labels at once, and the server (chat and voice commands use it).
+    func setAssistantName(_ name: String) async {
+        var caps = aiCaps
+        caps.name = name == AssistantName.standard ? nil : name
+        UserDefaults.standard.set(caps.name, forKey: AssistantName.key)
+        await setAICaps(caps)
+        if aiCaps != caps { UserDefaults.standard.set(aiCaps.name, forKey: AssistantName.key) } // not saved: back as it was
     }
 
     func setAICaps(_ caps: BlinkServer.AICaps) async {

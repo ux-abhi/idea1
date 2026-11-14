@@ -422,8 +422,8 @@ private struct SpaceCanvasView: View {
         .offset(x: 10, y: -10)
         .scaleEffect(1 / scale, anchor: .bottomLeading) // same size at every zoom, still on the corner
         .disabled(model.thinking)
-        .help("Ask Blink about this card")
-        .accessibilityLabel("Ask Blink about \(name(of: node))")
+        .help("Ask \(AssistantName.current) about this card")
+        .accessibilityLabel("Ask \(AssistantName.current) about \(name(of: node))")
     }
 
     private struct Help { let title: String; let symbol: String; let prompt: String }
@@ -529,7 +529,7 @@ private struct SpaceCanvasView: View {
     private func menu(_ node: SpaceNode) -> some View {
         switch content(of: node) {
         case .project:
-            Button("Ask Blink About This Plan", action: askBlink)
+            Button("Ask \(AssistantName.current) About This Plan", action: askBlink)
         case .item(let item):
             Button("Edit") { edit(node) }
             if item.type == .note {
@@ -775,7 +775,7 @@ private struct SpaceCanvasView: View {
             barButton("Heading", symbol: "textformat") { addMark(.heading) }
             barButton("Section", symbol: "rectangle.dashed") { addMark(.section) }
             Divider().frame(height: 18).padding(.horizontal, 6)
-            barButton("Ask Blink", symbol: "sparkles", action: askBlink)
+            barButton("Ask \(AssistantName.current)", symbol: "sparkles", action: askBlink)
                 .environment(\.showsWords, true)
                 .foregroundStyle(Color.accentColor)
                 .disabled(model.thinking)
@@ -793,7 +793,7 @@ private struct SpaceCanvasView: View {
         }
         .buttonStyle(.plain)
         // The tooltip names it first, since the bar shows only icons.
-        .help(title == "Ask Blink" ? "Ask Blink: explain this plan and suggest what's missing"
+        .help(title.hasPrefix("Ask ") ? "\(title): explain this plan and suggest what's missing"
               : title == "Picture" ? "Picture: add one, or drop it onto the canvas"
               : title == "Post" ? "Post: write one for the platforms you pick"
               : title == "Heading" ? "Heading: label part of the canvas"
@@ -1296,7 +1296,7 @@ private struct DraftCard: View {
                     Button("Ideas", systemImage: "sparkles", action: ideas)
                         .font(.caption.weight(.semibold))
                         .buttonStyle(.borderless)
-                        .help("Ask Blink for post ideas for this Space")
+                        .help("Ask \(AssistantName.current) for post ideas for this Space")
                 }
             }
             TextField(Self.placeholder(kind), text: Binding(get: { draft?.text ?? "" }, set: { draft?.text = $0 }), axis: .vertical)

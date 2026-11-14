@@ -352,6 +352,11 @@ struct DaySettings: View {
     var body: some View {
         Group {
             Section {
+                AssistantNameField()
+            } footer: {
+                Text("What you call your assistant. It answers to this name in chat and voice commands (“Hey \(AssistantName.current), open Figma”) and uses it for itself.")
+            }
+            Section {
                 Picker("Appearance", selection: $appearance) {
                     ForEach(Appearance.allCases) { Text($0.title).tag($0) }
                 }
@@ -405,6 +410,7 @@ struct UsageSettings: View {
             Section {
                 LabeledContent("Chat and planning") { ModelMenu(feature: "chat") }
                 LabeledContent("Content drafts") { ModelMenu(feature: "content") }
+                LabeledContent("Voice commands and dictation") { ModelMenu(feature: "voice") }
                 LabeledContent("Quick text edits", value: "GPT-OSS 20B on Groq")
                 Picker("Daily limit for paid models", selection: Binding(
                     get: { model.aiCaps.day ?? 0 },
@@ -547,3 +553,39 @@ struct PrivacySettings: View {
     }
 }
 #endif
+
+/// Settings › General › Name: saved on Return or when the field loses focus; a name that can't be used says why.
+struct AssistantNameField: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage(AssistantName.key) private var saved = AssistantName.standard
+    @State private var typed = ""
+    @State private var problem: String?
+
+    var body: some View {
+        LabeledContent("Name") {
+            HStack {
+                if let problem { Text(problem).font(.caption).foregroundStyle(.orange) }
+                TextField("Name", text: $typed, prompt: Text(AssistantName.standard))
+                    .labelsHidden()
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 180)
+                    .onSubmit(save)
+                    .disabled(!model.capsLoaded)
+            }
+        }
+        .onAppear { typed = AssistantName.current }
+        .onDisappear(perform: save)
+    }
+
+    private func save() {
+        let wanted = typed.trimmingCharacters(in: .whitespaces).isEmpty ? AssistantName.standard : typed
+        guard let name = AssistantName.checked(wanted) else {
+            problem = "Letters, numbers and spaces, up to 24"
+            return
+        }
+        problem = nil
+        typed = name
+        guard name != AssistantName.current else { return }
+        Task { await model.setAssistantName(name) }
+    }
+}

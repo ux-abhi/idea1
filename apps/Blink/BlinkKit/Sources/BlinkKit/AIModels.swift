@@ -39,6 +39,8 @@ public struct AIModel: Identifiable, Hashable, Sendable {
 
     /// Free Groq, as on the server: paid models only when picked (owner, 2026-11-06).
     public static let defaultID = "openai/gpt-oss-120b"
+    /// Voice (commands, dictation tidy-up) waits on the model while the owner watches: the fastest free one.
+    public static let voiceDefaultID = "openai/gpt-oss-20b"
 
     /// Which model answers a feature. `serverPref` is what's saved on the server (server models only); the on-device
     /// choice is kept on this device, so server jobs that read the chat setting (mail drafts) keep their real model.
@@ -47,7 +49,8 @@ public struct AIModel: Identifiable, Hashable, Sendable {
                               serverReachable: Bool) -> String {
         if feature == "chat", onDevicePicked, onDeviceReady { return onDeviceID }
         if let serverPref, serverPref != onDeviceID, all.contains(where: { $0.id == serverPref }) { return serverPref }
-        return feature == "chat" && onDeviceReady && !serverReachable ? onDeviceID : defaultID
+        if feature == "chat" && onDeviceReady && !serverReachable { return onDeviceID }
+        return feature == "voice" ? voiceDefaultID : defaultID
     }
 
     /// "Opus 5.5", "GPT-OSS 120B": the name without the provider and the note, for small places.

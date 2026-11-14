@@ -104,7 +104,7 @@ struct BlinkPanel: View {
                 .padding(.top, 10)
             }
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Ask Blink, or “remind me to…”", text: $text, axis: .vertical)
+                TextField("Ask \(AssistantName.current), or “remind me to…”", text: $text, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...5)
                     .focused($typing)

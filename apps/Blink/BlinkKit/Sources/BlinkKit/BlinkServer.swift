@@ -973,8 +973,11 @@ public final class BlinkServer: Sendable {
     public struct AICaps: Codable, Equatable, Sendable {
         public var day: Double?
         public var month: Double?
-        enum CodingKeys: String, CodingKey { case day = "daily_cap_usd", month = "monthly_cap_usd" }
-        public init(day: Double? = nil, month: Double? = nil) { (self.day, self.month) = (day, month) }
+        /// What the owner calls the assistant (Settings › General); nil is "Blink". Kept in the same settings, which
+        /// are written whole.
+        public var name: String?
+        enum CodingKeys: String, CodingKey { case day = "daily_cap_usd", month = "monthly_cap_usd", name = "assistant_name" }
+        public init(day: Double? = nil, month: Double? = nil, name: String? = nil) { (self.day, self.month, self.name) = (day, month, name) }
     }
 
     public func aiCaps() async throws -> AICaps {
@@ -983,7 +986,7 @@ public final class BlinkServer: Sendable {
         return rows.first?.settings ?? AICaps()
     }
 
-    /// Both limits at once: settings holds only these, and is written whole.
+    /// Both limits and the name at once: settings holds only these, and is written whole.
     public func setAICaps(_ caps: AICaps) async throws {
         struct Row: Encodable { let settings: AICaps }
         let user = try await client.auth.session.user.id
@@ -1128,18 +1131,35 @@ public final class BlinkServer: Sendable {
         }
     }
 
-    /// Dictation through the server's Groq key: Whisper hears the recording (AAC), a small model tidies it. `language`
-    /// is the BCP 47 tag picked in Settings ("hi-IN"). Empty when nothing was said.
-    public func dictate(_ audio: Data, language: String) async throws -> String {
-        struct Body: Encodable { let audio: String; let language: String }
+    /// Dictation: Groq's Whisper hears the recording (AAC), or `text` the Mac already heard is sent instead; the voice
+    /// model tidies it. `language` is the BCP 47 tag picked in Settings ("hi-IN"). Empty when nothing was said.
+    public func dictate(_ audio: Data?, text: String? = nil, language: String) async throws -> String {
         struct Reply: Decodable { let text: String }
+        let reply: Reply = try await voice(audio, text: text, language: language, mode: "type")
+        return reply.text
+    }
+
+    /// A voice command ("open Chrome and play Alphas") turned into actions by the voice model.
+    public func command(_ audio: Data?, text: String? = nil, language: String) async throws -> VoiceCommand {
+        try await voice(audio, text: text, language: language, mode: "command")
+    }
+
+    private struct VoiceBody: Encodable { let audio: String?; let text: String?; let language: String; let mode: String }
+    private struct VoiceError: Decodable { let error: String }
+
+    private func voice<Reply: Decodable>(_ audio: Data?, text: String?, language: String, mode: String) async throws -> Reply {
         do {
-            let reply: Reply = try await client.functions.invoke("dictate", options: .init(body: Body(audio: audio.base64EncodedString(), language: language)))
-            return reply.text
+            return try await client.functions.invoke("dictate", options: .init(body: VoiceBody(
+                audio: audio?.base64EncodedString(), text: text, language: language, mode: mode)))
         } catch let FunctionsError.httpError(_, data) {
-            struct ErrorBody: Decodable { let error: String }
-            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Couldn't hear that.")
+            throw ChatProblem(message: (try? JSONDecoder().decode(VoiceError.self, from: data))?.error ?? "Couldn't hear that.")
         }
+    }
+
+    /// Wakes the dictate function while the owner is still speaking (it answers GET with 405 at once), so the real
+    /// call doesn't also wait for the server to start it.
+    public func warmDictate() async {
+        _ = try? await client.functions.invoke("dictate", options: .init(method: .get))
     }
 
     // MARK: Devices
