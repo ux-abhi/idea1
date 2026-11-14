@@ -1,6 +1,7 @@
 // © Pexilim
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import DocsShell from "@/components/DocsShell";
 
 export const metadata = {
   title: "Set up Blink",
@@ -21,9 +22,8 @@ function Shot({ n, name, height, alt }) {
 export default function SetupPage() {
   return (
     <>
-      <SiteHeader />
-      <main id="main" className="doc light">
-        <p className="crumb"><a href="/docs">Docs</a></p>
+      <SiteHeader current="docs" />
+      <DocsShell current="/docs/setup">
         <h1>Set up Blink.</h1>
         <p className="lede">From the first launch to your next meeting in the notch. It takes about five minutes, and you need no code and no terminal.</p>
 
@@ -83,7 +83,7 @@ export default function SetupPage() {
 
         <h2>Need help?</h2>
         <p>Write to <a href="mailto:hello@blinkk.app">hello@blinkk.app</a>.</p>
-      </main>
+      </DocsShell>
       <SiteFooter current="docs" />
     </>
   );

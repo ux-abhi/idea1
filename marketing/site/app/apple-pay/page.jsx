@@ -1,6 +1,7 @@
 // © Pexilim
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import DocsShell from "@/components/DocsShell";
 
 export const metadata = {
   title: "Catch Apple Pay spends with Blink",
@@ -12,8 +13,8 @@ export const metadata = {
 export default function ApplePayPage() {
   return (
     <>
-      <SiteHeader />
-      <main id="main" className="doc light">
+      <SiteHeader current="docs" />
+      <DocsShell current="/apple-pay">
         <h1>Catch every Apple Pay tap.</h1>
         <p className="lede">Pay with your iPhone and the spend appears in Blink's Money page within seconds, already sorted. It takes about three minutes and uses Apple's Shortcuts app; there's no Blink app to install on the iPhone.</p>
 
@@ -72,7 +73,7 @@ export default function ApplePayPage() {
 
         <h2>Need help?</h2>
         <p>Write to <a href="mailto:hello@blinkk.app">hello@blinkk.app</a>.</p>
-      </main>
+      </DocsShell>
       <SiteFooter current="apple-pay" />
     </>
   );

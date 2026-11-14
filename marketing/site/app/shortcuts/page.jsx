@@ -1,6 +1,7 @@
 // © Pexilim
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import DocsShell from "@/components/DocsShell";
 // The same list the app shows in Help › Keyboard Shortcuts (design/shortcuts.json; tests/shortcuts.test.mjs keeps this copy equal).
 import shortcuts from "@/lib/shortcuts.json";
 
@@ -13,8 +14,8 @@ export const metadata = {
 export default function ShortcutsPage() {
   return (
     <>
-      <SiteHeader />
-      <main id="main" className="doc light">
+      <SiteHeader current="docs" />
+      <DocsShell current="/shortcuts">
         <h1>Keyboard shortcuts</h1>
         <p className="lede">Everything in Blink works from the keyboard. In the app, press ⌘/ to see this list.</p>
         {shortcuts.groups.map((group) => (
@@ -30,7 +31,7 @@ export default function ShortcutsPage() {
             </dl>
           </div>
         ))}
-      </main>
+      </DocsShell>
       <SiteFooter current="shortcuts" />
     </>
   );

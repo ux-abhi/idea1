@@ -2,7 +2,7 @@
 
 // The menu bar with a notch, like the Mac's. On the home page the welcome screen shrinks into it and main.js moves the
 // eyes; elsewhere they just blink (css-blink).
-export default function SiteHeader({ home = false }) {
+export default function SiteHeader({ home = false, current }) {
   return (
     <header className="site-head">
       <div className="inner">
@@ -11,7 +11,7 @@ export default function SiteHeader({ home = false }) {
           <a href="/#features">Features</a>
           <a href="/#privacy">Privacy</a>
           <a href="/#faq">FAQ</a>
-          <a href="/docs">Docs</a>
+          <a href="/docs" aria-current={current === "docs" ? "page" : undefined}>Docs</a>
         </nav>
         <a className="btn small" href="/#waitlist" aria-label="Join the waitlist"><span>Join<span className="wide"> the waitlist</span></span></a>
       </div>

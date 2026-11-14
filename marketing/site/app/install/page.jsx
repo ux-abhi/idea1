@@ -1,6 +1,7 @@
 // © Pexilim
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import DocsShell from "@/components/DocsShell";
 import PageScripts from "@/components/PageScripts";
 
 export const metadata = {
@@ -12,9 +13,9 @@ export const metadata = {
 export default function InstallPage() {
   return (
     <>
-      <SiteHeader />
+      <SiteHeader current="docs" />
 
-      <main id="main" className="doc light">
+      <DocsShell current="/install">
         <h1>Install Blink.</h1>
         <p className="lede">Free, for MacBooks with a notch running macOS 26. It takes about three minutes once you have the download.</p>
 
@@ -63,7 +64,7 @@ export default function InstallPage() {
 
         <h2>Need help?</h2>
         <p>Write to <a href="mailto:hello@blinkk.app">hello@blinkk.app</a>.</p>
-      </main>
+      </DocsShell>
 
       <SiteFooter current="install" />
 
