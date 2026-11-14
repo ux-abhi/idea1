@@ -827,3 +827,18 @@ table.who th { color: var(--ink); font-weight: 600; width: 34%; }
 .shortcut-list dt, .shortcut-list dd { margin: 0; }
 .shortcut-list dd { color: var(--muted); }
 @media (max-width: 560px) { .shortcut-list div { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Apple Pay guide: the finished Shortcuts action, drawn (not a screenshot, so it never goes stale). */
+.shortcut-mock { margin: 20px 0 0; }
+.shortcut-mock .sm-card { background: var(--mist); border-radius: var(--r-tile); padding: 20px 22px; max-width: 460px; }
+.shortcut-mock .sm-title { margin: 0 0 12px; font-weight: 600; color: var(--ink); line-height: 1.8; }
+.shortcut-mock .sm-icon { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--blue-fill); color: #fff; font-size: 14px; margin-right: 6px; }
+.shortcut-mock dl { margin: 0; display: grid; gap: 8px; }
+.shortcut-mock dl > div { display: flex; justify-content: space-between; gap: 12px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+.shortcut-mock dt { color: var(--muted); }
+.shortcut-mock dd { margin: 0; text-align: right; }
+.shortcut-mock .sm-token, .shortcut-mock .sm-var { border-radius: 6px; padding: .1em .45em; font-weight: 600; white-space: nowrap; }
+.shortcut-mock .sm-token { background: color-mix(in srgb, var(--blue-fill) 14%, transparent); color: var(--blue-ink); }
+.shortcut-mock .sm-var { background: color-mix(in srgb, var(--orange) 24%, transparent); color: var(--ink); }
+.shortcut-mock figcaption { color: var(--muted); font-size: 14px; margin-top: 10px; }
+@media (max-width: 480px) { .shortcut-mock .sm-title .sm-token { white-space: normal; word-break: break-all; } }

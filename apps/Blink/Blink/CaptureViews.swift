@@ -3,6 +3,11 @@
 import BlinkKit
 import SwiftUI
 
+/// The step-by-step guide on the website (marketing/site/app/apple-pay), which keeps the same steps as `CaptureSetup`.
+enum CaptureGuide {
+    static let url = URL(string: "https://www.blinkk.app/apple-pay")!
+}
+
 /// Apple Pay taps arrive on their own: through a Shortcuts automation on the owner's iPhone (no Blink iPhone app needed).
 struct ApplePayCard: View {
     @Environment(AppModel.self) private var model
@@ -18,7 +23,13 @@ struct ApplePayCard: View {
                         Text("Catch every tap automatically").font(.headline)
                         Text("Pay with Apple Pay on your iPhone and the spend shows up here within seconds, sorted. Receipts in your mail are added too, never twice.")
                             .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        Button("Set Up on iPhone…") { settingUp = true }.buttonStyle(.borderedProminent).padding(.top, 4)
+                        Text("About 3 minutes: Blink makes a private link, then you add one automation in the iPhone's Shortcuts app. No app to install.")
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 14) {
+                            Button("Set Up on iPhone…") { settingUp = true }.buttonStyle(.borderedProminent)
+                            Link("See the steps first", destination: CaptureGuide.url)
+                        }
+                        .padding(.top, 4)
                     }
                 }
             } else {
@@ -75,6 +86,8 @@ private struct CaptureSetup: View {
                     Step(6, "Pay with Apple Pay. The spend appears in Money; change or delete it there.")
                 }
                 .fixedSize(horizontal: false, vertical: true)
+                Link("The same steps with a picture of the finished action, and fixes if a tap doesn't show up", destination: CaptureGuide.url)
+                    .font(.callout)
                 Text("Blink names the account from the card (a card called “Visa Debit” goes to your Visa account), else your default account.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
