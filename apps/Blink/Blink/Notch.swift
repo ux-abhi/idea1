@@ -104,6 +104,9 @@ final class NotchController {
     private let clipboard: ClipboardStore
     private var panel: NotchPanel?
     private var monitors: [Any] = []
+    /// Esc while dictating or listening for a command: a hotkey only for that time, so it works without the
+    /// press-twice option (which needs Accessibility) and doesn't take Esc from other apps otherwise.
+    private var escape: GlobalHotkey?
     private var hoverTask: Task<Void, Never>?
     private var leaveTask: Task<Void, Never>?
     private var previousApp: NSRunningApplication?
@@ -232,6 +235,15 @@ final class NotchController {
                 guard let self else { return }
                 withAnimation(self.reduceMotion ? nil : Tokens.Motion.peek.animation) { self.model.notesShown = running }
                 self.pointerMoved() // the shape grew or shrank under the pointer
+            }
+        }
+        Task { [weak self] in
+            guard let app = self?.app else { return }
+            for await listening in Observations({ app.dictation.isListening }) {
+                guard let self else { return }
+                self.escape = listening ? GlobalHotkey(id: 99, combo: KeyCombo(keyCode: UInt32(kVK_Escape), modifiers: 0, key: "Esc")) {
+                    Task { await app.cancelDictation() }
+                } : nil
             }
         }
         Task { [weak self] in
@@ -756,8 +768,7 @@ final class NotchController {
         model.chatting = false
         model.clipboarding = false
         model.searching = false
-        model.meeting = false
-        app.meetDraft = nil
+        model.meeting = false // the draft stays: clicking away to copy an address mustn't lose the invite
         model.evening = false
         panel.allowsKey = false
         // Hand the keyboard back to the app that had it (§36.2).
@@ -1619,7 +1630,7 @@ struct SplitInput: View, Animatable {
         notch.dayFirst = false
         if let command = QuickCommand.parse(message) {
             if case .meet = command { notch.chatting = false; notch.meeting = true } // the invite card takes the notch
-            Task { await app.run(command) }
+            Task { if let problem = await app.run(command) { app.announce(problem, failed: true) } }
         } else {
             Task { await app.ask(message) }
         }

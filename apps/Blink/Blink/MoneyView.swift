@@ -96,7 +96,7 @@ struct MoneyView: View {
     private func rightColumn(_ s: MoneyMath.Summary, today: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             spentCard(s, today: today)
-            if let limits = limitsTotal { limitsCard(spent: s.total, limits: limits) }
+            if let limits = limitsTotal { limitsCard(spent: MoneyMath.spentOnLimits(model.spends, budgets: model.budgets, today: today), limits: limits) }
             else if !model.accounts.isEmpty && earlier == nil { leftCard(s, today: today) } // about now, not a past month
             BillsCard(editing: $editingBill)
         }
@@ -187,10 +187,7 @@ struct MoneyView: View {
     /// With accounts and no limits: what's left at month end at this pace.
     private func leftCard(_ s: MoneyMath.Summary, today: String) -> some View {
         let total = MoneyMath.totalBalance(model.accounts)
-        // The day-to-day pace leaves the fixed bills out (rent on the 1st isn't a daily habit); the bills still to come
-        // this month come off on top.
-        let pace = MoneyMath.summary(model.spends.filter { $0.source != "bill" }, today: today)
-        let left = MoneyMath.leftAtMonthEnd(total: total, summary: pace, today: today) - MoneyMath.billsAhead(model.fixedBills, today: today)
+        let (left, pace) = MoneyMath.leftAtMonthEnd(total: total, spends: model.spends, bills: model.fixedBills, today: today)
         let runway = MoneyMath.runwayDays(total: total, average: pace.average)
         let share = total > 0 ? min(max(NSDecimalNumber(decimal: left / total).doubleValue, 0), 1) : 0
         return darkCard(caption: runway.map { "Left at month end · lasts \($0 >= 365 ? "over a year" : "\($0) days")" } ?? "Left at month end",

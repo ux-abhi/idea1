@@ -1032,7 +1032,11 @@ public final class BlinkServer: Sendable {
         }
     }
 
-    public struct ChatProblem: Error, Sendable { public let message: String }
+    /// A sentence from the server for the owner; `localizedDescription` is that sentence, not "error 1".
+    public struct ChatProblem: LocalizedError, Sendable {
+        public let message: String
+        public var errorDescription: String? { message }
+    }
 
     /// One event of a streamed answer (server-sent events from the chat function).
     public enum ChatEvent: Equatable, Sendable {

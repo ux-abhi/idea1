@@ -132,7 +132,13 @@ struct TasksView: View {
         HStack(spacing: 10) {
             Text("\(selected.count) selected").foregroundStyle(.secondary)
             Button("Select All") {
-                selected = Set(openEntries.map(\.id))
+                // Only what the filter shows: hidden Apple Reminders must never be swept into a delete.
+                selected = Set(openEntries.filter { entry in
+                    switch entry.kind {
+                    case .task: kindFilter != "reminders"
+                    case .reminder: kindFilter != "tasks"
+                    }
+                }.map(\.id))
             }
             Spacer()
             Button("Mark Done") {

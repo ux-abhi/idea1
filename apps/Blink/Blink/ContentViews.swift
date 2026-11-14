@@ -654,6 +654,7 @@ private struct PieceEditor: View {
                 case .approved:
                     Button { model.copyAndOpen(piece) } label: { Label("Copy & Open \(piece.platform.name)", systemImage: "arrow.up.forward.app") }
                         .buttonStyle(.borderedProminent)
+                    Button("Mark as Posted") { Task { await model.setStatus(.published, of: piece) } }
                     Button("Back to Draft") { Task { await model.setStatus(.drafted, of: piece) } }
                 case .idea:
                     Button("Write") { Task { await model.write(piece) } }
@@ -762,8 +763,7 @@ extension AppModel {
         case .instagram:
             url = URL(string: "https://www.instagram.com/") // no web composer: the caption is on the clipboard
         }
-        if let url { NSWorkspace.shared.open(url) }
-        Task { await setStatus(.published, of: piece) }
+        if let url { NSWorkspace.shared.open(url) } // posted only when the owner says so: opening isn't posting
     }
 }
 

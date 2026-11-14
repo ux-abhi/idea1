@@ -172,8 +172,8 @@ nonisolated private final class Recording: @unchecked Sendable {
     }
 }
 
-/// Types text into the app in front by pasting it: the text goes on the clipboard (marked passing, so clipboard
-/// history skips it), ⌘V is pressed, and what was on the clipboard comes back.
+/// Types text into the app in front by pasting it: the text goes on the clipboard (and into clipboard history, so it
+/// can be found with ⌃⌥V if no text box had the cursor), ⌘V is pressed, and what was on the clipboard comes back.
 enum Paster {
     /// False when macOS hasn't allowed Blink to press keys (Accessibility): the text is left on the clipboard instead.
     static func paste(_ text: String) async -> Bool {
@@ -182,7 +182,6 @@ enum Paster {
         let passing = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
         board.clearContents()
         board.setString(text, forType: .string)
-        board.setData(Data(), forType: passing)
         guard CGPreflightPostEventAccess() else {
             CGRequestPostEventAccess()
             return false

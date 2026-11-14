@@ -156,7 +156,7 @@ struct BlinkPanel: View {
         text = ""
         // "remind me to…", "task …", "/timer 10": done at once with Undo, no AI needed. A task typed on a Space joins it.
         if context == nil, let command = QuickCommand.parse(trimmed) {
-            Task { _ = await model.run(command, space: spaceID) }
+            Task { if let problem = await model.run(command, space: spaceID) { model.announce(problem, failed: true) } }
             return
         }
         // A typed question carries what's on screen too (the open Space, note, mail or money), as data.

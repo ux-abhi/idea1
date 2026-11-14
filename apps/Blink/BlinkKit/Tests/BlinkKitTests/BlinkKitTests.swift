@@ -1152,6 +1152,11 @@ extension Tokens {
     #expect(MoneyMath.totalBalance([account, fresh]) == Decimal(string: "1976.6"))
     let summary = MoneyMath.Summary(total: 100, today: 10, average: 10, forecast: 310, lastMonthSoFar: 0, lastMonthTotal: 0)
     #expect(MoneyMath.leftAtMonthEnd(total: 500, summary: summary, today: "2026-10-21", calendar: Calendar(identifier: .gregorian)) == 400)
+    // Limits compare only limited categories: rent doesn't push a food limit over.
+    let mixed = [Spend(id: "a", amount: 1000, note: "", category: .bills, spentOn: "2026-10-01", accountID: nil, createdAt: .now),
+                 Spend(id: "b", amount: 50, note: "", category: .food, spentOn: "2026-10-03", accountID: nil, createdAt: .now),
+                 Spend(id: "c", amount: 70, note: "", category: .food, spentOn: "2026-09-30", accountID: nil, createdAt: .now)]
+    #expect(MoneyMath.spentOnLimits(mixed, budgets: [Budget(category: .food, monthlyLimit: 200)], today: "2026-10-21") == 50)
     #expect(MoneyMath.runwayDays(total: 500, average: 10) == 50 && MoneyMath.runwayDays(total: 500, average: 0) == nil)
 }
 

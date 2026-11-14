@@ -110,7 +110,7 @@ struct QuickBar: View {
             let space = model.spaces.first { $0.id == tasksSpace }
             if addAsReminder {
                 if let space { Task { await model.addReminder(parsed.title, due: parsed.due, to: space) } }
-                else { Task { await model.run(.remind(title: parsed.title, due: parsed.due)) } }
+                else { Task { if let problem = await model.run(.remind(title: parsed.title, due: parsed.due)) { model.announce(problem, failed: true) } } }
             } else {
                 model.create(.task, title: parsed.title, due: parsed.due, space: space?.id)
             }
@@ -122,7 +122,7 @@ struct QuickBar: View {
             guard !model.thinking else { return }
             text = ""
             if let command = QuickCommand.parse(typed) {
-                Task { _ = await model.run(command) }
+                Task { if let problem = await model.run(command) { model.announce(problem, failed: true) } }
             } else {
                 showPanel = true
                 // The server takes at most 2000 characters (functions/chat input.ts).

@@ -311,6 +311,22 @@ public enum MoneyMath {
         return total - summary.average * Decimal(remaining)
     }
 
+    /// What's left at month end, the one way both Today and Money work it out: the day-to-day pace leaves the fixed
+    /// bills out (rent on the 1st isn't a daily habit), and the bills still to come this month come off on top.
+    public static func leftAtMonthEnd(total: Decimal, spends: [Spend], bills: [FixedBill], today: String,
+                                      calendar: Calendar = .current) -> (left: Decimal, pace: Summary) {
+        let pace = summary(spends.filter { $0.source != "bill" }, today: today, calendar: calendar)
+        return (leftAtMonthEnd(total: total, summary: pace, today: today, calendar: calendar)
+                - billsAhead(bills, today: today, calendar: calendar), pace)
+    }
+
+    /// This month's spending in the categories that have a limit: what the limits card compares against the limits
+    /// (rent doesn't count against a food limit).
+    public static func spentOnLimits(_ spends: [Spend], budgets: [Budget], today: String) -> Decimal {
+        let limited = Set(budgets.map(\.category)), now = month(of: today)
+        return spends.filter { month(of: $0.spentOn) == now && limited.contains($0.category) }.reduce(Decimal.zero) { $0 + $1.amount }
+    }
+
     /// Whole days the money lasts at this month's daily average; nil when nothing has been spent yet.
     public static func runwayDays(total: Decimal, average: Decimal) -> Int? {
         guard average > 0, total > 0 else { return average > 0 ? 0 : nil }

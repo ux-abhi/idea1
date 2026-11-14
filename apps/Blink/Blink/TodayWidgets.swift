@@ -136,7 +136,8 @@ private struct MoneyWidget: View {
     var body: some View {
         let today = HabitDay.key(now)
         let month = MoneyMath.summary(model.spends, today: today)
-        let left = model.accounts.isEmpty ? nil : MoneyMath.leftAtMonthEnd(total: MoneyMath.totalBalance(model.accounts), summary: month, today: today)
+        let left = model.accounts.isEmpty ? nil : MoneyMath.leftAtMonthEnd(total: MoneyMath.totalBalance(model.accounts), spends: model.spends,
+                                                                           bills: model.fixedBills, today: today).left // the same sum as Money
         let week = WeekBars.lastWeek(now: now).map { day in
             WeekBars.euros(model.spends.filter { $0.spentOn == day }.reduce(Decimal.zero) { $0 + $1.amount })
         }
