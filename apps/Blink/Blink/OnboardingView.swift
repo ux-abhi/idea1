@@ -18,7 +18,10 @@ struct OnboardingView: View {
 
     /// Where the owner is: the server and sign-in steps follow the app's real state, so a relaunch resumes in place.
     private var step: Step {
-        switch model.screen {
+        #if DEBUG
+        if let forced = DocsShot.step.flatMap({ name in Step.allCases.first { "\($0)" == name } }) { return forced }
+        #endif
+        return switch model.screen {
         case .loading, .connect: welcomed ? .server : .welcome
         case .signIn: .account
         case .home: calendarSeen ? .about : .calendar
@@ -336,7 +339,7 @@ private struct CalendarStep: View {
         StepCard(title: "See your day", subtitle: "Blink reads your calendars on this device to bring up each meeting 10 minutes before it starts.") {
             switch model.calendarAccess {
             case .granted:
-                if let meeting = model.agenda.events.first(where: { $0.end > .now }) {
+                if let meeting = DocsShot.sample(model.agenda.events.first(where: { $0.end > .now })) {
                     HStack(spacing: 14) {
                         BlinkEyes(mood: .headsUp).frame(width: 64, height: 28)
                             .padding(10).background(.black, in: .capsule).accessibilityHidden(true)
@@ -441,5 +444,23 @@ private struct AboutStep: View {
             await model.refresh()
             if model.voice.page.contains("@"), handle.isEmpty { handle = String(model.voice.page.split(separator: " ").first ?? "") }
         }
+    }
+}
+
+/// Screenshots for the setup guide on blinkk.app/docs: launched with `-docs.step server` (and `-onboarding.done NO`),
+/// a Debug build shows that setup step whatever the real state, with a sample meeting instead of the owner's own.
+/// Launch arguments are never saved; release builds ignore all of it.
+enum DocsShot {
+    #if DEBUG
+    static var step: String? { UserDefaults.standard.string(forKey: "docs.step") }
+    #else
+    static var step: String? { nil }
+    #endif
+
+    /// The owner's real meeting, or a made-up one while taking screenshots.
+    static func sample(_ real: AgendaEvent?) -> AgendaEvent? {
+        guard step != nil else { return real }
+        let start = Calendar.current.date(bySettingHour: 10, minute: 30, second: 0, of: .now.addingTimeInterval(86_400)) ?? .now
+        return AgendaEvent(extID: "docs", title: "Design review with Sam", start: start, end: start.addingTimeInterval(1800))
     }
 }

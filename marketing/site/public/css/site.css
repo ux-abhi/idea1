@@ -842,3 +842,17 @@ table.who th { color: var(--ink); font-weight: 600; width: 34%; }
 .shortcut-mock .sm-var { background: color-mix(in srgb, var(--orange) 24%, transparent); color: var(--ink); }
 .shortcut-mock figcaption { color: var(--muted); font-size: 14px; margin-top: 10px; }
 @media (max-width: 480px) { .shortcut-mock .sm-title .sm-token { white-space: normal; word-break: break-all; } }
+
+/* Docs: the list of guides and the setup guide's screenshots. */
+.doc .doc-list { list-style: none; padding: 0; margin: 32px 0; display: grid; gap: 12px; }
+.doc .doc-list li + li { margin-top: 0; }
+.doc .doc-list a { display: block; padding: 20px 22px; border-radius: var(--r-inner); background: var(--mist); text-decoration: none; color: inherit; transition: transform .2s var(--ease-out); }
+.doc .doc-list a:hover { transform: translateY(-2px); }
+.doc .doc-list a:focus-visible { outline: 3px solid var(--blue-ink); outline-offset: 3px; }
+.doc .doc-list b { display: block; color: var(--ink); font: 650 20px/1.3 var(--display); margin-bottom: 4px; }
+.doc .doc-list span { color: var(--muted); }
+.doc .crumb { margin: 0 0 8px; font-size: 15px; }
+.doc .crumb a { color: var(--muted); }
+.doc .shot { margin: 20px 0 8px; }
+.doc .shot img { display: block; width: 100%; max-width: 600px; height: auto; border-radius: var(--r-inner); box-shadow: 0 10px 30px rgb(0 0 0 / .14); }
+@media (prefers-reduced-motion: reduce) { .doc .doc-list a { transition: none; } .doc .doc-list a:hover { transform: none; } }

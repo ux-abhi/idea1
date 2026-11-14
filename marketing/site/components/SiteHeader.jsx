@@ -11,6 +11,7 @@ export default function SiteHeader({ home = false }) {
           <a href="/#features">Features</a>
           <a href="/#privacy">Privacy</a>
           <a href="/#faq">FAQ</a>
+          <a href="/docs">Docs</a>
         </nav>
         <a className="btn small" href="/#waitlist" aria-label="Join the waitlist"><span>Join<span className="wide"> the waitlist</span></span></a>
       </div>
