@@ -9,7 +9,7 @@ export default function SiteHeader({ home = false, current }) {
         <a className="brand" href="/" aria-label="Blink home">Blink</a>
         <nav aria-label="Main">
           <a href="/#features">Features</a>
-          <a href="/#privacy">Privacy</a>
+          <a href="/privacy" aria-current={current === "privacy" ? "page" : undefined}>Privacy</a>
           <a href="/#faq">FAQ</a>
           <a href="/docs" aria-current={current === "docs" ? "page" : undefined}>Docs</a>
         </nav>

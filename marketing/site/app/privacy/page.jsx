@@ -11,7 +11,7 @@ export const metadata = {
 export default function PrivacyPage() {
   return (
     <>
-      <SiteHeader />
+      <SiteHeader current="privacy" />
 
       <main id="main" className="doc light">
         <h1>Privacy</h1>
