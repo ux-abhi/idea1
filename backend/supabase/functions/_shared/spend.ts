@@ -29,9 +29,14 @@ export function parseMoney(text: unknown): { amount: number; currency: string } 
 }
 
 /** Which of the owner's accounts a card name points at ("N26 Mastercard" → the account called "N26"), else the default. */
-export function accountFor(card: unknown, accounts: { id: string; name: string; is_default: boolean }[]): string | null {
+export function accountFor(card: unknown, accounts: { id: string; name: string; is_default: boolean; kind?: string }[]): string | null {
   const label = typeof card === "string" ? card.toLowerCase() : "";
-  const named = label ? accounts.find((a) => label.includes(a.name.toLowerCase())) : undefined;
+  // The account whose name appears in the card's ("Commerz" in "Commerzbank Debit Mastercard"). Of several, the longest
+  // name is the closest ("Commerzbank" over "Commerz"); cash is never it, as Apple Pay can't pay from cash.
+  const named = label
+    ? accounts.filter((a) => a.kind !== "cash" && a.name.trim() && label.includes(a.name.trim().toLowerCase()))
+      .sort((a, b) => b.name.trim().length - a.name.trim().length)[0]
+    : undefined;
   return named?.id ?? accounts.find((a) => a.is_default)?.id ?? null;
 }
 

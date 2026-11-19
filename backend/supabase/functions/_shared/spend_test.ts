@@ -18,6 +18,16 @@ Deno.test("cards point at accounts, else the default", () => {
   if (accountFor("N26 Mastercard", accounts) !== "a" || accountFor("Visa", accounts) !== "b" || accountFor(undefined, []) !== null) {
     throw new Error("account matching");
   }
+  // The closest of several names wins, whatever their order; a cash account is never paid from by card.
+  const both = [{ id: "c", name: "Commerz", is_default: false }, { id: "cb", name: "Commerzbank", is_default: true }];
+  if (accountFor("Commerzbank Visa", both) !== "cb" || accountFor("Commerzbank Visa", [...both].reverse()) !== "cb") {
+    throw new Error("longest name should win");
+  }
+  const cash = [{ id: "cash", name: "Cash", kind: "cash", is_default: false }, { id: "bank", name: "Bank", is_default: true }];
+  if (accountFor("Cashback Visa", cash) !== "bank") throw new Error("cash matched a card");
+  const yours = [{ id: "commerz", name: "Commerz", is_default: true }, { id: "expatrio", name: "Expatrio", is_default: false }];
+  if (accountFor("COMMERZBANK girocard", yours) !== "commerz" || accountFor("Expatrio Visa", yours) !== "expatrio"
+      || accountFor("Visa Debit", yours) !== "commerz") throw new Error("Commerz / Expatrio matching");
 });
 
 Deno.test("common merchants need no AI", () => {

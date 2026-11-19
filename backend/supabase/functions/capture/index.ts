@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
 
   const [{ data: profile }, { data: accounts }] = await Promise.all([
     admin.from("profile").select("timezone").eq("owner_id", owner).maybeSingle(),
-    admin.from("money_account").select("id, name, is_default").eq("owner_id", owner),
+    admin.from("money_account").select("id, name, is_default, kind").eq("owner_id", owner),
   ]);
   const category = guessCategory(parsed.merchant) ?? await sortShop(owner, parsed.merchant);
   const minute = new Date().toISOString().slice(0, 16);
