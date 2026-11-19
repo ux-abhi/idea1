@@ -4,7 +4,7 @@
 import { secret } from "./secrets.ts";
 
 export type Provider = "claude" | "groq" | "openrouter" | "custom";
-export type Feature = "chat" | "content" | "voice";
+export type Feature = "chat" | "content" | "voice" | "text";
 export type Model = {
   id: string;
   provider: Provider;

@@ -418,14 +418,7 @@ struct UsageSettings: View {
                 LabeledContent("Chat and planning") { ModelMenu(feature: "chat") }
                 LabeledContent("Content drafts") { ModelMenu(feature: "content") }
                 LabeledContent("Voice commands and dictation") { ModelMenu(feature: "voice") }
-                // Quick edits run on Groq only: say so plainly when there's no Groq key, with the way to add one.
-                if model.keyStatus == nil || model.keyStatus?["groq"] == "ok" {
-                    LabeledContent("Quick text edits", value: "GPT-OSS 20B on Groq")
-                } else {
-                    LabeledContent("Quick text edits") {
-                        Button("Add a Groq Key…") { model.openSettings("connections") }
-                    }
-                }
+                LabeledContent("Quick text edits") { ModelMenu(feature: "text") }
                 Picker("Daily limit for paid models", selection: Binding(
                     get: { model.aiCaps.day ?? 0 },
                     set: { cap in var caps = model.aiCaps; caps.day = cap > 0 ? cap : nil; Task { await model.setAICaps(caps) } })) {

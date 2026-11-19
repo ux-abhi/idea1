@@ -8,7 +8,7 @@ import { type Action, CLEANUP, COMMAND, firstVideo, parseDictation, parsePlan, w
 import { assistantName, capProblem, FREE_MODELS, lastMonth, pickModel } from "../_shared/models.ts";
 import { ownsServer } from "../_shared/owner.ts";
 import { secret } from "../_shared/secrets.ts";
-import { think } from "./think.ts";
+import { think } from "../_shared/think.ts";
 
 const WHISPER = "whisper-large-v3";
 // The fastest free model, unless the owner picks another for voice.
@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
       actions = await links(plan.actions);
       say = plan.say;
     } else {
-      const reply = await think(model, CLEANUP, fenced, false);
+      const reply = await think(model, CLEANUP, fenced, false, 4000); // long dictation comes back whole
       spent = reply;
       const cleaned = reply.text.replaceAll("\\u003c", "<").trim();
       if (cleaned === "EMPTY") text = "";

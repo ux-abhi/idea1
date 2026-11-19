@@ -1,18 +1,18 @@
 // © Pexilim
-// One short question to the model the owner picked for voice (Settings › Usage): Claude through Anthropic, anything
-// else through its OpenAI-compatible endpoint. Throws a sentence the app can show.
+// One short question to the model the owner picked for a feature (Settings › AI): Claude through Anthropic, anything
+// else through its OpenAI-compatible endpoint. Throws a sentence the app can show. Used by voice and quick text edits.
 import Anthropic from "npm:@anthropic-ai/sdk@0.128.0";
-import { claudeUsageCost, compatible, cost, type Model } from "../_shared/models.ts";
-import { secret } from "../_shared/secrets.ts";
+import { claudeUsageCost, compatible, cost, type Model } from "./models.ts";
+import { secret } from "./secrets.ts";
 
-export async function think(model: Model, system: string, user: string, json: boolean): Promise<{ text: string; inputTokens: number; outputTokens: number; usd: number }> {
+export async function think(model: Model, system: string, user: string, json: boolean, maxTokens = 1024): Promise<{ text: string; inputTokens: number; outputTokens: number; usd: number }> {
   if (model.provider === "claude") {
     const apiKey = await secret("ANTHROPIC_API_KEY");
-    if (!apiKey) throw new Error("Add your Anthropic API key in Blink › Settings › Connections, or pick another voice model in Settings › Usage.");
+    if (!apiKey) throw new Error("Add your Anthropic API key in Blink › Settings › Connections, or pick another model in Settings › AI.");
     const workspace = await secret("ANTHROPIC_WORKSPACE_ID");
     const client = new Anthropic({ apiKey, defaultHeaders: workspace ? { "anthropic-workspace-id": workspace } : undefined });
     try {
-      const response = await client.messages.create({ model: model.id, max_tokens: 1024, system, messages: [{ role: "user", content: user }] });
+      const response = await client.messages.create({ model: model.id, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
       const usage = response.usage;
       return {
         text: response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(""),
@@ -27,6 +27,7 @@ export async function think(model: Model, system: string, user: string, json: bo
   const { message, usage } = await compatible(model.provider, {
     model: model.id,
     temperature: 0.1,
+    max_completion_tokens: maxTokens,
     ...(model.id.startsWith("openai/gpt-oss") ? { reasoning_effort: "low" } : {}),
     ...(json ? { response_format: { type: "json_object" } } : {}),
     messages: [{ role: "system", content: system }, { role: "user", content: user }],

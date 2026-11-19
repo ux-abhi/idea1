@@ -37,14 +37,14 @@ final class AppModel {
     /// server is told, so nothing waits on a model that can't answer. Needs both answers in: the keys and the choices.
     private func moveOffDisconnectedModels() async {
         guard let keyStatus, capsLoaded else { return }
-        for feature in ["chat", "content", "voice"] {
+        for feature in ["chat", "content", "voice", "text"] {
             if feature == "chat" && onDevicePicked { continue } // the owner chose on-device chat: no key needed, keep it
             let available = AIModel.available(for: feature, keys: keyStatus).map(\.id)
-            guard let saved = modelPrefs[feature] ?? Optional(feature == "voice" ? AIModel.voiceDefaultID : AIModel.defaultID),
+            guard let saved = modelPrefs[feature] ?? Optional(feature == "voice" || feature == "text" ? AIModel.voiceDefaultID : AIModel.defaultID),
                   !available.contains(saved), let better = AIModel.fallback(for: feature, keys: keyStatus) else { continue }
             await setModel(better.id, for: feature)
             guard modelPrefs[feature] == better.id else { continue } // not saved (offline): say nothing, try next launch
-            let what = ["chat": "Chat", "content": "Content drafts", "voice": "Voice"][feature] ?? feature
+            let what = ["chat": "Chat", "content": "Content drafts", "voice": "Voice", "text": "Quick text edits"][feature] ?? feature
             let was = AIModel.all.first { $0.id == saved }?.shortName ?? saved
             announce("\(what) now uses \(better.shortName): \(was) isn't connected. Change it in Settings › AI.")
         }
