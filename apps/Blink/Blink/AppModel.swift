@@ -24,10 +24,31 @@ final class AppModel {
     func loadKeyStatus() async {
         guard let server, email != nil, let status = try? await server.connections() else { return }
         keyStatus = status
+        await moveOffDisconnectedModels()
     }
 
     /// Settings › Connections checked the keys itself: share the answer, so setup prompts update at once.
-    func updateKeyStatus(_ status: [String: String]) { keyStatus = status }
+    func updateKeyStatus(_ status: [String: String]) {
+        keyStatus = status
+        Task { await moveOffDisconnectedModels() }
+    }
+
+    /// A feature whose model's key isn't connected (never added, removed, or rejected) moves to one that works, and the
+    /// server is told, so nothing waits on a model that can't answer. Needs both answers in: the keys and the choices.
+    private func moveOffDisconnectedModels() async {
+        guard let keyStatus, capsLoaded else { return }
+        for feature in ["chat", "content", "voice"] {
+            if feature == "chat" && onDevicePicked { continue } // the owner chose on-device chat: no key needed, keep it
+            let available = AIModel.available(for: feature, keys: keyStatus).map(\.id)
+            guard let saved = modelPrefs[feature] ?? Optional(feature == "voice" ? AIModel.voiceDefaultID : AIModel.defaultID),
+                  !available.contains(saved), let better = AIModel.fallback(for: feature, keys: keyStatus) else { continue }
+            await setModel(better.id, for: feature)
+            guard modelPrefs[feature] == better.id else { continue } // not saved (offline): say nothing, try next launch
+            let what = ["chat": "Chat", "content": "Content drafts", "voice": "Voice"][feature] ?? feature
+            let was = AIModel.all.first { $0.id == saved }?.shortName ?? saved
+            announce("\(what) now uses \(better.shortName): \(was) isn't connected. Change it in Settings › AI.")
+        }
+    }
 
     /// Opens Settings from anywhere (the notch, a prompt), captured from the window's scene; works with it closed too.
     var settingsOpener: (() -> Void)?
@@ -2532,6 +2553,7 @@ final class AppModel {
         if let caps = try? await server.aiCaps() {
             aiCaps = caps
             capsLoaded = true
+            defer { Task { await moveOffDisconnectedModels() } }
             UserDefaults.standard.set(caps.name, forKey: AssistantName.key) // the app's labels read it from here
         }
     }
@@ -2580,7 +2602,16 @@ final class AppModel {
     func model(for feature: String) -> AIModel {
         let id = AIModel.choose(feature: feature, serverPref: modelPrefs[feature], onDevicePicked: onDevicePicked,
                                 onDeviceReady: OnDeviceChat.problem == nil, serverReachable: status != .unreachable)
-        return AIModel.all.first { $0.id == id }!
+        let chosen = AIModel.all.first { $0.id == id }!
+        // Never show a model whose key isn't connected: what it falls back to (on-device for chat when nothing is).
+        guard keyStatus != nil, !AIModel.available(for: feature, keys: keyStatus).contains(chosen) else { return chosen }
+        return AIModel.fallback(for: feature, keys: keyStatus)
+            ?? (feature == "chat" && OnDeviceChat.problem == nil ? AIModel.all.first { $0.id == AIModel.onDeviceID }! : chosen)
+    }
+
+    /// Whether a feature has any model that can run (a connected key, or on-device chat).
+    func hasModel(for feature: String) -> Bool {
+        AIModel.available(for: feature, keys: keyStatus).contains { $0.id != AIModel.onDeviceID || OnDeviceChat.problem == nil }
     }
 
     func setModel(_ id: String, for feature: String) async {

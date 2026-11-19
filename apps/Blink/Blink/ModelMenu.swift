@@ -11,15 +11,22 @@ struct ModelMenu: View {
 
     var body: some View {
         let current = model.model(for: feature)
+        // Only what can run: models whose service is connected, and the on-device one for chat.
+        let available = AIModel.available(for: feature, keys: model.keyStatus)
+            .filter { $0.id != AIModel.onDeviceID || OnDeviceChat.problem == nil }
         Menu {
-            // The on-device model answers chat on the Mac; drafts and other jobs run on the server.
-            ForEach(AIModel.Group.allCases.filter { feature == "chat" || $0 != .onDevice }, id: \.self) { group in
+            ForEach(AIModel.Group.allCases.filter { group in available.contains { $0.group == group } }, id: \.self) { group in
                 Section(group.rawValue) {
-                    ForEach(AIModel.all.filter { $0.group == group }) { option($0, current: current) }
+                    ForEach(available.filter { $0.group == group }) { option($0, current: current) }
                 }
             }
+            if available.isEmpty { Text("No AI connected yet") }
+            Divider()
+            Button(available.isEmpty ? "Connect an AI…" : "Connect Another AI…") { model.openSettings("connections") }
         } label: {
-            if compact {
+            if !model.hasModel(for: feature) {
+                Label("Connect AI", systemImage: "key")
+            } else if compact {
                 Label(current.shortName, systemImage: current.group == .onDevice ? "laptopcomputer" : current.isFree ? "leaf" : current.group == .best ? "star" : "sparkles")
             } else {
                 Text(current.name)

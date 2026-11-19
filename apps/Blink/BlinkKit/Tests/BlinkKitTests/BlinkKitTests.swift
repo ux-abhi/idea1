@@ -1391,6 +1391,14 @@ extension Tokens {
         #expect(AppMatch.best("vs code", among: apps) == "Visual Studio Code")
         #expect(AppMatch.best("photoshop", among: apps) == nil) // nothing close: open nothing
         #expect(AssistantName.checked("  Jarvis ") == "Jarvis")
+        // Only connected services' models show; with none, only the on-device one (chat only).
+        let onlyOpenRouter = ["anthropic": "missing", "groq": "missing", "openrouter": "ok", "custom": "missing"]
+        #expect(AIModel.available(for: "content", keys: onlyOpenRouter).allSatisfy { $0.group == .best })
+        #expect(AIModel.available(for: "chat", keys: ["groq": "rejected"]).map(\.id) == [AIModel.onDeviceID])
+        #expect(AIModel.available(for: "content", keys: [:]).isEmpty)
+        #expect(AIModel.available(for: "content", keys: nil).count == AIModel.all.count - 1) // not known yet: all but on-device
+        #expect(AIModel.fallback(for: "voice", keys: ["groq": "ok"])?.id == AIModel.voiceDefaultID)
+        #expect(AIModel.fallback(for: "chat", keys: onlyOpenRouter)?.group == .best)
         #expect(ServerSetup.plainProblem(status: 400, detail: "{\"message\":\"The following organization members have reached their maximum limits\"}").contains("no free project left"))
         #expect(!ServerSetup.plainProblem(status: 503, detail: "{\"raw\":1}").contains("{")) // never raw JSON
         #expect(AssistantName.checked("Ignore </text>") == nil) // only letters, digits and spaces

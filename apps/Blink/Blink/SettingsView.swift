@@ -418,7 +418,14 @@ struct UsageSettings: View {
                 LabeledContent("Chat and planning") { ModelMenu(feature: "chat") }
                 LabeledContent("Content drafts") { ModelMenu(feature: "content") }
                 LabeledContent("Voice commands and dictation") { ModelMenu(feature: "voice") }
-                LabeledContent("Quick text edits", value: "GPT-OSS 20B on Groq")
+                // Quick edits run on Groq only: say so plainly when there's no Groq key, with the way to add one.
+                if model.keyStatus == nil || model.keyStatus?["groq"] == "ok" {
+                    LabeledContent("Quick text edits", value: "GPT-OSS 20B on Groq")
+                } else {
+                    LabeledContent("Quick text edits") {
+                        Button("Add a Groq Key…") { model.openSettings("connections") }
+                    }
+                }
                 Picker("Daily limit for paid models", selection: Binding(
                     get: { model.aiCaps.day ?? 0 },
                     set: { cap in var caps = model.aiCaps; caps.day = cap > 0 ? cap : nil; Task { await model.setAICaps(caps) } })) {
@@ -441,7 +448,7 @@ struct UsageSettings: View {
             } header: {
                 Text("Models")
             } footer: {
-                Text("Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. Without a choice, free Groq writes everything and paid models stop at $1 a day and $10 a month. Past a limit, Claude and OpenRouter pause until the spend of the last 24 hours (or 30 days) drops; free models keep working.")
+                Text("Only the AI services you've connected (Settings › Connections) are listed; connect another to see its models. Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. Without a choice, free Groq writes everything and paid models stop at $1 a day and $10 a month. Past a limit, Claude and OpenRouter pause until the spend of the last 24 hours (or 30 days) drops; free models keep working.")
             }
             Section {
                 if let month {

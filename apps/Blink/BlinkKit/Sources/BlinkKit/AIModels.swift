@@ -37,6 +37,35 @@ public struct AIModel: Identifiable, Hashable, Sendable {
         AIModel(id: customID, name: "Your own AI · added in Connections", isFree: false),
     ]
 
+    /// The key in Settings › Connections a model needs ("groq", "openrouter"…, as the connections check names them);
+    /// nil for the on-device model, which needs none.
+    public var keyName: String? {
+        switch group {
+        case .onDevice: nil
+        case .claude: "anthropic"
+        case .free: "groq"
+        case .best: "openrouter"
+        case .own: "custom"
+        }
+    }
+
+    /// The models that can actually run: those whose key works ("ok"), plus the on-device one for chat. `keys` is the
+    /// connections check; nil while it hasn't answered yet, when every model is shown rather than a menu that flickers.
+    public static func available(for feature: String, keys: [String: String]?) -> [AIModel] {
+        all.filter { model in
+            if model.id == onDeviceID { return feature == "chat" }
+            guard let keys, let key = model.keyName else { return true }
+            return keys[key] == "ok"
+        }
+    }
+
+    /// What a feature should use when what's saved can't run: the free model if Groq works, else the first that does.
+    public static func fallback(for feature: String, keys: [String: String]?) -> AIModel? {
+        let usable = available(for: feature, keys: keys).filter { $0.id != onDeviceID }
+        let preferred = feature == "voice" ? voiceDefaultID : defaultID
+        return usable.first { $0.id == preferred } ?? usable.first
+    }
+
     /// Free Groq, as on the server: paid models only when picked (owner, 2026-11-06).
     public static let defaultID = "openai/gpt-oss-120b"
     /// Voice (commands, dictation tidy-up) waits on the model while the owner watches: the fastest free one.
