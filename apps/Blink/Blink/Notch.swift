@@ -287,8 +287,8 @@ final class NotchController {
                 guard let first = new.first, let message = app.importantMail.first(where: { $0.id == first }),
                       self.model.level == .rest else { continue }
                 self.model.mood = .important
-                self.model.peekNote = new.count == 1 ? "✉︎ \(message.sender): \(message.reason.isEmpty ? message.subject : message.reason)"
-                                                     : "✉︎ \(new.count) important emails"
+                self.model.peekNote = new.count == 1 ? "\(message.sender): \(message.reason.isEmpty ? message.subject : message.reason)"
+                                                     : "\(new.count) important emails"
                 self.show(.peek, closingAfter: 8)
                 try? await Task.sleep(for: .seconds(8))
                 self.model.peekNote = nil

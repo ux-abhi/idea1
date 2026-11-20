@@ -810,6 +810,22 @@ public final class BlinkServer: Sendable {
             .eq("id", value: spend.id).execute()
     }
 
+    // MARK: Weekly goals
+
+    public func weeklyGoals(week: String) async throws -> [WeeklyGoal] {
+        try await client.from("weekly_goal").select("id, title, target, done_count, week_start, segment_id, position")
+            .eq("week_start", value: week).order("position").order("created_at").execute().value
+    }
+
+    public func save(_ goals: [WeeklyGoal]) async throws {
+        guard !goals.isEmpty else { return }
+        try await client.from("weekly_goal").upsert(goals).execute()
+    }
+
+    public func delete(_ goal: WeeklyGoal) async throws {
+        try await client.from("weekly_goal").delete().eq("id", value: goal.id).execute()
+    }
+
     // MARK: Draft quality
 
     /// A draft's text as the AI wrote it; nil for drafts written by hand, or on a server without it yet.

@@ -69,7 +69,7 @@ struct ShortcutSettings: View {
             } header: {
                 Text("Dictation")
             } footer: {
-                Text("Press the key twice (or the shortcut), speak, then press it again to type it where your cursor is. Esc drops it. The 🎤 key belongs to macOS. With Groq, the recording goes through your server to Groq (your key, free tier) and isn't kept; the Mac's own text is used if that fails. Language: General › Meeting Notes. With fn, set Keyboard › “Press 🌐 key to” to “Do Nothing” so the emoji picker stays shut, or pick a right-hand key instead.")
+                Text("Press the key twice (or the shortcut), speak, then press it again to type it where your cursor is. Esc drops it. The dictation (microphone) key belongs to macOS. With Groq, the recording goes through your server to Groq (your key, free tier) and isn't kept; the Mac's own text is used if that fails. Language: General › Meeting Notes. With fn, set Keyboard › “Press Globe key to” to “Do Nothing” so the emoji picker stays shut, or pick a right-hand key instead.")
             }
 
             Section("All shortcuts") {

@@ -6,7 +6,7 @@ import SwiftUI
 /// The Mac window: sidebar · content (ARCHITECTURE §5). Settings live in their own window (⌘,).
 struct MainWindow: View {
     enum Section: String, CaseIterable, Identifiable {
-        case today, inbox, calendar, notes, tasks, content, money, waiting, activity
+        case today, inbox, calendar, notes, tasks, habits, content, money, waiting, activity
         var id: Self { self }
 
         var title: String {
@@ -16,6 +16,7 @@ struct MainWindow: View {
             case .calendar: "Calendar"
             case .notes: "Notes"
             case .tasks: "Tasks"
+            case .habits: "Habits & Goals"
             case .content: "Content"
             case .money: "Money"
             case .waiting: "Needs You"
@@ -30,6 +31,7 @@ struct MainWindow: View {
             case .calendar: "calendar"
             case .notes: "note.text"
             case .tasks: "checklist"
+            case .habits: "square.grid.3x3.fill"
             case .content: "megaphone"
             case .money: "eurosign.circle"
             case .waiting: "tray"
@@ -84,8 +86,9 @@ struct MainWindow: View {
                     row(.calendar)
                     row(.notes)
                     row(.tasks)
-                    if model.showsContent { row(.content) }
+                    row(.habits)
                     row(.money)
+                    if model.showsContent { row(.content) } // moving into Spaces (ADR-0002); last until it's gone
                 }
                 spacesSection
                 SwiftUI.Section("Review", isExpanded: $reviewOpen) {
@@ -183,6 +186,7 @@ struct MainWindow: View {
         case .section(.calendar): CalendarListView()
         case .section(.notes): NotesView()
         case .section(.tasks): TasksView()
+        case .section(.habits): HabitsGoalsView()
         case .section(.content): ContentView()
         case .section(.money): MoneyView()
         case .section(.waiting): WaitingView()
@@ -222,9 +226,11 @@ struct MainWindow: View {
 
     /// ⌘1 Today, ⌘2 Inbox, ⌘3 Calendar… in sidebar order, like tabs in Safari.
     private var pageShortcuts: some View {
-        let pages: [Section] = [.today, .inbox, .calendar, .notes, .tasks] + (model.showsContent ? [.content] : []) + [.money, .waiting, .activity]
+        // Habits & Goals takes Content's place; Content (while it's still there) has no number: there are only ⌘1–⌘9,
+        // and a tenth would crash (a key is one character).
+        let pages: [Section] = [.today, .inbox, .calendar, .notes, .tasks, .habits, .money, .waiting, .activity]
         return ZStack {
-            ForEach(Array(pages.enumerated()), id: \.offset) { index, section in
+            ForEach(Array(pages.prefix(9).enumerated()), id: \.offset) { index, section in
                 Button(section.title) { page = .section(section) }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
             }

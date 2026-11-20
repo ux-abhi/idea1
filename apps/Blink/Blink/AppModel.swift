@@ -241,6 +241,11 @@ final class AppModel {
     private(set) var habits: [Habit] = []
     /// habit id → habit day ("yyyy-MM-dd") → answer.
     private(set) var habitAnswers: [String: [String: HabitAnswer]] = [:]
+    /// This week's goals (Habits & Goals); empty on a server without them yet.
+    private(set) var weeklyGoals: [WeeklyGoal] = []
+    /// "Plan my week" asked for (from the notch, or the button): the Habits & Goals page opens its sheet.
+    var planningWeek = false
+    var thisWeek: String { WeekPlan.weekStart(of: habitToday) }
     private(set) var wake = (hour: 7, minute: 0)
     private(set) var evening = (hour: 21, minute: 30)
     private(set) var lastEvening: Date? = UserDefaults.standard.object(forKey: "lastEvening") as? Date
@@ -932,6 +937,63 @@ final class AppModel {
               let logs = try? await server.habitLogs(since: HabitDay.answersSince(list, today: habitToday)) else { return }
         habits = list
         habitAnswers = Dictionary(grouping: logs, by: \.habitID).mapValues { Dictionary($0.map { ($0.day, $0.status) }) { $1 } }
+        weeklyGoals = (try? await server.weeklyGoals(week: thisWeek)) ?? weeklyGoals
+    }
+
+    // MARK: Weekly goals (Habits & Goals)
+
+    /// Adds goals to this week (Plan my week), after the ones already there.
+    func addGoals(_ new: [(title: String, target: Int)]) async {
+        let start = (weeklyGoals.map(\.position).max() ?? -1) + 1
+        let goals = new.enumerated().map { i, g in WeeklyGoal(title: g.title, target: g.target, weekStart: thisWeek, position: start + i) }
+        weeklyGoals += goals
+        await saveGoals(goals, failing: "Couldn't add those goals.") { self.weeklyGoals.removeAll { g in goals.contains { $0.id == g.id } } }
+    }
+
+    /// +1 or −1 on a counter, or ticks a single check; never below 0 or past the target.
+    func bump(_ goal: WeeklyGoal, by step: Int) async {
+        guard let i = weeklyGoals.firstIndex(where: { $0.id == goal.id }) else { return }
+        let before = weeklyGoals[i]
+        weeklyGoals[i].doneCount = max(0, min(before.target, before.doneCount + step))
+        guard weeklyGoals[i] != before else { return }
+        await saveGoals([weeklyGoals[i]], failing: "Couldn't save that.") {
+            if let j = self.weeklyGoals.firstIndex(where: { $0.id == goal.id }) { self.weeklyGoals[j] = before }
+        }
+    }
+
+    func deleteGoal(_ goal: WeeklyGoal) async {
+        guard let server else { return }
+        do { try await server.delete(goal) } catch {
+            saveProblem = "Couldn't delete that goal. Check your connection and try again."
+            return
+        }
+        weeklyGoals.removeAll { $0.id == goal.id }
+        offerUndo("Deleted goal: \(goal.title)") { [weak self] in
+            guard let self else { return }
+            self.weeklyGoals.append(goal)
+            await self.saveGoals([goal], failing: "Couldn't bring that goal back.") { self.weeklyGoals.removeAll { $0.id == goal.id } }
+        }
+    }
+
+    /// Friday's look back: what's left of this week's goals becomes next week's.
+    func carryOverGoals() async {
+        let next = WeekPlan.weekStart(of: Calendar.current.date(byAdding: .day, value: 7, to: habitToday) ?? habitToday)
+        let moved = WeekPlan.carriedOver(weeklyGoals, to: next)
+        guard !moved.isEmpty, let server else { return }
+        do {
+            try await server.save(moved)
+            announce("Moved \(moved.count) goal\(moved.count == 1 ? "" : "s") to next week.")
+        } catch {
+            saveProblem = serverBehind ? "Update your server (Settings › Server) to use weekly goals." : "Couldn't move the goals. Try again."
+        }
+    }
+
+    private func saveGoals(_ goals: [WeeklyGoal], failing: String, undo: () -> Void) async {
+        guard let server else { return undo() }
+        do { try await server.save(goals) } catch {
+            undo()
+            saveProblem = serverBehind ? "Update your server (Settings › Server) to use weekly goals." : "\(failing) Check your connection and try again."
+        }
     }
 
     func addHabit(_ name: String, weekdays: [Int] = Array(1...7)) async {
@@ -1167,6 +1229,15 @@ final class AppModel {
     func ask(_ text: String, context: String? = nil, space: String? = nil) async {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty, !thinking else { return }
+        // "Plan my week" opens the planner in Habits & Goals instead of a chat answer.
+        if message.lowercased().trimmingCharacters(in: .punctuationCharacters).hasPrefix("plan my week") {
+            #if os(macOS)
+            showWindow()
+            #endif
+            openPage = "habits"
+            planningWeek = true
+            return
+        }
         let onDevice = model(for: "chat").id == AIModel.onDeviceID
         guard onDevice || server != nil else {
             // Signed out or mid-setup: the question stays visible with what to do, instead of vanishing.
@@ -1261,7 +1332,7 @@ final class AppModel {
             questions[idea] = try await server.draftContent(idea: idea, platforms: platforms, spaceID: space, plannedFor: plannedFor)
             await loadContent()
             if !batchingDrafts {
-                announce("✍︎ Drafts ready: \(idea.split(separator: "\n").first.map(String.init)?.prefix(40) ?? "your post")")
+                announce("Drafts ready: \(idea.split(separator: "\n").first.map(String.init)?.prefix(40) ?? "your post")")
             }
             return true
         } catch let problem as BlinkServer.ChatProblem {
@@ -1310,7 +1381,7 @@ final class AppModel {
         contentProblem = nil
         do {
             ideas = try await server.contentIdeas(theme: theme, platforms: platforms)
-            announce("💡 \(ideas.count) post ideas ready")
+            announce("\(ideas.count) post ideas ready")
             return
         }
         catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
@@ -1332,7 +1403,7 @@ final class AppModel {
         do {
             pageRead = try await server.readPage()
             await loadContentStats()
-            announce("📊 Read \(pageRead?.read ?? 0) posts · stats in Content")
+            announce("Read \(pageRead?.read ?? 0) posts · stats in Content")
             return
         }
         catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
@@ -1392,7 +1463,7 @@ final class AppModel {
         do {
             let planned = try await server.contentIdeas(theme: theme, platforms: platforms, days: HabitDay.nextDays())
             await loadContent() // the server kept them, each on its day
-            announce("📅 Week planned: \(planned.count) posts")
+            announce("Week planned: \(planned.count) posts")
             return
         }
         catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
@@ -1414,7 +1485,7 @@ final class AppModel {
             while drafting { try? await Task.sleep(for: .milliseconds(300)) } // a Write clicked meanwhile
             if await write(idea) { written += 1 }
         }
-        if written > 0 { announce("✍︎ \(written) of \(list.count) ideas written for your plan") }
+        if written > 0 { announce("\(written) of \(list.count) ideas written for your plan") }
     }
 
     /// A planned idea becomes drafts on the same day (and Space); the idea goes once they're written.
@@ -1751,7 +1822,7 @@ final class AppModel {
             edit(current)
             await save(note.id)
         }
-        announce(digest == nil ? "📝 Notes saved (transcript only)" : "📝 Notes ready: \(note.title)")
+        announce(digest == nil ? "Notes saved (transcript only)" : "Notes ready: \(note.title)")
     }
     #endif
 
@@ -1873,7 +1944,7 @@ final class AppModel {
                 #endif
             }
             let when = draft.start.formatted(.dateTime.weekday(.abbreviated).hour().minute())
-            announce("📹 Meet set for \(when)\(result.meetURL == nil ? "" : " · link copied")")
+            announce("Meet set for \(when)\(result.meetURL == nil ? "" : " · link copied")")
             Task { await reloadAgenda() }
             return nil
         } catch {

@@ -37,7 +37,7 @@ public enum Shortcuts {
             ("↑ ↓", "Move through search and clipboard results"),
         ]),
         group("In the window", [
-            ("⌘1 – ⌘9", "Go to the pages in sidebar order: Today, Inbox, Calendar, Notes, Tasks, Content (when on), Money, Needs You, Activity"),
+            ("⌘1 – ⌘9", "Go to the pages in sidebar order: Today, Inbox, Calendar, Notes, Tasks, Habits & Goals, Money, Needs You, Activity"),
             ("⌘L", "Type in the bar at the bottom (not on Space pages)"),
             ("⌘K", "Search notes, tasks, posts and spaces"),
             ("⌘R", "Sync now"),

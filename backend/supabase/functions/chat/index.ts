@@ -35,6 +35,8 @@ When the owner wants a social post, call propose_post: Blink then writes the dra
 If they haven't said which platform (Instagram, LinkedIn or X), ask which in one short question first, and never pick one
 for them. If they name a day to post, put it in post_on. For post ideas, give a short numbered list in the reply, then offer to propose the ones they like as posts.
 All of these only propose: the owner sees a card and approves it.
+weekly_goals are the owner's goals for this week, each with done_count of target (they tick them themselves); use
+them when asked how the week is going. For "plan my week", Blink opens its own planner, so you don't need to.
 When asked to plan a day, fit the open tasks around the calendar with realistic times and propose them; keep the reply
 to a few short lines.
 After proposing, say in one line what you proposed, e.g. "Proposed: call Sam, Fri 16:00. It's waiting for your OK."
@@ -164,7 +166,7 @@ Deno.serve(async (req) => {
 
   const now = new Date();
   const weekAhead = new Date(now.getTime() + 7 * 86_400_000).toISOString();
-  const [events, tasks, notes, habits, profile, spend, mail, spaces, current, inSpace] = await Promise.all([
+  const [events, tasks, notes, habits, profile, spend, mail, spaces, current, inSpace, goals] = await Promise.all([
     db.from("calendar_event").select("title, occurrence_start, ends_at, location")
       .gte("ends_at", now.toISOString()).lt("occurrence_start", weekAhead).order("occurrence_start").limit(60),
     db.from("item").select("id, title, due_at, space_id:segment_id").eq("type", "task").eq("status", "open").is("deleted_at", null).limit(80),
@@ -186,6 +188,8 @@ Deno.serve(async (req) => {
       ? db.from("item").select("type, title, body, status, due_at").eq("segment_id", parsed.spaceID).is("deleted_at", null)
         .order("updated_at", { ascending: false }).limit(60)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    // This week's goals (Habits & Goals), latest week first; empty on a server without them yet.
+    db.from("weekly_goal").select("title, target, done_count, week_start").order("week_start", { ascending: false }).limit(20),
   ]);
   const space = current.data;
   const model = pickModel(profile.data?.model_prefs, "chat", Deno.env.get("BLINK_CHAT_MODEL"));
@@ -203,6 +207,7 @@ Deno.serve(async (req) => {
     open_reminders: parsed.reminders,
     recent_notes: (notes.data ?? []).map((n) => ({ ...n, body: String(n.body ?? "").slice(0, 600) })),
     habits: habits.data ?? [],
+    weekly_goals: (goals.data ?? []).filter((g) => g.week_start === goals.data?.[0]?.week_start),
     spaces: spaces.data ?? [],
     current_space: space ? {
       ...space,

@@ -21,7 +21,7 @@ enum BlinkShortcut: String, CaseIterable, Identifiable {
     static let fnTwiceKey = "dictation.fnTwice"
     static let twiceKeyKey = "dictation.twiceKey"
     /// Keys that can be pressed twice: fn, or a right-hand modifier (rarely part of anyone's shortcuts).
-    static let twiceKeys: [(code: Int, name: String)] = [(kVK_Function, "fn (🌐)"), (kVK_RightOption, "Right ⌥ Option"),
+    static let twiceKeys: [(code: Int, name: String)] = [(kVK_Function, "fn / Globe"), (kVK_RightOption, "Right ⌥ Option"),
                                                          (kVK_RightCommand, "Right ⌘ Command"), (kVK_RightControl, "Right ⌃ Control")]
     static var twiceKey: Int { UserDefaults.standard.object(forKey: twiceKeyKey) as? Int ?? kVK_Function }
 

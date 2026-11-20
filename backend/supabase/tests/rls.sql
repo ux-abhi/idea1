@@ -311,6 +311,18 @@ do $$ begin
     raise exception 'an edited share above 1 was accepted';
   exception when check_violation then null;
   end;
+  -- Weekly goals: on a Monday, never more done than the target.
+  insert into public.weekly_goal (week_start, title, target, done_count) values ('2026-11-16', 'Create 5 posts', 5, 2);
+  begin
+    insert into public.weekly_goal (week_start, title, target, done_count) values ('2026-11-16', 'Gym', 3, 4);
+    raise exception 'a goal done more often than its target was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.weekly_goal (week_start, title) values ('2026-11-18', 'Wednesday start');
+    raise exception 'a week starting on a Wednesday was accepted';
+  exception when check_violation then null;
+  end;
   -- Income: adds to the account's balance; a recurring one comes in once per month; never negative or on day 32.
   insert into public.income (amount, note, account_id) values (3000, 'Salary', '00000000-0000-0000-0000-0000000000f1');
   assert (select received_since from public.money_account_now where name = 'Sparkasse') = 3000, 'balance view adds up income';
@@ -413,6 +425,7 @@ do $$ begin
   assert (select count(*) from public.fixed_bill) = 0, 'B must not see A''s fixed bills';
   assert (select count(*) from public.income) = 0, 'B must not see A''s income';
   assert (select count(*) from public.income_plan) = 0, 'B must not see A''s recurring income';
+  assert (select count(*) from public.weekly_goal) = 0, 'B must not see A''s weekly goals';
   assert (select count(*) from public.money_account) = 0, 'B must not see A''s accounts';
   assert (select count(*) from public.capture_token) = 0, 'B must not see A''s capture tokens';
   assert (select count(*) from public.money_account_now) = 0, 'B must not see A''s balances';

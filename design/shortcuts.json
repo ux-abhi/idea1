@@ -60,7 +60,7 @@
       "items": [
         {
           "keys": "⌘1 – ⌘9",
-          "what": "Go to the pages in sidebar order: Today, Inbox, Calendar, Notes, Tasks, Content (when on), Money, Needs You, Activity"
+          "what": "Go to the pages in sidebar order: Today, Inbox, Calendar, Notes, Tasks, Habits & Goals, Money, Needs You, Activity"
         },
         {
           "keys": "⌘L",

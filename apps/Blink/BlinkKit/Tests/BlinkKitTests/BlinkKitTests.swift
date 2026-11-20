@@ -1391,6 +1391,18 @@ extension Tokens {
         #expect(AppMatch.best("vs code", among: apps) == "Visual Studio Code")
         #expect(AppMatch.best("photoshop", among: apps) == nil) // nothing close: open nothing
         #expect(AssistantName.checked("  Jarvis ") == "Jarvis")
+        // Plan my week: counts read from text, the week's Monday, and what's left moving on.
+        let read = WeekPlan.goals(from: "- Create 5 posts\n2. Gym 3 times\n3x read a chapter\nFinish onboarding redesign\nLaunch in 2026\n\n")
+        #expect(read.map(\.title) == ["Create 5 posts", "Gym", "read a chapter", "Finish onboarding redesign", "Launch in 2026"])
+        #expect(read.map(\.target) == [5, 3, 3, 1, 1])
+        var berlin = Calendar(identifier: .gregorian); berlin.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        let thursday = berlin.date(from: DateComponents(year: 2026, month: 11, day: 19, hour: 12))!
+        let sunday = berlin.date(from: DateComponents(year: 2026, month: 11, day: 22, hour: 23))!
+        #expect(WeekPlan.weekStart(of: thursday, calendar: berlin) == "2026-11-16")
+        #expect(WeekPlan.weekStart(of: sunday, calendar: berlin) == "2026-11-16") // Sunday ends the week, not starts it
+        let left = WeekPlan.carriedOver([WeeklyGoal(title: "Posts", target: 5, doneCount: 3, weekStart: "2026-11-16"),
+                                         WeeklyGoal(title: "Done", target: 1, doneCount: 1, weekStart: "2026-11-16")], to: "2026-11-23")
+        #expect(left.count == 1 && left[0].target == 2 && left[0].doneCount == 0 && left[0].weekStart == "2026-11-23")
         // Draft edits: unchanged is 0, punctuation fixes barely count, a rewrite is near 1.
         let draft = "I paused new features for two weeks. Signups went up."
         #expect(DraftEdits.changedShare(from: draft, to: draft) == 0)
