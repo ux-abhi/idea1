@@ -244,3 +244,25 @@ public struct PageRead: Decodable, Sendable {
     public let analysis: Analysis?
     public let best: [Best]
 }
+
+/// How much the owner changed an AI draft before approving it: the share of words not kept in order (0 = used as
+/// written, 1 = rewritten). Word-level, case and punctuation ignored, so fixing a comma barely counts.
+public enum DraftEdits {
+    public static func changedShare(from original: String, to final: String) -> Double {
+        let a = words(original), b = words(final)
+        guard !a.isEmpty || !b.isEmpty else { return 0 }
+        guard !a.isEmpty, !b.isEmpty else { return 1 }
+        // Longest common subsequence of words, two rows at a time (a draft is a few hundred words at most).
+        var previous = [Int](repeating: 0, count: b.count + 1), current = previous
+        for x in a {
+            for (j, y) in b.enumerated() { current[j + 1] = x == y ? previous[j] + 1 : max(previous[j + 1], current[j]) }
+            swap(&previous, &current)
+        }
+        let kept = Double(previous[b.count])
+        return min(1, max(0, 1 - kept / Double(max(a.count, b.count))))
+    }
+
+    private static func words(_ text: String) -> [Substring] {
+        text.lowercased().split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "#" }
+    }
+}

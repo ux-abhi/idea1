@@ -24,29 +24,71 @@ final class AppModel {
     func loadKeyStatus() async {
         guard let server, email != nil, let status = try? await server.connections() else { return }
         keyStatus = status
-        await moveOffDisconnectedModels()
+        await routeModels()
     }
 
     /// Settings › Connections checked the keys itself: share the answer, so setup prompts update at once.
     func updateKeyStatus(_ status: [String: String]) {
         keyStatus = status
-        Task { await moveOffDisconnectedModels() }
+        Task { await routeModels() }
     }
 
-    /// A feature whose model's key isn't connected (never added, removed, or rejected) moves to one that works, and the
-    /// server is told, so nothing waits on a model that can't answer. Needs both answers in: the keys and the choices.
-    private func moveOffDisconnectedModels() async {
+    /// Blink's model router. Features the owner left on Automatic get the model their task wants from what's connected
+    /// (Settings › AI › Quality: the strongest for writing and planning, the fastest for voice and quick edits); a model
+    /// the owner picked stays, unless its key is gone, when it moves to one that works. One notice says what changed.
+    /// Needs both answers in: the keys and the choices.
+    private func routeModels() async {
         guard let keyStatus, capsLoaded else { return }
+        var changed: [String] = []
         for feature in ["chat", "content", "voice", "text"] {
             if feature == "chat" && onDevicePicked { continue } // the owner chose on-device chat: no key needed, keep it
             let available = AIModel.available(for: feature, keys: keyStatus).map(\.id)
-            guard let saved = modelPrefs[feature] ?? Optional(feature == "voice" || feature == "text" ? AIModel.voiceDefaultID : AIModel.defaultID),
-                  !available.contains(saved), let better = AIModel.fallback(for: feature, keys: keyStatus) else { continue }
-            await setModel(better.id, for: feature)
-            guard modelPrefs[feature] == better.id else { continue } // not saved (offline): say nothing, try next launch
-            let what = ["chat": "Chat", "content": "Content drafts", "voice": "Voice", "text": "Quick text edits"][feature] ?? feature
-            let was = AIModel.all.first { $0.id == saved }?.shortName ?? saved
-            announce("\(what) now uses \(better.shortName): \(was) isn't connected. Change it in Settings › AI.")
+            let saved = modelPrefs[feature] ?? (feature == "voice" || feature == "text" ? AIModel.voiceDefaultID : AIModel.defaultID)
+            let target: AIModel?
+            if pickedModels.contains(feature) {
+                target = available.contains(saved) ? nil : AIModel.fallback(for: feature, keys: keyStatus)
+            } else {
+                target = AIModel.recommended(for: feature, keys: keyStatus, quality: modelQuality)
+            }
+            guard let target, target.id != saved else { continue }
+            await setModel(target.id, for: feature, byOwner: false)
+            guard modelPrefs[feature] == target.id else { continue } // not saved (offline): say nothing, try next launch
+            changed.append("\(Self.featureNames[feature] ?? feature): \(target.shortName)")
+        }
+        if !changed.isEmpty { announce("Models now: \(changed.joined(separator: ", ")). Change them in Settings › AI.") }
+    }
+
+    static let featureNames = ["chat": "Chat", "content": "Content drafts", "voice": "Voice", "text": "Quick edits"]
+
+    /// Settings › AI › Quality, kept with the model choices on the server.
+    var modelQuality: AIModel.Quality { AIModel.Quality(rawValue: modelPrefs["quality"] ?? "") ?? .best }
+    /// Features whose model the owner chose by hand (the router leaves them alone).
+    var pickedModels: Set<String> { Set((modelPrefs["picked"] ?? "").split(separator: ",").map(String.init)) }
+
+    func setModelQuality(_ quality: AIModel.Quality) async {
+        await savePrefs { $0["quality"] = quality.rawValue }
+        await routeModels()
+    }
+
+    /// Back to Automatic for one feature: Blink picks its model again.
+    func setModelAutomatic(_ feature: String) async {
+        if feature == "chat" { onDevicePicked = false }
+        let picked = pickedModels.subtracting([feature]).sorted().joined(separator: ",") // read before the write below
+        await savePrefs { $0["picked"] = picked }
+        await routeModels()
+    }
+
+    /// Changes the saved choices in one write; puts them back if the server didn't take it.
+    private func savePrefs(_ change: (inout [String: String]) -> Void) async {
+        guard let server else { return }
+        let before = modelPrefs
+        change(&modelPrefs)
+        do {
+            try await server.setModelPrefs(modelPrefs)
+            modelProblem = nil
+        } catch {
+            modelPrefs = before
+            modelProblem = "Couldn't change the model. Check your connection and try again."
         }
     }
 
@@ -1462,12 +1504,30 @@ final class AppModel {
 
     func setStatus(_ status: ContentPiece.Status, of piece: ContentPiece) async {
         var changed = content.first { $0.id == piece.id } ?? piece
+        let wasDraft = changed.status == .drafted
         changed.status = status
         changed.publishedAt = status == .published ? .now : nil
         edit(changed)
         await saveContent(piece.id)
         // Only once the server has it: an unsaved archive stays in the list so the next load retries it.
         if status == .archived && !contentUnsaved.contains(piece.id) { content.removeAll { $0.id == piece.id } }
+        if status == .approved && wasDraft { await recordDraftEdit(changed) }
+    }
+
+    /// On approval: how much of the AI's draft the owner changed (Settings › AI shows it per model). Quiet when the
+    /// draft was written by hand or the server doesn't keep originals yet.
+    private func recordDraftEdit(_ piece: ContentPiece) async {
+        guard let server, let original = await server.draftOriginal(piece.id) else { return }
+        try? await server.setEditedShare(DraftEdits.changedShare(from: original, to: piece.postText), of: piece.id)
+    }
+
+    /// The last 30 days of approved AI drafts: how much was changed on average, per model (most drafts first).
+    func draftQuality() async -> [(model: String, drafts: Int, changed: Double)] {
+        guard let server else { return [] }
+        let edits = await server.draftEdits(since: .now.addingTimeInterval(-30 * 86_400))
+        return Dictionary(grouping: edits, by: \.model)
+            .map { (model: $0.key, drafts: $0.value.count, changed: $0.value.map(\.share).reduce(0, +) / Double($0.value.count)) }
+            .sorted { $0.drafts > $1.drafts }
     }
 
     func saveVoice(_ new: VoiceProfile) async {
@@ -2553,7 +2613,7 @@ final class AppModel {
         if let caps = try? await server.aiCaps() {
             aiCaps = caps
             capsLoaded = true
-            defer { Task { await moveOffDisconnectedModels() } }
+            defer { Task { await routeModels() } }
             UserDefaults.standard.set(caps.name, forKey: AssistantName.key) // the app's labels read it from here
         }
     }
@@ -2614,17 +2674,14 @@ final class AppModel {
         AIModel.available(for: feature, keys: keyStatus).contains { $0.id != AIModel.onDeviceID || OnDeviceChat.problem == nil }
     }
 
-    func setModel(_ id: String, for feature: String) async {
+    /// `byOwner`: picked in a menu, so the router leaves this feature alone from now on.
+    func setModel(_ id: String, for feature: String, byOwner: Bool = true) async {
         if feature == "chat" { onDevicePicked = id == AIModel.onDeviceID }
-        guard id != AIModel.onDeviceID, let server else { return }
-        let before = modelPrefs
-        modelPrefs[feature] = id
-        do {
-            try await server.setModelPrefs(modelPrefs)
-            modelProblem = nil
-        } catch {
-            modelPrefs = before
-            modelProblem = "Couldn't change the model. Check your connection and try again."
+        guard id != AIModel.onDeviceID else { return }
+        let picked = pickedModels.union([feature]).sorted().joined(separator: ",") // read before the write below
+        await savePrefs { prefs in
+            prefs[feature] = id
+            if byOwner { prefs["picked"] = picked }
         }
     }
 

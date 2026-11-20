@@ -415,6 +415,11 @@ struct UsageSettings: View {
     var body: some View {
         Form {
             Section {
+                Picker("Quality", selection: Binding(get: { model.modelQuality }, set: { q in Task { await model.setModelQuality(q) } })) {
+                    Text("Best: strongest model you've connected").tag(AIModel.Quality.best)
+                    Text("Free only").tag(AIModel.Quality.free)
+                }
+                .disabled(!model.capsLoaded)
                 LabeledContent("Chat and planning") { ModelMenu(feature: "chat") }
                 LabeledContent("Content drafts") { ModelMenu(feature: "content") }
                 LabeledContent("Voice commands and dictation") { ModelMenu(feature: "voice") }
@@ -441,8 +446,9 @@ struct UsageSettings: View {
             } header: {
                 Text("Models")
             } footer: {
-                Text("Only the AI services you've connected (Settings › Connections) are listed; connect another to see its models. Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. Without a choice, free Groq writes everything and paid models stop at $1 a day and $10 a month. Past a limit, Claude and OpenRouter pause until the spend of the last 24 hours (or 30 days) drops; free models keep working.")
+                Text("On Automatic, Blink picks each task's model from what you've connected: with Best, the strongest one writes and plans (paid models stay within the limits below), and the fastest handles voice and quick edits. Pick a model in a menu to choose it yourself. Only the AI services you've connected (Settings › Connections) are listed. Groq models use your Groq key and its free daily limits. Claude is stronger at following Blink's safety rules; with any model, nothing changes until you approve the card. Paid models stop at $1 a day and $10 a month unless you change the limits. Past a limit, Claude and OpenRouter pause until the spend of the last 24 hours (or 30 days) drops; free models keep working.")
             }
+            DraftQualitySection()
             Section {
                 if let month {
                     let total = month.reduce(0) { $0 + $1.costUSD }
@@ -602,5 +608,38 @@ struct AssistantNameField: View {
                 problem = "Couldn't save it. Check your connection and try again."
             }
         }
+    }
+}
+
+/// Settings › AI › Draft quality: how much the owner changed the AI's drafts before approving them, per model, over the
+/// last 30 days. Less changed means the writing was closer to what they wanted.
+struct DraftQualitySection: View {
+    @Environment(AppModel.self) private var model
+    @State private var rows: [(model: String, drafts: Int, changed: Double)]?
+
+    var body: some View {
+        Section {
+            if let rows, !rows.isEmpty {
+                let drafts = rows.reduce(0) { $0 + $1.drafts }
+                let changed = rows.reduce(0) { $0 + $1.changed * Double($1.drafts) } / Double(drafts)
+                LabeledContent("You changed", value: "about \(Int((changed * 100).rounded()))% of the words")
+                    .accessibilityHint("Across \(drafts) approved drafts")
+                ForEach(rows, id: \.model) { row in
+                    LabeledContent(AIModel.all.first { $0.id == row.model }?.shortName ?? row.model,
+                                   value: "\(Int((row.changed * 100).rounded()))% changed · \(row.drafts) draft\(row.drafts == 1 ? "" : "s")")
+                        .foregroundStyle(.secondary)
+                }
+            } else if rows != nil {
+                Text("Approve a few AI drafts in Content and Blink shows how close they were to what you wanted.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        } header: {
+            Text("Draft quality, last 30 days")
+        } footer: {
+            Text("The share of words you changed in each AI draft before approving it. Lower is better: the draft already sounded like you.")
+        }
+        .task { rows = await model.draftQuality() }
     }
 }

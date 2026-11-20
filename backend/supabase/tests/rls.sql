@@ -304,6 +304,13 @@ do $$ begin
   exception when unique_violation then null;
   end;
   delete from public.transaction where dedupe_key = 'bill:x:2026-11';
+  -- Draft quality: the original AI text and the share edited, which is a fraction from 0 to 1.
+  begin
+    insert into public.content_piece (idea, platform, format, ai_text, ai_model, edited_share)
+      values ('Test', 'linkedin', 'post', 'Original', 'claude-sonnet-5-5', 1.5);
+    raise exception 'an edited share above 1 was accepted';
+  exception when check_violation then null;
+  end;
   -- Income: adds to the account's balance; a recurring one comes in once per month; never negative or on day 32.
   insert into public.income (amount, note, account_id) values (3000, 'Salary', '00000000-0000-0000-0000-0000000000f1');
   assert (select received_since from public.money_account_now where name = 'Sparkasse') = 3000, 'balance view adds up income';

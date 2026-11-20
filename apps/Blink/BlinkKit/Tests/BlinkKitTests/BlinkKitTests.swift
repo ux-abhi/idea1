@@ -1391,6 +1391,12 @@ extension Tokens {
         #expect(AppMatch.best("vs code", among: apps) == "Visual Studio Code")
         #expect(AppMatch.best("photoshop", among: apps) == nil) // nothing close: open nothing
         #expect(AssistantName.checked("  Jarvis ") == "Jarvis")
+        // Draft edits: unchanged is 0, punctuation fixes barely count, a rewrite is near 1.
+        let draft = "I paused new features for two weeks. Signups went up."
+        #expect(DraftEdits.changedShare(from: draft, to: draft) == 0)
+        #expect(DraftEdits.changedShare(from: draft, to: "I paused new features for two weeks, and signups went up!") < 0.15)
+        #expect(DraftEdits.changedShare(from: draft, to: "We shipped a calendar today.") > 0.8)
+        #expect(DraftEdits.changedShare(from: "", to: "") == 0 && DraftEdits.changedShare(from: draft, to: "") == 1)
         // Only connected services' models show; with none, only the on-device one (chat only).
         let onlyOpenRouter = ["anthropic": "missing", "groq": "missing", "openrouter": "ok", "custom": "missing"]
         #expect(AIModel.available(for: "content", keys: onlyOpenRouter).allSatisfy { $0.group == .best })
@@ -1399,6 +1405,14 @@ extension Tokens {
         #expect(AIModel.available(for: "content", keys: nil).count == AIModel.all.count - 1) // not known yet: all but on-device
         #expect(AIModel.fallback(for: "voice", keys: ["groq": "ok"])?.id == AIModel.voiceDefaultID)
         #expect(AIModel.fallback(for: "chat", keys: onlyOpenRouter)?.group == .best)
+        // Best: writing goes to the strongest connected model, background work to the fastest; Free stays on Groq.
+        let all = ["anthropic": "ok", "groq": "ok", "openrouter": "ok"]
+        #expect(AIModel.recommended(for: "content", keys: all, quality: .best)?.id == "claude-sonnet-5-5")
+        #expect(AIModel.recommended(for: "voice", keys: all, quality: .best)?.id == "openai/gpt-oss-20b")
+        #expect(AIModel.recommended(for: "chat", keys: all, quality: .free)?.id == "openai/gpt-oss-120b")
+        #expect(AIModel.recommended(for: "content", keys: onlyOpenRouter, quality: .best)?.id == "openai/gpt-6.1-sol")
+        #expect(AIModel.recommended(for: "content", keys: onlyOpenRouter, quality: .free) == nil) // nothing free connected
+        #expect(Set(AIModel.writingRank).count == AIModel.all.count - 1 && Set(AIModel.fastRank) == Set(AIModel.writingRank)) // every model ranked once
         #expect(ServerSetup.plainProblem(status: 400, detail: "{\"message\":\"The following organization members have reached their maximum limits\"}").contains("no free project left"))
         #expect(!ServerSetup.plainProblem(status: 503, detail: "{\"raw\":1}").contains("{")) // never raw JSON
         #expect(AssistantName.checked("Ignore </text>") == nil) // only letters, digits and spaces

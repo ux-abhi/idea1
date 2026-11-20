@@ -2,7 +2,8 @@
 import BlinkKit
 import SwiftUI
 
-/// Pick the model for one feature: Claude or a free Groq model. The same choice shows in Settings › AI & Usage.
+/// The model for one feature: Automatic (Blink picks from what's connected, by Settings › AI › Quality) or one picked by
+/// hand from the connected services. The same choice shows in Settings › AI.
 struct ModelMenu: View {
     @Environment(AppModel.self) private var model
     let feature: String
@@ -14,7 +15,17 @@ struct ModelMenu: View {
         // Only what can run: models whose service is connected, and the on-device one for chat.
         let available = AIModel.available(for: feature, keys: model.keyStatus)
             .filter { $0.id != AIModel.onDeviceID || OnDeviceChat.problem == nil }
+        let automatic = !model.pickedModels.contains(feature) && !(feature == "chat" && current.id == AIModel.onDeviceID)
         Menu {
+            if !available.isEmpty {
+                Button {
+                    Task { await model.setModelAutomatic(feature) }
+                } label: {
+                    let text = "Automatic: \(model.modelQuality == .best ? "best" : "free") model you've connected"
+                    if automatic { Label(text, systemImage: "checkmark") } else { Text(text) }
+                }
+                Divider()
+            }
             ForEach(AIModel.Group.allCases.filter { group in available.contains { $0.group == group } }, id: \.self) { group in
                 Section(group.rawValue) {
                     ForEach(available.filter { $0.group == group }) { option($0, current: current) }
@@ -26,6 +37,8 @@ struct ModelMenu: View {
         } label: {
             if !model.hasModel(for: feature) {
                 Label("Connect AI", systemImage: "key")
+            } else if automatic && !compact {
+                Text("Auto · \(current.shortName)")
             } else if compact {
                 Label(current.shortName, systemImage: current.group == .onDevice ? "laptopcomputer" : current.isFree ? "leaf" : current.group == .best ? "star" : "sparkles")
             } else {
@@ -41,7 +54,8 @@ struct ModelMenu: View {
         Button {
             Task { await model.setModel(option.id, for: feature) }
         } label: {
-            if option.id == current.id { Label(option.name, systemImage: "checkmark") } else { Text(option.name) }
+            // A checkmark only on a model picked by hand; Automatic carries its own.
+            if option.id == current.id && (model.pickedModels.contains(feature) || option.id == AIModel.onDeviceID) { Label(option.name, systemImage: "checkmark") } else { Text(option.name) }
         }
     }
 }

@@ -810,6 +810,28 @@ public final class BlinkServer: Sendable {
             .eq("id", value: spend.id).execute()
     }
 
+    // MARK: Draft quality
+
+    /// A draft's text as the AI wrote it; nil for drafts written by hand, or on a server without it yet.
+    public func draftOriginal(_ id: String) async -> String? {
+        struct Row: Decodable { let ai_text: String? }
+        let rows: [Row]? = try? await client.from("content_piece").select("ai_text").eq("id", value: id).limit(1).execute().value
+        return rows?.first?.ai_text
+    }
+
+    public func setEditedShare(_ share: Double, of id: String) async throws {
+        try await client.from("content_piece").update(["edited_share": (share * 1000).rounded() / 1000]).eq("id", value: id).execute()
+    }
+
+    /// How much the owner changed each approved AI draft since a day: the model that wrote it, and the share changed.
+    /// Empty on a server without draft quality yet.
+    public func draftEdits(since: Date) async -> [(model: String, share: Double)] {
+        struct Row: Decodable { let ai_model: String?; let edited_share: Double }
+        let rows: [Row]? = try? await client.from("content_piece").select("ai_model, edited_share")
+            .not("edited_share", operator: .is, value: "null").gte("created_at", value: since.ISO8601Format()).execute().value
+        return (rows ?? []).map { ($0.ai_model ?? "unknown", $0.edited_share) }
+    }
+
     // MARK: Income
 
     /// Income received since a day ("2026-10-01"), newest first.

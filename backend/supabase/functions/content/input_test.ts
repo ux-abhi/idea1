@@ -1,5 +1,5 @@
 // © Pexilim
-import { ideaRows, parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
+import { draftText, ideaRows, parseContentRequest, parseDrafts, parseIdeas, parseQuestions } from "./input.ts";
 
 Deno.test("content requests are checked at the boundary", () => {
   const ok = parseContentRequest({ idea: " Why I build Blink ", platforms: ["x", "linkedin", "x"] });
@@ -56,4 +56,11 @@ Deno.test("questions for the owner are short and at most three", () => {
 Deno.test("a week plan's ideas are kept on their days as ideas", () => {
   const rows = ideaRows([{ title: "Checkout mistakes", hook: "Stop losing buyers", platform: "x", format: "post", why: "Teaches one thing", day: "2026-11-02" }], null);
   if (rows[0].status !== "idea" || rows[0].planned_for !== "2026-11-02" || rows[0].body !== "Teaches one thing") throw new Error("idea row");
+});
+
+Deno.test("the saved AI text is the post as the app copies it", () => {
+  const thread = draftText({ format: "thread", body: "First", parts: ["First", "Second"], hashtags: [] });
+  const carousel = draftText({ format: "carousel", body: "Caption", parts: ["Slide 1", "Slide 2"], hashtags: ["build", "mac"] });
+  if (thread !== "First\n\nSecond") throw new Error(`thread: ${thread}`);
+  if (carousel !== "Caption\n\n#build #mac") throw new Error(`carousel: ${carousel}`);
 });

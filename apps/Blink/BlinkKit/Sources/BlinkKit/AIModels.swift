@@ -59,6 +59,32 @@ public struct AIModel: Identifiable, Hashable, Sendable {
         }
     }
 
+    /// How Blink picks models for the features the owner hasn't chosen one for (Settings › AI › Quality).
+    public enum Quality: String, CaseIterable, Sendable {
+        /// The strongest connected model writes and plans (paid ones within the limits); background work stays fast.
+        case best
+        /// Free models only (Groq, and on-device chat).
+        case free
+    }
+
+    /// Writing and planning want the strongest model; voice and quick edits want the fastest. Best value first: Sonnet
+    /// over Opus (a fifth of the price for nearly the same drafts).
+    // shortcut: a hand-ranked list; replace it with scores from the eval set (backend/supabase/evals) once it has run.
+    static let writingRank = ["claude-sonnet-5-5", "openai/gpt-6.1-sol", "google/gemini-3.1-pro-preview", "claude-opus-5-5",
+                              "moonshotai/kimi-k3", "deepseek/deepseek-v4-pro", customID, "openai/gpt-oss-120b",
+                              "llama-3.3-70b-versatile", "qwen/qwen3.8-27b", "minimaxai/minimax-m2.7", "claude-haiku-5-5", "openai/gpt-oss-20b"]
+    static let fastRank = ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "claude-haiku-5-5", "llama-3.3-70b-versatile",
+                           "qwen/qwen3.8-27b", "deepseek/deepseek-v4-pro", customID, "claude-sonnet-5-5", "moonshotai/kimi-k3",
+                           "google/gemini-3.1-pro-preview", "openai/gpt-6.1-sol", "minimaxai/minimax-m2.7", "claude-opus-5-5"]
+
+    /// The model Blink picks for a feature it chooses itself: the first connected one in the feature's ranking, free
+    /// ones only when `quality` is `.free`. nil when nothing connected fits (chat may still answer on-device).
+    public static func recommended(for feature: String, keys: [String: String]?, quality: Quality) -> AIModel? {
+        let rank = feature == "chat" || feature == "content" ? writingRank : fastRank
+        let usable = available(for: feature, keys: keys).filter { $0.id != onDeviceID && (quality == .best || $0.isFree) }
+        return rank.lazy.compactMap { id in usable.first { $0.id == id } }.first
+    }
+
     /// What a feature should use when what's saved can't run: the free model if Groq works, else the first that does.
     public static func fallback(for feature: String, keys: [String: String]?) -> AIModel? {
         let usable = available(for: feature, keys: keys).filter { $0.id != onDeviceID }

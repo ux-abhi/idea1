@@ -100,3 +100,12 @@ export function parseQuestions(output: unknown): string[] {
   if (!Array.isArray(questions)) return [];
   return questions.filter((q): q is string => typeof q === "string" && !!q.trim()).slice(0, 3).map((q) => q.trim().slice(0, 300));
 }
+
+/** The post as it would be copied (the app's ContentPiece.postText, the same rule): a thread's parts or the body, then
+ *  the hashtags. Saved as the draft's original AI text, to compare with what the owner approves. */
+export function draftText(d: { format: string; body: string; parts?: string[]; hashtags?: string[] }): string {
+  const parts = d.parts ?? [], tags = d.hashtags ?? [];
+  const main = parts.length === 0 || d.format === "carousel" || d.format === "reel_script" ? d.body : parts.join("\n\n");
+  const tagLine = tags.map((t) => `#${t}`).join(" ");
+  return tagLine ? `${main}\n\n${tagLine}` : main;
+}
