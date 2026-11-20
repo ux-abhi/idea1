@@ -11,6 +11,7 @@
 		B1A000000000000000000044 /* functions in Resources */ = {isa = PBXBuildFile; fileRef = B1A000000000000000000042 /* functions */; };
 		B1A000000000000000000045 /* setup in Resources */ = {isa = PBXBuildFile; fileRef = B1A000000000000000000043 /* setup */; };
 		B1A000000000000000000001 /* BlinkKit in Frameworks */ = {isa = PBXBuildFile; productRef = B1A000000000000000000020 /* BlinkKit */; };
+		B1A000000000000000000062 /* BlinkVoice in Frameworks */ = {isa = PBXBuildFile; productRef = B1A000000000000000000060 /* BlinkVoice */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -52,6 +53,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B1A000000000000000000001 /* BlinkKit in Frameworks */,
+				B1A000000000000000000062 /* BlinkVoice in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -118,6 +120,7 @@
 			name = Blink;
 			packageProductDependencies = (
 				B1A000000000000000000020 /* BlinkKit */,
+				B1A000000000000000000060 /* BlinkVoice */,
 			);
 			productName = Blink;
 			productReference = B1A000000000000000000002 /* Blink.app */;
@@ -169,6 +172,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				B1A000000000000000000021 /* XCLocalSwiftPackageReference "BlinkKit" */,
+				B1A000000000000000000061 /* XCLocalSwiftPackageReference "BlinkVoice" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B1A000000000000000000008 /* Products */;
@@ -344,12 +348,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = BlinkKit;
 		};
+		B1A000000000000000000061 /* XCLocalSwiftPackageReference "BlinkVoice" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = BlinkVoice;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		B1A000000000000000000020 /* BlinkKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BlinkKit;
+		};
+		B1A000000000000000000060 /* BlinkVoice */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BlinkVoice;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

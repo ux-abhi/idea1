@@ -16,6 +16,14 @@ Pinned in `apps/Blink/BlinkKit/Package.resolved`.
 | swift-concurrency-extras (via supabase-swift) | 1.4.1 | MIT | https://github.com/pointfreeco/swift-concurrency-extras |
 | swift-issue-reporting (via supabase-swift) | 2.1.1 | MIT | https://github.com/pointfreeco/swift-issue-reporting |
 | xctest-dynamic-overlay (via supabase-swift) | 1.13.1 | MIT | https://github.com/pointfreeco/xctest-dynamic-overlay |
+| KokoroSwift (kokoro-ios, natural voice, BlinkVoice) | 1.0.11 | MIT | https://github.com/mlalma/kokoro-ios |
+| MLX Swift (via KokoroSwift, BlinkVoice) | 0.30.2 | MIT | https://github.com/ml-explore/mlx-swift |
+| MisakiSwift (via KokoroSwift: text to phonemes) | 1.0.6 | Apache-2.0 | https://github.com/mlalma/MisakiSwift |
+| MLXUtilsLibrary (via KokoroSwift; reads voices.npz) | 0.0.6 | Apache-2.0 | https://github.com/mlalma/MLXUtilsLibrary |
+| ZIPFoundation (via MLXUtilsLibrary) | 0.9.20 | MIT | https://github.com/weichsel/ZIPFoundation |
+| swift-numerics (via MLX Swift) | 1.1.1 | Apache-2.0 | https://github.com/apple/swift-numerics |
+| Kokoro-82M voices (six bundled in `BlinkVoice/Resources/voices.npz`) | v1.0 | Apache-2.0 | https://huggingface.co/hexgrad/Kokoro-82M |
+| Kokoro-82M model (downloaded on first use, not bundled; checksum-verified) | v1.0, MLX bf16 | Apache-2.0 | https://huggingface.co/mlx-community/Kokoro-82M-bf16 |
 
 ## Backend dependencies (Edge Functions)
 

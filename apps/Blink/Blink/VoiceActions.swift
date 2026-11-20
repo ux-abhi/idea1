@@ -3,6 +3,7 @@
 import AppKit
 import AVFAudio
 import BlinkKit
+import BlinkVoice
 import os
 
 /// Does what a voice command asked: opens and quits apps, and opens links in a named browser (or the default one).
@@ -52,14 +53,36 @@ enum VoiceActions {
         return asked ? nil : "macOS didn't let Blink quit \(name)."
     }
 
-    /// Settings › Shortcuts › "Say replies out loud".
+    /// Settings › Shortcuts › "Say replies out loud", and the natural voice picked there.
     static let speaksKey = "voice.speaks"
+    static let naturalVoiceKey = "voice.natural"
+
+    #if DEBUG
+    /// `-voice.selftest YES` at launch (Debug builds): download the natural voice if needed and say one sentence,
+    /// logging how long it took, so the voice can be checked without clicking through Settings.
+    static func selfTestIfAsked() {
+        guard UserDefaults.standard.bool(forKey: "voice.selftest") else { return }
+        Task { @MainActor in
+            let start = Date.now
+            if NaturalVoice.shared.state != .ready { await NaturalVoice.shared.download() }
+            shortcutLog.info("voice selftest: model \(String(describing: NaturalVoice.shared.state), privacy: .public) after \(Date.now.timeIntervalSince(start))s")
+            let spoke = Date.now
+            NaturalVoice.shared.speak("Hi, I'm Blink. This is my new natural voice.", voice: "af_heart")
+            shortcutLog.info("voice selftest: speak called \(Date.now.timeIntervalSince(spoke))s")
+        }
+    }
+    #endif
 
     /// Says the reply out loud, in the best voice installed for the Mac's language (a Premium or Enhanced one when the
     /// owner has downloaded it; the built-in compact voices sound robotic).
     static func say(_ text: String) {
         guard UserDefaults.standard.object(forKey: speaksKey) as? Bool ?? true else { return }
         speaker.stopSpeaking(at: .immediate)
+        // The natural voice when it's downloaded; the Mac's own voice otherwise.
+        let natural = UserDefaults.standard.string(forKey: naturalVoiceKey) ?? "af_heart"
+        // Kokoro speaks English only: a Hindi (or German) reply keeps the Mac's voice, which knows the language.
+        let english = (MeetingRecorder.language.language.languageCode?.identifier ?? "en") == "en"
+        if english, NaturalVoice.shared.speak(text, voice: natural) { return }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = bestVoice
         speaker.speak(utterance)

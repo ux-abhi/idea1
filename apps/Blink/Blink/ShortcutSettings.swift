@@ -3,6 +3,7 @@
 import ApplicationServices
 import AVFAudio
 import BlinkKit
+import BlinkVoice
 import Carbon.HIToolbox
 import SwiftUI
 
@@ -50,17 +51,7 @@ struct ShortcutSettings: View {
                     }
                 }
                 Toggle("Say replies out loud", isOn: $speaks)
-                if speaks, (VoiceActions.bestVoice?.quality ?? .default) == .default {
-                    // Only the robotic compact voices are installed: point to Apple's free natural ones.
-                    LabeledContent {
-                        Button("Open Accessibility") {
-                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Accessibility-Settings.extension")!)
-                        }
-                    } label: {
-                        Text("For a natural voice: Accessibility › Read & Speak (or Spoken Content) › System voice › Manage Voices, then download a Premium one, like Zoe or Ava.")
-                            .font(.callout)
-                    }
-                }
+                if speaks { NaturalVoiceRow() }
                 Picker("Speech to text", selection: $groq) {
                     Text("Groq Whisper: best for Hindi and Hinglish").tag(true)
                     Text("This Mac only: private, works offline").tag(false)
@@ -94,6 +85,49 @@ struct ShortcutSettings: View {
         // Granted in System Settings while this was open: show it when the owner comes back.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             trusted = AXIsProcessTrusted()
+        }
+    }
+}
+
+/// The natural voice (Kokoro, on this Mac): download it once, pick one of six voices, hear a preview, or remove it.
+/// Until it's downloaded, replies use the Mac's own voice.
+struct NaturalVoiceRow: View {
+    @AppStorage(VoiceActions.naturalVoiceKey) private var voice = "af_heart"
+    private let natural = NaturalVoice.shared
+
+    var body: some View {
+        switch natural.state {
+        case .notDownloaded, .failed:
+            LabeledContent {
+                Button("Download (327 MB)") { Task { await natural.download() } }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Natural voice")
+                    Text("A lifelike voice that runs on this Mac: free, private, works offline. English only.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if case .failed(let why) = natural.state { Text(why).font(.caption).foregroundStyle(.orange) }
+                }
+            }
+        case .downloading(let fraction):
+            LabeledContent("Natural voice") {
+                ProgressView(value: fraction).frame(width: 160)
+                    .accessibilityLabel("Downloading the natural voice")
+                    .accessibilityValue("\(Int(fraction * 100)) percent")
+            }
+        case .ready:
+            Picker("Voice", selection: $voice) {
+                ForEach(NaturalVoice.voices, id: \.id) { Text($0.name).tag($0.id) }
+            }
+            .onChange(of: voice) { _, new in natural.speak("Hi, I'm \(AssistantName.current). This is how I'll sound.", voice: new) }
+            LabeledContent {
+                HStack {
+                    Button("Preview") { natural.speak("Hi, I'm \(AssistantName.current). Your next meeting starts in ten minutes.", voice: voice) }
+                    Button("Remove", role: .destructive) { natural.remove() }
+                        .help("Delete the 327 MB voice model; replies use the Mac's voice again")
+                }
+            } label: {
+                Text("Natural voice, on this Mac").foregroundStyle(.secondary)
+            }
         }
     }
 }

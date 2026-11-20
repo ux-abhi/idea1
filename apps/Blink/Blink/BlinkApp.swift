@@ -66,6 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let clipboard = ClipboardStore()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if DEBUG
+        VoiceActions.selfTestIfAsked()
+        #endif
         // The Services menu entries in Info.plist call addTask and saveNote below.
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
