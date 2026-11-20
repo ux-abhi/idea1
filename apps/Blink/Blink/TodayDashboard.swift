@@ -24,6 +24,12 @@ struct TodayView: View {
                     actionCards
                     DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks, reminders: model.agenda.reminders, now: now),
                                     now: now, planDay: planDay)
+                    // This week's goals, tickable here too (Habits & Goals).
+                    if !model.weeklyGoals.isEmpty {
+                        DashCard("This week", trailing: "Habits & Goals", action: { model.openPage = "habits" }) {
+                            CardRows(items: model.weeklyGoals.sorted { $0.position < $1.position }) { GoalRow(goal: $0) }
+                        }
+                    }
                     TodayWidgetGrid(now: now)
                     // Setup while something's left (the first-run tour teaches the rest).
                     let steps = model.setupSteps
@@ -247,8 +253,16 @@ private struct DayTimelineCard: View {
     let plan: DayPlan
     let now: Date
     let planDay: () -> Void
+    @State private var openPost: String?
 
     var body: some View {
+        dayCard
+            .sheet(isPresented: Binding(get: { openPost != nil }, set: { if !$0 { openPost = nil } })) {
+                if let openPost { PieceSheet(id: openPost) }
+            }
+    }
+
+    private var dayCard: some View {
         DashCard("Your day") {
             if plan.isEmpty {
                 HStack {
@@ -276,13 +290,15 @@ private struct DayTimelineCard: View {
                 if !model.postsToday.isEmpty {
                     group("To post")
                     ForEach(model.postsToday) { post in
-                        Button { model.openPage = "content" } label: {
+                        Button { openPost = post.id } label: {
                             HStack(spacing: 10) {
                                 Text(post.platform.short).font(.callout.weight(.bold)).foregroundStyle(.secondary)
                                     .frame(width: 56, alignment: .trailing)
                                 Capsule().fill(.purple).frame(width: 4, height: 24)
                                 Text(post.hook.isEmpty ? post.idea : post.hook).lineLimit(1)
                                 Spacer(minLength: 8)
+                                Tag(text: "Content", tint: .purple)
+                                if let space = model.spaces.first(where: { $0.id == post.spaceID }) { SpaceChip(space: space) }
                                 StatusChip(status: post.status)
                             }
                             .contentShape(.rect)

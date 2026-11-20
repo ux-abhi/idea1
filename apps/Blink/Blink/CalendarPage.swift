@@ -167,7 +167,15 @@ private struct DayToDos: View {
     @Environment(AppModel.self) private var model
     let day: Date
 
+    @State private var openPost: String?
+
     var body: some View {
+        toDos.sheet(isPresented: Binding(get: { openPost != nil }, set: { if !$0 { openPost = nil } })) {
+            if let openPost { PieceSheet(id: openPost) }
+        }
+    }
+
+    @ViewBuilder private var toDos: some View {
         let cal = Calendar.current
         let tasks = model.openTasks.filter { $0.dueAt.map { cal.isDate($0, inSameDayAs: day) } ?? false }
         let reminders = model.allReminders.filter { $0.due.map { cal.isDate($0, inSameDayAs: day) } ?? false }
@@ -187,7 +195,7 @@ private struct DayToDos: View {
                 }
             }
             ForEach(posts) { post in
-                Button { model.openPage = "content" } label: {
+                Button { openPost = post.id } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "megaphone").foregroundStyle(.purple).accessibilityHidden(true)
                         Text(post.status == .idea ? post.idea : post.hook).font(.callout).lineLimit(1)
