@@ -703,11 +703,30 @@ do $$ begin
     raise exception 'a second project node';
   exception when unique_violation then null;
   end;
+  -- Link cards keep a web address; Page mode blocks sit on the owner's own Space.
+  insert into public.space_node (segment_id, kind, x, y, label, url) values ('00000000-0000-0000-0000-0000000000d1', 'link', 100, 100, 'Blink', 'https://www.blinkk.app');
+  begin
+    insert into public.space_node (segment_id, kind, url) values ('00000000-0000-0000-0000-0000000000d1', 'link', 'javascript:alert(1)');
+    raise exception 'a link card that is not a web address';
+  exception when check_violation then null;
+  end;
+  insert into public.space_block (segment_id, position, kind, data) values ('00000000-0000-0000-0000-0000000000d1', 1, 'heading', '{"text": "Plan"}');
+  begin
+    insert into public.space_block (segment_id, kind, data) values ('00000000-0000-0000-0000-0000000000d1', 'heading', '[1, 2]');
+    raise exception 'a block whose data is not an object';
+  exception when check_violation then null;
+  end;
 end $$;
 reset role;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
   assert (select count(*) from public.space_node) = 0, 'B can''t see A''s canvas';
+  assert (select count(*) from public.space_block) = 0, 'B can''t see A''s page';
+  begin
+    insert into public.space_block (segment_id, kind) values ('00000000-0000-0000-0000-0000000000d1', 'text');
+    raise exception 'B put a block on someone else''s Space';
+  exception when insufficient_privilege then null;
+  end;
   begin
     insert into public.space_node (segment_id, kind) values ('00000000-0000-0000-0000-0000000000d1', 'project');
     raise exception 'B put a node in someone else''s Space';

@@ -1391,6 +1391,11 @@ extension Tokens {
         #expect(AppMatch.best("vs code", among: apps) == "Visual Studio Code")
         #expect(AppMatch.best("photoshop", among: apps) == nil) // nothing close: open nothing
         #expect(AssistantName.checked("  Jarvis ") == "Jarvis")
+        // Link cards take web addresses only; page blocks slot in between without moving others.
+        #expect(SpaceNode.webAddress("blinkk.app") == "https://blinkk.app")
+        #expect(SpaceNode.webAddress("https://www.blinkk.app/docs") == "https://www.blinkk.app/docs")
+        #expect(SpaceNode.webAddress("javascript:alert(1)") == nil && SpaceNode.webAddress("not a link") == nil && SpaceNode.webAddress("localhost") == nil)
+        #expect(SpaceBlock.position(between: 1, and: 2) == 1.5 && SpaceBlock.position(between: 3, and: nil) == 4 && SpaceBlock.position(between: nil, and: nil) == 1)
         // Plan my week: counts read from text, the week's Monday, and what's left moving on.
         let read = WeekPlan.goals(from: "- Create 5 posts\n2. Gym 3 times\n3x read a chapter\nFinish onboarding redesign\nLaunch in 2026\n\n")
         #expect(read.map(\.title) == ["Create 5 posts", "Gym", "read a chapter", "Finish onboarding redesign", "Launch in 2026"])

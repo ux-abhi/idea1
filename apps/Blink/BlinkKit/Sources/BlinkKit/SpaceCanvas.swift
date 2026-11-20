@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// image (`ref` is its file on the server), with where it sits, its colour, and for stickies and images the size and
 /// text size the owner gave it. The node is only a place; the thing it points at lives in Blink as usual.
 public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
-    public enum Kind: String, Codable, Sendable { case project, task, note, reminder, image, post, heading, section }
+    public enum Kind: String, Codable, Sendable { case project, task, note, reminder, image, post, heading, section, link }
     public let id: String
     public let spaceID: String
     public let kind: Kind
@@ -20,15 +20,28 @@ public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
     public var h: Double?
     /// How much bigger a sticky's or heading's text is drawn; nil is 1.
     public var textScale: Double?
-    /// A heading's text, or a section's title (the only nodes that hold text themselves).
+    /// A heading's text, a section's title, or a link's title (the only nodes that hold text themselves).
     public var label: String?
+    /// A link card's web address.
+    public var url: String?
 
-    enum CodingKeys: String, CodingKey { case id, kind, ref, x, y, color, w, h, label; case spaceID = "segment_id", textScale = "text_scale" }
+    enum CodingKeys: String, CodingKey { case id, kind, ref, x, y, color, w, h, label, url; case spaceID = "segment_id", textScale = "text_scale" }
 
     public init(id: String = UUID().uuidString.lowercased(), spaceID: String, kind: Kind, ref: String? = nil,
-                x: Double, y: Double, color: String = "yellow", w: Double? = nil, h: Double? = nil, label: String? = nil) {
+                x: Double, y: Double, color: String = "yellow", w: Double? = nil, h: Double? = nil, label: String? = nil, url: String? = nil) {
         (self.id, self.spaceID, self.kind, self.ref, self.x, self.y, self.color) = (id, spaceID, kind, ref, x, y, color)
-        (self.w, self.h, self.label) = (w, h, label)
+        (self.w, self.h, self.label, self.url) = (w, h, label, url)
+    }
+
+    /// A pasted address as a link card's web address: http(s) only (what the server takes), "https://" added when left
+    /// out ("blinkk.app"); nil for anything else.
+    public static func webAddress(_ typed: String) -> String? {
+        let text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.count <= 2000, !text.contains(" ") else { return nil }
+        let full = text.lowercased().hasPrefix("http://") || text.lowercased().hasPrefix("https://") ? text : "https://" + text
+        guard let url = URL(string: full), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = url.host(), host.contains(".") else { return nil }
+        return full
     }
 
     /// The size the node is drawn at, also used to find what a link was dropped on.
@@ -42,6 +55,7 @@ public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
         case .post: (240, 76)
         case .heading: (320, 56 * (textScale ?? 1))
         case .section: (640, 420)
+        case .link: (260, 72)
         }
         return (w ?? standard.width, h ?? standard.height)
     }
@@ -134,5 +148,79 @@ public enum CanvasImage {
     public static func size(width: Int, height: Int) -> (width: Double, height: Double) {
         let long = Double(max(width, height, 1))
         return SpaceNode.clamped(width: 280 * Double(width) / long, height: 280 * Double(height) / long)
+    }
+}
+
+
+/// One block on a Space's page (Page mode, ADR-0002): its kind, where it sits, and only how it shows. Tasks, notes and
+/// posts a block lists stay where they are, linked to the Space; a page's blocks are what a template would carry.
+public struct SpaceBlock: Codable, Identifiable, Equatable, Sendable {
+    public enum Kind: String, Codable, CaseIterable, Sendable {
+        case heading, text, tasks, content, note, link, image, timer, stopwatch
+
+        public var title: String {
+            switch self {
+            case .heading: "Heading"
+            case .text: "Text"
+            case .tasks: "Task list"
+            case .content: "Content board"
+            case .note: "Note"
+            case .link: "Link"
+            case .image: "Picture"
+            case .timer: "Timer"
+            case .stopwatch: "Stopwatch"
+            }
+        }
+
+        public var symbol: String {
+            switch self {
+            case .heading: "textformat.size"
+            case .text: "text.alignleft"
+            case .tasks: "checklist"
+            case .content: "square.grid.3x2"
+            case .note: "note.text"
+            case .link: "link"
+            case .image: "photo"
+            case .timer: "timer"
+            case .stopwatch: "stopwatch"
+            }
+        }
+    }
+
+    /// How a block shows: only the fields its kind uses.
+    public struct Data: Codable, Equatable, Sendable {
+        /// A heading's or text block's words; a link's title.
+        public var text: String?
+        /// A link's web address.
+        public var url: String?
+        /// The note a note block shows, or a picture's file on the server.
+        public var ref: String?
+        /// A timer's length.
+        public var minutes: Int?
+        public init(text: String? = nil, url: String? = nil, ref: String? = nil, minutes: Int? = nil) {
+            (self.text, self.url, self.ref, self.minutes) = (text, url, ref, minutes)
+        }
+    }
+
+    public let id: String
+    public let spaceID: String
+    public var position: Double
+    public let kind: Kind
+    public var data: Data
+
+    enum CodingKeys: String, CodingKey { case id, position, kind, data; case spaceID = "segment_id" }
+
+    public init(id: String = UUID().uuidString.lowercased(), spaceID: String, position: Double, kind: Kind, data: Data = Data()) {
+        (self.id, self.spaceID, self.position, self.kind, self.data) = (id, spaceID, position, kind, data)
+    }
+
+    /// The position for a block placed between two others (or after the last): halfway, so nothing else moves.
+    public static func position(between before: Double?, and after: Double?) -> Double {
+        switch (before, after) {
+        case let (b?, a?): (b + a) / 2
+        case let (b?, nil): b + 1
+        case let (nil, a?): a - 1
+        case (nil, nil): 1
+        }
     }
 }

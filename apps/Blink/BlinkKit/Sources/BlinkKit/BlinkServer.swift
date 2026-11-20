@@ -685,8 +685,14 @@ public final class BlinkServer: Sendable {
     // MARK: Space canvas
 
     public func canvas(of spaceID: String) async throws -> (nodes: [SpaceNode], edges: [SpaceEdge]) {
-        async let nodes: [SpaceNode] = client.from("space_node").select("id, segment_id, kind, ref, x, y, color, w, h, text_scale, label")
-            .eq("segment_id", value: spaceID).execute().value
+        let columns = "id, segment_id, kind, ref, x, y, color, w, h, text_scale, label"
+        async let nodes: [SpaceNode] = { () async throws -> [SpaceNode] in
+            do { return try await client.from("space_node").select(columns + ", url").eq("segment_id", value: spaceID).execute().value }
+            catch where (error as? PostgrestError)?.code == "42703" {
+                // A server from before link cards: the canvas without them, until Update Server.
+                return try await client.from("space_node").select(columns).eq("segment_id", value: spaceID).execute().value
+            }
+        }()
         async let edges: [SpaceEdge] = client.from("space_edge").select("id, segment_id, from_node, to_node")
             .eq("segment_id", value: spaceID).execute().value
         return try await (nodes, edges)
@@ -808,6 +814,36 @@ public final class BlinkServer: Sendable {
         try await client.from("transaction")
             .update(Row(amount: spend.amount, note: spend.note, category: spend.category, spent_on: spend.spentOn, account_id: spend.accountID))
             .eq("id", value: spend.id).execute()
+    }
+
+    // MARK: Space pages (Page mode)
+
+    /// A Space's page blocks in order; empty on a server without Page mode yet.
+    public func blocks(of spaceID: String) async throws -> [SpaceBlock] {
+        do {
+            return try await client.from("space_block").select("id, segment_id, position, kind, data")
+                .eq("segment_id", value: spaceID).order("position").execute().value
+        } catch let error as PostgrestError where ["PGRST205", "42P01"].contains(error.code) {
+            return []
+        }
+    }
+
+    public func save(_ block: SpaceBlock) async throws {
+        try await client.from("space_block").upsert(block).execute()
+    }
+
+    public func delete(_ block: SpaceBlock) async throws {
+        do {
+            try await client.from("space_block").delete().eq("id", value: block.id).execute()
+        } catch let error as PostgrestError where ["PGRST205", "42P01"].contains(error.code) {
+            // A server without Page mode never stored the block: nothing to delete.
+        }
+    }
+
+    /// Links a post to a Space (or unlinks it, nil): its card then shows on that Space's canvas and page.
+    public func setSpace(_ spaceID: String?, of piece: ContentPiece) async throws {
+        struct Row: Encodable { let segment_id: String? }
+        try await client.from("content_piece").update(Row(segment_id: spaceID)).eq("id", value: piece.id).execute()
     }
 
     // MARK: Weekly goals

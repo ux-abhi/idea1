@@ -8,6 +8,7 @@ import SwiftUI
 import UIKit
 #else
 import AppKit
+import LinkPresentation
 #endif
 
 /// First run → sign in → home, plus the app lock.
@@ -2911,7 +2912,7 @@ final class AppModel {
         case .note: ref = create(.note, title: title, space: space.id).id
         case .reminder:
             ref = await addReminder(title, due: due, to: space)
-        case .project, .image, .post, .heading, .section: ref = nil
+        case .project, .image, .post, .heading, .section, .link: ref = nil
         }
         guard let ref else { return nil }
         var nodes = canvasNodes[space.id] ?? []
@@ -2965,6 +2966,133 @@ final class AppModel {
 
     // Standard is stored as 1, not nil: an upsert leaves nil out, so the old size would stay on the server.
     func setTextScale(_ node: SpaceNode, to scale: Double) { change(node) { $0.textScale = scale } }
+
+    /// A link card from a pasted address, titled from the page itself when it can be read (else the site's name).
+    func addLink(_ typed: String, in space: Space, at spot: (x: Double, y: Double)) async {
+        guard let url = SpaceNode.webAddress(typed) else {
+            saveProblem = "That isn't a web address. Paste one like blinkk.app or https://…"
+            return
+        }
+        let title = await Self.pageTitle(url) ?? URL(string: url)?.host()?.replacingOccurrences(of: "www.", with: "") ?? url
+        let place = CanvasLayout.onSheet(spot)
+        let node = SpaceNode(spaceID: space.id, kind: .link, x: place.x, y: place.y, color: space.color,
+                             label: String(String.UnicodeScalarView(title.unicodeScalars.prefix(200))), url: url)
+        canvasNodes[space.id, default: []].append(node)
+        var kept = true
+        await canvasWrite { do { try await server?.save(node) } catch { kept = false; throw error } }
+        if !kept { canvasNodes[space.id]?.removeAll { $0.id == node.id } }
+    }
+
+    /// A web page's title, read by macOS (LinkPresentation), in at most 5 seconds; nil when it can't be read.
+    static func pageTitle(_ url: String) async -> String? {
+        #if os(macOS)
+        guard let link = URL(string: url) else { return nil }
+        let provider = LPMetadataProvider()
+        provider.timeout = 5
+        return (try? await provider.startFetchingMetadata(for: link))?.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        #else
+        return nil
+        #endif
+    }
+
+    // MARK: Space pages (Page mode, ADR-0002)
+
+    /// Each Space's page blocks, in order.
+    private(set) var spaceBlocks: [String: [SpaceBlock]] = [:]
+
+    func loadBlocks(_ space: Space) async {
+        guard let server, email != nil, let blocks = try? await server.blocks(of: space.id) else { return }
+        spaceBlocks[space.id] = blocks
+    }
+
+    /// A new block after `after` (or at the end), saved behind; returns it so the page can focus it.
+    @discardableResult
+    func addBlock(_ kind: SpaceBlock.Kind, in space: Space, after: SpaceBlock? = nil, data: SpaceBlock.Data = .init()) async -> SpaceBlock {
+        let blocks = spaceBlocks[space.id] ?? []
+        let next = after.flatMap { a in blocks.first { $0.position > a.position } }
+        let position = SpaceBlock.position(between: after?.position ?? blocks.last?.position, and: after == nil ? nil : next?.position)
+        let block = SpaceBlock(spaceID: space.id, position: position, kind: kind, data: data)
+        spaceBlocks[space.id] = (blocks + [block]).sorted { $0.position < $1.position }
+        // A block the server didn't take mustn't stay on the page as if it were kept.
+        if await !saveBlock(block) { spaceBlocks[space.id]?.removeAll { $0.id == block.id } }
+        return block
+    }
+
+    /// A block's text, link, minutes or picture changed: shown at once, saved behind.
+    func update(_ block: SpaceBlock) async {
+        guard let i = spaceBlocks[block.spaceID]?.firstIndex(where: { $0.id == block.id }), spaceBlocks[block.spaceID]?[i] != block else { return }
+        spaceBlocks[block.spaceID]?[i] = block
+        await saveBlock(block)
+    }
+
+    /// Up or down one place on the page.
+    func move(_ block: SpaceBlock, by step: Int) async {
+        guard var blocks = spaceBlocks[block.spaceID], let i = blocks.firstIndex(where: { $0.id == block.id }) else { return }
+        let j = i + step
+        guard blocks.indices.contains(j) else { return }
+        blocks.swapAt(i, j)
+        (blocks[i].position, blocks[j].position) = (blocks[j].position, blocks[i].position)
+        spaceBlocks[block.spaceID] = blocks.sorted { $0.position < $1.position }
+        await saveBlock(blocks[i])
+        await saveBlock(blocks[j])
+    }
+
+    func delete(_ block: SpaceBlock) async {
+        guard let server else { return }
+        do { try await server.delete(block) } catch {
+            saveProblem = "Couldn't delete that block. Check your connection and try again."
+            return
+        }
+        spaceBlocks[block.spaceID]?.removeAll { $0.id == block.id }
+        offerUndo("Deleted \(block.kind.title.lowercased())") { [weak self] in
+            guard let self else { return }
+            self.spaceBlocks[block.spaceID] = ((self.spaceBlocks[block.spaceID] ?? []) + [block]).sorted { $0.position < $1.position }
+            await self.saveBlock(block)
+        }
+    }
+
+    @discardableResult
+    private func saveBlock(_ block: SpaceBlock) async -> Bool {
+        guard let server else { return false }
+        do { try await server.save(block); return true } catch {
+            saveProblem = serverBehind ? "Update your server (Settings › Server) to use Page mode." : "Couldn't save the page. Check your connection."
+            return false
+        }
+    }
+
+    /// A picture for a page block: made small, stored on the owner's server; returns its path.
+    func uploadBlockImage(from file: URL, in space: Space) async -> String? {
+        #if os(macOS)
+        guard let server else { return nil }
+        let access = file.startAccessingSecurityScopedResource()
+        defer { if access { file.stopAccessingSecurityScopedResource() } }
+        let bytes = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let ready = bytes > 60_000_000 ? nil : await Task.detached(operation: { (try? Data(contentsOf: file)).flatMap { CanvasImage.jpeg(from: $0) } }).value
+        guard let ready else {
+            saveProblem = bytes > 60_000_000 ? "That picture is too big. Pictures up to 60 MB work." : "That file isn't a picture Blink can read."
+            return nil
+        }
+        guard let path = try? await server.uploadCanvasImage(ready.data, space: space.id) else {
+            saveProblem = "Couldn't upload the picture. Check your connection and try again."
+            return nil
+        }
+        canvasImages[path] = NSImage(data: ready.data)
+        return path
+        #else
+        return nil
+        #endif
+    }
+
+    /// Links an existing post to a Space: its card then shows on that Space's canvas and page.
+    func attach(_ piece: ContentPiece, to space: Space) async {
+        guard let server, let i = content.firstIndex(where: { $0.id == piece.id }) else { return }
+        let before = content[i].spaceID
+        content[i].spaceID = space.id
+        do { try await server.setSpace(space.id, of: piece) } catch {
+            if let j = content.firstIndex(where: { $0.id == piece.id }) { content[j].spaceID = before }
+            saveProblem = "Couldn't add that post to the Space. Check your connection and try again."
+        }
+    }
 
     /// A heading's text or a section's title, edited in place.
     func relabel(_ node: SpaceNode, to label: String) {

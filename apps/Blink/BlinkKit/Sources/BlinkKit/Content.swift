@@ -39,7 +39,7 @@ public struct ContentPiece: Codable, Identifiable, Equatable, Sendable {
     /// The day it's planned for in the weekly plan ("2026-10-14"), if any.
     public var plannedFor: String?
     /// The Space it was written for, if any (it then sits on that Space's canvas).
-    public let spaceID: String?
+    public var spaceID: String?
 
     enum CodingKeys: String, CodingKey {
         case id, idea, platform, format, hook, body, parts, hashtags, status
