@@ -4,9 +4,8 @@ import AppKit
 import BlinkKit
 import SwiftUI
 
-/// Inbox, laid out like a modern mail app: the list on the left (filter pills on top, then mail with an avatar, sender
-/// and time, subject, a two-line summary and small tags), the open mail on the right on a bright reading pane with its
-/// own action bar. The list is a native one, so arrows, Shift-click, ⌘A and the Delete key work as everywhere on the
+/// Inbox, laid out like a modern mail app: a page header (title, search, Bulk Mail), the list on the left (a segmented
+/// filter, then compact rows with hover actions), the open mail on the right on a bright reading pane. The list is a native one, so arrows, Shift-click, ⌘A and the Delete key work as everywhere on the
 /// Mac; E marks done, R replies.
 struct InboxView: View {
     enum Filter: String, CaseIterable, Identifiable {
@@ -19,20 +18,30 @@ struct InboxView: View {
     @AppStorage("inbox.filter") private var filter = Filter.inbox
     @State private var query = ""
     @State private var selection: Set<String> = []
+    @AppStorage("inbox.bulk") private var bulk = false
 
     var body: some View {
+        if bulk { BulkMailView { bulk = false } } else { inbox }
+    }
+
+    @ViewBuilder
+    private var inbox: some View {
         @Bindable var model = model
         let shown = model.emails.filter(matches)
         let picked = shown.filter { selection.contains($0.id) }
         // A plain row, not an HSplitView: a second AppKit split inside the window's split view and inspector made them
         // re-measure each other in full screen until AppKit crashed ("Update Constraints in Window", on opening Inbox).
         // shortcut: the list has a fixed width; make it draggable again only with a split that doesn't loop.
-        HStack(spacing: 0) {
-            list(shown)
-                .frame(minWidth: 240, idealWidth: 340, maxWidth: 380) // the reading pane gets the rest, even in a narrow window
+        VStack(spacing: 0) {
+            header(shown)
             Divider()
-            reader(picked)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            HStack(spacing: 0) {
+                list(shown)
+                    .frame(minWidth: 260, idealWidth: 350, maxWidth: 390) // the reading pane gets the rest, even in a narrow window
+                Divider()
+                reader(picked)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .sheet(item: $model.reviewing) { ReplyReviewSheet(review: $0) }
         .task {
@@ -59,42 +68,34 @@ struct InboxView: View {
         // Important first, then the rest, each newest first (the server's order).
         let rows = shown.filter { inFilter($0, filter) }.sorted { ($0.triage == .important ? 0 : 1) < ($1.triage == .important ? 0 : 1) }
         return VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("Inbox").font(.system(.title, design: .rounded, weight: .bold)).accessibilityAddTraits(.isHeader)
-                    Text("\(shown.filter { inFilter($0, .inbox) }.count) emails").foregroundStyle(.secondary)
-                    Spacer()
+            HStack(spacing: 8) {
+                Picker("Show", selection: $filter) {
+                    ForEach(Filter.allCases) { option in Text(option == .low ? "Low" : option.rawValue).tag(option) }
+                }
+                .pickerStyle(.segmented).labelsHidden()
+                .help(Filter.allCases.map { "\($0.rawValue): \(shown.filter(inFilter($0)).count)" }.joined(separator: " · "))
+                Menu {
                     if accounts.count > 1 {
                         Picker("Mailbox", selection: $account) {
                             Text("All Mailboxes").tag("all")
                             ForEach(accounts, id: \.self) { Text(EmailMessage.accountName($0)).tag($0) }
                         }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .fixedSize()
                     }
-                }
-                // The window toolbar stays the same on every page: items that come and go between pages crash AppKit's toolbar.
-                PageSearchField(prompt: "Search mail", text: $query)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(Filter.allCases) { option in
-                            FilterPill(title: option.rawValue, count: shown.filter { inFilter($0, option) }.count, on: filter == option) {
-                                filter = option
-                            }
-                        }
-                    }
-                }
+                    Button("Check Mail Now", systemImage: "arrow.clockwise") { Task { await model.syncMail() } }
+                    Button("Mail Settings…", systemImage: "gearshape") { model.openSettings("connections") }
+                } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .padding(6).background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 7))
+                    .accessibilityLabel("Inbox options")
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             banners
             List(selection: $selection) {
                 ForEach(rows) { message in
-                    MailListRow(message: message)
+                    MailListRow(message: message, reply: { Task { await model.reviewReply(to: message) } }, done: { clear([message.id]) })
                         .tag(message.id)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                        .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
                         .accessibilityAction(named: "Reply") { Task { await model.reviewReply(to: message) } }
                         .accessibilityAction(named: "Done") { clear([message.id]) }
                 }
@@ -122,6 +123,27 @@ struct InboxView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
+
+    /// The page's own header: the title and count, then search, the mailbox's bulk mail and the primary action.
+    private func header(_ shown: [EmailMessage]) -> some View {
+        HStack(spacing: 12) {
+            Text("Inbox").font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader)
+            Text("\(shown.filter(inFilter(.inbox)).count)").font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+            Spacer()
+            // The window toolbar stays the same on every page: items that come and go between pages crash AppKit's toolbar.
+            PageSearchField(prompt: "Search mail", text: $query).frame(width: 240)
+            Button { bulk = true } label: {
+                Label("Bulk Mail", systemImage: "envelope.stack").foregroundStyle(Color(nsColor: .windowBackgroundColor)) // readable on the dark (or, in dark mode, light) fill
+            }
+                .buttonStyle(.borderedProminent).tint(.primary)
+                .help("Bulk Mail: a personal mail to many people at once")
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func inFilter(_ filter: Filter) -> (EmailMessage) -> Bool { { inFilter($0, filter) } }
 
     private var selected: [EmailMessage] { model.emails.filter { selection.contains($0.id) } }
 
@@ -279,28 +301,40 @@ struct SenderAvatar: View {
     }
 }
 
-/// One mail in the list: avatar, sender and time, the subject, Blink's summary on two lines, and small tags for what
-/// matters. Unread mail has a bolder sender and a dot.
+/// One mail in the list: a small avatar, sender and time, the subject, one line of Blink's summary, and small tags for
+/// what matters. Unread mail has a dot; hovering shows Done, Reply and more in place of the time.
 private struct MailListRow: View {
     let message: EmailMessage
+    let reply: () -> Void
+    let done: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         let unread = message.status == .new
-        HStack(alignment: .top, spacing: 12) {
-            SenderAvatar(name: message.sender, key: message.senderKey)
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .top, spacing: 10) {
+            SenderAvatar(name: message.sender, key: message.senderKey, size: 28)
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(message.sender).font(.callout.weight(unread ? .bold : .semibold)).lineLimit(1)
-                    if unread { Circle().fill(Color.accentColor).frame(width: 7, height: 7).accessibilityHidden(true) }
+                    Text(message.sender).font(.caption.weight(unread ? .semibold : .medium)).lineLimit(1)
                     Spacer(minLength: 4)
-                    if let at = message.receivedAt {
-                        Text(Self.when(at)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    if hovering {
+                        HStack(spacing: 8) {
+                            Button("Done", systemImage: "archivebox", action: done).help("Done (E)")
+                            if !message.isNoReply { Button("Reply", systemImage: "arrowshape.turn.up.left", action: reply).help("Reply (R)") }
+                        }
+                        .labelStyle(.iconOnly).buttonStyle(.borderless).font(.caption)
+                    } else if let at = message.receivedAt {
+                        Text(Self.when(at)).font(.caption2).foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
-                Text(message.subject.isEmpty ? "(No subject)" : message.subject)
-                    .font(.callout.weight(unread ? .semibold : .regular)).lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(message.subject.isEmpty ? "(No subject)" : message.subject)
+                        .font(.callout.weight(unread ? .semibold : .medium)).lineLimit(1)
+                    Spacer(minLength: 4)
+                    if unread { Circle().fill(Color.accentColor).frame(width: 7, height: 7).accessibilityHidden(true) }
+                }
                 if !message.summary.isEmpty {
-                    Text(message.summary).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                    Text(message.summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 if message.triage == .important || message.needsReply || !message.nextSteps.isEmpty {
                     HStack(spacing: 5) {
@@ -314,7 +348,10 @@ private struct MailListRow: View {
                 }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 6)
+        .contentShape(.rect)
+        .onHover { hovering = $0 }
         .accessibilityElement(children: .combine)
         .accessibilityValue(unread ? "Unread" : "")
     }
@@ -357,9 +394,8 @@ enum NextStepChips {
     }
 }
 
-/// The reading pane: an action bar (Reply, Done, Sender, Open in Mail), then the subject big, who wrote and when,
-/// what Blink made of it (summary, why, next steps a click away), then the whole mail, fetched when opened and never
-/// stored.
+/// The reading pane: who wrote and when with the actions as small icons, then the subject big, what Blink made of it
+/// (summary, why, next steps a click away), then the whole mail, fetched when opened and never stored.
 struct MailReader: View {
     @Environment(AppModel.self) private var model
     let message: EmailMessage
@@ -372,33 +408,17 @@ struct MailReader: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            actionBar
-            Divider()
+            senderBar
+            Divider().padding(.horizontal, 24)
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 18) {
                     Text(message.subject.isEmpty ? "(No subject)" : message.subject)
-                        .font(.system(.title, weight: .bold)).textSelection(.enabled)
+                        .font(.title2.weight(.semibold)).textSelection(.enabled)
                         .accessibilityAddTraits(.isHeader)
-                    HStack(spacing: 12) {
-                        SenderAvatar(name: message.sender, key: message.senderKey, size: 40)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(message.sender).font(.headline).lineLimit(1)
-                            Text(message.fromAddr).font(.callout).foregroundStyle(.secondary).lineLimit(1).textSelection(.enabled)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            if let at = message.receivedAt {
-                                Text(at.formatted(date: .abbreviated, time: .shortened)).font(.callout).foregroundStyle(.secondary)
-                            }
-                            if Set(model.mailStates.map(\.account)).count > 1 {
-                                Text(EmailMessage.accountName(message.account)).font(.caption).foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
                     if !message.summary.isEmpty || !message.reason.isEmpty || !message.nextSteps.isEmpty { blinkCard }
                     body(text)
                 }
-                .padding(28)
+                .padding(.horizontal, 28).padding(.vertical, 22)
                 .frame(maxWidth: 760, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
@@ -430,34 +450,45 @@ struct MailReader: View {
         .disabled(model.draftingMail.contains(message.id))
         .popover(isPresented: $writingNote, arrowEdge: .bottom) { notePopover }
         .help("Reply (R)")
-        if message.status == .drafted { reply.buttonStyle(.borderedProminent) } else { reply }
+        if message.status == .drafted { reply.labelStyle(.titleAndIcon).buttonStyle(.borderedProminent) } else { reply.menuIndicator(.hidden) }
     }
 
-    private var actionBar: some View {
-        HStack(spacing: 8) {
-            if !message.isNoReply || message.status == .drafted { replyButton }
-            Button(action: done) { Label("Done", systemImage: "archivebox") }
-                .help("Done: off Blink's inbox (E). Anything you added from it stays.")
-            Menu {
-                Section("All mail from \(message.fromAddr)") {
-                    Button("Always Important", systemImage: "exclamationmark.circle") { teach(.important) }
-                    Button("Never Important", systemImage: "arrow.down.circle") { teach(.newsletter) }
+    /// Who wrote, to which of your addresses, and when, with the mail's actions as small icons on the right.
+    private var senderBar: some View {
+        HStack(spacing: 10) {
+            SenderAvatar(name: message.sender, key: message.senderKey, size: 34)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(message.sender).font(.callout.weight(.semibold)).lineLimit(1)
+                    Text(message.fromAddr).font(.caption).foregroundStyle(.secondary).lineLimit(1).textSelection(.enabled)
                 }
-            } label: {
-                Label("Sender", systemImage: "person.crop.circle")
+                Text("To: \(EmailMessage.accountName(message.account))").font(.caption).foregroundStyle(.secondary)
             }
-            .fixedSize()
+            Spacer(minLength: 8)
             if model.draftingMail.contains(message.id) { ProgressView().controlSize(.small) }
-            Spacer()
-            if let url = message.mailURL {
-                Button { NSWorkspace.shared.open(url) } label: { Label("Open in Mail", systemImage: "arrow.up.forward.app") }
-                    .labelStyle(.iconOnly)
-                    .help("Open in Apple Mail")
+            if let at = message.receivedAt {
+                Text(at.formatted(.dateTime.day().month(.abbreviated).year().hour().minute())).font(.caption).foregroundStyle(.secondary)
             }
+            HStack(spacing: 12) {
+                if !message.isNoReply || message.status == .drafted { replyButton }
+                Button("Done", systemImage: "archivebox", action: done)
+                    .help("Done: off Blink's inbox (E). Anything you added from it stays.")
+                if let url = message.mailURL {
+                    Button("Open in Apple Mail", systemImage: "arrow.up.forward.app") { NSWorkspace.shared.open(url) }.help("Open in Apple Mail")
+                }
+                Menu {
+                    Section("All mail from \(message.fromAddr)") {
+                        Button("Always Important", systemImage: "exclamationmark.circle") { teach(.important) }
+                        Button("Never Important", systemImage: "arrow.down.circle") { teach(.newsletter) }
+                    }
+                } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .accessibilityLabel("More")
+            }
+            .labelStyle(.iconOnly).buttonStyle(.borderless)
         }
-        .buttonStyle(.bordered)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
     }
 
     /// What Blink made of it: the summary and why it's sorted where it is, then the next steps, each one a click away.
