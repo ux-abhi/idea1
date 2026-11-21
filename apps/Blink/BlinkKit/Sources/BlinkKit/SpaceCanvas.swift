@@ -158,6 +158,9 @@ public struct SpaceBlock: Codable, Identifiable, Equatable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
         case heading, text, tasks, content, note, link, image, timer, stopwatch, table, file
 
+        /// What the "/" menu and the side panel offer; `content` is kept only so old pages still open (ADR-0004).
+        public static var addable: [Kind] { allCases.filter { $0 != .content } }
+
         public var title: String {
             switch self {
             case .heading: "Heading"
@@ -203,6 +206,9 @@ public struct SpaceBlock: Codable, Identifiable, Equatable, Sendable {
         public var minutes: Int?
         /// A table's columns (its rows are stored apart, in `space_table_row`).
         public var columns: [SpaceColumn]?
+        /// A table's saved views (Table, Board…) and the one showing.
+        public var views: [SpaceTableView]?
+        public var activeView: String?
         /// A file's text as read on the Mac (the start of a PDF or Word file), so the Space knows what it says.
         public var body: String?
         /// A file's size in bytes and its type.

@@ -364,6 +364,11 @@ struct DaySettings: View {
                 Text("What you call your assistant. It answers to this name in chat and voice commands (“Hey \(AssistantName.current), open Figma”) and uses it for itself.")
             }
             Section {
+                WritingVoiceRow()
+            } footer: {
+                Text("How you write: who you are, your tone, words you never use. Mail replies and Bulk Mail are written in this voice.")
+            }
+            Section {
                 Picker("Appearance", selection: $appearance) {
                     ForEach(Appearance.allCases) { Text($0.title).tag($0) }
                 }
@@ -376,12 +381,6 @@ struct DaySettings: View {
                 DatePicker("Evening check-in", selection: binding(\.evening), displayedComponents: .hourAndMinute)
             } footer: {
                 Text("Your habit day ends when you wake up, so a late night still counts for the day before. The evening check-in opens in the notch at the second time.")
-            }
-            Section {
-                @Bindable var model = model
-                Toggle("I post on social media", isOn: $model.showsContent)
-            } footer: {
-                Text("Shows Content: post ideas and drafts in your voice, and how your posts do.")
             }
             if let problem = model.saveProblem {
                 Text(problem).foregroundStyle(.orange)
@@ -570,6 +569,16 @@ struct PrivacySettings: View {
 #endif
 
 /// Settings › General › Name: saved on Return or when the field loses focus; a name that can't be used says why.
+/// Opens the writing voice (who you are, tone, never-say words) that every mail Blink writes for you follows.
+private struct WritingVoiceRow: View {
+    @State private var editing = false
+
+    var body: some View {
+        LabeledContent("Writing voice") { Button("Edit…") { editing = true } }
+            .sheet(isPresented: $editing) { VoiceSheet() }
+    }
+}
+
 struct AssistantNameField: View {
     @Environment(AppModel.self) private var model
     @AppStorage(AssistantName.key) private var saved = AssistantName.standard

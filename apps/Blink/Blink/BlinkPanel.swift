@@ -199,10 +199,6 @@ struct BlinkPanel: View {
         case .section(.habits):
             return [Suggestion("Plan my week"), Suggestion("How am I doing this week?"),
                     Suggestion("Suggest a habit for me", "Suggest one small habit that fits my week and my goals. Ask before adding it.")]
-        case .section(.content):
-            return [Suggestion("Give me 5 post ideas from my week",
-                               "Give me 5 post ideas from my calendar, tasks and notes this week. One line each, in my words."),
-                    Suggestion("What should I post about today?")]
         case .section(.money):
             // This month's numbers, as data: the chat never reads the table itself.
             let month = MoneyMath.month(of: HabitDay.key(.now))

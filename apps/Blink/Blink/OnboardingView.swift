@@ -384,21 +384,10 @@ private struct CalendarStep: View {
 private struct AboutStep: View {
     @Environment(AppModel.self) private var model
     let finish: () -> Void
-    @State private var handle = ""
-    @State private var saving = false
     @State private var openAtLogin = true
-    /// Off for a new install; an earlier choice (setup run again) is kept.
-    @State private var posts = UserDefaults.standard.object(forKey: "features.content") as? Bool ?? false
 
     var body: some View {
-        StepCard(title: "About you", subtitle: "So Blink shows what you'll use. You can change this later in Settings.") {
-            // Content (post ideas, drafts, stats) is for people who post; everyone else never sees it.
-            Toggle("I post on social media (Instagram, LinkedIn, X…)", isOn: $posts)
-            if posts {
-                TextField("Instagram handle, e.g. @yourname (optional)", text: $handle)
-                    .textFieldStyle(.roundedBorder)
-                    .onAppear { if model.voice.page.contains("@") { handle = String(model.voice.page.split(separator: " ").first ?? "") } }
-            }
+        StepCard(title: "Almost ready", subtitle: "You can change all of this later in Settings.") {
             if model.aiKeyMissing {
                 NeedsSetup(step: model.setupSteps.first { $0.id == .aiKey }!, model: model)
             } else if OnDeviceChat.problem == nil, model.keyStatus?["anthropic"] != "ok" {
@@ -415,35 +404,20 @@ private struct AboutStep: View {
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Spacer()
-                Button("Skip") { if openAtLogin { LoginItem.set(true) }; model.showsContent = posts; finish() }
+                Button("Skip") { if openAtLogin { LoginItem.set(true) }; finish() }
                 Button {
-                    Task {
-                        saving = true
-                        let h = handle.trimmingCharacters(in: .whitespaces)
-                        // Only once this account loaded (connected): otherwise an empty Voice could replace the saved one.
-                        model.showsContent = posts
-                        if posts, !h.isEmpty, model.status == .connected, !model.voice.page.contains("@") {
-                            var voice = model.voice
-                            voice.page = "\(h.hasPrefix("@") ? h : "@" + h) on Instagram"
-                            await model.saveVoice(voice)
-                        }
-                        saving = false
-                        if openAtLogin { LoginItem.set(true) }
-                        finish()
-                    }
+                    if openAtLogin { LoginItem.set(true) }
+                    finish()
                 } label: {
-                    if saving || model.refreshing { ProgressView().controlSize(.small).accessibilityLabel("Loading") } else { Text("Open Blink") }
+                    if model.refreshing { ProgressView().controlSize(.small).accessibilityLabel("Loading") } else { Text("Open Blink") }
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(model.refreshing)
             }
         }
-        // Load this account first (voice, keys): a returning owner's saved Voice must never be overwritten by an empty one.
-        .task {
-            await model.refresh()
-            if model.voice.page.contains("@"), handle.isEmpty { handle = String(model.voice.page.split(separator: " ").first ?? "") }
-        }
+        // Load this account first (keys, AI status) so the step shows what's really set up.
+        .task { await model.refresh() }
     }
 }
 

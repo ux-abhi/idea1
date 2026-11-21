@@ -82,22 +82,31 @@ export async function sendBulkDue(admin: SupabaseClient, owner: string, mailer: 
       .eq("campaign_id", batch.campaign_id).gte("sent_at", new Date(now - 86_400_000).toISOString());
     if ((campaignToday ?? 0) >= Number(campaign.daily_limit ?? 20)) continue;
 
-    const { data: rows } = await admin.from("mail_recipient").select("id, status").eq("owner_id", owner).in("id", batch.mails.map((m) => m.id));
-    const status = new Map((rows ?? []).map((r) => [r.id as string, r.status as string]));
-    // Someone who wrote back since the batch was approved gets nothing more from it.
-    const { data: replies } = await admin.from("email_msg").select("from_addr").eq("owner_id", owner).gte("received_at", action.decided_at ?? at).limit(1000);
-    const repliedFrom = new Set((replies ?? []).map((r) => String(r.from_addr).toLowerCase()));
-    for (const mail of batch.mails) {
-      if (status.get(mail.id) === "approved" && repliedFrom.has(mail.to.toLowerCase())) {
-        await admin.from("mail_recipient").update({ status: "replied" }).eq("id", mail.id).eq("status", "approved");
-        status.set(mail.id, "replied");
-      }
-    }
+    // By bulk mail, not by a list of ids (500 ids are too long for one request); a failed read never ends the batch.
+    const { data: rows, error: readError } = await admin.from("mail_recipient").select("id, status")
+      .eq("campaign_id", batch.campaign_id).eq("owner_id", owner);
+    if (readError || !rows) continue;
+    const status = new Map(rows.map((r) => [r.id as string, r.status as string]));
     // Only mails still approved: the owner can take one out (Skip) at any time; a deleted contact is never mailed.
-    const next = batch.mails.find((m) => status.get(m.id) === "approved");
-    if (!next) { // nothing left to send: the batch is finished
-      await admin.from("mail_campaign").update({ status: "done" }).eq("id", batch.campaign_id).eq("status", "sending");
-      await admin.from("action").update({ status: "done", result: { finished_at: at } }).eq("id", action.id).eq("status", "approved");
+    let next: BulkMail | undefined;
+    for (const mail of batch.mails.filter((m) => status.get(m.id) === "approved").slice(0, 5)) {
+      // Someone who wrote back since the batch was approved gets nothing more from it.
+      const { data: reply, error: replyError } = await admin.from("email_msg").select("id").eq("owner_id", owner)
+        .ilike("from_addr", mail.to.replace(/[\\%_]/g, (c) => `\\${c}`)).gte("received_at", action.decided_at ?? at).limit(1);
+      if (replyError) break; // can't tell: send nothing this run rather than risk mailing someone who replied
+      if (reply?.length) {
+        await admin.from("mail_recipient").update({ status: "replied" }).eq("id", mail.id).eq("status", "approved");
+        continue;
+      }
+      next = mail;
+      break;
+    }
+    if (!next) {
+      // Finished only when no mail of the batch is still approved (not when this run just couldn't pick one).
+      if (!batch.mails.some((m) => status.get(m.id) === "approved")) {
+        await admin.from("mail_campaign").update({ status: "done" }).eq("id", batch.campaign_id).eq("status", "sending");
+        await admin.from("action").update({ status: "done", result: { finished_at: at } }).eq("id", action.id).eq("status", "approved");
+      }
       continue;
     }
     const { data: claimed } = await admin.from("mail_recipient").update({ status: "sent", sent_at: null, error: null })

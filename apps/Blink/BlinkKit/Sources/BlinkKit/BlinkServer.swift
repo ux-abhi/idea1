@@ -370,17 +370,6 @@ public final class BlinkServer: Sendable {
         }
     }
 
-    /// Reads the owner's own public Instagram page (Apify) and sums it up; posts are kept on the server.
-    public func readPage() async throws -> PageRead {
-        do {
-            // The server reads only the handle saved in Voice.
-            return try await client.functions.invoke("page", options: .init(body: [String: String]()))
-        } catch let FunctionsError.httpError(_, data) {
-            struct ErrorBody: Decodable { let error: String }
-            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't read your page.")
-        }
-    }
-
     /// A cover or a text-free carousel background from Cloudflare FLUX (the owner's free daily allowance), as JPEG data.
     public func makeImage(subject: String, background: Bool) async throws -> Data {
         struct Body: Encodable { let subject: String; let kind: String }
@@ -862,6 +851,15 @@ public final class BlinkServer: Sendable {
         try await client.from("mail_campaign").upsert(campaign).execute()
     }
 
+    /// Changes a bulk mail's status, only if it's still one of `onlyFrom` (when given); false when it had already moved on.
+    public func setStatus(_ status: MailCampaign.Status, of campaignID: String, onlyFrom: [MailCampaign.Status]? = nil) async throws -> Bool {
+        struct Row: Decodable { let id: String }
+        var query = try client.from("mail_campaign").update(["status": status.rawValue]).eq("id", value: campaignID)
+        if let onlyFrom { query = query.in("status", values: onlyFrom.map(\.rawValue)) }
+        let rows: [Row] = try await query.select("id").execute().value
+        return !rows.isEmpty
+    }
+
     public func delete(_ campaign: MailCampaign) async throws {
         try await client.from("mail_campaign").delete().eq("id", value: campaign.id).execute()
     }
@@ -1219,24 +1217,6 @@ public final class BlinkServer: Sendable {
         } else {
             try await client.from("budget").delete().eq("category", value: category.rawValue).execute()
         }
-    }
-
-    /// The owner's Instagram posts the page reader saw, newest first (for the Content overview).
-    public func pagePosts() async throws -> [PagePost] {
-        try await client.from("social_post").select("url, kind, caption, likes, comments, views, posted_at")
-            .order("posted_at", ascending: false, nullsFirst: false).limit(200).execute().value
-    }
-
-    public func socialAccounts() async throws -> [SocialAccount] {
-        try await client.from("social_account").select("platform, handle, followers, updated_at").execute().value
-    }
-
-    /// Saves a typed-in follower number (nil = no account there yet).
-    public func save(_ account: SocialAccount) async throws {
-        struct Row: Encodable { let platform: String, handle: String, followers: Int? }
-        try await client.from("social_account")
-            .upsert(Row(platform: account.platform.rawValue, handle: account.handle, followers: account.followers), onConflict: "owner_id,platform")
-            .execute()
     }
 
     public func contentPieces() async throws -> [ContentPiece] {

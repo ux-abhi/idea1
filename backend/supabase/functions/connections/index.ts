@@ -38,13 +38,12 @@ Deno.serve(async (req) => {
   const openrouterKey = (await secret("OPENROUTER_API_KEY"));
   const workspace = await secret("ANTHROPIC_WORKSPACE_ID");
   const customChat = customEndpoint(await secret("CUSTOM_AI_URL"));
-  const [anthropic, groq, apify, cloudflare, openrouter, credit, custom] = await Promise.all([
+  const [anthropic, groq, cloudflare, openrouter, credit, custom] = await Promise.all([
     check((await secret("ANTHROPIC_API_KEY")), (key) => fetch("https://api.anthropic.com/v1/models?limit=1", {
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01",
                  ...(workspace ? { "anthropic-workspace-id": workspace } : {}) },
     })),
     check((await secret("GROQ_API_KEY")), (key) => fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${key}` } })),
-    check((await secret("APIFY_TOKEN")), (key) => fetch("https://api.apify.com/v2/users/me", { headers: { Authorization: `Bearer ${key}` } })),
     account
       ? check((await secret("CLOUDFLARE_API_TOKEN")), (key) => fetch(
           `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/ai/models/search?per_page=1`,
@@ -70,7 +69,7 @@ Deno.serve(async (req) => {
   const set = async (...names: string[]): Promise<Status> =>
     (await Promise.all(names.map((n) => secret(n)))).every(Boolean) ? "ok" : "missing";
   return json(200, {
-    anthropic, groq, apify, cloudflare, openrouter, custom, openrouter_credit: credit === null ? "" : String(credit),
+    anthropic, groq, cloudflare, openrouter, custom, openrouter_credit: credit === null ? "" : String(credit),
     gmail: await set("GMAIL_ADDRESS", "GMAIL_APP_PASSWORD"), icloud: await set("ICLOUD_ADDRESS", "ICLOUD_APP_PASSWORD"),
     uni: await set("UNI_ADDRESS", "UNI_PASSWORD", "UNI_IMAP_HOST"), google_app: await set("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"),
   });

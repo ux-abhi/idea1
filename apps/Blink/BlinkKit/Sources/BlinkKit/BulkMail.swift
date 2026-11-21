@@ -27,6 +27,17 @@ public struct MailCampaign: Codable, Identifiable, Equatable, Sendable {
         case spaceID = "segment_id", tableBlock = "table_block", dailyLimit = "daily_limit"
     }
 
+    /// Saving never writes `status`: the server changes it too (paused, done), so it goes only through a conditional
+    /// update (`BlinkServer.setStatus(_:of:onlyFrom:)`); a new row starts as the database's default, draft.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id); try c.encode(title, forKey: .title); try c.encode(context, forKey: .context)
+        try c.encode(goal, forKey: .goal); try c.encode(tone, forKey: .tone); try c.encode(account, forKey: .account)
+        try c.encode(research, forKey: .research); try c.encode(attachments, forKey: .attachments); try c.encode(tag, forKey: .tag)
+        try c.encode(dailyLimit, forKey: .dailyLimit)
+        try c.encodeIfPresent(spaceID, forKey: .spaceID); try c.encodeIfPresent(tableBlock, forKey: .tableBlock)
+    }
+
     /// Roughly when a batch of `count` mails is all sent: one every 5 minutes, 8:00–20:00, up to the daily limit.
     public static func sendingDays(_ count: Int, dailyLimit: Int) -> Int {
         let perDay = min(max(dailyLimit, 1), 12 * 12) // 12 hours of one every 5 minutes is the most a day can hold

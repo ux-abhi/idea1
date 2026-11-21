@@ -472,7 +472,7 @@ async function bulkWrite(admin: SupabaseClient, db: SupabaseClient, owner: strin
       const flags = (r.flags as string[]).filter((f) => f !== "no_mail_server");
       if (mailable.get(domainOf(r.email)) === false) {
         skipped++;
-        await admin.from("mail_recipient").update({ flags: [...flags, "no_mail_server"], status: "skipped" }).eq("id", r.id);
+        await admin.from("mail_recipient").update({ flags: [...flags, "no_mail_server"], status: "skipped" }).eq("id", r.id).in("status", ["new", "written", "skipped"]);
         return;
       }
       try {
@@ -495,7 +495,7 @@ async function bulkWrite(admin: SupabaseClient, db: SupabaseClient, owner: strin
         if (!mail?.subject || !mail.body) throw new Error("The model didn't write this one. Try again.");
         written++;
         await admin.from("mail_recipient").update({ ...mail, card: card ?? {}, status: "written", error: null,
-          flags: history?.length ? [...flags.filter((f) => f !== "known"), "known"] : flags.filter((f) => f !== "known") }).eq("id", r.id);
+          flags: history?.length ? [...flags.filter((f) => f !== "known"), "known"] : flags.filter((f) => f !== "known") }).eq("id", r.id).in("status", ["new", "written", "skipped"]); // never undo an approval made while it was writing
       } catch (error) {
         await admin.from("mail_recipient").update({ error: error instanceof Error ? error.message.slice(0, 300) : "Couldn't write this one." }).eq("id", r.id);
       }

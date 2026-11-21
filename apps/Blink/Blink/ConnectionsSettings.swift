@@ -59,9 +59,6 @@ struct ConnectionsSettings: View {
                     fields: [Field(key: "CLOUDFLARE_ACCOUNT_ID", label: "Account ID", prompt: "On your Cloudflare dashboard's right side", secure: false),
                              Field(key: "CLOUDFLARE_API_TOKEN", label: "API token", prompt: "With the Workers AI permission")],
                     getKey: URL(string: "https://dash.cloudflare.com/profile/api-tokens"), help: "Create a token with the “Workers AI” template."),
-            Service(id: "apify", name: "Apify", use: "Read My Page on the Content page",
-                    fields: [Field(key: "APIFY_TOKEN", label: "API token", prompt: "apify_api_…")],
-                    getKey: URL(string: "https://console.apify.com/settings/integrations"), help: "Copy your personal API token."),
     ]
 
     private let mail: [Service] = [

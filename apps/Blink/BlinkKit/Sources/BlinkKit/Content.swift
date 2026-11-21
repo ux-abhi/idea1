@@ -222,29 +222,6 @@ public extension HabitDay {
     }
 }
 
-/// What reading the owner's Instagram page found: a suggested voice, what works, and the best recent posts.
-public struct PageRead: Decodable, Sendable {
-    public struct Analysis: Decodable, Sendable {
-        public struct Voice: Decodable, Sendable { public let page, audience, topics, tone: String }
-        public let voice: Voice
-        public let works: [String]
-        public let avoid: [String]
-    }
-    public struct Best: Decodable, Identifiable, Sendable {
-        public let url: String
-        public let kind: String
-        public let likes: Int?
-        public let comments: Int?
-        public let views: Int?
-        public let caption: String
-        public var id: String { url }
-    }
-    public let handle: String
-    public let read: Int
-    public let analysis: Analysis?
-    public let best: [Best]
-}
-
 /// How much the owner changed an AI draft before approving it: the share of words not kept in order (0 = used as
 /// written, 1 = rewritten). Word-level, case and punctuation ignored, so fixing a comma barely counts.
 public enum DraftEdits {

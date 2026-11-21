@@ -106,18 +106,14 @@ final class AppModel {
     var setupSteps: [SetupStep] {
         SetupStep.all(keys: keyStatus, calendarGranted: calendarAccess == .granted, voicePage: voice.page,
                       mailConnected: mailStates.contains { $0.lastError == nil }, hasAccount: !accounts.isEmpty,
-                      hasHabit: !habits.isEmpty, onDeviceAI: OnDeviceChat.problem == nil, content: showsContent)
+                      hasHabit: !habits.isEmpty, onDeviceAI: OnDeviceChat.problem == nil)
     }
 
-    /// The owner posts on social media: Content, its drafts and the Instagram step show. Asked at the end of setup;
-    /// installs from before that question keep it on.
     /// Off by default: the notch hides from screenshots, recordings and screen sharing (§36.1). On for demo videos.
     var notchInRecordings = UserDefaults.standard.bool(forKey: "notch.inRecordings") {
         didSet { UserDefaults.standard.set(notchInRecordings, forKey: "notch.inRecordings") }
     }
-    var showsContent = UserDefaults.standard.object(forKey: "features.content") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(showsContent, forKey: "features.content") }
-    }
+
 
     // MARK: The login Blink makes on a server it sets up (no password to invent; see SetupLogin)
 
@@ -486,8 +482,8 @@ final class AppModel {
         habits = []; habitAnswers = [:]
         agenda = .empty; calendarEvents = []; allReminders = []; quickReplies = []
         content = []; voice = VoiceProfile(); contentProblem = nil
-        ideas = []; questions = [:]; pageRead = nil; designed = []
-        spends = []; budgets = []; accounts = []; income = []; incomePlans = []; captureTokens = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
+        ideas = []; questions = [:]; designed = []
+        spends = []; budgets = []; accounts = []; income = []; incomePlans = []; captureTokens = []; moneyProblem = nil
         emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil; campaigns = []; bulkRecipients = [:]
         modelPrefs = [:]; modelProblem = nil; aiCaps = BlinkServer.AICaps(); capsLoaded = false; spaces = []; openPage = nil; keyStatus = nil
     }
@@ -523,6 +519,10 @@ final class AppModel {
                 // title, which whoever inserted it chose, so it is never approved from here.
                 try await server.setStatus("declined", for: action)
                 announce("Not sent: mail goes out from the Inbox, where you can read the whole message first.", failed: true)
+            case .red where action.kind == "mail.bulk":
+                // A batch is approved only from Bulk Mail's send sheet, which shows how many and how fast.
+                try await server.setStatus("declined", for: action)
+                announce("Not sent: send a bulk mail from Bulk Mail, where you see every mail first.", failed: true)
             case .red:
                 // shortcut: approval only; the post executor lands with autoposting.
                 try await server.approveRed(action)
@@ -671,7 +671,7 @@ final class AppModel {
             .map { SearchHit(id: "r" + $0.id, symbol: "bell", title: $0.title, detail: "Apple Reminder", pageKey: "tasks") }
         list += content.filter { has($0.body) || has($0.idea) || $0.parts.contains(where: has) }
             .map { SearchHit(id: "c" + $0.id, symbol: "megaphone", title: $0.hook.isEmpty ? $0.idea : $0.hook,
-                             detail: "\($0.platform.name) post · \($0.status.rawValue)", pageKey: "content") }
+                             detail: "\($0.platform.name) post · \($0.status.rawValue)", pageKey: "tasks") }
         return Array(list.prefix(40))
     }
     var openTasks: [BlinkItem] { items.filter { $0.type == .task && $0.status == .open } }
@@ -1011,7 +1011,8 @@ final class AppModel {
         guard let index = habits.firstIndex(where: { $0.id == habit.id }) else { return }
         habits[index].weekdays = weekdays
         do { try await server?.save(habits[index]) } catch {
-            habits[index].weekdays = habit.weekdays
+            // Looked up again: the list may have changed while the save was on its way.
+            if let i = habits.firstIndex(where: { $0.id == habit.id }) { habits[i].weekdays = habit.weekdays }
             saveProblem = "Couldn't change that habit. Check your connection and try again."
         }
     }
@@ -1392,35 +1393,6 @@ final class AppModel {
     }
 
     func clearIdeas() async { ideas = [] }
-
-    private(set) var pageRead: PageRead?
-    private(set) var readingPage = false
-
-    /// Reads the owner's Instagram page (handle from Voice) and shows what works; nothing changes until they apply it.
-    func readPage() async {
-        guard let server, !readingPage else { return }
-        readingPage = true
-        defer { readingPage = false }
-        contentProblem = nil
-        do {
-            pageRead = try await server.readPage()
-            await loadContentStats()
-            announce("Read \(pageRead?.read ?? 0) posts · stats in Content")
-            return
-        }
-        catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
-        catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
-        announceProblem()
-    }
-
-    /// "Use as my voice": the page read's suggestion fills the Voice profile (never-say words are kept).
-    func useReadAsVoice() async {
-        guard let v = pageRead?.analysis?.voice else { return }
-        await saveVoice(VoiceProfile(page: v.page, audience: v.audience, topics: v.topics, notes: v.tone, neverSay: voice.neverSay,
-                                     brief: voice.brief))
-    }
-
-    func dismissPageRead() { pageRead = nil }
 
     // MARK: Post images (Cloudflare FLUX; kept on this Mac)
 
@@ -1963,38 +1935,6 @@ final class AppModel {
     }
 
     // MARK: Money (Phase 7, first slice): spends typed in, sorted by the AI, monthly limits per category
-
-    // MARK: Content overview: how the owner's posts perform, and their accounts
-
-    private(set) var pagePosts: [PagePost] = []
-    private(set) var socialAccounts: [SocialAccount] = []
-
-    func loadContentStats() async {
-        guard let server, email != nil else { return }
-        do {
-            async let posts = server.pagePosts()
-            async let accounts = server.socialAccounts()
-            let (p, a) = try await (posts, accounts)
-            guard email != nil else { return }
-            (pagePosts, socialAccounts) = (p, a)
-        } catch {
-            // Never show "no posts yet" (and invite a paid re-read) when the list just didn't load.
-            contentProblem = "Can't load your page stats right now. Check your connection."
-        }
-    }
-
-    /// The owner's typed-in followers for a platform (nil = no account there yet).
-    func setFollowers(_ followers: Int?, handle: String, on platform: SocialAccount.Platform) async {
-        guard let server else { return }
-        let account = SocialAccount(platform: platform, handle: handle, followers: followers, updatedAt: .now)
-        let before = socialAccounts
-        socialAccounts.removeAll { $0.platform == platform }
-        socialAccounts.append(account)
-        do { try await server.save(account) } catch {
-            socialAccounts = before
-            contentProblem = "Couldn't save that number. Check your connection."
-        }
-    }
 
     private(set) var spends: [Spend] = []
     private(set) var accounts: [MoneyAccount] = []
@@ -3097,7 +3037,8 @@ final class AppModel {
             try await server.add(Array(rows))
             bulkRecipients[campaign.id, default: []] += rows
         } catch {
-            problems.insert(serverBehind ? "Update your server (Settings › Server) to use Bulk Mail." : "Couldn't add the contacts. Check your connection and try again.", at: 0)
+            problems.insert(serverBehind ? "Update your server (Settings › Server) to use Bulk Mail." : "Couldn't add all the contacts. Check your connection and try again.", at: 0)
+            await loadRecipients(campaign) // some may have been saved before the failure: show what's really there
         }
         return problems
     }
@@ -3114,10 +3055,7 @@ final class AppModel {
             }
             await loadRecipients(campaign)
         }
-        if campaign.status == .draft, var changed = campaigns.first(where: { $0.id == campaign.id }) {
-            changed.status = .review
-            await update(changed)
-        }
+        if campaign.status == .draft { await setStatus(.review, of: campaign, onlyFrom: [.draft]) }
     }
 
     /// The owner's edit, approval or skip of one mail: shown at once, put back if the save fails.
@@ -3135,6 +3073,12 @@ final class AppModel {
     /// Takes someone out of the bulk mail; with `forever`, they also go on the do-not-mail list.
     func remove(_ recipient: MailRecipient, forever: Bool = false) async {
         guard let server else { return }
+        // A mail that went out stays on record (it counts toward the daily limit); while a batch sends, take mails out instead.
+        let sending = [.sending, .paused].contains(campaigns.first { $0.id == recipient.campaignID }?.status)
+        guard ![.sent, .failed, .bounced, .replied, .inDrafts].contains(recipient.status), !(sending && recipient.status == .approved) else {
+            saveProblem = sending ? "This bulk mail is sending. Use Don't Send This One, or pause it first." : "That mail already went out, so it stays on record."
+            return
+        }
         do {
             if forever { try await server.blockAddress(recipient.email) }
             try await server.delete(recipient)
@@ -3146,7 +3090,10 @@ final class AppModel {
         offerUndo("Removed \(recipient.name.isEmpty ? recipient.email : recipient.name)") { [weak self] in
             guard let self, let server = self.server else { return }
             if forever { try? await server.unblockAddress(recipient.email) }
-            do { try await server.add([recipient]); self.bulkRecipients[recipient.campaignID, default: []].append(recipient) } catch {
+            // Back as written, never approved: an Undo must not quietly put someone back into a batch.
+            var back = recipient
+            if back.status == .approved { back.status = .written }
+            do { try await server.add([back]); self.bulkRecipients[recipient.campaignID, default: []].append(back) } catch {
                 self.saveProblem = "Couldn't bring \(recipient.email) back."
             }
         }
@@ -3191,8 +3138,7 @@ final class AppModel {
                 if let problem = error as? ApprovalKey.Problem { return problem.message }
                 return "Couldn't approve the batch. Check your connection and try again."
             }
-            changed.status = .sending
-            await update(changed)
+            await setStatus(.sending, of: changed)
             return nil
         } catch {
             return serverBehind ? "Update your server (Settings › Server) to send bulk mail." : "Couldn't start sending. Check your connection and try again."
@@ -3221,9 +3167,21 @@ final class AppModel {
 
     /// Pause stops the next mail from going out; Resume carries on where it stopped.
     func setSending(_ on: Bool, for campaign: MailCampaign) async {
-        guard var changed = campaigns.first(where: { $0.id == campaign.id }) else { return }
-        changed.status = on ? .sending : .paused
-        await update(changed)
+        // Conditional: Resume only a paused batch, Pause only a sending one, so a "done" from the server is never undone.
+        await setStatus(on ? .sending : .paused, of: campaign, onlyFrom: [on ? .paused : .sending])
+    }
+
+    /// A bulk mail's status changes only here, never through ordinary edits: the server also changes it (paused by a
+    /// provider limit, done when the batch is through), so a stale copy in the app must never write it back.
+    private func setStatus(_ status: MailCampaign.Status, of campaign: MailCampaign, onlyFrom: [MailCampaign.Status]? = nil) async {
+        guard let server else { return }
+        do {
+            let changed = try await server.setStatus(status, of: campaign.id, onlyFrom: onlyFrom)
+            if !changed { saveProblem = "That bulk mail changed in the meantime. Here's where it is now." }
+        } catch {
+            saveProblem = "Couldn't update the bulk mail. Check your connection."
+        }
+        await loadCampaigns()
     }
 
     /// Files for every mail of a bulk mail (a portfolio deck, pictures), checked against the server's limits first.
@@ -3377,7 +3335,10 @@ final class AppModel {
         offerUndo("Deleted a row") { [weak self] in
             guard let self, let server = self.server else { return }
             self.tableRows[row.blockID] = ((self.tableRows[row.blockID] ?? []) + [row]).sorted { $0.position < $1.position }
-            try? await server.save(row)
+            do { try await server.save(row) } catch {
+                self.tableRows[row.blockID]?.removeAll { $0.id == row.id }
+                self.saveProblem = "Couldn't bring that row back. Check your connection."
+            }
         }
     }
 

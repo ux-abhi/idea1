@@ -1110,7 +1110,7 @@ struct GlanceView: View {
                         Text("Today's post: \(piece.hook.isEmpty ? piece.idea : piece.hook)").lineLimit(1)
                         Spacer(minLength: 8)
                         Button("Review") {
-                            app.openPage = "content"
+                            app.openPage = "tasks"
                             app.showWindow()
                             done()
                         }
@@ -1142,8 +1142,8 @@ struct GlanceView: View {
                     .contextMenu { readyPostActions(piece, app: app) }
                 }
                 if app.readyToPost.count > 2 {
-                    Button("\(app.readyToPost.count - 2) more ready in Content") {
-                        app.openPage = "content"
+                    Button("\(app.readyToPost.count - 2) more ready in Tasks") {
+                        app.openPage = "tasks"
                         app.showWindow()
                         done()
                     }

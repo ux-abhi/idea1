@@ -644,7 +644,6 @@ private struct SpaceCanvasView: View {
             }
         case .post(let post):
             Button("Open") { readingPost = post.id }
-            Button("Show in Content") { model.openPage = "content" }
             Menu("Post On") {
                 ForEach(0..<7, id: \.self) { ahead in
                     if let date = Calendar.current.date(byAdding: .day, value: ahead, to: .now) {

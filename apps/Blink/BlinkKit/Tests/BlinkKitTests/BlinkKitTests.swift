@@ -1179,27 +1179,6 @@ extension Tokens {
     #expect(MoneyMath.parseBalance("1.250") == nil && MoneyMath.parseBalance("1,234.56") == nil)
 }
 
-@Test func contentStatsComparePostsAndFormats() {
-    var cal = Calendar(identifier: .gregorian)
-    cal.timeZone = TimeZone(identifier: "UTC")!
-    let day: (Int) -> Date = { cal.date(from: DateComponents(year: 2026, month: 10, day: $0, hour: 12))! }
-    let posts = [
-        PagePost(url: "a", kind: .video, caption: "", likes: 100, comments: 20, views: 5000, postedAt: day(12)),   // Mon
-        PagePost(url: "b", kind: .carousel, caption: "", likes: 300, comments: 60, views: nil, postedAt: day(10)), // Sat
-        PagePost(url: "c", kind: .image, caption: "", likes: 40, comments: nil, views: nil, postedAt: day(5)),     // Mon
-        PagePost(url: "d", kind: .video, caption: "", likes: 60, comments: 0, views: 3000, postedAt: day(1)),      // Thu
-    ]
-    let s = ContentStats.summary(posts, count: 2)
-    #expect(s.posts == 2 && s.averageLikes == 200 && s.averageComments == 40 && s.averageReelViews == 5000)
-    #expect(s.change == 3.8) // (120+360)/2 = 240 against (40+60)/2 = 50: (240 - 50) / 50
-    #expect(ContentStats.summary(posts, count: 3).change == nil) // 3 newest against only 1 older: no trend
-    #expect(ContentStats.byFormat(posts).map(\.kind) == [.carousel, .video, .image])
-    #expect(ContentStats.byFormat(posts).first { $0.kind == .video }?.views == 4000)
-    #expect(ContentStats.byWeekday(posts, calendar: cal).first { $0.weekday == 2 }?.engagement == 80) // Mondays: 120 and 40
-    #expect(ContentStats.top(posts, count: 1).first?.url == "b")
-    #expect(ContentStats.perWeek(posts, weeks: 3, now: day(12), calendar: cal) == [1, 2, 1])
-}
-
 @Test func setupStepsKnowWhatIsMissing() {
     let fresh = SetupStep.all(keys: ["groq": "missing", "anthropic": "missing"], calendarGranted: false, voicePage: "",
                               mailConnected: false, hasAccount: false, hasHabit: false)
@@ -1213,11 +1192,11 @@ extension Tokens {
     // A key the provider refused doesn't count.
     #expect(SetupStep.all(keys: ["groq": "rejected", "anthropic": "missing"], calendarGranted: true, voicePage: "",
                           mailConnected: true, hasAccount: true, hasHabit: true).first { $0.id == .aiKey }?.done == false)
-    // With Apple's free on-device model, a key is an optional upgrade, never "missing"; non-posters get no Instagram step.
+    // With Apple's free on-device model, a key is an optional upgrade, never "missing"; and there is no Instagram step any more.
     let noKeys = SetupStep.all(keys: ["groq": "missing", "anthropic": "missing"], calendarGranted: true, voicePage: "",
-                               mailConnected: true, hasAccount: true, hasHabit: true, onDeviceAI: true, content: false)
+                               mailConnected: true, hasAccount: true, hasHabit: true, onDeviceAI: true)
     #expect(SetupStep.all(keys: ["groq": "missing", "anthropic": "missing"], calendarGranted: true, voicePage: "",
-                          mailConnected: false, hasAccount: true, hasHabit: true, onDeviceAI: true, content: false)
+                          mailConnected: false, hasAccount: true, hasHabit: true, onDeviceAI: true)
         .first { $0.id == .aiKey }?.done == true)
     // ...but mail sorting runs on the server, so with mail connected the key is still needed.
     #expect(noKeys.first { $0.id == .aiKey }?.done == false && !noKeys.contains { $0.id == .handle })
@@ -1547,5 +1526,51 @@ extension Tokens {
         #expect(MailCampaign.sendingDays(20, dailyLimit: 20) == 1)
         #expect(MailCampaign.sendingDays(1, dailyLimit: 100) == 1)
         #expect(MailCampaign.sendingDays(100, dailyLimit: 0) == 100) // a broken limit counts as one a day, never divides by zero
+    }
+}
+
+@Suite struct CampaignSaveTests {
+    @Test func savingABulkMailNeverWritesItsStatus() throws {
+        var campaign = MailCampaign(title: "Founders", account: "gmail", status: .paused)
+        campaign.dailyLimit = 30
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(campaign)) as? [String: Any] ?? [:]
+        #expect(json["status"] == nil) // the server's "paused" or "done" can't be overwritten by a stale copy
+        #expect(json["daily_limit"] as? Int == 30 && json["title"] as? String == "Founders")
+    }
+}
+
+@Suite struct SpaceViewTests {
+    let status = SpaceColumn(id: "s", name: "Status", kind: .category,
+                             options: [SpaceOption(id: "idea", name: "Idea", color: "gray"), SpaceOption(id: "ready", name: "Ready", color: "green")])
+    let applied = SpaceColumn(id: "a", name: "Applied", kind: .checkbox)
+    let company = SpaceColumn(id: "c", name: "Company")
+    var rows: [SpaceRow] {
+        [SpaceRow(id: "1", blockID: "b", position: 1, cells: ["c": "SAP", "s": "ready", "a": "true"]),
+         SpaceRow(id: "2", blockID: "b", position: 2, cells: ["c": "Lio", "s": "idea"]),
+         SpaceRow(id: "3", blockID: "b", position: 3, cells: ["c": "ZEISS"])]
+    }
+
+    @Test func filtersSearchAndSortWorkTogether() {
+        let columns = [company, status, applied]
+        let ready = SpaceTableView(name: "Board", kind: .board, filters: [RowFilter(column: "s", op: .is_, value: "ready")])
+        #expect(SpaceTable.apply(ready, columns: columns, rows: rows).map(\.id) == ["1"])
+        let open = SpaceTableView(name: "T", kind: .table, filters: [RowFilter(column: "a", op: .unchecked)], sortColumn: "c", sortAscending: false)
+        #expect(SpaceTable.apply(open, columns: columns, rows: rows).map(\.id) == ["3", "2"]) // ZEISS, Lio
+        #expect(SpaceTable.apply(SpaceTableView(name: "T", kind: .table), columns: columns, rows: rows, search: "zei").map(\.id) == ["3"])
+        var noted = rows
+        noted[1].cells[SpaceTable.noteKey] = "Met at the Berlin meetup"
+        #expect(SpaceTable.apply(SpaceTableView(name: "T", kind: .table), columns: columns, rows: noted, search: "berlin").map(\.id) == ["2"]) // notes are searched too
+        // Sorting by a Category follows its options' order, with empty cells last.
+        let byStatus = SpaceTableView(name: "T", kind: .table, sortColumn: "s")
+        #expect(SpaceTable.apply(byStatus, columns: columns, rows: rows).map(\.id) == ["2", "1", "3"])
+        // A filter on a column that was deleted hides nothing.
+        #expect(SpaceTable.apply(SpaceTableView(name: "T", kind: .table, filters: [RowFilter(column: "gone", op: .isEmpty)]), columns: columns, rows: rows).count == 3)
+    }
+
+    @Test func aBoardHasAColumnPerOptionThenTheRest() {
+        let groups = SpaceTable.groups(rows, by: status)
+        #expect(groups.map { $0.option?.name ?? "none" } == ["Idea", "Ready", "none"])
+        #expect(groups.map { $0.rows.map(\.id) } == [["2"], ["1"], ["3"]])
+        #expect(SpaceTable.display(rows[0], status) == "Ready" && SpaceTable.display(rows[0], applied) == "Yes")
     }
 }

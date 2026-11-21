@@ -15,7 +15,7 @@ struct TodayWidgetGrid: View {
             TasksWidget(now: now)
             MoneyWidget(now: now)
             HabitsWidget()
-            if model.showsContent && !model.readyToPost.isEmpty { PostsWidget() }
+            if !model.readyToPost.isEmpty { PostsWidget() }
         }
     }
 }

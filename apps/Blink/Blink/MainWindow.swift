@@ -6,7 +6,7 @@ import SwiftUI
 /// The Mac window: sidebar · content (ARCHITECTURE §5). Settings live in their own window (⌘,).
 struct MainWindow: View {
     enum Section: String, CaseIterable, Identifiable {
-        case today, inbox, calendar, notes, tasks, habits, content, money, waiting, activity
+        case today, inbox, calendar, notes, tasks, habits, money, waiting, activity
         var id: Self { self }
 
         var title: String {
@@ -17,7 +17,6 @@ struct MainWindow: View {
             case .notes: "Notes"
             case .tasks: "Tasks"
             case .habits: "Habits & Goals"
-            case .content: "Content"
             case .money: "Money"
             case .waiting: "Needs You"
             case .activity: "Activity"
@@ -32,7 +31,6 @@ struct MainWindow: View {
             case .notes: "note.text"
             case .tasks: "checklist"
             case .habits: "square.grid.3x3.fill"
-            case .content: "megaphone"
             case .money: "eurosign.circle"
             case .waiting: "tray"
             case .activity: "clock.arrow.circlepath"
@@ -80,17 +78,17 @@ struct MainWindow: View {
         // same window (after onboarding or signing back in), which crashes AppKit's toolbar.
         NavigationSplitView(columnVisibility: $columns) {
             List(selection: $page) {
+                // Today always first, then Spaces, then everything else (ADR-0005).
+                row(.today)
+                spacesSection
                 SwiftUI.Section("Blink", isExpanded: $mainOpen) {
-                    row(.today)
                     row(.inbox)
                     row(.calendar)
-                    row(.notes)
                     row(.tasks)
-                    row(.habits)
+                    row(.notes)
                     row(.money)
-                    if model.showsContent { row(.content) } // moving into Spaces (ADR-0002); last until it's gone
+                    row(.habits)
                 }
-                spacesSection
                 SwiftUI.Section("Review", isExpanded: $reviewOpen) {
                     row(.waiting)
                     row(.activity)
@@ -187,7 +185,6 @@ struct MainWindow: View {
         case .section(.notes): NotesView()
         case .section(.tasks): TasksView()
         case .section(.habits): HabitsGoalsView()
-        case .section(.content): ContentView()
         case .section(.money): MoneyView()
         case .section(.waiting): WaitingView()
         case .section(.activity): ActivityView()
