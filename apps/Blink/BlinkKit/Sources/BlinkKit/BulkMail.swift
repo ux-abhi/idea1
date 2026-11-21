@@ -19,10 +19,18 @@ public struct MailCampaign: Codable, Identifiable, Equatable, Sendable {
     public var spaceID: String?
     public var tableBlock: String?
     public var tag: String = ""
+    /// Most mails this bulk mail sends in 24 hours (1–100).
+    public var dailyLimit: Int = 20
 
     enum CodingKeys: String, CodingKey {
         case id, title, context, goal, tone, account, status, research, attachments, tag
-        case spaceID = "segment_id", tableBlock = "table_block"
+        case spaceID = "segment_id", tableBlock = "table_block", dailyLimit = "daily_limit"
+    }
+
+    /// Roughly when a batch of `count` mails is all sent: one every 5 minutes, 8:00–20:00, up to the daily limit.
+    public static func sendingDays(_ count: Int, dailyLimit: Int) -> Int {
+        let perDay = min(max(dailyLimit, 1), 12 * 12) // 12 hours of one every 5 minutes is the most a day can hold
+        return max(1, Int((Double(count) / Double(perDay)).rounded(.up)))
     }
 
     public init(id: String = UUID().uuidString.lowercased(), title: String, context: String = "", goal: String = "", tone: String = "",

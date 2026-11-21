@@ -18,40 +18,44 @@ struct SpacePageView: View {
         let blocks = model.spaceBlocks[space.id] ?? []
         let current = model.spaces.first { $0.id == space.id } ?? space
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
+                PageCover(space: current)
+                VStack(alignment: .leading, spacing: 14) {
+                    // The icon sits over the cover's lower edge, then the title big, like a document's first page.
                     Image(systemName: current.icon)
-                        .font(.title2.weight(.semibold)).foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Color.system(current.color).gradient, in: .rect(cornerRadius: 12, style: .continuous))
+                        .font(.system(size: 34, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 76, height: 76)
+                        .background(Color.system(current.color).gradient, in: .rect(cornerRadius: 20, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color(nsColor: .textBackgroundColor), lineWidth: 4))
+                        .padding(.top, -38)
                         .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(current.title).font(.largeTitle.bold())
-                        if !current.goal.isEmpty { Text(current.goal).foregroundStyle(.secondary) }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(current.title).font(.system(size: 40, weight: .bold)).textSelection(.enabled)
+                        if !current.goal.isEmpty { Text(current.goal).font(.title3).foregroundStyle(.secondary) }
                     }
+                    .padding(.bottom, 18)
+                    if blocks.isEmpty {
+                        Text("Empty page. Type / below for a heading, a table, a task list, a file, a content board and more.")
+                            .foregroundStyle(.tertiary)
+                    }
+                    ForEach(blocks) { block in
+                        BlockRow(block: block, space: current, openNote: openNote, openPost: { openPost = $0 })
+                    }
+                    AddBlockLine(space: current, after: blocks.last)
+                    Spacer(minLength: 140)
                 }
-                .padding(.bottom, 8)
-                if blocks.isEmpty {
-                    Text("This page is empty. Type / below to add a heading, a task list, a content board, a link, a timer and more.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(blocks) { block in
-                    BlockRow(block: block, space: current, openNote: openNote, openPost: { openPost = $0 })
-                }
-                AddBlockLine(space: current, after: blocks.last)
-                Spacer(minLength: 120)
+                .frame(maxWidth: 720, alignment: .leading)
+                .padding(.horizontal, 56)
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(.horizontal, 32)
-            .padding(.top, 76)
-            .frame(maxWidth: .infinity)
         }
         .background(Color(nsColor: .textBackgroundColor))
         .overlay(alignment: .topTrailing) {
             Button("Blocks", systemImage: showPanel ? "sidebar.right" : "plus") { showPanel.toggle() }
-                .labelStyle(.iconOnly).buttonStyle(.bordered).controlSize(.large)
+                .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.primary)
+                .frame(width: 30, height: 30).background(.regularMaterial, in: .circle)
                 .help(showPanel ? "Hide the blocks panel" : "Add a block")
-                .padding(16)
+                .padding(14)
         }
         .inspector(isPresented: $showPanel) {
             BlockPanel { kind in Task { await model.addBlock(kind, in: current) } }
@@ -61,6 +65,47 @@ struct SpacePageView: View {
         .sheet(isPresented: Binding(get: { openPost != nil }, set: { if !$0 { openPost = nil } })) {
             if let openPost { PieceSheet(id: openPost) }
         }
+    }
+}
+
+/// The page's cover: the Space's gradient, edge to edge. Hovering offers the other gradients.
+private struct PageCover: View {
+    @Environment(AppModel.self) private var model
+    let space: Space
+    @State private var hovering = false
+
+    var body: some View {
+        Rectangle().fill(Self.gradient(space.cover))
+            .frame(height: 190)
+            .overlay(alignment: .bottomTrailing) {
+                Menu {
+                    ForEach(Space.covers, id: \.self) { name in
+                        Button(name.capitalized) { var changed = space; changed.cover = name; Task { await model.saveSpace(changed) } }
+                    }
+                } label: { Label("Change Cover", systemImage: "photo.on.rectangle") }
+                    .menuStyle(.button).buttonStyle(.borderless).fixedSize()
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(.regularMaterial, in: .capsule)
+                    .padding(14)
+                    .opacity(hovering ? 1 : 0)
+            }
+            .onHover { hovering = $0 }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Cover")
+    }
+
+    /// The named covers, in Apple's system colours.
+    static func gradient(_ name: String) -> LinearGradient {
+        let colors: [Color] = switch name {
+        case "ocean": [.blue, .cyan]
+        case "sunset": [.orange, .pink]
+        case "forest": [.green, .mint]
+        case "dusk": [.indigo, .blue.opacity(0.6)]
+        case "rose": [.pink, .red.opacity(0.75)]
+        case "mono": [.gray.opacity(0.55), .gray.opacity(0.25)]
+        default: [.teal, .blue, .indigo] // aurora
+        }
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 
@@ -156,7 +201,8 @@ private struct AddBlockLine: View {
     }
 }
 
-/// One block with its ⋯ menu (move, delete) on the left, shown on hover.
+/// One block. Its options (move, delete, and a table's CSV) are a ⋯ in the right margin on hover, and on right-click
+/// for blocks that aren't text (text keeps the usual Cut, Copy and Paste).
 private struct BlockRow: View {
     @Environment(AppModel.self) private var model
     let block: SpaceBlock
@@ -164,38 +210,53 @@ private struct BlockRow: View {
     let openNote: (String) -> Void
     let openPost: (String) -> Void
     @State private var hovering = false
+    @State private var importing = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Menu {
-                Button("Move Up", systemImage: "arrow.up") { Task { await model.move(block, by: -1) } }
-                Button("Move Down", systemImage: "arrow.down") { Task { await model.move(block, by: 1) } }
-                Divider()
-                Button("Delete \(block.kind.title)", systemImage: "trash", role: .destructive) { Task { await model.delete(block) } }
-            } label: { Image(systemName: "ellipsis") }
+        let content = Group {
+            switch block.kind {
+            case .heading: TextBlock(block: block, heading: true)
+            case .text: TextBlock(block: block, heading: false)
+            case .tasks: TasksBlock(space: space)
+            case .content: ContentBoardBlock(space: space, open: openPost)
+            case .note: NoteBlock(block: block, space: space, open: openNote)
+            case .link: LinkBlock(block: block)
+            case .image: ImageBlock(block: block, space: space)
+            case .timer: TimerBlock(block: block)
+            case .stopwatch: StopwatchBlock()
+            case .table: TableBlock(block: block, space: space, importing: $importing)
+            case .file: FileBlock(block: block, space: space)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        Group {
+            if block.kind == .heading || block.kind == .text { content } else { content.contextMenu { options } }
+        }
+        .overlay(alignment: .topTrailing) {
+            Menu { options } label: { Image(systemName: "ellipsis").foregroundStyle(.secondary) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .opacity(hovering ? 1 : 0.25)
-                .padding(.top, block.kind == .heading ? 8 : 3)
+                .offset(x: 34, y: block.kind == .heading ? 10 : 4)
+                .opacity(hovering ? 1 : 0)
                 .help("Block options")
                 .accessibilityLabel("\(block.kind.title) options")
-            Group {
-                switch block.kind {
-                case .heading: TextBlock(block: block, heading: true)
-                case .text: TextBlock(block: block, heading: false)
-                case .tasks: TasksBlock(space: space)
-                case .content: ContentBoardBlock(space: space, open: openPost)
-                case .note: NoteBlock(block: block, space: space, open: openNote)
-                case .link: LinkBlock(block: block)
-                case .image: ImageBlock(block: block, space: space)
-                case .timer: TimerBlock(block: block)
-                case .stopwatch: StopwatchBlock()
-                case .table: TableBlock(block: block, space: space)
-                case .file: FileBlock(block: block, space: space)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onHover { hovering = $0 }
+    }
+
+    @ViewBuilder
+    private var options: some View {
+        if block.kind == .table {
+            Button("Import CSV…", systemImage: "square.and.arrow.down") { importing = true }
+            Button("Copy as CSV", systemImage: "doc.on.doc") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(SpaceTable.csv(columns: block.data.columns ?? [], rows: model.tableRows[block.id] ?? []), forType: .string)
+            }
+            Divider()
+        }
+        Button("Move Up", systemImage: "arrow.up") { Task { await model.move(block, by: -1) } }
+        Button("Move Down", systemImage: "arrow.down") { Task { await model.move(block, by: 1) } }
+        Divider()
+        Button("Delete \(block.kind.title)", systemImage: "trash", role: .destructive) { Task { await model.delete(block) } }
     }
 }
 
@@ -496,77 +557,81 @@ private struct StopwatchBlock: View {
     }
 }
 
-/// A table: typed columns, rows edited in place, CSV in and out, and "Bulk Mail…" for a table with an email column.
-/// Rows that went out in a bulk mail show its status in a last, read-only column.
+/// A table: a name, typed columns and rows, edited in place like a spreadsheet. It's only data: a bulk mail (or anything
+/// else) connects to it by its name. Rows that went out in a bulk mail show its status in a last, read-only column.
 private struct TableBlock: View {
     @Environment(AppModel.self) private var model
     let block: SpaceBlock
     let space: Space
-    @State private var importing = false
-    @State private var mailing = false
-    private static let width: CGFloat = 170
+    @Binding var importing: Bool
+    @State private var name = ""
+    private static let width: CGFloat = 180, height: CGFloat = 34
 
     var body: some View {
         let columns = block.data.columns ?? []
         let rows = model.tableRows[block.id] ?? []
         let mailed = rows.contains { model.rowMailStatus[$0.id] != nil }
-        VStack(alignment: .leading, spacing: 8) {
-            if columns.isEmpty {
-                HStack {
-                    Button("Start with Name and Email") {
-                        Task { await model.setColumns([SpaceColumn(name: "Name"), SpaceColumn(name: "Email", kind: .email), SpaceColumn(name: "Tags", kind: .tags)], of: block) }
-                    }
-                    Button("Import CSV…") { importing = true }
-                }
-            } else {
-                ScrollView(.horizontal) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack(spacing: 0) {
-                            ForEach(columns) { column in ColumnHeader(column: column, block: block, width: Self.width) }
-                            if mailed { Text("Mail").font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 90, alignment: .leading).padding(.horizontal, 6) }
-                            Button("Add Column", systemImage: "plus") {
-                                Task { await model.setColumns(columns + [SpaceColumn(name: "Column \(columns.count + 1)")], of: block) }
-                            }
-                            .labelStyle(.iconOnly).buttonStyle(.borderless).padding(.horizontal, 6)
-                            .disabled(columns.count >= SpaceTable.columnLimit)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "tablecells").foregroundStyle(.secondary).accessibilityHidden(true)
+                TextField("Untitled table", text: $name).textFieldStyle(.plain).font(.title3.weight(.semibold))
+                    .onSubmit(saveName).onAppear { name = block.data.text ?? "" }
+                    .onDisappear(perform: saveName)
+                    .accessibilityLabel("Table name")
+            }
+            ScrollView(.horizontal) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 0) {
+                        ForEach(columns) { column in
+                            ColumnHeader(column: column, block: block, width: Self.width).frame(height: Self.height).overlay(alignment: .trailing) { line }
                         }
-                        .padding(.vertical, 6)
-                        Divider()
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(rows) { row in
-                                HStack(spacing: 0) {
-                                    ForEach(columns) { column in CellField(row: row, column: column).frame(width: Self.width) }
-                                    if mailed {
-                                        Text(model.rowMailStatus[row.id].map(Self.status) ?? "").font(.caption).foregroundStyle(.secondary)
-                                            .frame(width: 90, alignment: .leading).padding(.horizontal, 6)
-                                    }
+                        if mailed {
+                            Label("Mail", systemImage: "envelope").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                                .padding(.horizontal, 10).frame(width: 110, height: Self.height, alignment: .leading).overlay(alignment: .trailing) { line }
+                        }
+                        Menu {
+                            ForEach(SpaceColumn.Kind.allCases, id: \.self) { kind in
+                                Button(kind.title, systemImage: ColumnHeader.symbol(kind)) {
+                                    Task { await model.setColumns(columns + [SpaceColumn(name: kind == .text ? "Column \(columns.count + 1)" : kind.title, kind: kind)], of: block) }
                                 }
-                                .contextMenu { Button("Delete Row", systemImage: "trash", role: .destructive) { Task { await model.delete(row) } } }
-                                Divider()
                             }
+                        } label: { Image(systemName: "plus") }
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                            .padding(.horizontal, 12).frame(height: Self.height)
+                            .disabled(columns.count >= SpaceTable.columnLimit)
+                            .help("Add a column")
+                            .accessibilityLabel("Add column")
+                    }
+                    .background(Color.primary.opacity(0.03))
+                    Rectangle().fill(.quaternary).frame(height: 1)
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(rows) { row in
+                            TableRowView(row: row, columns: columns, mailed: mailed ? model.rowMailStatus[row.id].map(TableBlock.status) ?? "" : nil,
+                                         width: Self.width, height: Self.height)
+                            Rectangle().fill(.quaternary).frame(height: 1)
                         }
                     }
-                }
-                HStack {
-                    Button("New Row", systemImage: "plus") { Task { await model.addRow(to: block) } }
-                    Button("Import CSV…") { importing = true }
-                    Button("Copy as CSV") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(SpaceTable.csv(columns: columns, rows: rows), forType: .string)
+                    Button { Task { await model.addRow(to: block) } } label: {
+                        Label("New row", systemImage: "plus").font(.callout).foregroundStyle(.secondary)
+                            .padding(.horizontal, 10).frame(height: Self.height).frame(maxWidth: .infinity, alignment: .leading).contentShape(.rect)
                     }
-                    Spacer()
-                    if columns.contains(where: { $0.kind == .email }) {
-                        Button("Bulk Mail…", systemImage: "envelope.stack") { mailing = true }
-                            .help("A personal mail to the people in this table, or the ones with a tag")
-                    }
+                    .buttonStyle(.plain)
+                    .disabled(columns.isEmpty)
                 }
-                .buttonStyle(.borderless)
-                Text("Right-click a row to delete it. \(rows.count) of \(SpaceTable.rowLimit) rows.").font(.caption).foregroundStyle(.tertiary)
+                .fixedSize(horizontal: true, vertical: false)
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+                .clipShape(.rect(cornerRadius: 8))
+            }
+            .scrollIndicators(.automatic)
+        }
+        .task(id: block.id) {
+            await model.loadRows(block)
+            // A new table starts like a spreadsheet: a Name and a Tags column, and a few empty rows to type into.
+            if block.data.columns == nil {
+                await model.setColumns([SpaceColumn(name: "Name"), SpaceColumn(name: "Tags", kind: .tags)], of: block)
+                for _ in 0..<3 { await model.addRow(to: block) }
             }
         }
-        .padding(12)
-        .background(.background.secondary, in: .rect(cornerRadius: 12))
-        .task(id: block.id) { await model.loadRows(block) }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText]) { result in
             guard let file = try? result.get() else { return }
             let access = file.startAccessingSecurityScopedResource()
@@ -574,7 +639,16 @@ private struct TableBlock: View {
             guard let text = try? String(contentsOf: file, encoding: .utf8) else { return }
             Task { await model.importCSV(String(text.prefix(4_000_000)), into: block) }
         }
-        .sheet(isPresented: $mailing) { NewCampaignSheet(space: space, table: block) { _ in } }
+    }
+
+    private var line: some View { Rectangle().fill(.quaternary).frame(width: 1) }
+
+    private func saveName() {
+        let clean = String(name.trimmingCharacters(in: .whitespaces).prefix(120))
+        guard clean != (block.data.text ?? "") else { return }
+        var changed = model.spaceBlocks[block.spaceID]?.first { $0.id == block.id } ?? block
+        changed.data.text = clean.isEmpty ? nil : clean
+        Task { await model.update(changed) }
     }
 
     static func status(_ status: MailRecipient.Status) -> String {
@@ -590,6 +664,37 @@ private struct TableBlock: View {
     }
 }
 
+/// One row: its cells with lines between them, a soft highlight on hover, Delete Row on right-click.
+private struct TableRowView: View {
+    @Environment(AppModel.self) private var model
+    let row: SpaceRow
+    let columns: [SpaceColumn]
+    let mailed: String?
+    let width: CGFloat
+    let height: CGFloat
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(columns) { column in
+                CellField(row: row, column: column).frame(width: width, height: height).overlay(alignment: .trailing) { line }
+            }
+            if let mailed {
+                Text(mailed).font(.callout).foregroundStyle(.secondary).padding(.horizontal, 10)
+                    .frame(width: 110, height: height, alignment: .leading).overlay(alignment: .trailing) { line }
+            }
+            Button("Delete Row", systemImage: "trash") { Task { await model.delete(row) } }
+                .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.secondary)
+                .frame(width: 40, height: height).opacity(hovering ? 1 : 0)
+        }
+        .background(hovering ? Color.primary.opacity(0.03) : .clear)
+        .onHover { hovering = $0 }
+        .contextMenu { Button("Delete Row", systemImage: "trash", role: .destructive) { Task { await model.delete(row) } } }
+    }
+
+    private var line: some View { Rectangle().fill(.quaternary).frame(width: 1) }
+}
+
 /// A column's name (edited in place) and a menu for its type and removal.
 private struct ColumnHeader: View {
     @Environment(AppModel.self) private var model
@@ -599,10 +704,7 @@ private struct ColumnHeader: View {
     @State private var name = ""
 
     var body: some View {
-        HStack(spacing: 4) {
-            TextField("Column", text: $name).textFieldStyle(.plain).font(.caption.weight(.semibold))
-                .onSubmit(save).onAppear { name = column.name }
-                .accessibilityLabel("Column name")
+        HStack(spacing: 6) {
             Menu {
                 Picker("Type", selection: Binding(get: { column.kind }, set: { kind in change { $0.kind = kind } })) {
                     ForEach(SpaceColumn.Kind.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -611,12 +713,15 @@ private struct ColumnHeader: View {
                 Button("Delete Column", systemImage: "trash", role: .destructive) {
                     Task { await model.setColumns((block.data.columns ?? []).filter { $0.id != column.id }, of: block) }
                 }
-            } label: { Image(systemName: Self.symbol(column.kind)) }
+            } label: { Image(systemName: Self.symbol(column.kind)).foregroundStyle(.secondary) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .help("\(column.kind.title) column")
+                .help("\(column.kind.title) column: click to change the type or delete it")
                 .accessibilityLabel("\(column.name) column options")
+            TextField("Column", text: $name).textFieldStyle(.plain).font(.callout.weight(.medium)).foregroundStyle(.secondary)
+                .onSubmit(save).onAppear { name = column.name }
+                .accessibilityLabel("Column name")
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 10)
         .frame(width: width, alignment: .leading)
     }
 
@@ -664,7 +769,7 @@ private struct CellField: View {
                 Button("Open", systemImage: "arrow.up.forward") { NSWorkspace.shared.open(url) }.labelStyle(.iconOnly).buttonStyle(.borderless)
             }
         }
-        .padding(.horizontal, 6).padding(.vertical, 5)
+        .padding(.horizontal, 10)
     }
 
     private func save() {
@@ -721,9 +826,8 @@ private struct BlockCard<Content: View>: View {
             Label(title, systemImage: symbol).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             content
         }
-        .padding(14)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary, in: .rect(cornerRadius: 12))
     }
 }
 #endif

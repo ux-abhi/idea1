@@ -10,6 +10,7 @@ import { Imap, quote } from "./imap.ts";
 import { buildDraft, uidWindow, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle, splitResort } from "./message.ts";
 import { sendMail } from "./smtp.ts";
 import { type Mailer, sendDue, withTimeout } from "./outbox.ts";
+import { sendBulkDue } from "./bulk_send.ts";
 import { BULK_SCHEMA, BULK_SYSTEM, bulkPrompt, checkedFiles, domainOf, historyPattern, parseWritten, WRITE_BATCH } from "./bulk.ts";
 import { type Card, CARD_SCHEMA, CARD_SYSTEM, fetchPage, pageText, parseCard, siteFor } from "./research.ts";
 import { capProblem, compatible, cost, keepsSchema, FREE_MODELS, lastMonth, MODELS, type Model, pickModel } from "../_shared/models.ts";
@@ -628,8 +629,10 @@ Deno.serve(async (req) => {
     const list = await accounts();
     // Approved sends first, so a slow mailbox can never hold them back.
     const outbox = await sendDue(admin, owners[0].owner_id, mailerFor(list));
+    // Then at most one bulk mail per mailbox (ADR-0003 §3), spaced by the schedule itself.
+    const bulk = await sendBulkDue(admin, owners[0].owner_id, mailerFor(list)).catch((e) => ({ error: e instanceof Error ? e.message : "failed" }));
     const results = await pollAll(admin, owners[0].owner_id, list, true);
-    return json(200, { ...results, outbox });
+    return json(200, { ...results, outbox, bulk });
   }
 
   // The owner's app: their own login, checked here.

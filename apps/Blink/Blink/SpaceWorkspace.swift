@@ -29,6 +29,7 @@ struct SpaceView: View {
                 Label("Page", systemImage: "doc.text").tag(true)
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
+            .padding(3).background(.regularMaterial, in: .capsule) // readable over a page's cover
             .padding(.top, 14)
             .help("Canvas: free and visual. Page: blocks top to bottom.")
         }

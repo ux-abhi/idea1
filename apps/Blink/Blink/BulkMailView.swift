@@ -52,7 +52,7 @@ struct BulkMailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadCampaigns() }
-        .sheet(isPresented: $creating) { NewCampaignSheet(space: nil, table: nil) { selected = $0 } }
+        .sheet(isPresented: $creating) { NewCampaignSheet { selected = $0 } }
     }
 
     private func summary(_ campaign: MailCampaign) -> String {
@@ -64,13 +64,11 @@ struct BulkMailView: View {
 }
 
 /// The batch's description, the mailbox it comes from, and the contacts.
-/// A new bulk mail, from a pasted list or a Space's table. Opened from a table, it starts with that table and the
-/// Space's own words as "What it's about".
-struct NewCampaignSheet: View {
+/// A new bulk mail, from a pasted list or one of your tables (picked by name). With a table, the Space it's in fills
+/// "What it's about" with its own words.
+private struct NewCampaignSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    let space: Space?
-    let table: SpaceBlock?
     let created: (String) -> Void
     @State private var source = ""      // "" for a pasted list, else a table block's id
     @State private var tag = ""
@@ -103,9 +101,15 @@ struct NewCampaignSheet: View {
                     }
                 }
                 Section("Contacts") {
+                    if tables.isEmpty {
+                        Text("To use a table instead, add one to a Space's page (type /table) with an Email column.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Picker("From", selection: $source) {
                         Text("A list I paste").tag("")
-                        ForEach(tables, id: \.block.id) { item in Text("\(item.space.title) table").tag(item.block.id) }
+                        ForEach(tables, id: \.block.id) { item in
+                            Text("\(item.block.data.text ?? "Untitled table") · \(item.space.title)").tag(item.block.id)
+                        }
                     }
                     if let chosen {
                         let rows = model.tableRows[chosen.block.id] ?? []
@@ -147,7 +151,6 @@ struct NewCampaignSheet: View {
             // Every Space's tables, so a bulk mail can start from any of them; opened from a table, that one.
             for space in model.spaces where model.spaceBlocks[space.id] == nil { await model.loadBlocks(space) }
             for item in tables where model.tableRows[item.block.id] == nil { await model.loadRows(item.block) }
-            if let table { source = table.id }
         }
         .onChange(of: source) {
             tag = ""
@@ -184,11 +187,6 @@ struct NewCampaignSheet: View {
             UserDefaults.standard.set(problems, forKey: "bulk.problems.\(campaign.id)")
             created(campaign.id)
             dismiss()
-            if space != nil { // made from a Space's table: go to it in Bulk Mail
-                UserDefaults.standard.set(true, forKey: "inbox.bulk")
-                UserDefaults.standard.set(campaign.id, forKey: "bulk.selected")
-                model.openPage = "inbox"
-            }
         }
     }
 }
@@ -203,6 +201,7 @@ private struct CampaignView: View {
     @State private var adding = false
     @State private var confirmDelete = false
     @State private var warnings: [String: [String]] = [:]
+    @State private var confirmSend = false
 
     private var people: [MailRecipient] { model.bulkRecipients[campaign.id] ?? [] }
 
@@ -248,7 +247,7 @@ private struct CampaignView: View {
                 }
             }
             .background(.background.secondary, in: .rect(cornerRadius: 10))
-            Label("When you send from Apple Mail, send a few at a time. Dozens at once can get your account limited: keep it to about 20–50 a day at first.",
+            Label("Blink sends slowly so your account stays in good standing: one mail every 5 minutes, 8:00–20:00, up to the daily limit, and it pauses if your mail provider objects.",
                   systemImage: "info.circle")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -262,6 +261,18 @@ private struct CampaignView: View {
             warnings = await Task.detached { MailLint.batch(mails) }.value
         }
         .sheet(isPresented: $adding) { AddContactsSheet(campaign: campaign) { problems = $0 } }
+        .sheet(isPresented: $confirmSend) {
+            SendBulkSheet(campaign: model.campaigns.first { $0.id == campaign.id } ?? campaign,
+                          count: people.filter { $0.status == .approved }.count)
+        }
+        // While sending, the server works every 5 minutes: look again each minute so the counts move.
+        .task(id: model.campaigns.first { $0.id == campaign.id }?.status) {
+            while model.campaigns.first(where: { $0.id == campaign.id })?.status == .sending, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                await model.loadRecipients(campaign)
+                await model.loadCampaigns()
+            }
+        }
         .confirmationDialog("Delete “\(campaign.title)”?", isPresented: $confirmDelete) {
             Button("Delete Bulk Mail", role: .destructive) { Task { await model.delete(campaign) } }
         } message: {
@@ -273,10 +284,13 @@ private struct CampaignView: View {
     @ViewBuilder
     private func steps(fresh: [MailRecipient], written: [MailRecipient], approved: [MailRecipient]) -> some View {
         let done = people.count - fresh.count
+        let live = model.campaigns.first { $0.id == campaign.id } ?? campaign
         HStack(spacing: 10) {
             if let working = model.bulkWorking {
                 ProgressView().controlSize(.small)
                 Text(working).foregroundStyle(.secondary)
+            } else if live.status == .sending || live.status == .paused {
+                sendingStatus(live)
             } else if people.isEmpty {
                 Button("Add Contacts…") { adding = true }.buttonStyle(.borderedProminent)
             } else if done == 0 {
@@ -300,11 +314,35 @@ private struct CampaignView: View {
                 }
                 Spacer()
                 if !approved.isEmpty {
-                    Button("Save \(approved.count) to Drafts", systemImage: "tray.and.arrow.down") { Task { await model.saveBulkDrafts(campaign) } }
+                    Button("Save to Drafts", systemImage: "tray.and.arrow.down") { Task { await model.saveBulkDrafts(campaign) } }
+                        .help("Puts the approved mails in your Drafts folder, to send yourself from your mail app.")
+                    Button("Send \(approved.count)…", systemImage: "paperplane") { confirmSend = true }
                         .buttonStyle(.borderedProminent)
-                        .help("Puts the approved mails in your Drafts folder. Nothing is sent.")
+                        .help("Blink sends them for you, slowly, after Touch ID.")
                 }
             }
+        }
+    }
+
+    /// While a batch goes out: how far it is, and Pause or Resume. Paused by Blink, it says why.
+    @ViewBuilder
+    private func sendingStatus(_ live: MailCampaign) -> some View {
+        let sent = people.filter { $0.status == .sent || $0.status == .replied }.count
+        let waiting = people.filter { $0.status == .approved }.count
+        let failed = people.filter { $0.status == .failed }
+        if live.status == .sending {
+            ProgressView().controlSize(.small)
+            Text("Sending · \(sent) sent, \(waiting) to go · one every 5 minutes, 8:00–20:00, up to \(live.dailyLimit) a day")
+                .foregroundStyle(.secondary).lineLimit(1)
+            Spacer()
+            Button("Pause", systemImage: "pause.fill") { Task { await model.setSending(false, for: live) } }
+        } else {
+            Image(systemName: "pause.circle.fill").foregroundStyle(.orange).accessibilityHidden(true)
+            Text("Paused · \(sent) sent, \(waiting) to go" + (failed.last?.error.map { ". Last problem: \($0)" } ?? ""))
+                .foregroundStyle(.secondary).lineLimit(2)
+            Spacer()
+            Button("Resume", systemImage: "play.fill") { Task { await model.setSending(true, for: live) } }
+                .buttonStyle(.borderedProminent).disabled(waiting == 0)
         }
     }
 
@@ -394,7 +432,12 @@ private struct MailEditor: View {
     @State private var note = ""
     @State private var editing = false
 
-    private var locked: Bool { [.inDrafts, .sent, .replied, .bounced].contains(person.status) }
+    private var locked: Bool { [.inDrafts, .sent, .replied, .bounced].contains(person.status) || signed }
+    /// Approved into a batch that's sending: the text was signed with Touch ID, so it can't change, only be taken out.
+    private var signed: Bool {
+        let status = model.campaigns.first { $0.id == campaign.id }?.status
+        return person.status == .approved && (status == .sending || status == .paused)
+    }
 
     var body: some View {
         ScrollView {
@@ -455,6 +498,13 @@ private struct MailEditor: View {
                             } else {
                                 Button("Approve") { save(.approved) }.buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command)
                             }
+                        }
+                    } else if signed {
+                        HStack {
+                            Label("Signed for sending, so the text can't change.", systemImage: "touchid").font(.callout).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Don't Send This One") { Task { await model.takeOut(person) } }
+                                .help("Takes this mail out of the batch. The others carry on.")
                         }
                     }
                 }
@@ -532,6 +582,48 @@ private struct AttachmentsRow: View {
             guard let files = try? result.get(), !files.isEmpty else { return }
             Task { await model.attach(files, to: campaign) }
         }
+    }
+}
+
+/// Before a batch goes out: how many, from where, how fast, and Touch ID to approve exactly these mails.
+private struct SendBulkSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let campaign: MailCampaign
+    let count: Int
+    @State private var limit = 20
+    @State private var problem: String?
+    @State private var working = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Send \(count) mails?").font(.title2.bold())
+            Text("From your \(EmailMessage.accountName(campaign.account)) account, exactly as you approved them. Each person gets their own mail.")
+                .foregroundStyle(.secondary)
+            Stepper("Up to \(limit) a day", value: $limit, in: 5...100, step: 5)
+            Label("One every 5 minutes, between 8:00 and 20:00. About \(MailCampaign.sendingDays(count, dailyLimit: limit)) day\(MailCampaign.sendingDays(count, dailyLimit: limit) == 1 ? "" : "s") for all of them.",
+                  systemImage: "clock")
+            Label("Blink pauses by itself if your mail provider asks it to slow down, and skips anyone who replies.", systemImage: "hand.raised")
+            Label("Pause any time, or skip a single mail to take it out.", systemImage: "pause.circle")
+            if let problem { Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button {
+                    working = true
+                    Task {
+                        problem = await model.sendBulk(campaign, dailyLimit: limit)
+                        working = false
+                        if problem == nil { dismiss() }
+                    }
+                } label: { Label("Approve and Send", systemImage: "touchid") }
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(working || count == 0)
+            }
+        }
+        .font(.callout)
+        .padding(24)
+        .frame(width: 460)
+        .onAppear { limit = min(max(campaign.dailyLimit, 5), 100) }
     }
 }
 

@@ -2845,6 +2845,8 @@ final class AppModel {
         await loadReminders(for: space)
         let loaded: (nodes: [SpaceNode], edges: [SpaceEdge])
         do { loaded = try await server.canvas(of: space.id) } catch {
+            // Leaving the Space mid-load cancels it: that's not a problem to show.
+            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled { return }
             saveProblem = serverBehind ? "Update your server (Settings › Update Server) to open this canvas."
                 : "Couldn't load this Space's canvas. Check your connection and try again."
             return
@@ -3162,6 +3164,49 @@ final class AppModel {
             saveProblem = error.localizedDescription
         }
         if total > 0 { announce(total == 1 ? "1 mail is in Drafts, ready to send from Apple Mail." : "\(total) mails are in Drafts, ready to send from Apple Mail.") }
+    }
+
+    /// Sends a bulk mail's approved mails after one Touch ID: the server then sends them slowly, within the daily limit,
+    /// and pauses itself if the mail provider objects (ADR-0003 §3). Returns a problem to show, or nil.
+    func sendBulk(_ campaign: MailCampaign, dailyLimit: Int) async -> String? {
+        guard let server else { return "Sign in first." }
+        let mails = (bulkRecipients[campaign.id] ?? []).filter { $0.status == .approved && !$0.body.isEmpty }
+        guard !mails.isEmpty else { return "Approve some mails first." }
+        guard mails.count <= 100 else { return "Up to 100 mails per batch. Send these, then the rest." }
+        var changed = campaigns.first { $0.id == campaign.id } ?? campaign
+        changed.dailyLimit = min(max(dailyLimit, 1), 100)
+        await update(changed)
+        do {
+            let action = try await server.proposeBulkSend(changed, mails: mails)
+            do { try await server.approveRed(action) } catch {
+                try? await server.setStatus("declined", for: action) // no half-approved batch left behind
+                if let problem = error as? ApprovalKey.Problem { return problem.message }
+                return "Couldn't approve the batch. Check your connection and try again."
+            }
+            changed.status = .sending
+            await update(changed)
+            return nil
+        } catch {
+            return serverBehind ? "Update your server (Settings › Server) to send bulk mail." : "Couldn't start sending. Check your connection and try again."
+        }
+    }
+
+    /// Takes one mail out of a sending batch, unless the server has already sent it.
+    func takeOut(_ recipient: MailRecipient) async {
+        guard let server, let campaign = campaigns.first(where: { $0.id == recipient.campaignID }) else { return }
+        do {
+            if try await !server.takeOut(recipient) { saveProblem = "That mail had already gone out." }
+        } catch {
+            saveProblem = "Couldn't take that mail out. Check your connection."
+        }
+        await loadRecipients(campaign)
+    }
+
+    /// Pause stops the next mail from going out; Resume carries on where it stopped.
+    func setSending(_ on: Bool, for campaign: MailCampaign) async {
+        guard var changed = campaigns.first(where: { $0.id == campaign.id }) else { return }
+        changed.status = on ? .sending : .paused
+        await update(changed)
     }
 
     /// Files for every mail of a bulk mail (a portfolio deck, pictures), checked against the server's limits first.

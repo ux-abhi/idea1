@@ -1537,3 +1537,12 @@ extension Tokens {
         #expect(SpaceTable.contacts(columns: [columns[0]], rows: rows, tag: "").problems.first?.contains("no email column") == true)
     }
 }
+
+@Suite struct BulkSendTests {
+    @Test func sendingDaysFollowTheDailyLimit() {
+        #expect(MailCampaign.sendingDays(30, dailyLimit: 20) == 2)
+        #expect(MailCampaign.sendingDays(20, dailyLimit: 20) == 1)
+        #expect(MailCampaign.sendingDays(1, dailyLimit: 100) == 1)
+        #expect(MailCampaign.sendingDays(100, dailyLimit: 0) == 100) // a broken limit counts as one a day, never divides by zero
+    }
+}

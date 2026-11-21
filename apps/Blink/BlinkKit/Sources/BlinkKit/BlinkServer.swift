@@ -851,7 +851,7 @@ public final class BlinkServer: Sendable {
     /// The owner's bulk mails, newest first; empty on a server without Bulk Mail yet.
     public func campaigns() async throws -> [MailCampaign] {
         do {
-            return try await client.from("mail_campaign").select("id, title, context, goal, tone, account, status, research, attachments, segment_id, table_block, tag")
+            return try await client.from("mail_campaign").select("id, title, context, goal, tone, account, status, research, attachments, segment_id, table_block, tag, daily_limit")
                 .order("created_at", ascending: false).execute().value
         } catch let error as PostgrestError where ["PGRST205", "42P01"].contains(error.code) {
             return []
@@ -880,6 +880,14 @@ public final class BlinkServer: Sendable {
 
     public func save(_ recipient: MailRecipient) async throws {
         try await client.from("mail_recipient").upsert(recipient).execute()
+    }
+
+    /// Takes a mail out of a sending batch only if it hasn't gone out yet; false when the server got to it first.
+    public func takeOut(_ recipient: MailRecipient) async throws -> Bool {
+        struct Row: Decodable { let id: String }
+        let rows: [Row] = try await client.from("mail_recipient").update(["status": "skipped"])
+            .eq("id", value: recipient.id).eq("status", value: "approved").select("id").execute().value
+        return !rows.isEmpty
     }
 
     public func delete(_ recipient: MailRecipient) async throws {
@@ -919,6 +927,23 @@ public final class BlinkServer: Sendable {
         struct Reply: Decodable { let saved: Int; let left: Int? }
         let reply: Reply = try await mailAction(Body(campaign_id: campaignID), failing: "Couldn't save the drafts.")
         return (reply.saved, reply.left ?? 0)
+    }
+
+    /// Proposes sending these approved mails, exactly as written, as one red action; nothing goes out until `approveRed`
+    /// (Touch ID) and then the server sends them slowly (ADR-0003 §3).
+    public func proposeBulkSend(_ campaign: MailCampaign, mails: [MailRecipient]) async throws -> BlinkAction {
+        struct Mail: Encodable { let id: String, to: String, subject: String, body: String }
+        struct Payload: Encodable {
+            let title: String, summary: String, verb = "Send"
+            let campaign_id: String, account: String, mails: [Mail], files: [MailAttachment]
+        }
+        struct Row: Encodable { let kind = "mail.bulk", risk = "red", payload: Payload, payload_hash = "\\x00", proposed_by = "blink" }
+        let payload = Payload(title: "Send \(mails.count) mails from “\(campaign.title)”?",
+                              summary: "From \(EmailMessage.accountName(campaign.account)), up to \(campaign.dailyLimit) a day",
+                              campaign_id: campaign.id, account: campaign.account,
+                              mails: mails.map { Mail(id: $0.id, to: $0.email, subject: $0.subject, body: $0.body) }, files: campaign.attachments)
+        return try await client.from("action").insert(Row(payload: payload))
+            .select("id, kind, risk, payload, payload_hash").single().execute().value
     }
 
     /// A file into the owner's private folder, under a bulk mail or a Space (`folder`).
