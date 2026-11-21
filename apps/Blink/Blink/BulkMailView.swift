@@ -11,6 +11,7 @@ struct BulkMailView: View {
     let back: () -> Void
     @AppStorage("bulk.selected") private var selected: String?
     @State private var creating = false
+    @State private var deleting: MailCampaign?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -28,8 +29,10 @@ struct BulkMailView: View {
                             Text(summary(campaign)).font(.caption).foregroundStyle(.secondary)
                         }
                         .tag(campaign.id)
+                        .contextMenu { Button("Delete Bulk Mail…", systemImage: "trash", role: .destructive) { deleting = campaign } }
                     }
                 }
+                .onDeleteCommand { deleting = model.campaigns.first { $0.id == selected } }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
@@ -53,6 +56,15 @@ struct BulkMailView: View {
         }
         .task { await model.loadCampaigns() }
         .sheet(isPresented: $creating) { NewCampaignSheet { selected = $0 } }
+        .confirmationDialog("Delete “\(deleting?.title ?? "")”?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete Bulk Mail", role: .destructive) {
+                guard let campaign = deleting else { return }
+                if selected == campaign.id { selected = nil }
+                Task { await model.delete(campaign) }
+            }
+        } message: {
+            Text("Its contacts and mails are deleted from Blink. Mails already sent, and drafts already in your mailbox, stay there.")
+        }
     }
 
     private func summary(_ campaign: MailCampaign) -> String {
@@ -64,13 +76,15 @@ struct BulkMailView: View {
 }
 
 /// The batch's description, the mailbox it comes from, and the contacts.
-/// A new bulk mail, from a pasted list or one of your tables (picked by name). With a table, the Space it's in fills
-/// "What it's about" with its own words.
+/// A new bulk mail in three steps: who you're writing to (one of your tables, or a pasted list), what you want to say,
+/// and the last details. A table gives only its own rows; nothing else from its Space is pulled in unless asked.
 private struct NewCampaignSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let created: (String) -> Void
-    @State private var source = ""      // "" for a pasted list, else a table block's id
+    @State private var step = 1
+    @State private var fromTable = true
+    @State private var source = ""      // the chosen table block's id
     @State private var tag = ""
     @State private var title = ""
     @State private var context = ""
@@ -84,80 +98,49 @@ private struct NewCampaignSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Form {
-                TextField("Name", text: $title, prompt: Text("Portfolio outreach, spring"))
-                Section("What it's about") {
-                    TextEditor(text: $context).frame(minHeight: 90).accessibilityLabel("What it's about")
-                    Text("Who you are, why you're writing, and any facts or links the mails may use. Mails only state what's here or in each contact's row.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    TextField("What you want back", text: $goal, prompt: Text("A short call, a reply, feedback"))
-                    TextField("Tone", text: $tone, prompt: Text("Your usual voice"))
-                    Picker("Send from", selection: $account) {
-                        ForEach(model.mailAccounts, id: \.self) { Text(EmailMessage.accountName($0)).tag($0) }
-                    }
-                    Toggle(isOn: $research) {
-                        Text("Read each company's website")
-                        Text("For a personal detail in each mail. Blink reads their home and about pages, once per company.")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Step \(step) of 3").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(["Who are you writing to?", "What do you want to say?", "Last details"][step - 1]).font(.title2.bold())
+                HStack(spacing: 6) {
+                    ForEach(1...3, id: \.self) { i in
+                        Capsule().fill(i <= step ? Color.accentColor : Color.secondary.opacity(0.25)).frame(height: 4)
                     }
                 }
-                Section("Contacts") {
-                    if tables.isEmpty {
-                        Text("To use a table instead, add one to a Space's page (type /table) with an Email column.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Picker("From", selection: $source) {
-                        Text("A list I paste").tag("")
-                        ForEach(tables, id: \.block.id) { item in
-                            Text("\(item.block.data.text ?? "Untitled table") · \(item.space.title)").tag(item.block.id)
-                        }
-                    }
-                    if let chosen {
-                        let rows = model.tableRows[chosen.block.id] ?? []
-                        let tags = SpaceTable.allTags(columns: chosen.block.data.columns ?? [], rows: rows)
-                        Picker("Who", selection: $tag) {
-                            Text("Everyone in the table").tag("")
-                            ForEach(tags, id: \.self) { Text("Rows tagged #\($0)").tag($0) }
-                        }
-                        let count = SpaceTable.contacts(columns: chosen.block.data.columns ?? [], rows: rows, tag: tag).contacts.count
-                        Text("\(count) people with an email address. Every other column can be used in the mails, and each row shows the mail's status.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        TextEditor(text: $contacts).font(.body.monospaced()).frame(minHeight: 110).accessibilityLabel("Contacts")
-                        HStack {
-                            Text("One per line (Ana Silva <ana@studio.com>), or a CSV with an email column. Every column can be used in the mails.")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Import CSV…") { importing = true }
-                        }
-                    }
+                .accessibilityHidden(true)
+            }
+            .padding(24)
+            Group {
+                switch step {
+                case 1: whoStep
+                case 2: whatStep
+                default: detailsStep
                 }
             }
-            .formStyle(.grouped)
-            if model.mailAccounts.isEmpty {
-                Label("Connect a mailbox in Settings › Connections first.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange).padding(.horizontal, 20)
-            }
+            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             HStack {
-                Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Create") { create() }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-                    .disabled(working || title.trimmingCharacters(in: .whitespaces).isEmpty || account.isEmpty)
+                Spacer()
+                if step > 1 { Button("Back") { step -= 1 } }
+                if step < 3 {
+                    Button("Next") { advance() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!ready)
+                } else {
+                    Button("Create Bulk Mail") { create() }
+                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                        .disabled(working || title.trimmingCharacters(in: .whitespaces).isEmpty || account.isEmpty)
+                }
             }
-            .padding(20)
+            .padding(24)
         }
-        .frame(width: 560, height: 640)
+        .frame(width: 560, height: 600)
         .onAppear { account = model.mailAccounts.first ?? "" }
         .task {
-            // Every Space's tables, so a bulk mail can start from any of them; opened from a table, that one.
             for space in model.spaces where model.spaceBlocks[space.id] == nil { await model.loadBlocks(space) }
             for item in tables where model.tableRows[item.block.id] == nil { await model.loadRows(item.block) }
+            if source.isEmpty { source = tables.first?.block.id ?? "" }
+            if tables.isEmpty { fromTable = false }
         }
-        .onChange(of: source) {
-            tag = ""
-            // The Space's own words as a start for "What it's about"; never over what the owner wrote.
-            if let chosen, context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { context = model.spaceContext(chosen.space) }
-            if let chosen, title.isEmpty { title = chosen.space.title }
-        }
+        .onChange(of: source) { tag = "" }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .plainText, .tabSeparatedText]) { result in
             guard let file = try? result.get() else { return }
             let access = file.startAccessingSecurityScopedResource()
@@ -166,27 +149,177 @@ private struct NewCampaignSheet: View {
         }
     }
 
-    /// Table blocks with an email column, in every Space.
-    private var tables: [(space: Space, block: SpaceBlock)] {
-        model.spaces.flatMap { space in
-            (model.spaceBlocks[space.id] ?? []).filter { $0.kind == .table && ($0.data.columns ?? []).contains { $0.kind == .email } }.map { (space, $0) }
+    // MARK: Step 1: who
+
+    @ViewBuilder
+    private var whoStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Picker("Contacts from", selection: $fromTable) {
+                Text("One of my tables").tag(true)
+                Text("Paste a list").tag(false)
+            }
+            .pickerStyle(.segmented).labelsHidden()
+            if fromTable {
+                if tables.isEmpty {
+                    Text("You have no tables yet. Add one on a Space's page (type /table), or paste a list instead.").foregroundStyle(.secondary)
+                } else {
+                    Picker("Table", selection: $source) {
+                        ForEach(model.spaces.filter { space in tables.contains { $0.space.id == space.id } }) { space in
+                            Section(space.title) {
+                                ForEach(tables.filter { $0.space.id == space.id }, id: \.block.id) { Text(name(of: $0.block)).tag($0.block.id) }
+                            }
+                        }
+                    }
+                    if let chosen {
+                        let rows = model.tableRows[chosen.block.id] ?? []
+                        let columns = chosen.block.data.columns ?? []
+                        let tags = SpaceTable.allTags(columns: columns, rows: rows)
+                        if !tags.isEmpty {
+                            Picker("Who", selection: $tag) {
+                                Text("Everyone in the table").tag("")
+                                ForEach(tags, id: \.self) { Text("Only rows tagged #\($0)").tag($0) }
+                            }
+                        }
+                        let found = SpaceTable.contacts(columns: columns, rows: rows, tag: tag)
+                        preview(found.contacts.map(\.contact), problem: found.problems.first { $0.hasPrefix("No column") })
+                    }
+                }
+            } else {
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $contacts).font(.body.monospaced()).scrollContentBackground(.hidden).padding(6)
+                        .background(.background.secondary, in: .rect(cornerRadius: 8)).accessibilityLabel("Contacts")
+                    if contacts.isEmpty {
+                        Text("Ana Silva <ana@studio.com>\nben@acme.io").font(.body.monospaced()).foregroundStyle(.tertiary)
+                            .padding(.horizontal, 11).padding(.vertical, 6).allowsHitTesting(false)
+                    }
+                }
+                .frame(height: 180)
+                HStack {
+                    Text("One person per line, or a CSV with an email column.").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Import CSV…") { importing = true }
+                }
+                preview(ContactList.parse(contacts).contacts, problem: nil)
+            }
         }
     }
 
+    /// Who it will go to, so there's no doubt which list is being used.
+    @ViewBuilder
+    private func preview(_ people: [ContactList.Contact], problem: String?) -> some View {
+        if let problem {
+            Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+        } else if !people.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(people.count) \(people.count == 1 ? "person" : "people")").font(.headline)
+                Text(people.prefix(4).map { $0.name.isEmpty ? $0.email : "\($0.name) (\($0.email))" }.joined(separator: ", ")
+                     + (people.count > 4 ? " and \(people.count - 4) more" : ""))
+                    .font(.callout).foregroundStyle(.secondary).lineLimit(3)
+            }
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.background.secondary, in: .rect(cornerRadius: 8))
+        }
+    }
+
+    // MARK: Step 2: what
+
+    private var whatStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Who you are and why you're writing").font(.headline)
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $context).scrollContentBackground(.hidden).padding(6)
+                        .background(.background.secondary, in: .rect(cornerRadius: 8)).accessibilityLabel("Who you are and why you're writing")
+                    if context.isEmpty {
+                        Text("I'm a product designer looking for a junior role. My portfolio: blinkk.app/work. I like teams building tools for creators.")
+                            .foregroundStyle(.tertiary).padding(.horizontal, 11).padding(.vertical, 6).allowsHitTesting(false)
+                    }
+                }
+                .frame(height: 150)
+                HStack {
+                    Text("The mails only use what you write here and what's in each person's row.").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if let chosen, fromTable, !model.spaceContext(chosen.space).isEmpty {
+                        Button("Use Notes from \(chosen.space.title)") {
+                            let notes = model.spaceContext(chosen.space)
+                            context = String((context.isEmpty ? notes : context + "\n\n" + notes).prefix(8000))
+                        }
+                        .help("Adds the text, notes and files on that Space's page")
+                    }
+                }
+            }
+            LabeledContent("What you want back") { TextField("A short call, a reply", text: $goal).textFieldStyle(.roundedBorder).frame(width: 300) }
+            LabeledContent("Tone") { TextField("Your usual voice", text: $tone).textFieldStyle(.roundedBorder).frame(width: 300) }
+        }
+    }
+
+    // MARK: Step 3: details
+
+    private var detailsStep: some View {
+        Form {
+            TextField("Name", text: $title, prompt: Text("Founders outreach"))
+            Picker("Send from", selection: $account) {
+                ForEach(model.mailAccounts, id: \.self) { Text(EmailMessage.accountName($0)).tag($0) }
+            }
+            Toggle(isOn: $research) {
+                Text("Read each company's website")
+                Text("For one personal detail in each mail. Read once per company.")
+            }
+            if model.mailAccounts.isEmpty {
+                Label("Connect a mailbox in Settings › Connections first.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+            }
+            Text("Next, Blink writes 3 sample mails for you to check before it writes the rest. Nothing is sent without your OK.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+        .padding(.horizontal, -20)
+    }
+
+    // MARK: Logic
+
+    /// Every table in every Space (the address column is found even if it isn't typed Email).
+    private var tables: [(space: Space, block: SpaceBlock)] {
+        model.spaces.flatMap { space in (model.spaceBlocks[space.id] ?? []).filter { $0.kind == .table }.map { (space, $0) } }
+    }
+
     private var chosen: (space: Space, block: SpaceBlock)? { tables.first { $0.block.id == source } }
+
+    private func name(of block: SpaceBlock) -> String { (block.data.text ?? "").isEmpty ? "Untitled table" : block.data.text! }
+
+    private var ready: Bool {
+        switch step {
+        case 1:
+            if fromTable, let chosen {
+                return !SpaceTable.contacts(columns: chosen.block.data.columns ?? [], rows: model.tableRows[chosen.block.id] ?? [], tag: tag).contacts.isEmpty
+            }
+            return !fromTable ? !ContactList.parse(contacts).contacts.isEmpty : false
+        case 2: return !context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        default: return true
+        }
+    }
+
+    private func advance() {
+        // The name starts as the table's (and its tag), so the bulk mail is easy to find later.
+        if step == 1, title.isEmpty, fromTable, let chosen { title = name(of: chosen.block) + (tag.isEmpty ? "" : " #\(tag)") }
+        step += 1
+    }
 
     private func create() {
         working = true
         var campaign = MailCampaign(title: String(title.trimmingCharacters(in: .whitespaces).prefix(200)), context: String(context.prefix(8000)),
                                     goal: String(goal.prefix(1000)), tone: String(tone.prefix(500)), account: account, research: research)
-        if let chosen { (campaign.spaceID, campaign.tableBlock, campaign.tag) = (chosen.space.id, chosen.block.id, tag) }
+        let table = fromTable ? chosen : nil
+        if let table { (campaign.spaceID, campaign.tableBlock, campaign.tag) = (table.space.id, table.block.id, tag) }
         Task {
             defer { working = false }
             guard await model.newCampaign(campaign) else { return }
-            let problems = chosen != nil ? await model.importFromTable(campaign) : contacts.isEmpty ? [] : await model.addContacts(contacts, to: campaign)
+            let problems = table != nil ? await model.importFromTable(campaign) : await model.addContacts(contacts, to: campaign)
             UserDefaults.standard.set(problems, forKey: "bulk.problems.\(campaign.id)")
             created(campaign.id)
             dismiss()
+            // Writing starts by itself: everyone when it's a few people, else 3 samples to check the style on first.
+            let ids = (model.bulkRecipients[campaign.id] ?? []).map(\.id)
+            await model.writeMails(ids.count <= 5 ? ids : Array(ids.prefix(3)), in: campaign)
         }
     }
 }
@@ -233,8 +366,13 @@ private struct CampaignView: View {
                 List(selection: $picked) {
                     ForEach(ordered(people)) { person in
                         PersonRow(person: person, warned: !(warnings[person.id] ?? []).isEmpty).tag(person.id)
+                            .contextMenu {
+                                Button("Remove from This Bulk Mail", systemImage: "person.badge.minus") { Task { await model.remove(person) } }
+                                Button("Never Mail in Bulk Again", systemImage: "hand.raised") { Task { await model.remove(person, forever: true) } }
+                            }
                     }
                 }
+                .onDeleteCommand { if let person = people.first(where: { $0.id == picked }) { Task { await model.remove(person) } } }
                 .listStyle(.plain)
                 .frame(width: 280)
                 Divider()
@@ -256,6 +394,8 @@ private struct CampaignView: View {
             await model.loadRecipients(campaign)
             problems = UserDefaults.standard.stringArray(forKey: "bulk.problems.\(campaign.id)") ?? []
         }
+        // Show a real mail as soon as there is one, instead of an empty pane.
+        .onChange(of: people.first { !$0.body.isEmpty }?.id) { _, first in if picked == nil { picked = first } }
         .task(id: people.map { "\($0.id)\($0.subject.count)\($0.body.count)\($0.status.rawValue)" }) {
             let mails = people.filter { $0.status == .written || $0.status == .approved }.map { (id: $0.id, subject: $0.subject, body: $0.body) }
             warnings = await Task.detached { MailLint.batch(mails) }.value
@@ -280,42 +420,67 @@ private struct CampaignView: View {
         }
     }
 
-    /// The next step, as one row of buttons: samples first, then the rest, then approve and save to Drafts.
+    /// Where this bulk mail is (1 Write → 2 Check → 3 Send), one sentence on what to do now, and the one button for it.
     @ViewBuilder
     private func steps(fresh: [MailRecipient], written: [MailRecipient], approved: [MailRecipient]) -> some View {
-        let done = people.count - fresh.count
         let live = model.campaigns.first { $0.id == campaign.id } ?? campaign
-        HStack(spacing: 10) {
-            if let working = model.bulkWorking {
-                ProgressView().controlSize(.small)
-                Text(working).foregroundStyle(.secondary)
-            } else if live.status == .sending || live.status == .paused {
-                sendingStatus(live)
-            } else if people.isEmpty {
-                Button("Add Contacts…") { adding = true }.buttonStyle(.borderedProminent)
-            } else if done == 0 {
-                Button("Write 3 Samples") { Task { await model.writeMails(fresh.prefix(3).map(\.id), in: campaign) } }
-                    .buttonStyle(.borderedProminent)
-                Text("Check the style on a few before Blink writes all \(people.count).").foregroundStyle(.secondary)
-            } else {
-                TextField("Style note, e.g. shorter, less formal", text: $note).textFieldStyle(.roundedBorder).frame(maxWidth: 280)
-                if !fresh.isEmpty {
-                    Button("Write the Rest (\(fresh.count))") { Task { await model.writeMails(fresh.map(\.id), in: campaign, note: note) } }
-                        .buttonStyle(.borderedProminent)
-                }
-                if !written.isEmpty {
-                    Button("Rewrite \(written.count) with Note") { Task { await model.writeMails(written.map(\.id), in: campaign, note: note) } }
-                        .disabled(note.trimmingCharacters(in: .whitespaces).isEmpty)
-                    let clean = written.filter { (warnings[$0.id] ?? []).isEmpty && !$0.flags.contains("mailed_recently") }
-                    Button("Approve \(clean.count) Without Warnings") {
-                        Task { for var person in clean { person.status = .approved; await model.update(person) } }
+        let stage = live.status == .sending || live.status == .paused || (!approved.isEmpty && written.isEmpty && fresh.isEmpty) ? 3
+            : !written.isEmpty || !approved.isEmpty ? 2 : 1
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                ForEach(Array(["Write", "Check", "Send"].enumerated()), id: \.offset) { i, name in
+                    HStack(spacing: 6) {
+                        Text("\(i + 1)").font(.caption.weight(.bold)).frame(width: 20, height: 20)
+                            .background(i + 1 <= stage ? Color.accentColor : Color.secondary.opacity(0.25), in: .circle)
+                            .foregroundStyle(i + 1 <= stage ? .white : .secondary)
+                        Text(name).font(.callout.weight(i + 1 == stage ? .semibold : .regular)).foregroundStyle(i + 1 == stage ? .primary : .secondary)
                     }
-                    .disabled(clean.isEmpty)
+                    if i < 2 { Rectangle().fill(Color.secondary.opacity(0.25)).frame(width: 28, height: 1) }
                 }
-                Spacer()
-                if !approved.isEmpty {
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Step \(stage) of 3: \(["Write", "Check", "Send"][stage - 1])")
+            HStack(spacing: 10) {
+                if let working = model.bulkWorking {
+                    ProgressView().controlSize(.small)
+                    Text(working == "Writing…" ? "Blink is writing your mails. They appear on the left as they're done." : working).foregroundStyle(.secondary)
+                } else if live.status == .sending || live.status == .paused {
+                    sendingStatus(live)
+                } else if people.isEmpty {
+                    Text("Add the people you want to write to.").foregroundStyle(.secondary)
+                    Button("Add Contacts…") { adding = true }.buttonStyle(.borderedProminent)
+                } else if written.isEmpty && approved.isEmpty {
+                    Text("Nothing written yet.").foregroundStyle(.secondary)
+                    Button(fresh.count > 5 ? "Write 3 Samples" : fresh.count == 1 ? "Write the Mail" : fresh.count == 2 ? "Write Both" : "Write All \(fresh.count)") {
+                        Task { await model.writeMails(fresh.count <= 5 ? fresh.map(\.id) : fresh.prefix(3).map(\.id), in: campaign) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else if !fresh.isEmpty {
+                    Text("Read the samples on the right. Not quite right? Add a note and rewrite.").foregroundStyle(.secondary).lineLimit(2)
+                    TextField("e.g. shorter, less formal", text: $note).textFieldStyle(.roundedBorder).frame(maxWidth: 220)
+                    Button("Rewrite") { Task { await model.writeMails(written.map(\.id), in: campaign, note: note) } }
+                        .disabled(note.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Looks Good, Write the Other \(fresh.count)") { Task { await model.writeMails(fresh.map(\.id), in: campaign, note: note) } }
+                        .buttonStyle(.borderedProminent)
+                } else if !written.isEmpty {
+                    let warned = written.filter { !(warnings[$0.id] ?? []).isEmpty || $0.flags.contains("mailed_recently") }
+                    Text(warned.isEmpty ? "All \(written.count) mails are written and look fine."
+                         : "\(written.count) mails written. \(warned.count) \(warned.count == 1 ? "has a warning" : "have warnings") (at the top of the list).")
+                        .foregroundStyle(.secondary).lineLimit(2)
+                    Spacer()
+                    if !warned.isEmpty {
+                        Button("Approve Only the \(written.count - warned.count) Without Warnings") {
+                            Task { await model.approveAll(written.filter { w in !warned.contains { $0.id == w.id } }, in: campaign) }
+                        }
+                        .disabled(written.count == warned.count)
+                    }
+                    Button("Approve All \(written.count)") { Task { await model.approveAll(written, in: campaign) } }
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    Text("\(approved.count) \(approved.count == 1 ? "mail is" : "mails are") ready.").foregroundStyle(.secondary)
+                    Spacer()
                     Button("Save to Drafts", systemImage: "tray.and.arrow.down") { Task { await model.saveBulkDrafts(campaign) } }
-                        .help("Puts the approved mails in your Drafts folder, to send yourself from your mail app.")
+                        .help("Puts them in your Drafts folder, to send yourself from your mail app.")
                     Button("Send \(approved.count)…", systemImage: "paperplane") { confirmSend = true }
                         .buttonStyle(.borderedProminent)
                         .help("Blink sends them for you, slowly, after Touch ID.")
@@ -467,7 +632,11 @@ private struct MailEditor: View {
                     Label("You've mailed with them before, so the mail can mention it.", systemImage: "clock.arrow.circlepath").font(.callout).foregroundStyle(.secondary)
                 }
                 if person.status == .new && person.body.isEmpty {
-                    Button("Write This Mail") { Task { await model.writeMails([person.id], in: campaign) } }.disabled(model.bulkWorking != nil)
+                    HStack(spacing: 8) {
+                        if model.bulkWorking != nil { ProgressView().controlSize(.small) }
+                        Text(model.bulkWorking != nil ? "Being written…" : "Not written yet. Blink writes it with the others, or now:").foregroundStyle(.secondary)
+                        if model.bulkWorking == nil { Button("Write It Now") { Task { await model.writeMails([person.id], in: campaign) } } }
+                    }
                 } else {
                     if editing && !locked {
                         TextField("Subject", text: $subject).textFieldStyle(.roundedBorder)

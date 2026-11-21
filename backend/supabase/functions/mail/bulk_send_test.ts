@@ -9,7 +9,7 @@ Deno.test("a signed batch is checked before anything is sent", () => {
   for (const bad of [{ ...good, account: "yahoo" }, { ...good, mails: [] },
                      { ...good, mails: [{ ...good.mails[0], to: "ana@studio.com, boss@work.com" }] },
                      { ...good, mails: [{ ...good.mails[0], body: "  " }] },
-                     { ...good, mails: Array.from({ length: 101 }, () => good.mails[0]) }]) {
+                     { ...good, mails: Array.from({ length: 501 }, () => good.mails[0]) }]) {
     if (typeof parseBulk(bad) !== "string") throw new Error(`accepted ${JSON.stringify(bad).slice(0, 120)}`);
   }
 });

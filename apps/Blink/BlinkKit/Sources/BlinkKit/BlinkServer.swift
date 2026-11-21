@@ -882,6 +882,14 @@ public final class BlinkServer: Sendable {
         try await client.from("mail_recipient").upsert(recipient).execute()
     }
 
+    /// Approves many written mails at once, a few hundred per request; only ones still written (never sent ones).
+    public func approve(_ ids: [String]) async throws {
+        for start in stride(from: 0, to: ids.count, by: 200) {
+            try await client.from("mail_recipient").update(["status": "approved"])
+                .in("id", values: Array(ids[start..<min(start + 200, ids.count)])).eq("status", value: "written").execute()
+        }
+    }
+
     /// Takes a mail out of a sending batch only if it hasn't gone out yet; false when the server got to it first.
     public func takeOut(_ recipient: MailRecipient) async throws -> Bool {
         struct Row: Decodable { let id: String }
@@ -912,6 +920,10 @@ public final class BlinkServer: Sendable {
 
     public func blockAddress(_ address: String) async throws {
         try await client.from("mail_do_not_contact").upsert(["address": address.lowercased()], onConflict: "owner_id,address", ignoreDuplicates: true).execute()
+    }
+
+    public func unblockAddress(_ address: String) async throws {
+        try await client.from("mail_do_not_contact").delete().eq("address", value: address.lowercased()).execute()
     }
 
     /// Writes the mails of up to 10 contacts on the server, with the owner's style `note` if given.

@@ -1534,7 +1534,10 @@ extension Tokens {
         #expect(contacts.first?.contact == .init(email: "ana@studio.com", name: "Ana", fields: ["tags": "#email", "recent work": "Museum identity"]))
         #expect(problems.count == 1 && problems[0].contains("Row 3"))
         #expect(SpaceTable.contacts(columns: columns, rows: rows, tag: "").contacts.count == 2)
-        #expect(SpaceTable.contacts(columns: [columns[0]], rows: rows, tag: "").problems.first?.contains("no email column") == true)
+        #expect(SpaceTable.contacts(columns: [columns[0]], rows: rows, tag: "").problems.first?.contains("No column") == true)
+        // Addresses typed into a plain Text column are still found.
+        let plain = [SpaceColumn(id: "n", name: "Name"), SpaceColumn(id: "e", name: "Mail")]
+        #expect(SpaceTable.contacts(columns: plain, rows: rows, tag: "").contacts.map(\.rowID) == ["1", "2"])
     }
 }
 

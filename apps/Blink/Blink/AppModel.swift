@@ -3143,6 +3143,13 @@ final class AppModel {
             return
         }
         bulkRecipients[recipient.campaignID]?.removeAll { $0.id == recipient.id }
+        offerUndo("Removed \(recipient.name.isEmpty ? recipient.email : recipient.name)") { [weak self] in
+            guard let self, let server = self.server else { return }
+            if forever { try? await server.unblockAddress(recipient.email) }
+            do { try await server.add([recipient]); self.bulkRecipients[recipient.campaignID, default: []].append(recipient) } catch {
+                self.saveProblem = "Couldn't bring \(recipient.email) back."
+            }
+        }
     }
 
     /// Every approved mail into the account's Drafts folder, where Apple Mail can send it (step 1 of ADR-0003). The server
@@ -3172,7 +3179,8 @@ final class AppModel {
         guard let server else { return "Sign in first." }
         let mails = (bulkRecipients[campaign.id] ?? []).filter { $0.status == .approved && !$0.body.isEmpty }
         guard !mails.isEmpty else { return "Approve some mails first." }
-        guard mails.count <= 100 else { return "Up to 100 mails per batch. Send these, then the rest." }
+        // shortcut: the whole batch goes in one request; 500 normal mails (~1 KB each) fit easily, very long ones may not.
+        guard mails.count <= 500 else { return "Up to 500 mails per batch. Send these, then the rest." }
         var changed = campaigns.first { $0.id == campaign.id } ?? campaign
         changed.dailyLimit = min(max(dailyLimit, 1), 100)
         await update(changed)
@@ -3189,6 +3197,15 @@ final class AppModel {
         } catch {
             return serverBehind ? "Update your server (Settings › Server) to send bulk mail." : "Couldn't start sending. Check your connection and try again."
         }
+    }
+
+    /// Approves all these written mails in one go (for a big batch nobody reads one by one).
+    func approveAll(_ people: [MailRecipient], in campaign: MailCampaign) async {
+        guard let server, !people.isEmpty else { return }
+        do { try await server.approve(people.map(\.id)) } catch {
+            saveProblem = "Couldn't approve them. Check your connection and try again."
+        }
+        await loadRecipients(campaign)
     }
 
     /// Takes one mail out of a sending batch, unless the server has already sent it.

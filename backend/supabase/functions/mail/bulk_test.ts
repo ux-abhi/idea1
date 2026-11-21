@@ -1,5 +1,5 @@
 // © Pexilim
-import { bulkPrompt, checkedFiles, historyPattern, parseWritten } from "./bulk.ts";
+import { bulkPrompt, checkedFiles, hasPlaceholder, historyPattern, parseWritten, stripPlaceholders } from "./bulk.ts";
 import { buildDraft, parseHeaders } from "./message.ts";
 
 Deno.test("a contact's cells are fenced as data, so they can't open a tag of their own", () => {
@@ -46,4 +46,11 @@ Deno.test("attachments must be this owner's files, allowed types, within 15 MB",
   if (typeof checkedFiles(file({ path: "o/c/../x/1.pdf" }), "o") !== "string") throw new Error("a path escaping the folder");
   if (typeof checkedFiles(file({ type: "application/x-msdownload" }), "o") !== "string") throw new Error("a program");
   if (typeof checkedFiles(file({ size: 16_000_000 }), "o") !== "string") throw new Error("too big");
+});
+
+Deno.test("a mail never goes out with a note left for the owner", () => {
+  const body = "Hi Ana,\n\nMy portfolio is at uxw.com. [add: one line on why you're reaching out]\n\n[Insert company detail]\n\nThanks,\nAbhi";
+  if (!hasPlaceholder(body) || hasPlaceholder("Hi Ana, I liked your [museum] work.")) throw new Error("placeholder check");
+  const clean = stripPlaceholders(body);
+  if (hasPlaceholder(clean) || clean.includes("\n\n\n") || !clean.includes("My portfolio is at uxw.com.")) throw new Error(JSON.stringify(clean));
 });

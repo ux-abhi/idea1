@@ -11,7 +11,7 @@ import { buildDraft, uidWindow, parseAddress, parseHeaders, parseTriage, plainTe
 import { sendMail } from "./smtp.ts";
 import { type Mailer, sendDue, withTimeout } from "./outbox.ts";
 import { sendBulkDue } from "./bulk_send.ts";
-import { BULK_SCHEMA, BULK_SYSTEM, bulkPrompt, checkedFiles, domainOf, historyPattern, parseWritten, WRITE_BATCH } from "./bulk.ts";
+import { BULK_SCHEMA, BULK_SYSTEM, bulkPrompt, checkedFiles, domainOf, hasPlaceholder, historyPattern, parseWritten, stripPlaceholders, WRITE_BATCH } from "./bulk.ts";
 import { type Card, CARD_SCHEMA, CARD_SYSTEM, fetchPage, pageText, parseCard, siteFor } from "./research.ts";
 import { capProblem, compatible, cost, keepsSchema, FREE_MODELS, lastMonth, MODELS, type Model, pickModel } from "../_shared/models.ts";
 import { alreadyRecorded, CATEGORIES, localDay } from "../_shared/spend.ts";
@@ -480,11 +480,19 @@ async function bulkWrite(admin: SupabaseClient, db: SupabaseClient, owner: strin
           .ilike("from_addr", historyPattern(r.email)).order("received_at", { ascending: false }).limit(5);
         const card = r.card && Object.keys(r.card).length ? r.card : await cardFor(r);
         const prompt = bulkPrompt(campaign, { ...r, card }, { notes: String(voice?.notes ?? ""), brief: String(voice?.brief ?? "") }, history ?? [], note);
-        const result = await generate(model, BULK_SYSTEM, prompt, BULK_SCHEMA, "bulk_mail");
-        await admin.from("model_usage").insert({ owner_id: owner, feature: "mail.bulk", model: model.id,
-          input_tokens: result.inputTokens, output_tokens: result.outputTokens, cost_usd: cost(model, result.inputTokens, result.outputTokens) });
-        const mail = parseWritten(result.text);
-        if (!mail) throw new Error("The model didn't write this one. Try again.");
+        const write = async (extra: string) => {
+          const result = await generate(model, BULK_SYSTEM, prompt + extra, BULK_SCHEMA, "bulk_mail");
+          await admin.from("model_usage").insert({ owner_id: owner, feature: "mail.bulk", model: model.id,
+            input_tokens: result.inputTokens, output_tokens: result.outputTokens, cost_usd: cost(model, result.inputTokens, result.outputTokens) });
+          return parseWritten(result.text);
+        };
+        let mail = await write("");
+        // A mail must be ready to send: one more try without placeholders, then any left are cut out.
+        if (mail && hasPlaceholder(mail.subject + "\n" + mail.body)) {
+          mail = (await write("\n<note>\"Your last version left a placeholder in brackets. Write the complete mail with no placeholders; leave out what you don't know.\"</note>")) ?? mail;
+        }
+        if (mail) mail = { subject: stripPlaceholders(mail.subject), body: stripPlaceholders(mail.body) };
+        if (!mail?.subject || !mail.body) throw new Error("The model didn't write this one. Try again.");
         written++;
         await admin.from("mail_recipient").update({ ...mail, card: card ?? {}, status: "written", error: null,
           flags: history?.length ? [...flags.filter((f) => f !== "known"), "known"] : flags.filter((f) => f !== "known") }).eq("id", r.id);

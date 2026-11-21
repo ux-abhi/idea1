@@ -17,12 +17,12 @@ export const DAILY_CEILING = 100;
 const UUID = /^[0-9a-f-]{36}$/i;
 const ADDRESS = /^[^@\s,;<>"]+@[^@\s,;<>"]+\.[^@\s,;<>"]+$/;
 
-/** The signed payload, checked: a known mailbox, 1 to 100 mails, each with an id, a real address and some text. */
+/** The signed payload, checked: a known mailbox, 1 to 500 mails (a whole bulk mail), each with an id, a real address and some text. */
 export function parseBulk(payload: unknown): BulkPayload | string {
   const p = (payload ?? {}) as Record<string, unknown>;
   if (typeof p.campaign_id !== "string" || !UUID.test(p.campaign_id)) return "The bulk mail is missing.";
   if (!["gmail", "icloud", "uni"].includes(String(p.account))) return "Unknown mailbox.";
-  if (!Array.isArray(p.mails) || p.mails.length < 1 || p.mails.length > 100) return "A batch holds 1 to 100 mails.";
+  if (!Array.isArray(p.mails) || p.mails.length < 1 || p.mails.length > 500) return "A batch holds 1 to 500 mails.";
   const mails: BulkMail[] = [];
   for (const raw of p.mails as Record<string, unknown>[]) {
     const [id, to, subject, body] = [raw?.id, raw?.to, raw?.subject, raw?.body].map((v) => typeof v === "string" ? v : "");

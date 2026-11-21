@@ -71,6 +71,16 @@ public enum SpaceTable {
                 + rows.map { row in columns.map { quote(row.cells[$0.id] ?? "") }.joined(separator: ",") }).joined(separator: "\n")
     }
 
+    /// The column with the addresses: one typed Email, else the column where most filled cells are addresses (a list
+    /// pasted into Text columns still works).
+    public static func emailColumn(columns: [SpaceColumn], rows: [SpaceRow]) -> SpaceColumn? {
+        if let typed = columns.first(where: { $0.kind == .email }) { return typed }
+        return columns.first { column in
+            let filled = rows.compactMap { $0.cells[column.id] }.filter { !$0.isEmpty }
+            return !filled.isEmpty && filled.filter { ContactList.isAddress($0.trimmingCharacters(in: .whitespaces).lowercased()) }.count * 2 > filled.count
+        }
+    }
+
     /// A tags cell as tags: "#warm, studio" → ["warm", "studio"].
     public static func tags(in cell: String) -> [String] {
         cell.components(separatedBy: CharacterSet(charactersIn: ", ")).map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "# ")).lowercased() }.filter { !$0.isEmpty }
@@ -85,7 +95,9 @@ public enum SpaceTable {
     /// The rows (with `tag`, or all when it's empty) as bulk mail contacts: the first email column is the address, a
     /// "name" (or first + last name) column the name, every other filled cell a field the mail may use.
     public static func contacts(columns: [SpaceColumn], rows: [SpaceRow], tag: String) -> (contacts: [(rowID: String, contact: ContactList.Contact)], problems: [String]) {
-        guard let email = columns.first(where: { $0.kind == .email }) else { return ([], ["This table has no email column. Set a column's type to Email."]) }
+        guard let email = emailColumn(columns: columns, rows: rows) else {
+            return ([], ["No column in this table holds email addresses. Add one, or set a column's type to Email."])
+        }
         let wanted = tags(in: tag).first
         let tagColumns = columns.filter { $0.kind == .tags }.map(\.id)
         let lower = { (c: SpaceColumn) in c.name.lowercased() }
