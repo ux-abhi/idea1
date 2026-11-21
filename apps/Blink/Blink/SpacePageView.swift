@@ -26,6 +26,24 @@ struct SpacePageView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 PageCover(space: current)
+                    // On the cover, so they scroll away with it instead of floating over tables and toolbars.
+                    .overlay(alignment: .topTrailing) {
+            HStack(spacing: 8) {
+                // Full width: boards and tables use the whole window (remembered per Space).
+                Button(fullWidth ? "Narrow Page" : "Full Width", systemImage: fullWidth ? "arrow.right.and.line.vertical.and.arrow.left" : "arrow.left.and.right") {
+                    fullWidth.toggle()
+                    UserDefaults.standard.set(fullWidth, forKey: "space.fullWidth.\(space.id)")
+                }
+                .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.primary)
+                .frame(width: 30, height: 30).background(.regularMaterial, in: .circle)
+                .help(fullWidth ? "Narrow page" : "Full width")
+                Button("Blocks", systemImage: showPanel ? "sidebar.right" : "plus") { showPanel.toggle() }
+                    .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.primary)
+                    .frame(width: 30, height: 30).background(.regularMaterial, in: .circle)
+                    .help(showPanel ? "Hide the blocks panel" : "Add a block")
+            }
+            .padding(14)
+                    }
                 VStack(alignment: .leading, spacing: 14) {
                     // The icon sits over the cover's lower edge, then the title big, like a document's first page.
                     Image(systemName: current.icon)
@@ -52,7 +70,7 @@ struct SpacePageView: View {
                     Spacer(minLength: 140)
                 }
                 .frame(maxWidth: fullWidth ? .infinity : pageWidth, alignment: .leading)
-                .overlay(alignment: .trailing) { if !fullWidth { widthHandle } }
+                .overlay(alignment: .topTrailing) { if !fullWidth { widthHandle.padding(.top, 120) } } // near the title, where it's found
                 .padding(.horizontal, 56)
                 .frame(maxWidth: .infinity)
             }
@@ -60,23 +78,6 @@ struct SpacePageView: View {
         .background(Color(nsColor: .textBackgroundColor))
         .safeAreaInset(edge: .bottom) { PageAIBar(space: current, block: blocks.first { $0.id == selected }, clear: { selected = nil }) }
         .onExitCommand { selected = nil }
-        .overlay(alignment: .topTrailing) {
-            HStack(spacing: 8) {
-                // Full width: boards and tables use the whole window (remembered per Space).
-                Button(fullWidth ? "Narrow Page" : "Full Width", systemImage: fullWidth ? "arrow.right.and.line.vertical.and.arrow.left" : "arrow.left.and.right") {
-                    fullWidth.toggle()
-                    UserDefaults.standard.set(fullWidth, forKey: "space.fullWidth.\(space.id)")
-                }
-                .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.primary)
-                .frame(width: 30, height: 30).background(.regularMaterial, in: .circle)
-                .help(fullWidth ? "Narrow page" : "Full width")
-                Button("Blocks", systemImage: showPanel ? "sidebar.right" : "plus") { showPanel.toggle() }
-                    .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.primary)
-                    .frame(width: 30, height: 30).background(.regularMaterial, in: .circle)
-                    .help(showPanel ? "Hide the blocks panel" : "Add a block")
-            }
-            .padding(14)
-        }
         .task(id: space.id) {
             fullWidth = UserDefaults.standard.bool(forKey: "space.fullWidth.\(space.id)")
             let saved = UserDefaults.standard.double(forKey: "space.pageWidth.\(space.id)")
@@ -192,7 +193,7 @@ private struct PageAIBar: View {
         }
         .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 8)
         .frame(maxWidth: 680)
-        .glassEffect(.regular, in: .capsule)
+        .glassEffect(.regular, in: .rect(cornerRadius: 22)) // round ends would clip a bar grown to several lines
         .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
         .padding(.horizontal, 24).padding(.bottom, 16)
     }
@@ -220,7 +221,8 @@ private struct PageAIBar: View {
 
     /// Fix, shorter, clearer or summarise on the selected text block, with Undo.
     private func edit(_ task: BlinkServer.TextTask) {
-        guard let server = model.server, let block, let before = block.data.text, !before.isEmpty else { return }
+        guard let server = model.server else { model.announce("Connect your server in Settings first.", failed: true); return }
+        guard let block, let before = block.data.text, !before.isEmpty else { model.announce("Write something in this block first.", failed: true); return }
         working = true
         Task {
             defer { working = false }

@@ -14,6 +14,7 @@ struct TableBlock: View {
     @State private var name = ""
     @State private var search = ""
     @State private var searching = false
+    @FocusState private var searchFocused: Bool
     @State private var filtering = false
     @State private var sorting = false
     @State private var choosingProperties = false
@@ -100,17 +101,21 @@ struct TableBlock: View {
             Spacer()
             if searching {
                 TextField("Search", text: $search).textFieldStyle(.roundedBorder).frame(width: 160)
+                    .focused($searchFocused).onAppear { searchFocused = true } // type straight away
                     .onExitCommand { search = ""; searching = false }
             }
             Group {
                 Button { filtering = true } label: {
                     Image(systemName: active.filters.isEmpty ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
                 }
+                .foregroundStyle(active.filters.isEmpty ? .secondary : Color.accentColor)
                 .help(active.filters.isEmpty ? "Filter" : "\(active.filters.count) filters")
                 .accessibilityLabel("Filter")
                 .popover(isPresented: $filtering, arrowEdge: .bottom) { FilterEditor(columns: columns, view: active, update: update) }
                 Button { sorting = true } label: { Image(systemName: "arrow.up.arrow.down") }
-                    .help("Sort").accessibilityLabel("Sort")
+                    .foregroundStyle(active.sortColumn != nil ? Color.accentColor : .secondary)
+                    .help(active.sortColumn.flatMap { id in columns.first { $0.id == id }?.name }.map { "Sorted by \($0)" } ?? "Sort")
+                    .accessibilityLabel("Sort")
                     .popover(isPresented: $sorting, arrowEdge: .bottom) { SortEditor(columns: columns, view: active, update: update) }
                 Button { searching.toggle(); if !searching { search = "" } } label: { Image(systemName: "magnifyingglass") }
                     .help("Search").accessibilityLabel("Search")
@@ -248,7 +253,7 @@ private struct GridView: View {
         ScrollView(.horizontal) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 0) {
-                    Color.clear.frame(width: 30, height: height)
+                    Color.clear.frame(width: GridView.gutter, height: height)
                     ForEach(columns) { column in
                         ColumnHeader(block: block, column: column, editOptions: editOptions)
                             .frame(width: GridView.width(column), height: height).overlay(alignment: .leading) { GridLine() }
@@ -286,7 +291,7 @@ private struct GridView: View {
         }
         .scrollIndicators(.never) // a wide table still scrolls sideways with a swipe
         // The border goes around what's visible, so the box is always closed, however wide the table.
-        .frame(maxWidth: 30 + columns.reduce(0) { $0 + GridView.width($1) } + (mailed ? 110 : 0) + 44, alignment: .leading)
+        .frame(maxWidth: GridView.gutter + columns.reduce(0) { $0 + GridView.width($1) } + (mailed ? 110 : 0) + 44, alignment: .leading)
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
         .clipShape(.rect(cornerRadius: 8))
         .overlay {
@@ -297,6 +302,8 @@ private struct GridView: View {
     }
 
     static func width(_ column: SpaceColumn) -> CGFloat { CGFloat(column.width ?? 180) }
+    /// The space left of each row for its Open button and ⋯ menu.
+    static let gutter: CGFloat = 56
 
     private func addProperty(_ kind: SpaceColumn.Kind) {
         let all = block.data.columns ?? []
@@ -324,9 +331,16 @@ private struct GridRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Button("Open", systemImage: "arrow.up.left.and.arrow.down.right") { open(row.id) }
-                .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.secondary)
-                .frame(width: 30, height: height).opacity(hovering ? 1 : 0).help("Open as a card")
+            // On hover: open the row as a card, or its menu (show on canvas, duplicate, delete).
+            HStack(spacing: 2) {
+                Button("Open", systemImage: "arrow.up.left.and.arrow.down.right") { open(row.id) }
+                    .labelStyle(.iconOnly).buttonStyle(.borderless).help("Open as a card")
+                Menu { actions } label: { Image(systemName: "ellipsis").frame(width: 20, height: 20).contentShape(.rect) }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .help("Row options").accessibilityLabel("Row options")
+            }
+            .foregroundStyle(.secondary)
+            .frame(width: GridView.gutter, height: height).opacity(hovering ? 1 : 0)
             ForEach(columns) { column in
                 CellEditor(row: row, column: column, editOptions: editOptions).padding(.horizontal, 10)
                     .frame(width: GridView.width(column), height: height, alignment: .leading).overlay(alignment: .leading) { GridLine() }
@@ -338,13 +352,18 @@ private struct GridRow: View {
         }
         .background(hovering ? Color.primary.opacity(0.03) : .clear)
         .onHover { hovering = $0 }
-        .contextMenu {
-            Button("Open", systemImage: "arrow.up.left.and.arrow.down.right") { open(row.id) }
-            if let space = model.spaces.first(where: { $0.id == block.spaceID }) {
-                Button("Show on Canvas", systemImage: "rectangle.on.rectangle") { Task { await model.showOnCanvas(block, row: row, in: space) } }
-            }
-            Button("Delete Row", systemImage: "trash", role: .destructive) { Task { await model.delete(row) } }
+        .contextMenu { actions }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        Button("Open", systemImage: "arrow.up.left.and.arrow.down.right") { open(row.id) }
+        if let space = model.spaces.first(where: { $0.id == block.spaceID }) {
+            Button("Show on Canvas", systemImage: "rectangle.on.rectangle") { Task { await model.showOnCanvas(block, row: row, in: space) } }
         }
+        Button("Duplicate", systemImage: "plus.square.on.square") { Task { _ = await model.addRows([row.cells], to: block) } }
+        Divider()
+        Button("Delete Row", systemImage: "trash", role: .destructive) { Task { await model.delete(row) } }
     }
 }
 
@@ -358,19 +377,7 @@ private struct ColumnHeader: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Menu {
-                Picker("Type", selection: Binding(get: { column.kind }, set: { kind in change { $0.kind = kind; if kind == .category, $0.options == nil { $0.options = [] } } })) {
-                    ForEach(SpaceColumn.Kind.allCases, id: \.self) { Label($0.title, systemImage: TableBlock.symbol($0)).tag($0) }
-                }
-                if column.kind == .category { Button("Edit Options…", systemImage: "list.bullet") { editOptions(column) } }
-                Picker("Width", selection: Binding(get: { column.width ?? 180 }, set: { w in change { $0.width = w == 180 ? nil : w } })) {
-                    ForEach(SpaceColumn.widths, id: \.value) { Text($0.name).tag($0.value) }
-                }
-                Divider()
-                Button("Delete Property", systemImage: "trash", role: .destructive) {
-                    Task { await model.setColumns((block.data.columns ?? []).filter { $0.id != column.id }, of: block) }
-                }
-            } label: { Image(systemName: TableBlock.symbol(column.kind)).foregroundStyle(.secondary) }
+            Menu { actions } label: { Image(systemName: TableBlock.symbol(column.kind)).foregroundStyle(.secondary) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .help("\(column.kind.title): click to change")
                 .accessibilityLabel("\(column.name) property options")
@@ -379,6 +386,34 @@ private struct ColumnHeader: View {
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
+        .contextMenu { actions } // right-click anywhere on the header, not only its small icon
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        Picker("Type", selection: Binding(get: { column.kind }, set: { kind in change { $0.kind = kind; if kind == .category, $0.options == nil { $0.options = [] } } })) {
+            ForEach(SpaceColumn.Kind.allCases, id: \.self) { Label($0.title, systemImage: TableBlock.symbol($0)).tag($0) }
+        }
+        if column.kind == .category { Button("Edit Options…", systemImage: "list.bullet") { editOptions(column) } }
+        Picker("Width", selection: Binding(get: { column.width ?? 180 }, set: { w in change { $0.width = w == 180 ? nil : w } })) {
+            ForEach(SpaceColumn.widths, id: \.value) { Text($0.name).tag($0.value) }
+        }
+        Divider()
+        Button("Delete Property “\(column.name)”", systemImage: "trash", role: .destructive) { deleteColumn() }
+    }
+
+    /// Removes the column; Undo puts it back with every cell's value (the cells stay in the rows until then).
+    private func deleteColumn() {
+        let before = block.data.columns ?? []
+        Task {
+            await model.setColumns(before.filter { $0.id != column.id }, of: block)
+            model.offerUndo("Deleted “\(column.name)”") { [weak model] in
+                guard let model, var current = model.spaceBlocks[block.spaceID]?.first(where: { $0.id == block.id }) else { return }
+                current.data.columns = before
+                await model.update(current)
+            }
+        }
     }
 
     private func save() {
@@ -422,7 +457,8 @@ private struct CellEditor: View {
                 if let option = column.options?.first(where: { $0.id == row.cells[column.id] }) {
                     Chip(option: option)
                 } else {
-                    Text(large ? "Empty" : "").foregroundStyle(.tertiary).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(large ? "Empty" : "—").foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading).contentShape(.rect)
                 }
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden) // keeps the chip's colour
@@ -624,6 +660,7 @@ private struct Lane: View {
                 CardTile(row: row, columns: columns, group: group, tint: colored ? tint : .gray, size: view.cardSize ?? "medium",
                          showNote: view.showNotes ?? true)
                     .onTapGesture { open(row.id) }
+                    .accessibilityAction { open(row.id) } // Space / VoiceOver open it too
                     .draggable(row.id)
                     .contextMenu {
                         if let space = model.spaces.first(where: { $0.id == block.spaceID }) {
@@ -698,8 +735,17 @@ extension Lane {
     func delete(_ option: SpaceOption) {
         var all = block.data.columns ?? []
         guard let c = all.firstIndex(where: { $0.id == group.id }) else { return }
+        let before = block.data.columns ?? []
         all[c].options?.removeAll { $0.id == option.id }
-        Task { await model.setColumns(all, of: block) }
+        Task {
+            await model.setColumns(all, of: block)
+            // The cards keep their value, so Undo brings the column and its cards back.
+            model.offerUndo("Deleted “\(option.name)”") { [weak model] in
+                guard let model, var current = model.spaceBlocks[block.spaceID]?.first(where: { $0.id == block.id }) else { return }
+                current.data.columns = before
+                await model.update(current)
+            }
+        }
     }
 }
 
@@ -794,6 +840,7 @@ struct CardSheet: View {
             }
         }
         .frame(width: 520, height: 560)
+        .onExitCommand { dismiss() }
     }
 }
 
@@ -918,7 +965,8 @@ private struct AskTableSheet: View {
     }
 
     private func suggest() {
-        guard let server = model.server, !ask.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        guard let server = model.server else { problem = "Connect your server in Settings first."; return }
+        guard !ask.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         working = true
         problem = nil
         Task {
@@ -989,7 +1037,7 @@ private struct PasteRowsSheet: View {
     }
 
     private func read() {
-        guard let server = model.server else { return }
+        guard let server = model.server else { problem = "Connect your server in Settings first."; return }
         working = true
         problem = nil
         Task {

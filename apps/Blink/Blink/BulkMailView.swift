@@ -424,7 +424,9 @@ private struct CampaignView: View {
     @ViewBuilder
     private func steps(fresh: [MailRecipient], written: [MailRecipient], approved: [MailRecipient]) -> some View {
         let live = model.campaigns.first { $0.id == campaign.id } ?? campaign
-        let stage = live.status == .sending || live.status == .paused || (!approved.isEmpty && written.isEmpty && fresh.isEmpty) ? 3
+        // Finished: everyone is in Drafts, sent, skipped or replied, so nothing's left to write, check or send.
+        let finished = !people.isEmpty && fresh.isEmpty && written.isEmpty && approved.isEmpty
+        let stage = finished || live.status == .sending || live.status == .paused || (!approved.isEmpty && written.isEmpty && fresh.isEmpty) ? 3
             : !written.isEmpty || !approved.isEmpty ? 2 : 1
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -446,6 +448,13 @@ private struct CampaignView: View {
                     Text(working == "Writing…" ? "Blink is writing your mails. They appear on the left as they're done." : working).foregroundStyle(.secondary)
                 } else if live.status == .sending || live.status == .paused {
                     sendingStatus(live)
+                } else if finished {
+                    let drafts = people.filter { $0.status == .inDrafts }.count, sent = people.filter { $0.status == .sent || $0.status == .replied }.count
+                    Label([drafts > 0 ? "\(drafts) in Drafts" : nil, sent > 0 ? "\(sent) sent" : nil].compactMap { $0 }.joined(separator: " · ").isEmpty
+                          ? "All done" : "All done · " + [drafts > 0 ? "\(drafts) in Drafts" : nil, sent > 0 ? "\(sent) sent" : nil].compactMap { $0 }.joined(separator: " · "),
+                          systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    Spacer()
+                    Button("Add More People…") { adding = true }
                 } else if people.isEmpty {
                     Text("Add the people you want to write to.").foregroundStyle(.secondary)
                     Button("Add Contacts…") { adding = true }.buttonStyle(.borderedProminent)

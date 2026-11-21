@@ -92,6 +92,7 @@ private struct NoteSheet: View {
             .padding(16)
         }
         .frame(minWidth: 640, idealWidth: 720, minHeight: 520, idealHeight: 640)
+        .onExitCommand { dismiss() }
     }
 }
 
@@ -196,6 +197,7 @@ private struct TableSheet: View {
             HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }.padding(16)
         }
         .frame(minWidth: 860, idealWidth: 1000, minHeight: 560, idealHeight: 680)
+        .onExitCommand { dismiss() }
     }
 }
 
@@ -326,6 +328,7 @@ private struct SpaceCanvasView: View {
             .offset(x: settling.map { viewport.minX - $0.x } ?? 0, y: settling.map { viewport.minY - $0.y } ?? 0)
         }
         .scrollPosition($position)
+        .scrollIndicators(.never) // the canvas pans by swipe and drag; bars only cover cards
         // Opens on the middle of the sheet, where the project starts, even before the cards have loaded.
         .defaultScrollAnchor(.center)
         .onScrollGeometryChange(for: CGRect.self) { $0.visibleRect } action: { _, rect in
@@ -426,8 +429,6 @@ private struct SpaceCanvasView: View {
         Button("New Sticky", systemImage: "note.text") { startDraft(.note, at: spot, parent: nil) }
         Button("New Reminder", systemImage: "bell") { startDraft(.reminder, at: spot, parent: nil) }
         Divider()
-        Button("New Post…", systemImage: "megaphone") { startDraft(.post, at: spot, parent: nil) }
-        Button("Attach Content…", systemImage: "square.and.arrow.down.on.square") { attaching = true }
         Divider()
         Button("Link…", systemImage: "link") { linkSpot = spot }
         Button("Picture…", systemImage: "photo") { pickingImage = true }
@@ -524,10 +525,11 @@ private struct SpaceCanvasView: View {
         let active = isSelected || hovered == node.id
         return CanvasCard(node: shown(node), space: space, content: content(of: node) ?? .project, selected: isSelected, editing: $editing)
             .overlay(alignment: .trailing) {
-                if node.linkable { linkPort(node).opacity(active || linking?.from == node.id ? 1 : 0) }
+                // Drawn half outside the card: its own hover keeps the card "hovered", so it doesn't fade as you reach it.
+                if node.linkable { linkPort(node).opacity(active || linking?.from == node.id ? 1 : 0).onHover { if $0 { hovered = node.id } } }
             }
             .overlay(alignment: .bottomTrailing) {
-                if node.resizable && !isEditing { resizeHandle(node).opacity(active || resizing?.id == node.id ? 1 : 0) }
+                if node.resizable && !isEditing { resizeHandle(node).opacity(active || resizing?.id == node.id ? 1 : 0).onHover { if $0 { hovered = node.id } } }
             }
             .overlay(alignment: .topTrailing) {
                 if isSelected && !isEditing && node.kind != .image && node.kind != .heading { helper(node) }
@@ -967,7 +969,6 @@ private struct SpaceCanvasView: View {
             barButton("Task", symbol: "checkmark.circle") { add(.task) }
             barButton("Sticky", symbol: "note.text") { add(.note) }
             barButton("Reminder", symbol: "bell") { add(.reminder) }
-            barButton("Post", symbol: "megaphone") { add(.post) }
             barButton("Picture", symbol: "photo") { pickingImage = true }
             barButton("Heading", symbol: "textformat") { addMark(.heading) }
             barButton("Section", symbol: "rectangle.dashed") { addMark(.section) }
@@ -1710,6 +1711,11 @@ private struct SpaceProgressPill: View {
 
     var body: some View {
         let progress = Space.progress(of: model.items, in: space.id)
+        // Nothing to count and no deadline: no pill floating over the cards.
+        if progress.total > 0 || space.dueAt != nil { pill(progress) }
+    }
+
+    private func pill(_ progress: (done: Int, total: Int)) -> some View {
         HStack(spacing: 8) {
             Gauge(value: Double(progress.done), in: 0...Double(max(progress.total, 1))) { EmptyView() }
                 .gaugeStyle(.accessoryCircularCapacity)

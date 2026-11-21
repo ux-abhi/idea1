@@ -398,6 +398,7 @@ enum NextStepChips {
 /// (summary, why, next steps a click away), then the whole mail, fetched when opened and never stored.
 struct MailReader: View {
     @Environment(AppModel.self) private var model
+    @State private var retries = 0
     let message: EmailMessage
     let done: () -> Void
     let teach: (SenderVerdict) -> Void
@@ -424,7 +425,7 @@ struct MailReader: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
-        .task(id: message.id) {
+        .task(id: "\(message.id)#\(retries)") {
             text = nil
             problem = nil
             // Walking through mail with ↓ opens only where you stop, not one mailbox login per mail passed.
@@ -530,7 +531,10 @@ struct MailReader: View {
                 .tint(.blue)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if let problem {
-            Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+            HStack {
+                Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                Button("Try Again") { retries += 1 }
+            }
         } else {
             ProgressView("Opening…").frame(maxWidth: .infinity).padding(.top, 20)
         }
