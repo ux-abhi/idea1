@@ -1574,3 +1574,31 @@ extension Tokens {
         #expect(SpaceTable.display(rows[0], status) == "Ready" && SpaceTable.display(rows[0], applied) == "Yes")
     }
 }
+
+@Suite struct TableAITests {
+    let columns = [SpaceColumn(id: "n", name: "Name"),
+                   SpaceColumn(id: "s", name: "Status", kind: .category, options: [SpaceOption(id: "idea", name: "Idea", color: "gray")])]
+
+    @Test func aPlanAddsAndRenamesButNeverRemoves() throws {
+        let json = """
+        {"summary":"Content calendar","addColumns":[{"name":"Post date","kind":"date","options":[]},{"name":"Platform","kind":"category","options":["Instagram","LinkedIn"]}],
+         "addOptions":[{"column":"status","options":["Idea","Ready"]}],"renames":[{"from":"Name","to":"Post"}],
+         "view":{"kind":"board","name":"Pipeline","groupBy":"Platform","filters":[{"column":"Status","op":"is_","value":"Ready"}],"sortColumn":"Post date","sortAscending":true}}
+        """
+        let plan = try JSONDecoder().decode(TablePlan.self, from: Data(json.utf8))
+        let after = plan.applied(to: columns)
+        #expect(after.map(\.name) == ["Post", "Status", "Post date", "Platform"]) // renamed, two added, none removed
+        #expect(after[1].options?.map(\.name) == ["Idea", "Ready"]) // "Idea" isn't added twice
+        #expect(after[0].id == "n" && after[3].options?.count == 2)
+        let view = try #require(plan.view(in: after))
+        #expect(view.kind == .board && view.groupBy == after[3].id && view.sortColumn == after[2].id)
+        #expect(view.filters.first?.value == after[1].options?.first { $0.name == "Ready" }?.id) // a Category filter points at the option
+    }
+
+    @Test func aiRowsBecomeCellsAndNewCategoriesBecomeOptions() {
+        let (cells, after) = SpaceTable.cells(from: [["name": "Ana", "Status": "idea"], ["Name": "Ben", "Status": "Waiting", "Ghost": "x"]], columns: columns)
+        #expect(cells[0] == ["n": "Ana", "s": "idea"]) // matched case-insensitively to the existing option's id
+        #expect(after[1].options?.map(\.name) == ["Idea", "Waiting"])
+        #expect(cells[1]["s"] == after[1].options?.last?.id && cells[1].count == 2) // unknown columns are dropped
+    }
+}

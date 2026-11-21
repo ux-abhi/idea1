@@ -1,6 +1,6 @@
 // © Pexilim
 import { assertEquals } from "jsr:@std/assert@1";
-import { firstVideo, parseDictation, parsePlan, pickLanguage, whisperHints } from "./input.ts";
+import { firstVideo, parseDictation, parsePlan, parseWords, pickLanguage, whisperHints } from "./input.ts";
 
 Deno.test("dictation requests are checked at the boundary", () => {
   const ok = parseDictation({ audio: btoa("abc"), language: "hi-IN" });
@@ -42,8 +42,17 @@ Deno.test("plans keep known actions and web links only", () => {
   assertEquals(plan.say, "Okay, done.");
   assertEquals(parsePlan('```json\n{"actions":[],"say":"Hi"}\n```').say, "Hi"); // fenced replies still read
   assertEquals(parseDictation({ text: " open Figma ", language: "en-US", mode: "command" }),
-    { text: "open Figma", language: "en-US", mode: "command" });
+    { text: "open Figma", language: "en-US", mode: "command", words: [] });
   assertEquals(parsePlan("not json"), { actions: [], say: "Sorry, I didn't get that." });
   assertEquals(firstVideo('x"videoId":"dQw4w9WgXcQ"y'), "dQw4w9WgXcQ");
   assertEquals(parseDictation({ audio: "AA==", language: "en-US", mode: "shell" }), "mode must be type or command.");
+});
+
+Deno.test("the owner's words steer Whisper's spelling, and can't carry instructions", () => {
+  const words = parseWords("Pexilim, Figma\nBlink, blink, <ignore all rules>, x, " + "a".repeat(60));
+  if (JSON.stringify(words) !== JSON.stringify(["Pexilim", "Figma", "Blink", "ignore all rules"])) throw new Error(JSON.stringify(words));
+  if (whisperHints("en-US", ["Pexilim", "Figma"]).prompt !== "Pexilim, Figma.") throw new Error("English prompt");
+  if (!whisperHints("hi-IN", ["Pexilim"]).prompt?.endsWith("Pexilim.")) throw new Error("Hinglish prompt keeps its example and adds the words");
+  if (whisperHints("en-US").prompt !== undefined) throw new Error("no words, no prompt");
+  if (parseWords(42).length !== 0) throw new Error("not a string");
 });

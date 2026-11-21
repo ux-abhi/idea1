@@ -66,6 +66,7 @@ struct ShortcutSettings: View {
                             .foregroundStyle(.orange)
                     }
                 }
+                DictationWordsField()
             } header: {
                 Text("Dictation")
             } footer: {
@@ -85,6 +86,21 @@ struct ShortcutSettings: View {
         // Granted in System Settings while this was open: show it when the owner comes back.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             trusted = AXIsProcessTrusted()
+        }
+    }
+}
+
+/// Names and terms dictation should always spell right (people, brands, apps), comma-separated; your Spaces' names
+/// are added on their own.
+private struct DictationWordsField: View {
+    @AppStorage("dictation.words") private var words = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("Words to know", text: $words, prompt: Text("Pexilim, Figma, Peush, Expatrio"), axis: .vertical)
+                .lineLimit(1...3)
+            Text("Names and words dictation should spell your way, separated by commas. Your Spaces' names are included automatically.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }

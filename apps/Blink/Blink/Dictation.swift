@@ -158,7 +158,9 @@ nonisolated private final class Recording: @unchecked Sendable {
               let converter = AVAudioConverter(from: format, to: mono) else { throw CocoaError(.fileWriteUnknown) }
         (self.mono, self.converter) = (mono, converter)
         file = try AVAudioFile(forWriting: url, settings: [
-            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1,
+            // 48 kbit/s: far clearer than the encoder's low default at 16 kHz, so Whisper mishears less; still small.
+            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 48_000,
+            AVEncoderAudioQualityKey: AVAudioQuality.max.rawValue,
         ], commonFormat: .pcmFormatFloat32, interleaved: false)
     }
 

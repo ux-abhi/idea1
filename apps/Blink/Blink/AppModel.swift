@@ -1681,7 +1681,7 @@ final class AppModel {
         // Groq's Whisper when it's picked and the server answers; the Mac's own text otherwise.
         if let audio, Dictation.usesGroq, let server, let data = try? Data(contentsOf: audio) {
             dictation.isWriting = true
-            do { text = try await server.dictate(data, language: MeetingRecorder.language.identifier(.bcp47)) } catch {
+            do { text = try await server.dictate(data, language: MeetingRecorder.language.identifier(.bcp47), words: dictationWords) } catch {
                 announce("Groq couldn't hear it (\(error.localizedDescription)), so this is the Mac's version.", failed: true)
             }
             dictation.isWriting = false
@@ -1719,11 +1719,11 @@ final class AppModel {
         do {
             // Groq's Whisper hears it when picked; otherwise (or with no recording) the Mac's words go instead.
             if Dictation.usesGroq, let audio, let data = try? Data(contentsOf: audio) {
-                plan = try await server.command(data, language: language)
+                plan = try await server.command(data, language: language, words: dictationWords)
             } else {
                 let heard = await mac.value
                 guard !heard.isEmpty else { return announce("Didn't catch that. Try again a little closer to the mic.", failed: true) }
-                plan = try await server.command(nil, text: heard, language: language)
+                plan = try await server.command(nil, text: heard, language: language, words: dictationWords)
             }
         } catch {
             return announce(error.localizedDescription, failed: true)
@@ -2631,6 +2631,13 @@ final class AppModel {
         }
     }
 
+    /// Words speech-to-text should spell right: the owner's own list (Settings › Shortcuts), the assistant's name, Blink,
+    /// and their Spaces' names.
+    var dictationWords: String {
+        let own = UserDefaults.standard.string(forKey: "dictation.words") ?? ""
+        return ([own, AssistantName.current, "Blink"] + spaces.prefix(15).map(\.title)).filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+
     /// Renames the assistant everywhere: the app's labels at once, and the server (chat and voice commands use it).
     /// Returns false when the server didn't save it (the name is then back as it was).
     @discardableResult
@@ -2844,6 +2851,34 @@ final class AppModel {
         }
     }
 
+    /// One of the page's tables (or one row of it, `row`) shown on the canvas as a card that points at it. Already
+    /// there: nothing changes. Lands at the first free spot near the project.
+    func showOnCanvas(_ block: SpaceBlock, row: SpaceRow? = nil, in space: Space) async {
+        var nodes = canvasNodes[space.id] ?? []
+        let ref = row?.id ?? block.id
+        guard !nodes.contains(where: { $0.ref == ref && ($0.kind == .block || $0.kind == .card) }) else {
+            announce(row == nil ? "That table is already on the canvas." : "That card is already on the canvas.")
+            return
+        }
+        let place = CanvasLayout.onSheet(CanvasLayout.freeSpot(around: Self.canvasCenter, taken: nodes, radius: 320))
+        let node = SpaceNode(spaceID: space.id, kind: row == nil ? .block : .card, ref: ref, x: place.x, y: place.y, color: space.color,
+                             label: row == nil ? nil : block.id)
+        nodes.append(node)
+        canvasNodes[space.id] = nodes
+        var kept = true
+        await canvasWrite { do { try await server?.save(node) } catch { kept = false; throw error } }
+        if kept { announce(row == nil ? "On the canvas" : "Card on the canvas") } else { canvasNodes[space.id]?.removeAll { $0.id == node.id } }
+    }
+
+    /// Canvas cards pointing at something that's gone from the page (a deleted table or row) go too.
+    func removeCanvasCards(pointingAt ref: String, in spaceID: String) async {
+        guard let server else { return }
+        // A table takes its own card and the cards of its rows (their label is the table).
+        for node in (canvasNodes[spaceID] ?? []) where (node.ref == ref && (node.kind == .block || node.kind == .card)) || (node.kind == .card && node.label == ref) {
+            if (try? await server.delete(node)) != nil { canvasNodes[spaceID]?.removeAll { $0.id == node.id } }
+        }
+    }
+
     /// A new task, note or reminder made on the canvas: the real thing, and its node at `spot` (else the first free spot
     /// near `parent` or the project). It links from `parent`; placed by hand with no parent, it stays on its own.
     @discardableResult
@@ -2855,7 +2890,7 @@ final class AppModel {
         case .note: ref = create(.note, title: title, space: space.id).id
         case .reminder:
             ref = await addReminder(title, due: due, to: space)
-        case .project, .image, .post, .heading, .section, .link: ref = nil
+        case .project, .image, .post, .heading, .section, .link, .block, .card: ref = nil
         }
         guard let ref else { return nil }
         var nodes = canvasNodes[space.id] ?? []
@@ -3271,6 +3306,7 @@ final class AppModel {
             return
         }
         spaceBlocks[block.spaceID]?.removeAll { $0.id == block.id }
+        await removeCanvasCards(pointingAt: block.id, in: block.spaceID)
         // A table's rows go with it on the server (cascade), so Undo puts them back too.
         let rows = tableRows.removeValue(forKey: block.id) ?? []
         offerUndo("Deleted \(block.kind.title.lowercased())") { [weak self] in
@@ -3332,6 +3368,9 @@ final class AppModel {
             return
         }
         tableRows[row.blockID]?.removeAll { $0.id == row.id }
+        if let spaceID = spaceBlocks.first(where: { $0.value.contains { $0.id == row.blockID } })?.key {
+            await removeCanvasCards(pointingAt: row.id, in: spaceID)
+        }
         offerUndo("Deleted a row") { [weak self] in
             guard let self, let server = self.server else { return }
             self.tableRows[row.blockID] = ((self.tableRows[row.blockID] ?? []) + [row]).sorted { $0.position < $1.position }
@@ -3346,6 +3385,37 @@ final class AppModel {
         var changed = spaceBlocks[block.spaceID]?.first { $0.id == block.id } ?? block
         changed.data.columns = Array(columns.prefix(SpaceTable.columnLimit))
         await update(changed)
+    }
+
+    /// A request from the page's AI bar for one table: open its AI preview with this ask, or (`paste`) turn this text
+    /// into rows. The table that matches `blockID` picks it up.
+    struct TableAIRequest: Equatable {
+        let id = UUID()
+        let blockID: String
+        let text: String
+        let paste: Bool
+    }
+    var tableAIRequest: TableAIRequest?
+
+    /// Many new rows at once (pasted text the AI turned into rows), saved in one go.
+    func addRows(_ cells: [[String: String]], to block: SpaceBlock) async -> Bool {
+        guard let server, !cells.isEmpty else { return false }
+        let existing = tableRows[block.id] ?? []
+        let room = SpaceTable.rowLimit - existing.count
+        var position = existing.last?.position ?? 0
+        let rows = cells.prefix(max(room, 0)).map { cells -> SpaceRow in
+            position += 1
+            return SpaceRow(blockID: block.id, position: position, cells: cells)
+        }
+        do {
+            try await server.add(rows)
+            tableRows[block.id] = existing + rows
+            return true
+        } catch {
+            saveProblem = "Couldn't add the rows. Check your connection and try again."
+            await loadRows(block)
+            return false
+        }
     }
 
     /// A CSV into a table: its header names match columns by name (new names become new columns), its lines become rows.

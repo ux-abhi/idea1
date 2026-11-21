@@ -7,7 +7,8 @@ import UniformTypeIdentifiers
 /// image (`ref` is its file on the server), with where it sits, its colour, and for stickies and images the size and
 /// text size the owner gave it. The node is only a place; the thing it points at lives in Blink as usual.
 public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
-    public enum Kind: String, Codable, Sendable { case project, task, note, reminder, image, post, heading, section, link }
+    /// `block`: one of the page's tables (ref → the block). `card`: one row of a table (ref → the row, label → its table).
+    public enum Kind: String, Codable, Sendable { case project, task, note, reminder, image, post, heading, section, link, block, card }
     public let id: String
     public let spaceID: String
     public let kind: Kind
@@ -56,6 +57,8 @@ public struct SpaceNode: Codable, Identifiable, Equatable, Sendable {
         case .heading: (320, 56 * (textScale ?? 1))
         case .section: (640, 420)
         case .link: (260, 72)
+        case .block: (280, 84)
+        case .card: (240, 72)
         }
         return (w ?? standard.width, h ?? standard.height)
     }

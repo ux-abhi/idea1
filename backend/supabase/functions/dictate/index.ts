@@ -65,13 +65,15 @@ Deno.serve(async (req) => {
   if (parsed.audio) {
     if (!key) return json(400, { error: "Add your Groq key in Blink › Settings › Connections, or pick “This Mac only” for speech to text." });
     const form = new FormData();
-    form.append("file", new Blob([parsed.audio], { type: "audio/mp4" }), "dictation.m4a");
+    form.append("file", new Blob([new Uint8Array(parsed.audio)], { type: "audio/mp4" }), "dictation.m4a");
     form.append("model", WHISPER);
     form.append("response_format", "verbose_json");
     form.append("temperature", "0");
-    const hints = whisperHints(parsed.language);
+    const hints = whisperHints(parsed.language, parsed.words);
     if (hints.language) form.append("language", hints.language);
-    if (hints.prompt && parsed.mode === "type") form.append("prompt", hints.prompt);
+    // The Hinglish example only helps typing; the owner's words help commands too ("open Figma").
+    const prompt = parsed.mode === "type" ? hints.prompt : parsed.words.length ? `${parsed.words.join(", ")}.` : undefined;
+    if (prompt) form.append("prompt", prompt);
     const heard = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form,
     });
@@ -98,7 +100,8 @@ Deno.serve(async (req) => {
       actions = await links(plan.actions);
       say = plan.say;
     } else {
-      const reply = await think(model, CLEANUP, fenced, false, 4000); // long dictation comes back whole
+      const words = parsed.words.length ? `\n<words>${parsed.words.join(", ")}</words>` : "";
+      const reply = await think(model, CLEANUP, fenced + words, false, 4000); // long dictation comes back whole
       spent = reply;
       const cleaned = reply.text.replaceAll("\\u003c", "<").trim();
       if (cleaned === "EMPTY") text = "";

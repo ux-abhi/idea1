@@ -753,6 +753,9 @@ do $$ begin
   insert into public.space_block (id, segment_id, kind, data) values ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000d1', 'table', '{"columns": []}');
   insert into public.space_block (id, segment_id, kind) values ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-0000000000d1', 'text');
   insert into public.space_table_row (id, block_id, cells) values ('00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000f1', '{"c1": "ana@studio.com"}');
+  -- A page's table and one of its rows, shown on the canvas.
+  insert into public.space_node (segment_id, kind, ref, x, y) values ('00000000-0000-0000-0000-0000000000d1', 'block', '00000000-0000-0000-0000-0000000000f1', 300, 300);
+  insert into public.space_node (segment_id, kind, ref, label, x, y) values ('00000000-0000-0000-0000-0000000000d1', 'card', '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000f1', 500, 300);
   begin
     insert into public.space_table_row (block_id) values ('00000000-0000-0000-0000-0000000000f2');
     raise exception 'a row in a block that is not a table';

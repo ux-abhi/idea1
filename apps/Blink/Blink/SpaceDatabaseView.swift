@@ -17,6 +17,9 @@ struct TableBlock: View {
     @State private var filtering = false
     @State private var sorting = false
     @State private var choosingProperties = false
+    @State private var askingAI = false
+    @State private var pasting = false
+    @State private var aiText = ""
     @State private var openRow: String?
     @State private var editingOptions: SpaceColumn?
 
@@ -52,6 +55,15 @@ struct TableBlock: View {
             if let openRow { CardSheet(block: current, rowID: openRow, editOptions: { editingOptions = $0 }) }
         }
         .sheet(item: $editingOptions) { column in OptionsEditor(block: current, column: column) }
+        .sheet(isPresented: $askingAI) { AskTableSheet(columns: columns, initial: aiText, apply: apply) }
+        .sheet(isPresented: $pasting) { PasteRowsSheet(block: current, columns: columns, initial: aiText) }
+        // From the page's AI bar, while this table is selected.
+        .onChange(of: model.tableAIRequest) { _, request in
+            guard let request, request.blockID == block.id else { return }
+            aiText = request.text
+            if request.paste { pasting = true } else { askingAI = true }
+            model.tableAIRequest = nil
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText]) { result in
             guard let file = try? result.get() else { return }
             let access = file.startAccessingSecurityScopedResource()
@@ -114,6 +126,15 @@ struct TableBlock: View {
     }
 
     // MARK: Changes
+
+    /// The AI's plan, after the owner pressed Apply: columns first, then the new view, shown at once.
+    private func apply(_ plan: TablePlan) {
+        Task {
+            let changed = plan.applied(to: columns)
+            if changed != columns { await model.setColumns(changed, of: current) }
+            if let view = plan.view(in: changed) { save { data in data.views = (data.views ?? []) + [view]; data.activeView = view.id } }
+        }
+    }
 
     private func saveName() {
         let clean = String(name.trimmingCharacters(in: .whitespaces).prefix(120))
@@ -250,7 +271,7 @@ private struct GridView: View {
                 Rectangle().fill(.quaternary).frame(height: 1)
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(rows) { row in
-                        GridRow(row: row, columns: columns, mailed: mailed ? model.rowMailStatus[row.id].map(TableBlock.status) ?? "" : nil,
+                        GridRow(block: block, row: row, columns: columns, mailed: mailed ? model.rowMailStatus[row.id].map(TableBlock.status) ?? "" : nil,
                                 height: height, open: open, editOptions: editOptions)
                         Rectangle().fill(.quaternary).frame(height: 1)
                     }
@@ -262,10 +283,12 @@ private struct GridView: View {
                 .buttonStyle(.plain).disabled(columns.isEmpty)
             }
             .fixedSize(horizontal: true, vertical: false)
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
-            .clipShape(.rect(cornerRadius: 8))
         }
         .scrollIndicators(.never) // a wide table still scrolls sideways with a swipe
+        // The border goes around what's visible, so the box is always closed, however wide the table.
+        .frame(maxWidth: 30 + columns.reduce(0) { $0 + GridView.width($1) } + (mailed ? 110 : 0) + 44, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+        .clipShape(.rect(cornerRadius: 8))
         .overlay {
             if rows.isEmpty, !(model.tableRows[block.id] ?? []).isEmpty {
                 Text("No rows match. Change the filter or search.").foregroundStyle(.secondary).padding(.top, 60)
@@ -290,6 +313,7 @@ private struct GridLine: View {
 
 private struct GridRow: View {
     @Environment(AppModel.self) private var model
+    let block: SpaceBlock
     let row: SpaceRow
     let columns: [SpaceColumn]
     let mailed: String?
@@ -316,6 +340,9 @@ private struct GridRow: View {
         .onHover { hovering = $0 }
         .contextMenu {
             Button("Open", systemImage: "arrow.up.left.and.arrow.down.right") { open(row.id) }
+            if let space = model.spaces.first(where: { $0.id == block.spaceID }) {
+                Button("Show on Canvas", systemImage: "rectangle.on.rectangle") { Task { await model.showOnCanvas(block, row: row, in: space) } }
+            }
             Button("Delete Row", systemImage: "trash", role: .destructive) { Task { await model.delete(row) } }
         }
     }
@@ -398,7 +425,7 @@ private struct CellEditor: View {
                     Text(large ? "Empty" : "").foregroundStyle(.tertiary).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden)
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden) // keeps the chip's colour
             .accessibilityLabel("\(column.name): \(SpaceTable.display(row, column))")
         case .date:
             DateCell(row: row, column: column)
@@ -476,10 +503,11 @@ private struct Chip: View {
     let option: SpaceOption
 
     var body: some View {
+        let color = Color.system(option.color)
         Text(option.name).font(.callout.weight(.medium)).lineLimit(1)
-            .padding(.horizontal, 8).padding(.vertical, 2)
-            .background(Color.system(option.color).opacity(0.25), in: .rect(cornerRadius: 5))
-            .foregroundStyle(.primary)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(color.opacity(0.2), in: .rect(cornerRadius: 6))
+            .foregroundStyle(color.mix(with: .primary, by: 0.45)) // the option's colour, deep enough to read in light and dark
     }
 }
 
@@ -510,13 +538,26 @@ private struct BoardView: View {
                 }
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 12) {
-                        ForEach(SpaceTable.groups(rows, by: group), id: \.option?.id) { lane in
-                            if lane.option != nil || !lane.rows.isEmpty {
-                                Lane(block: block, columns: shown, group: group, option: lane.option, rows: lane.rows, open: open)
+                        let lanes = SpaceTable.groups(rows, by: group)
+                        ForEach(lanes, id: \.option?.id) { lane in
+                            let hidden = lane.option.map { (view.hiddenGroups ?? []).contains($0.id) } ?? false
+                            if !hidden, lane.option != nil || !lane.rows.isEmpty, !(view.hideEmpty == true && lane.rows.isEmpty) {
+                                Lane(block: block, columns: shown, group: group, option: lane.option, rows: lane.rows, view: view,
+                                     open: open, update: update)
                             }
                         }
-                        Button { editOptions(group) } label: { Label("Add a column", systemImage: "plus").foregroundStyle(.secondary) }
-                            .buttonStyle(.borderless).padding(.top, 10)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Button { editOptions(group) } label: { Label("Add a column", systemImage: "plus").foregroundStyle(.secondary) }
+                                .buttonStyle(.borderless)
+                            // Hidden columns, to bring back.
+                            ForEach(lanes.compactMap(\.option).filter { (view.hiddenGroups ?? []).contains($0.id) }) { option in
+                                Button { var v = view; v.hiddenGroups?.removeAll { $0 == option.id }; update(v) } label: {
+                                    HStack(spacing: 6) { Chip(option: option); Image(systemName: "eye").foregroundStyle(.secondary) }
+                                }
+                                .buttonStyle(.plain).help("Show “\(option.name)” again")
+                            }
+                        }
+                        .padding(.top, 10)
                     }
                     .padding(.bottom, 8)
                 }
@@ -547,10 +588,14 @@ private struct Lane: View {
     let group: SpaceColumn
     let option: SpaceOption?
     let rows: [SpaceRow]
+    let view: SpaceTableView
     let open: (String) -> Void
+    let update: (SpaceTableView) -> Void
     @State private var targeted = false
 
     private var tint: Color { option.map { Color.system($0.color) } ?? .gray }
+    private var colored: Bool { view.colorColumns ?? true }
+    private var width: CGFloat { ["small": 220, "large": 330][view.cardSize ?? ""] ?? 270 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -561,11 +606,14 @@ private struct Lane: View {
                         Menu("Colour") {
                             ForEach(SpaceOption.colors, id: \.self) { color in Button(color.capitalized) { change(option) { $0.color = color } } }
                         }
+                        Button("Move Left", systemImage: "arrow.left") { move(option, by: -1) }
+                        Button("Move Right", systemImage: "arrow.right") { move(option, by: 1) }
+                        Button("Hide Column", systemImage: "eye.slash") { var v = view; v.hiddenGroups = (v.hiddenGroups ?? []) + [option.id]; update(v) }
                         Divider()
                         Button("Delete “\(option.name)”", systemImage: "trash", role: .destructive) { delete(option) }
                     } label: { Chip(option: option) }
-                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                        .help("Rename, recolour or delete this column")
+                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize() // keeps the chip's colour
+                        .help("Rename, recolour, move, hide or delete this column")
                 } else {
                     Text("No \(group.name)").font(.callout.weight(.medium)).foregroundStyle(.secondary)
                 }
@@ -573,10 +621,16 @@ private struct Lane: View {
                 Spacer()
             }
             ForEach(rows) { row in
-                CardTile(row: row, columns: columns, group: group, tint: tint)
+                CardTile(row: row, columns: columns, group: group, tint: colored ? tint : .gray, size: view.cardSize ?? "medium",
+                         showNote: view.showNotes ?? true)
                     .onTapGesture { open(row.id) }
                     .draggable(row.id)
-                    .contextMenu { Button("Delete", systemImage: "trash", role: .destructive) { Task { await model.delete(row) } } }
+                    .contextMenu {
+                        if let space = model.spaces.first(where: { $0.id == block.spaceID }) {
+                            Button("Show on Canvas", systemImage: "rectangle.on.rectangle") { Task { await model.showOnCanvas(block, row: row, in: space) } }
+                        }
+                        Button("Delete", systemImage: "trash", role: .destructive) { Task { await model.delete(row) } }
+                    }
             }
             Button {
                 Task {
@@ -593,8 +647,9 @@ private struct Lane: View {
             .buttonStyle(.plain)
         }
         .padding(10)
-        .frame(width: 260, alignment: .top)
-        .background(tint.opacity(targeted ? 0.18 : 0.08), in: .rect(cornerRadius: 12))
+        .frame(width: width, alignment: .top)
+        .background((colored ? tint : Color.primary).opacity(targeted ? 0.16 : colored ? 0.07 : 0.03), in: .rect(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(targeted ? tint.opacity(0.6) : .clear, lineWidth: 2))
         .dropDestination(for: String.self) { ids, _ in
             // Dropping a card here gives it this column's option (or none, in the last column).
             for id in ids {
@@ -629,6 +684,16 @@ extension Lane {
         if !clean.isEmpty { change(option) { $0.name = String(clean.prefix(40)) } }
     }
 
+    /// Moves a board column left or right (the Category's option order).
+    func move(_ option: SpaceOption, by step: Int) {
+        var all = block.data.columns ?? []
+        guard let c = all.firstIndex(where: { $0.id == group.id }), var options = all[c].options,
+              let i = options.firstIndex(where: { $0.id == option.id }), options.indices.contains(i + step) else { return }
+        options.swapAt(i, i + step)
+        all[c].options = options
+        Task { await model.setColumns(all, of: block) }
+    }
+
     /// Removes the option; its cards move to "No …" (nothing is deleted with it).
     func delete(_ option: SpaceOption) {
         var all = block.data.columns ?? []
@@ -644,15 +709,19 @@ private struct CardTile: View {
     let columns: [SpaceColumn]
     let group: SpaceColumn
     let tint: Color
+    var size = "medium"
+    var showNote = true
 
     var body: some View {
         let title = columns.first { $0.kind == .text }
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.map { SpaceTable.display(row, $0) }.flatMap { $0.isEmpty ? nil : $0 } ?? "Untitled").font(.headline).lineLimit(2)
-            if let note = row.cells[SpaceTable.noteKey], !note.isEmpty {
-                Text(note).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+        let small = size == "small"
+        VStack(alignment: .leading, spacing: small ? 4 : 6) {
+            Text(title.map { SpaceTable.display(row, $0) }.flatMap { $0.isEmpty ? nil : $0 } ?? "Untitled")
+                .font(small ? .callout.weight(.semibold) : .headline).lineLimit(2)
+            if showNote, !small, let note = row.cells[SpaceTable.noteKey], !note.isEmpty {
+                Text(note).font(.callout).foregroundStyle(.secondary).lineLimit(size == "large" ? 6 : 3)
             }
-            ForEach(columns.filter { $0.id != title?.id && $0.id != group.id && !SpaceTable.display(row, $0).isEmpty }.prefix(4)) { column in
+            ForEach(columns.filter { $0.id != title?.id && $0.id != group.id && !SpaceTable.display(row, $0).isEmpty }.prefix(small ? 2 : 5)) { column in
                 switch column.kind {
                 case .category: if let option = column.options?.first(where: { $0.id == row.cells[column.id] }) { Chip(option: option) }
                 case .checkbox: Label(column.name, systemImage: "checkmark.square.fill").font(.callout).foregroundStyle(.secondary)
@@ -660,9 +729,12 @@ private struct CardTile: View {
                 }
             }
         }
-        .padding(12)
+        .padding(small ? 9 : 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.14), in: .rect(cornerRadius: 10))
+        .background(tint.opacity(0.1), in: .rect(cornerRadius: 10))
+        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(tint.opacity(0.3)))
+        .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
@@ -672,7 +744,7 @@ private struct CardTile: View {
 // MARK: Card
 
 /// A row opened as a card: every property, edited in place.
-private struct CardSheet: View {
+struct CardSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let block: SpaceBlock
@@ -761,7 +833,18 @@ private struct PropertiesEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Show in this view").font(.headline)
+            if view.kind == .board {
+                Text("Board").font(.headline)
+                Picker("Card size", selection: Binding(get: { view.cardSize ?? "medium" }, set: { v in var x = view; x.cardSize = v; update(x) })) {
+                    Text("Small").tag("small"); Text("Medium").tag("medium"); Text("Large").tag("large")
+                }
+                .pickerStyle(.segmented)
+                Toggle("Coloured columns", isOn: Binding(get: { view.colorColumns ?? true }, set: { v in var x = view; x.colorColumns = v; update(x) }))
+                Toggle("Show notes on cards", isOn: Binding(get: { view.showNotes ?? true }, set: { v in var x = view; x.showNotes = v; update(x) }))
+                Toggle("Hide empty columns", isOn: Binding(get: { view.hideEmpty ?? false }, set: { v in var x = view; x.hideEmpty = v; update(x) }))
+                Divider()
+            }
+            Text(view.kind == .board ? "Show on cards" : "Show in this view").font(.headline)
             ForEach(columns) { column in
                 Toggle(isOn: Binding(get: { !(view.hidden ?? []).contains(column.id) }, set: { on in
                     var v = view
@@ -772,6 +855,175 @@ private struct PropertiesEditor: View {
         }
         .padding(16)
         .frame(minWidth: 240)
+    }
+}
+
+// MARK: AI
+
+/// "Make this a content calendar": the AI proposes columns, options and a view; the owner reads it, then applies it.
+private struct AskTableSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let columns: [SpaceColumn]
+    var initial = ""
+    let apply: (TablePlan) -> Void
+    @State private var ask = ""
+    @State private var plan: TablePlan?
+    @State private var working = false
+    @State private var problem: String?
+    private let examples = ["Make this a content calendar", "Turn this into a hiring pipeline board", "Add a priority and a due date", "Group by status on a board"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Ask AI to change this table", systemImage: "wand.and.stars").font(.title3.bold())
+            TextField("What should this table become?", text: $ask, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(1...3)
+                .onSubmit(suggest)
+            if plan == nil {
+                FlowChips(items: examples) { ask = $0; suggest() }
+            }
+            if let plan {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(plan.summary).font(.headline)
+                    ForEach(plan.renames, id: \.from) { Label("Rename “\($0.from)” to “\($0.to)”", systemImage: "pencil") }
+                    ForEach(plan.addColumns, id: \.name) { c in
+                        Label("Add \(c.name) (\(SpaceColumn.Kind(rawValue: c.kind)?.title ?? "Text"))\(c.options.isEmpty ? "" : ": " + c.options.joined(separator: ", "))", systemImage: "plus.circle")
+                    }
+                    ForEach(plan.addOptions, id: \.column) { Label("Add to \($0.column): \($0.options.joined(separator: ", "))", systemImage: "chevron.down.circle") }
+                    if let view = plan.view {
+                        Label("New \(view.kind == "board" ? "board" : "table") view “\(view.name)”\(view.groupBy.map { ", grouped by \($0)" } ?? "")\(view.filters.isEmpty ? "" : ", \(view.filters.count) filter\(view.filters.count == 1 ? "" : "s")")",
+                              systemImage: view.kind == "board" ? "rectangle.split.3x1" : "tablecells")
+                    }
+                    Text("Nothing is removed. You can change or undo any of it by hand.").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+                }
+                .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(.background.secondary, in: .rect(cornerRadius: 10))
+            }
+            if let problem { Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                if let plan {
+                    Button("Try Again") { self.plan = nil; suggest() }.disabled(working)
+                    Button("Apply") { apply(plan); dismiss() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                } else {
+                    Button { suggest() } label: { if working { ProgressView().controlSize(.small) } else { Text("Suggest") } }
+                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                        .disabled(working || ask.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .padding(22)
+        .frame(width: 520)
+        .onAppear { if !initial.isEmpty { ask = initial; suggest() } }
+    }
+
+    private func suggest() {
+        guard let server = model.server, !ask.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        working = true
+        problem = nil
+        Task {
+            defer { working = false }
+            do { plan = try await server.planTable(ask, columns: columns) } catch { problem = error.localizedDescription }
+        }
+    }
+}
+
+/// Paste a list, an email or notes; the AI turns it into rows for this table, shown before they're added.
+private struct PasteRowsSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let block: SpaceBlock
+    let columns: [SpaceColumn]
+    var initial = ""
+    @State private var text = ""
+    @State private var rows: [[String: String]]?
+    @State private var working = false
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Paste text as rows", systemImage: "text.badge.plus").font(.title3.bold())
+            if let rows {
+                Text("\(rows.count) \(rows.count == 1 ? "row" : "rows") found").font(.headline)
+                ScrollView([.horizontal, .vertical]) {
+                    Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+                        SwiftUI.GridRow { ForEach(columns) { Text($0.name).font(.caption.weight(.semibold)).foregroundStyle(.secondary) } }
+                        Divider()
+                        ForEach(Array(rows.prefix(30).enumerated()), id: \.offset) { _, row in
+                            SwiftUI.GridRow {
+                                ForEach(columns) { column in
+                                    Text(row.first { $0.key.caseInsensitiveCompare(column.name) == .orderedSame }?.value ?? "").lineLimit(1).frame(maxWidth: 200, alignment: .leading)
+                                }
+                            }
+                        }
+                    }
+                    .padding(10)
+                }
+                .frame(height: 260)
+                .background(.background.secondary, in: .rect(cornerRadius: 10))
+                if rows.count > 30 { Text("and \(rows.count - 30) more").font(.caption).foregroundStyle(.secondary) }
+            } else {
+                Text("A list of founders from Claude, an email, meeting notes: anything with people, companies or items in it.")
+                    .font(.callout).foregroundStyle(.secondary)
+                TextEditor(text: $text).font(.body).frame(height: 240).scrollContentBackground(.hidden).padding(6)
+                    .background(.background.secondary, in: .rect(cornerRadius: 8)).accessibilityLabel("Text to turn into rows")
+            }
+            if let problem { Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                if let rows {
+                    Button("Back") { self.rows = nil }
+                    Button("Add \(rows.count) \(rows.count == 1 ? "Row" : "Rows")") { add(rows) }
+                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(working)
+                } else {
+                    Button { read() } label: { if working { ProgressView().controlSize(.small) } else { Text("Turn into Rows") } }
+                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                        .disabled(working || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || columns.isEmpty)
+                }
+            }
+        }
+        .padding(22)
+        .frame(width: 640)
+        .onAppear { if !initial.isEmpty { text = initial; read() } }
+    }
+
+    private func read() {
+        guard let server = model.server else { return }
+        working = true
+        problem = nil
+        Task {
+            defer { working = false }
+            do { rows = try await server.rows(fromText: text, columns: columns) } catch { problem = error.localizedDescription }
+        }
+    }
+
+    private func add(_ rows: [[String: String]]) {
+        working = true
+        Task {
+            defer { working = false }
+            let (cells, changed) = SpaceTable.cells(from: rows, columns: columns)
+            if changed != columns { await model.setColumns(changed, of: block) } // new Category options it found
+            if await model.addRows(cells, to: block) { dismiss() }
+        }
+    }
+}
+
+/// Example asks as small buttons that wrap onto lines.
+private struct FlowChips: View {
+    let items: [String]
+    let pick: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(items, id: \.self) { item in
+                Button { pick(item) } label: {
+                    Text(item).font(.callout).padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.accentColor.opacity(0.1), in: .capsule)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }
 

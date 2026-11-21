@@ -14,22 +14,38 @@ struct SpaceView: View {
     @State private var customizing = false
     @State private var confirmDelete = false
     @State private var page = false
+    /// A note opened from the page or the canvas: edited right here, so the Space stays where it was (never a jump to Notes).
+    @State private var editingNote: String?
 
     var body: some View {
         Group {
             if page {
-                SpacePageView(space: space, openNote: openNote)
+                SpacePageView(space: space, openNote: { editingNote = $0 })
             } else {
-                SpaceCanvasView(space: space, openNote: openNote, customize: { customizing = true }, delete: { confirmDelete = true })
+                SpaceCanvasView(space: space, openNote: { editingNote = $0 }, customize: { customizing = true }, delete: { confirmDelete = true })
             }
         }
+        .sheet(isPresented: Binding(get: { editingNote != nil }, set: { if !$0 { editingNote = nil } })) {
+            if let id = editingNote { NoteSheet(noteID: id, openInNotes: { editingNote = nil; openNote(id) }) }
+        }
         .overlay(alignment: .top) {
-            Picker("Mode", selection: $page) {
-                Label("Canvas", systemImage: "rectangle.on.rectangle").tag(false)
-                Label("Page", systemImage: "doc.text").tag(true)
+            // Solid and clear over any cover: the chosen mode is filled, the other plain.
+            HStack(spacing: 2) {
+                ForEach([(false, "Canvas", "rectangle.on.rectangle"), (true, "Page", "doc.text")], id: \.0) { mode, name, symbol in
+                    Button { page = mode } label: {
+                        Label(name, systemImage: symbol).font(.callout.weight(.semibold))
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .foregroundStyle(page == mode ? Color.white : Color.primary)
+                            .background(page == mode ? Color.accentColor : .clear, in: .capsule)
+                            .contentShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(page == mode ? .isSelected : [])
+                }
             }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
-            .padding(3).background(.regularMaterial, in: .capsule) // readable over a page's cover
+            .padding(3)
+            .background(.thickMaterial, in: .capsule)
+            .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
             .padding(.top, 14)
             .help("Canvas: free and visual. Page: blocks top to bottom.")
         }
@@ -38,6 +54,9 @@ struct SpaceView: View {
         .task(id: space.id) {
             page = UserDefaults.standard.bool(forKey: "space.mode.\(space.id)")
             await model.loadCanvas(space)
+            // The page's tables, so their canvas cards show names, counts and rows.
+            await model.loadBlocks(space)
+            for block in model.spaceBlocks[space.id] ?? [] where block.kind == .table { await model.loadRows(block) }
         }
         .sheet(isPresented: $customizing) { SpaceCustomizer(space: space) }
         .confirmationDialog("Delete “\(space.title)”?", isPresented: $confirmDelete) {
@@ -46,6 +65,33 @@ struct SpaceView: View {
             Text("Its tasks, notes and posts are kept and move out of the space. Its canvas (layout, headings, sections, links and pictures) is deleted for good.")
         }
         .safeAreaInset(edge: .bottom) { SaveProblemBar() }
+    }
+}
+
+/// A note edited over its Space, with the same editor as Notes; Done goes back to exactly where you were.
+private struct NoteSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let noteID: String
+    let openInNotes: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let note = model.items.first(where: { $0.id == noteID }) {
+                NoteEditor(note: note).padding(24)
+            } else {
+                ContentUnavailableView("This note is gone", systemImage: "note.text")
+            }
+            Divider()
+            HStack {
+                Button("Open in Notes", systemImage: "arrow.up.forward.app", action: openInNotes)
+                    .help("Go to the Notes page with this note")
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+            .padding(16)
+        }
+        .frame(minWidth: 640, idealWidth: 720, minHeight: 520, idealHeight: 640)
     }
 }
 
@@ -127,6 +173,30 @@ private enum CardContent {
     case mark(String)
     /// A link card: its web address and title.
     case link(url: String, title: String)
+    /// One of the page's tables (or boards): its name and a line like "Board · 12 rows".
+    case table(block: SpaceBlock, detail: String)
+    /// One row of a page's table: its title and a line like "work · In progress".
+    case row(blockID: String, rowID: String, title: String, detail: String)
+}
+
+/// A page table's row opened from the canvas.
+private struct OpenedRow: Identifiable { let blockID: String; let rowID: String; var id: String { rowID } }
+
+/// A page's table opened over the canvas: the full table with its views, edited in place.
+private struct TableSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let block: SpaceBlock
+    let space: Space
+    @State private var importing = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView { TableBlock(block: block, space: space, importing: $importing).padding(24) }
+            Divider()
+            HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }.padding(16)
+        }
+        .frame(minWidth: 860, idealWidth: 1000, minHeight: 560, idealHeight: 680)
+    }
 }
 
 /// A card being written before it exists: where it goes, what kind, and what's typed so far.
@@ -165,6 +235,8 @@ private struct SpaceCanvasView: View {
     @State private var pickingImage = false
     /// A post opened to read or edit, right over the canvas.
     @State private var readingPost: String?
+    @State private var openingTable: String?
+    @State private var openingRow: OpenedRow?
     @State private var scale = 1.0
     /// A pinch under way: how much it has zoomed so far and where the fingers are, in view points. Until it ends the
     /// sheet is only scaled on screen (cheap and smooth); the real zoom is applied once, when the fingers lift.
@@ -318,6 +390,14 @@ private struct SpaceCanvasView: View {
             .padding(.bottom, 18)
         }
         .sheet(item: Binding(get: { readingPost.map(OpenedPost.init) }, set: { readingPost = $0?.id })) { PieceSheet(id: $0.id) }
+        .sheet(item: Binding(get: { openingTable.map(OpenedPost.init) }, set: { openingTable = $0?.id })) { opened in
+            if let block = model.spaceBlocks[space.id]?.first(where: { $0.id == opened.id }) { TableSheet(block: block, space: space) }
+        }
+        .sheet(item: $openingRow) { opened in
+            if let block = model.spaceBlocks[space.id]?.first(where: { $0.id == opened.blockID }) {
+                CardSheet(block: block, rowID: opened.rowID, editOptions: { _ in })
+            }
+        }
         .fileImporter(isPresented: $pickingImage, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
             for (i, file) in ((try? result.get()) ?? []).prefix(10).enumerated() {
                 addImage(from: file, at: (viewCentre.x + Double(i) * 30, viewCentre.y + Double(i) * 30))
@@ -351,6 +431,16 @@ private struct SpaceCanvasView: View {
         Divider()
         Button("Link…", systemImage: "link") { linkSpot = spot }
         Button("Picture…", systemImage: "photo") { pickingImage = true }
+        let tables = (model.spaceBlocks[space.id] ?? []).filter { block in
+            block.kind == .table && !nodes.contains { $0.kind == .block && $0.ref == block.id }
+        }
+        if !tables.isEmpty {
+            Menu("Add from Page", systemImage: "tablecells") {
+                ForEach(tables) { block in
+                    Button((block.data.text ?? "").isEmpty ? "Untitled table" : block.data.text!) { Task { await model.showOnCanvas(block, in: space) } }
+                }
+            }
+        }
         Button("Heading", systemImage: "textformat") {
             Task { let node = await model.addMark(.heading, in: space, at: spot); selected = node.id; editing = node.id }
         }
@@ -371,6 +461,24 @@ private struct SpaceCanvasView: View {
         case .post: model.content.first { $0.id == node.ref && $0.status != .archived }.map(CardContent.post)
         case .heading, .section: .mark(node.label ?? "")
         case .link: node.url.map { CardContent.link(url: $0, title: node.label ?? "") }
+        case .block:
+            model.spaceBlocks[space.id]?.first { $0.id == node.ref && $0.kind == .table }.map { block in
+                let rows = model.tableRows[block.id]?.count ?? 0
+                let board = block.data.views?.first { $0.id == block.data.activeView }?.kind == .board
+                return CardContent.table(block: block, detail: "\(board ? "Board" : "Table") · \(rows) \(rows == 1 ? "row" : "rows")")
+            }
+        case .card:
+            // label holds the row's table; the row shows its first text column, and its first category as the detail.
+            (node.label.flatMap { id in model.spaceBlocks[space.id]?.first { $0.id == id } }).flatMap { block in
+                model.tableRows[block.id]?.first { $0.id == node.ref }.map { row in
+                    let columns = block.data.columns ?? []
+                    let title = columns.first { $0.kind == .text }.map { SpaceTable.display(row, $0) } ?? ""
+                    let chip = columns.first { $0.kind == .category }.map { SpaceTable.display(row, $0) } ?? ""
+                    let table = (block.data.text ?? "").isEmpty ? "Table" : block.data.text!
+                    return CardContent.row(blockID: block.id, rowID: row.id, title: title.isEmpty ? "Untitled" : title,
+                                           detail: chip.isEmpty ? table : "\(table) · \(chip)")
+                }
+            }
         }
     }
 
@@ -444,6 +552,12 @@ private struct SpaceCanvasView: View {
     private func edit(_ node: SpaceNode) {
         guard node.kind != .project, node.kind != .image else { return }
         guard node.kind != .post else { readingPost = node.ref; return }
+        // A page's table or one of its rows opens in place, over the canvas (it's the page's data, not a canvas copy).
+        switch content(of: node) {
+        case .table(let block, _): openingTable = block.id; return
+        case .row(let blockID, let rowID, _, _): openingRow = OpenedRow(blockID: blockID, rowID: rowID); return
+        default: break
+        }
         if draft != nil { finishDraft() }
         selected = node.id
         editing = node.id
@@ -514,6 +628,8 @@ private struct SpaceCanvasView: View {
             []
         case .link:
             [Help(title: "What's This About?", symbol: "text.magnifyingglass", prompt: "From its title and address, what is this link likely about, and how could it help this Space? Two short lines.")]
+        case .block, .card:
+            [Help(title: "What Stands Out?", symbol: "text.magnifyingglass", prompt: "Look at this and tell me in 3 short lines what stands out and what to do next.")]
         }
     }
 
@@ -666,6 +782,10 @@ private struct SpaceCanvasView: View {
                 NSPasteboard.general.setString(url, forType: .string)
             }
             Button("Edit Title") { edit(node) }
+        case .table(let block, _):
+            Button("Open Table") { openingTable = block.id }
+        case .row(let blockID, let rowID, _, _):
+            Button("Open Card") { openingRow = OpenedRow(blockID: blockID, rowID: rowID) }
         case nil:
             EmptyView()
         }
@@ -721,6 +841,8 @@ private struct SpaceCanvasView: View {
         case .post(let post): post.hook.isEmpty ? post.idea : post.hook
         case .mark(let label): label
         case .link(let url, let title): title.isEmpty ? (URL(string: url)?.host() ?? url) : title
+        case .table(let block, _): (block.data.text ?? "").isEmpty ? "Table" : block.data.text!
+        case .row(_, _, let title, _): title
         case nil: ""
         }
     }
@@ -1005,6 +1127,13 @@ private struct SpaceCanvasView: View {
             case .link(let url, let title):
                 names[node.id] = title.isEmpty ? url : title
                 lines.append("Link: \(title.isEmpty ? url : "\(title) (\(url))")")
+            case .table(let block, let detail):
+                let title = (block.data.text ?? "").isEmpty ? "Table" : block.data.text!
+                names[node.id] = title
+                lines.append("Table \"\(title)\": \(detail)")
+            case .row(_, _, let title, let detail):
+                names[node.id] = title
+                lines.append("Row: \(title) (\(detail))")
             case .mark(let label):
                 names[node.id] = label
                 if node.kind == .section {
@@ -1147,6 +1276,12 @@ private struct CanvasCard: View {
             .accessibilityLabel("Mark \(reminder.title) done")
         case .image, .mark:
             EmptyView()
+        case .table, .row:
+            Image(systemName: node.kind == .block ? "tablecells" : "rectangle.portrait.on.rectangle.portrait")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 36, height: 36)
+                .background(tint.opacity(0.14), in: .rect(cornerRadius: 10, style: .continuous))
         case .link:
             Image(systemName: "link")
                 .font(.title3.weight(.semibold))
@@ -1279,7 +1414,7 @@ private struct CanvasCard: View {
         case .project: space.dueAt
         case .item(let item): item.dueAt
         case .reminder(let reminder): reminder.due
-        case .image, .post, .mark, .link: nil
+        case .image, .post, .mark, .link, .table, .row: nil
         }
     }
 
@@ -1294,6 +1429,8 @@ private struct CanvasCard: View {
         case .post(let post): post.hook.isEmpty ? post.idea : post.hook
         case .mark(let label): label
         case .link(let url, let title): title.isEmpty ? (URL(string: url)?.host() ?? url) : title
+        case .table(let block, _): (block.data.text ?? "").isEmpty ? "Table" : block.data.text!
+        case .row(_, _, let title, _): title
         }
     }
 
@@ -1307,6 +1444,7 @@ private struct CanvasCard: View {
         case .reminder: return "Reminder\(when)"
         case .image, .mark: return ""
         case .link(let url, _): return URL(string: url)?.host().map { $0.replacingOccurrences(of: "www.", with: "") } ?? "Link"
+        case .table(_, let detail), .row(_, _, _, let detail): return detail
         case .post(let post):
             return "\(post.platform.name) · \(StatusChip.name(post.status))\(post.plannedFor.map { " · \(HabitDay.label($0))" } ?? "")"
         }
@@ -1326,13 +1464,14 @@ private struct CanvasCard: View {
         case .image, .post: break
         case .mark(let label): title = label
         case .link(_, let label): title = label
+        case .table, .row: break
         }
     }
 
     private func commit() {
         let newTitle = title.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         switch content {
-        case .project, .image, .post: break
+        case .project, .image, .post, .table, .row: break
         case .mark(let label), .link(_, let label):
             if !newTitle.isEmpty, newTitle != label { model.relabel(node, to: newTitle) }
         case .item(let item):
@@ -1444,6 +1583,8 @@ private struct DraftCard: View {
         case .heading: "Heading"
         case .section: "Section"
         case .link: "Link"
+        case .block: "Table"
+        case .card: "Row"
         }
     }
 
@@ -1458,6 +1599,8 @@ private struct DraftCard: View {
         case .heading: "textformat"
         case .section: "rectangle.dashed"
         case .link: "link"
+        case .block: "tablecells"
+        case .card: "rectangle.portrait.on.rectangle.portrait"
         }
     }
 
@@ -1466,7 +1609,7 @@ private struct DraftCard: View {
         case .task: "New task, e.g. “Draft homepage friday”"
         case .note: "Sticky note"
         case .reminder: "Remind me, e.g. “Call the printer friday 10am”"
-        case .project, .image, .heading, .section, .link: ""
+        case .project, .image, .heading, .section, .link, .block, .card: ""
         case .post: "What's the post about?"
         }
     }

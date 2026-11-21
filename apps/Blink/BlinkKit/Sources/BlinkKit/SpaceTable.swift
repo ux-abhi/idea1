@@ -35,7 +35,7 @@ public struct SpaceColumn: Codable, Equatable, Hashable, Identifiable, Sendable 
 
 /// One choice of a Category column, with an Apple system colour by name.
 public struct SpaceOption: Codable, Equatable, Hashable, Identifiable, Sendable {
-    public static let colors = ["gray", "brown", "orange", "yellow", "green", "teal", "blue", "indigo", "pink", "red"]
+    public static let colors = ["gray", "brown", "red", "orange", "yellow", "green", "mint", "teal", "cyan", "blue", "indigo", "purple", "pink"]
     public let id: String
     public var name: String
     public var color: String
@@ -58,6 +58,13 @@ public struct SpaceTableView: Codable, Equatable, Hashable, Identifiable, Sendab
     public var sortAscending: Bool
     /// Columns this view doesn't show (they're still there, and still in other views and on the card).
     public var hidden: [String]?
+    /// Board look: card size ("small", "medium", "large"), coloured columns, notes on cards, empty columns, and the
+    /// board columns (options) this view hides. Nil means the default.
+    public var cardSize: String?
+    public var colorColumns: Bool?
+    public var showNotes: Bool?
+    public var hideEmpty: Bool?
+    public var hiddenGroups: [String]?
 
     public init(id: String = String(UUID().uuidString.lowercased().prefix(8)), name: String, kind: Kind, groupBy: String? = nil,
                 filters: [RowFilter] = [], sortColumn: String? = nil, sortAscending: Bool = true) {
@@ -256,5 +263,85 @@ public enum SpaceTable {
             found.append((row.id, ContactList.Contact(email: address, name: String(name.prefix(200)), fields: fields)))
         }
         return (found, problems)
+    }
+}
+
+
+/// A change to a table the AI proposed ("make this a content calendar"); shown to the owner, applied only on Apply.
+public struct TablePlan: Decodable, Equatable, Sendable {
+    public struct NewColumn: Decodable, Equatable, Sendable { public let name: String; public let kind: String; public let options: [String] }
+    public struct NewOptions: Decodable, Equatable, Sendable { public let column: String; public let options: [String] }
+    public struct Rename: Decodable, Equatable, Sendable { public let from: String; public let to: String }
+    public struct Filter: Decodable, Equatable, Sendable { public let column: String; public let op: String; public let value: String }
+    public struct View: Decodable, Equatable, Sendable {
+        public let kind: String; public let name: String; public let groupBy: String?
+        public let filters: [Filter]; public let sortColumn: String?; public let sortAscending: Bool
+    }
+    public let summary: String
+    public let addColumns: [NewColumn]
+    public let addOptions: [NewOptions]
+    public let renames: [Rename]
+    public let view: View?
+
+    /// The table's columns after this plan: renames, new options (coloured in turn), new columns. Nothing is removed.
+    public func applied(to columns: [SpaceColumn]) -> [SpaceColumn] {
+        var result = columns
+        let color = { (i: Int) in SpaceOption.colors[(i + 4) % SpaceOption.colors.count] }
+        for rename in renames {
+            if let i = result.firstIndex(where: { $0.name.caseInsensitiveCompare(rename.from) == .orderedSame }) { result[i].name = String(rename.to.prefix(60)) }
+        }
+        for add in addOptions {
+            guard let i = result.firstIndex(where: { $0.kind == .category && $0.name.caseInsensitiveCompare(add.column) == .orderedSame }) else { continue }
+            var options = result[i].options ?? []
+            for name in add.options where !options.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+                options.append(SpaceOption(name: String(name.prefix(40)), color: color(options.count)))
+            }
+            result[i].options = options
+        }
+        for add in addColumns where !result.contains(where: { $0.name.caseInsensitiveCompare(add.name) == .orderedSame }) {
+            let kind = SpaceColumn.Kind(rawValue: add.kind) ?? .text
+            let options = kind == .category ? add.options.enumerated().map { SpaceOption(name: String($1.prefix(40)), color: color($0)) } : nil
+            result.append(SpaceColumn(name: String(add.name.prefix(60)), kind: kind, options: options))
+        }
+        return Array(result.prefix(SpaceTable.columnLimit))
+    }
+
+    /// The proposed view, with column names turned into this table's ids (a filter on a Category matches its option).
+    public func view(in columns: [SpaceColumn]) -> SpaceTableView? {
+        guard let view else { return nil }
+        let find = { (name: String?) in name.flatMap { n in columns.first { $0.name.caseInsensitiveCompare(n) == .orderedSame } } }
+        let filters = view.filters.compactMap { f -> RowFilter? in
+            guard let column = find(f.column), let op = RowFilter.Op(rawValue: f.op) else { return nil }
+            let value = column.kind == .category ? column.options?.first { $0.name.caseInsensitiveCompare(f.value) == .orderedSame }?.id ?? "" : f.value
+            return RowFilter(column: column.id, op: op, value: value)
+        }
+        return SpaceTableView(name: String(view.name.prefix(40)), kind: view.kind == "board" ? .board : .table,
+                              groupBy: find(view.groupBy)?.id, filters: filters, sortColumn: find(view.sortColumn)?.id, sortAscending: view.sortAscending)
+    }
+}
+
+extension SpaceTable {
+    /// AI rows (column name → value) as cells (column id → value); a Category value becomes its option, adding the
+    /// option when it's new. Returns the cells and the columns with any options added.
+    public static func cells(from rows: [[String: String]], columns: [SpaceColumn]) -> (cells: [[String: String]], columns: [SpaceColumn]) {
+        var columns = columns
+        let cells = rows.map { row -> [String: String] in
+            var out: [String: String] = [:]
+            for (name, value) in row {
+                guard let i = columns.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else { continue }
+                if columns[i].kind == .category {
+                    var options = columns[i].options ?? []
+                    if let option = options.first(where: { $0.name.caseInsensitiveCompare(value) == .orderedSame }) { out[columns[i].id] = option.id; continue }
+                    let option = SpaceOption(name: String(value.prefix(40)), color: SpaceOption.colors[(options.count + 4) % SpaceOption.colors.count])
+                    options.append(option)
+                    columns[i].options = options
+                    out[columns[i].id] = option.id
+                } else {
+                    out[columns[i].id] = String(value.prefix(cellLimit))
+                }
+            }
+            return out
+        }
+        return (cells, columns)
     }
 }

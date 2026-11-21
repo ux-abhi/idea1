@@ -12,6 +12,12 @@ struct SpacePageView: View {
     let space: Space
     let openNote: (String) -> Void
     @State private var showPanel = false
+    /// The block clicked last: the bottom bar's AI works on it.
+    @State private var selected: String?
+    @State private var fullWidth = false
+    /// The page's width when it isn't full width: dragged at its edge, remembered per Space.
+    @State private var pageWidth: Double = 720
+    @State private var dragStart: Double?
     @State private var openPost: String?
 
     var body: some View {
@@ -39,23 +45,42 @@ struct SpacePageView: View {
                             .foregroundStyle(.tertiary)
                     }
                     ForEach(blocks) { block in
-                        BlockRow(block: block, space: current, openNote: openNote, openPost: { openPost = $0 })
+                        BlockRow(block: block, space: current, openNote: openNote, openPost: { openPost = $0 },
+                                 selected: selected == block.id, select: { selected = block.id })
                     }
                     AddBlockLine(space: current, after: blocks.last)
                     Spacer(minLength: 140)
                 }
-                .frame(maxWidth: 720, alignment: .leading)
+                .frame(maxWidth: fullWidth ? .infinity : pageWidth, alignment: .leading)
+                .overlay(alignment: .trailing) { if !fullWidth { widthHandle } }
                 .padding(.horizontal, 56)
                 .frame(maxWidth: .infinity)
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
+        .safeAreaInset(edge: .bottom) { PageAIBar(space: current, block: blocks.first { $0.id == selected }, clear: { selected = nil }) }
+        .onExitCommand { selected = nil }
         .overlay(alignment: .topTrailing) {
-            Button("Blocks", systemImage: showPanel ? "sidebar.right" : "plus") { showPanel.toggle() }
+            HStack(spacing: 8) {
+                // Full width: boards and tables use the whole window (remembered per Space).
+                Button(fullWidth ? "Narrow Page" : "Full Width", systemImage: fullWidth ? "arrow.right.and.line.vertical.and.arrow.left" : "arrow.left.and.right") {
+                    fullWidth.toggle()
+                    UserDefaults.standard.set(fullWidth, forKey: "space.fullWidth.\(space.id)")
+                }
                 .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.primary)
                 .frame(width: 30, height: 30).background(.regularMaterial, in: .circle)
-                .help(showPanel ? "Hide the blocks panel" : "Add a block")
-                .padding(14)
+                .help(fullWidth ? "Narrow page" : "Full width")
+                Button("Blocks", systemImage: showPanel ? "sidebar.right" : "plus") { showPanel.toggle() }
+                    .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.primary)
+                    .frame(width: 30, height: 30).background(.regularMaterial, in: .circle)
+                    .help(showPanel ? "Hide the blocks panel" : "Add a block")
+            }
+            .padding(14)
+        }
+        .task(id: space.id) {
+            fullWidth = UserDefaults.standard.bool(forKey: "space.fullWidth.\(space.id)")
+            let saved = UserDefaults.standard.double(forKey: "space.pageWidth.\(space.id)")
+            pageWidth = saved > 0 ? saved : 720
         }
         .inspector(isPresented: $showPanel) {
             BlockPanel { kind in Task { await model.addBlock(kind, in: current) } }
@@ -64,6 +89,154 @@ struct SpacePageView: View {
         .task(id: space.id) { await model.loadBlocks(space) }
         .sheet(isPresented: Binding(get: { openPost != nil }, set: { if !$0 { openPost = nil } })) {
             if let openPost { PieceSheet(id: openPost) }
+        }
+    }
+}
+
+extension SpacePageView {
+    /// A slim bar at the page's right edge: drag it to make the page wider or narrower (it stays centred).
+    var widthHandle: some View {
+        WidthHandle(width: $pageWidth, dragStart: $dragStart) {
+            UserDefaults.standard.set(pageWidth, forKey: "space.pageWidth.\(space.id)")
+        }
+        .offset(x: 30)
+    }
+}
+
+/// The drag bar itself: shows on hover, a resize cursor, and the width while dragging.
+private struct WidthHandle: View {
+    @Binding var width: Double
+    @Binding var dragStart: Double?
+    let done: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Capsule()
+            .fill(hovering || dragStart != nil ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.0001))
+            .frame(width: 5, height: 80)
+            .frame(width: 20, height: 200)
+            .contentShape(.rect)
+            .onHover { inside in
+                guard inside != hovering else { return }
+                hovering = inside
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .onDisappear { if hovering { NSCursor.pop(); hovering = false } } // never leave the resize cursor behind
+            .gesture(DragGesture(minimumDistance: 1)
+                .onChanged { drag in
+                    let start = dragStart ?? width
+                    dragStart = start
+                    // Centred page: one edge moving by x makes it 2x wider.
+                    width = min(max(start + drag.translation.width * 2, 560), 2400)
+                }
+                .onEnded { _ in dragStart = nil; done() })
+            .help("Drag to make the page wider or narrower")
+            .accessibilityElement()
+            .accessibilityLabel("Page width")
+            .accessibilityValue("\(Int(width)) points")
+            .accessibilityAdjustableAction { direction in
+                width = min(max(width + (direction == .increment ? 80 : -80), 560), 2400)
+                done()
+            }
+    }
+}
+
+/// The bar at the bottom of a Space page, like the one on every page: it works on the selected block. A table or board
+/// takes a change ("make this a content calendar") or a pasted list (rows); text takes an edit; with nothing selected
+/// it's a question for Blink.
+private struct PageAIBar: View {
+    @Environment(AppModel.self) private var model
+    let space: Space
+    let block: SpaceBlock?
+    let clear: () -> Void
+    @State private var text = ""
+    @State private var working = false
+    @AppStorage("blinkPanel") private var showPanel = true
+
+    private var isText: Bool { block?.kind == .text || block?.kind == .heading }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let block {
+                Button(action: clear) {
+                    HStack(spacing: 4) {
+                        Image(systemName: block.kind.symbol)
+                        Text(block.kind == .table ? ((block.data.text ?? "").isEmpty ? "Table" : block.data.text!) : block.kind.title).lineLimit(1)
+                        Image(systemName: "xmark").font(.caption2)
+                    }
+                    .font(.callout).padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.accentColor.opacity(0.15), in: .capsule)
+                }
+                .buttonStyle(.plain).help("Deselect (Esc)")
+            } else {
+                Image(systemName: "sparkles").foregroundStyle(.secondary).frame(width: 20).accessibilityHidden(true)
+            }
+            if isText {
+                ForEach(BlinkServer.TextTask.allCases, id: \.self) { task in
+                    Button(task.title.replacingOccurrences(of: " & Grammar", with: "")) { edit(task) }.disabled(working)
+                }
+                Spacer()
+                if working { ProgressView().controlSize(.small) }
+            } else {
+                TextField(placeholder, text: $text, axis: .vertical).textFieldStyle(.plain).lineLimit(1...4).onSubmit(submit)
+                if working || (block == nil && model.thinking) {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button(action: submit) { Image(systemName: "arrow.up.circle.fill").font(.title2) }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(text.trimmingCharacters(in: .whitespaces).isEmpty ? Color.secondary : Color.accentColor)
+                        .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .accessibilityLabel("Send")
+                }
+            }
+        }
+        .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 8)
+        .frame(maxWidth: 680)
+        .glassEffect(.regular, in: .capsule)
+        .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+        .padding(.horizontal, 24).padding(.bottom, 16)
+    }
+
+    private var placeholder: String {
+        switch block?.kind {
+        case .table: "Ask AI to change this table, or paste a list to add rows"
+        case nil: "Click a block to use AI on it, or ask \(AssistantName.current) anything"
+        default: "Ask \(AssistantName.current) anything"
+        }
+    }
+
+    private func submit() {
+        let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { return }
+        text = ""
+        if let block, block.kind == .table {
+            // A pasted list (several lines, or long) becomes rows; a sentence is a change to the table.
+            model.tableAIRequest = .init(blockID: block.id, text: typed, paste: typed.contains("\n") || typed.count > 200)
+        } else {
+            showPanel = true
+            Task { await model.ask(String(typed.prefix(1990))) }
+        }
+    }
+
+    /// Fix, shorter, clearer or summarise on the selected text block, with Undo.
+    private func edit(_ task: BlinkServer.TextTask) {
+        guard let server = model.server, let block, let before = block.data.text, !before.isEmpty else { return }
+        working = true
+        Task {
+            defer { working = false }
+            do {
+                let after = try await server.edit(before, task: task)
+                var changed = block
+                changed.data.text = String(after.prefix(10_000))
+                await model.update(changed)
+                model.offerUndo("Edited the text") { [weak model] in
+                    var back = changed
+                    back.data.text = before
+                    await model?.update(back)
+                }
+            } catch {
+                model.announce(error.localizedDescription, failed: true)
+            }
         }
     }
 }
@@ -209,6 +382,8 @@ private struct BlockRow: View {
     let space: Space
     let openNote: (String) -> Void
     let openPost: (String) -> Void
+    var selected = false
+    var select: () -> Void = {}
     @State private var hovering = false
     @State private var importing = false
 
@@ -229,14 +404,24 @@ private struct BlockRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        Group {
-            if block.kind == .heading || block.kind == .text { content } else { content.contextMenu { options } }
-        }
-        .overlay(alignment: .topTrailing) {
-            Menu { options } label: { Image(systemName: "ellipsis").foregroundStyle(.secondary) }
+        // The ⋯ sits in the margin but inside the row, so moving to it keeps the row hovered.
+        HStack(alignment: .top, spacing: 6) {
+            Group {
+                if block.kind == .heading || block.kind == .text { content } else { content.contextMenu { options } }
+            }
+            // A click anywhere in the block selects it (and still edits): the bottom bar's AI then works on it.
+            .simultaneousGesture(TapGesture().onEnded { select() })
+            .overlay {
+                if selected {
+                    // Only a light outline, never a fill: the content stays exactly as it is. The AI bar's chip names it too.
+                    RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1)
+                        .padding(-6).allowsHitTesting(false)
+                }
+            }
+            Menu { options } label: { Image(systemName: "ellipsis").foregroundStyle(.secondary).frame(width: 24, height: 24).contentShape(.rect) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .offset(x: 34, y: block.kind == .heading ? 10 : 4)
-                .opacity(hovering ? 1 : 0)
+                .padding(.top, block.kind == .heading ? 8 : 2)
+                .opacity(hovering || selected ? 1 : 0)
                 .help("Block options")
                 .accessibilityLabel("\(block.kind.title) options")
         }
@@ -246,6 +431,10 @@ private struct BlockRow: View {
     @ViewBuilder
     private var options: some View {
         if block.kind == .table {
+            Button("Show on Canvas", systemImage: "rectangle.on.rectangle") { Task { await model.showOnCanvas(block, in: space) } }
+            Button("Ask AI to Change This Table…", systemImage: "wand.and.stars") { model.tableAIRequest = .init(blockID: block.id, text: "", paste: false) }
+            Button("Paste Text as Rows…", systemImage: "text.badge.plus") { model.tableAIRequest = .init(blockID: block.id, text: "", paste: true) }
+            Divider()
             Button("Import CSV…", systemImage: "square.and.arrow.down") { importing = true }
             Button("Copy as CSV", systemImage: "doc.on.doc") {
                 NSPasteboard.general.clearContents()

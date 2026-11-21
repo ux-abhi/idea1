@@ -16,6 +16,7 @@ extension Color {
         case "mint": .mint
         case "teal": .teal
         case "indigo": .indigo
+        case "cyan": .cyan
         case "gray": .gray
         case "brown": .brown
         default: .blue

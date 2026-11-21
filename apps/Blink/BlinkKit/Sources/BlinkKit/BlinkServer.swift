@@ -971,6 +971,36 @@ public final class BlinkServer: Sendable {
 
     // MARK: Space tables
 
+    private struct TableColumnInfo: Encodable { let name: String; let kind: String; let options: [String] }
+    private struct TableAsk: Encodable { let action: String; let ask: String; let text: String; let columns: [TableColumnInfo] }
+
+    /// The AI's proposed change to a table, from a sentence ("make this a content calendar"); nothing is applied here.
+    public func planTable(_ ask: String, columns: [SpaceColumn]) async throws -> TablePlan {
+        struct Reply: Decodable { let plan: TablePlan }
+        let reply: Reply = try await tableAction(TableAsk(action: "plan", ask: ask, text: "", columns: info(columns)))
+        return reply.plan
+    }
+
+    /// Pasted text turned into rows (column name → value) by the AI, for the owner to look at before adding them.
+    public func rows(fromText text: String, columns: [SpaceColumn]) async throws -> [[String: String]] {
+        struct Reply: Decodable { let rows: [[String: String]] }
+        let reply: Reply = try await tableAction(TableAsk(action: "rows", ask: "", text: String(text.prefix(20_000)), columns: info(columns)))
+        return reply.rows
+    }
+
+    private func info(_ columns: [SpaceColumn]) -> [TableColumnInfo] {
+        columns.map { TableColumnInfo(name: $0.name, kind: $0.kind.rawValue, options: ($0.options ?? []).map(\.name)) }
+    }
+
+    private func tableAction<Reply: Decodable>(_ body: TableAsk) async throws -> Reply {
+        do {
+            return try await client.functions.invoke("table", options: .init(body: body))
+        } catch let FunctionsError.httpError(code, data) {
+            if code == 404 { throw ChatProblem(message: "Update your server (Settings › Server) to use AI on tables.") }
+            throw ChatProblem(message: (try? JSONDecoder().decode(MailError.self, from: data))?.error ?? "The AI couldn't do that. Try again.")
+        }
+    }
+
     public func rows(of blockID: String) async throws -> [SpaceRow] {
         try await client.from("space_table_row").select("id, block_id, position, cells").eq("block_id", value: blockID)
             .order("position").limit(SpaceTable.rowLimit).execute().value
@@ -1433,24 +1463,25 @@ public final class BlinkServer: Sendable {
 
     /// Dictation: Groq's Whisper hears the recording (AAC), or `text` the Mac already heard is sent instead; the voice
     /// model tidies it. `language` is the BCP 47 tag picked in Settings ("hi-IN"). Empty when nothing was said.
-    public func dictate(_ audio: Data?, text: String? = nil, language: String) async throws -> String {
+    /// `words`: the owner's names and terms ("Pexilim, Figma"), so speech-to-text spells them right.
+    public func dictate(_ audio: Data?, text: String? = nil, language: String, words: String = "") async throws -> String {
         struct Reply: Decodable { let text: String }
-        let reply: Reply = try await voice(audio, text: text, language: language, mode: "type")
+        let reply: Reply = try await voice(audio, text: text, language: language, mode: "type", words: words)
         return reply.text
     }
 
     /// A voice command ("open Chrome and play Alphas") turned into actions by the voice model.
-    public func command(_ audio: Data?, text: String? = nil, language: String) async throws -> VoiceCommand {
-        try await voice(audio, text: text, language: language, mode: "command")
+    public func command(_ audio: Data?, text: String? = nil, language: String, words: String = "") async throws -> VoiceCommand {
+        try await voice(audio, text: text, language: language, mode: "command", words: words)
     }
 
-    private struct VoiceBody: Encodable { let audio: String?; let text: String?; let language: String; let mode: String }
+    private struct VoiceBody: Encodable { let audio: String?; let text: String?; let language: String; let mode: String; let words: String }
     private struct VoiceError: Decodable { let error: String }
 
-    private func voice<Reply: Decodable>(_ audio: Data?, text: String?, language: String, mode: String) async throws -> Reply {
+    private func voice<Reply: Decodable>(_ audio: Data?, text: String?, language: String, mode: String, words: String) async throws -> Reply {
         do {
             return try await client.functions.invoke("dictate", options: .init(body: VoiceBody(
-                audio: audio?.base64EncodedString(), text: text, language: language, mode: mode)))
+                audio: audio?.base64EncodedString(), text: text, language: language, mode: mode, words: String(words.prefix(1500)))))
         } catch let FunctionsError.httpError(_, data) {
             throw ChatProblem(message: (try? JSONDecoder().decode(VoiceError.self, from: data))?.error ?? "Couldn't hear that.")
         }
