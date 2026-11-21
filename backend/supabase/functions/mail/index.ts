@@ -10,6 +10,8 @@ import { Imap, quote } from "./imap.ts";
 import { buildDraft, uidWindow, parseAddress, parseHeaders, parseTriage, plainText, replyFrom, replySubject, ruleVerdict, type SenderRule, settle, splitResort } from "./message.ts";
 import { sendMail } from "./smtp.ts";
 import { type Mailer, sendDue, withTimeout } from "./outbox.ts";
+import { BULK_SCHEMA, BULK_SYSTEM, bulkPrompt, checkedFiles, domainOf, historyPattern, parseWritten, WRITE_BATCH } from "./bulk.ts";
+import { type Card, CARD_SCHEMA, CARD_SYSTEM, fetchPage, pageText, parseCard, siteFor } from "./research.ts";
 import { capProblem, compatible, cost, keepsSchema, FREE_MODELS, lastMonth, MODELS, type Model, pickModel } from "../_shared/models.ts";
 import { alreadyRecorded, CATEGORIES, localDay } from "../_shared/spend.ts";
 import { secret } from "../_shared/secrets.ts";
@@ -421,6 +423,146 @@ async function read(admin: SupabaseClient, owner: string, id: string): Promise<{
   }
 }
 
+/** Whether a domain takes mail at all (has an MX record); null when the runtime can't look it up, so nothing is blocked. */
+async function takesMail(domain: string): Promise<boolean | null> {
+  try {
+    return (await Deno.resolveDns(domain, "MX")).length > 0;
+  } catch (error) {
+    return error instanceof Deno.errors.NotFound ? false : null;
+  }
+}
+
+/** Bulk Mail (ADR-0003): writes one personal mail for each of up to WRITE_BATCH contacts of the owner's campaign.
+ *  Contacts whose domain takes no mail are flagged and skipped, so no money is spent on a mail that would bounce. */
+async function bulkWrite(admin: SupabaseClient, db: SupabaseClient, owner: string, campaignID: string, ids: string[], note: string) {
+  const { data: campaign } = await admin.from("mail_campaign").select("title, context, goal, tone, research, attachments").eq("id", campaignID).eq("owner_id", owner).maybeSingle();
+  if (!campaign) throw new Error("That bulk mail isn't in Blink anymore.");
+  const { data: rows } = await admin.from("mail_recipient").select("id, email, name, fields, card, status, flags")
+    .eq("campaign_id", campaignID).eq("owner_id", owner).in("id", ids.slice(0, WRITE_BATCH));
+  // Never rewrite a mail that's already approved, in Drafts or sent.
+  const todo = (rows ?? []).filter((r) => ["new", "written", "skipped"].includes(r.status));
+  if (!todo.length) return { written: 0, skipped: 0 };
+
+  const [{ data: profile }, { data: voice }, { data: spend }] = await Promise.all([
+    db.from("profile").select("model_prefs, settings").maybeSingle(),
+    db.from("voice_profile").select("notes, brief").maybeSingle(),
+    db.from("model_usage").select("model, cost_usd, at").gte("at", lastMonth()).gt("cost_usd", 0).not("model", "in", FREE_MODELS),
+  ]);
+  const model = pickModel(profile?.model_prefs, "chat", Deno.env.get("BLINK_CHAT_MODEL"));
+  const overCap = capProblem(model, profile?.settings, spend ?? []);
+  if (overCap) throw new Error(overCap);
+
+  const reader = pickModel(profile?.model_prefs, "text", Deno.env.get("GROQ_TEXT_MODEL") ?? "openai/gpt-oss-20b");
+  // One read per company site in this batch, however many of its people are on the list.
+  const cards = new Map<string, Promise<Card | null>>();
+  const cardFor = (r: { email: string; fields: Record<string, unknown> }) => {
+    const site = campaign.research ? siteFor(r.email, r.fields ?? {}) : null;
+    if (!site) return Promise.resolve(null);
+    if (!cards.has(site)) cards.set(site, research(admin, owner, site, reader, profile?.settings, spend ?? []));
+    return cards.get(site)!;
+  };
+
+  const domains = [...new Set(todo.map((r) => domainOf(r.email)))];
+  const mailable = new Map(await Promise.all(domains.map(async (d) => [d, await takesMail(d)] as const)));
+  let written = 0, skipped = 0;
+  // Three at a time: quick on Groq, and gentle on a paid model's rate limit.
+  for (let i = 0; i < todo.length; i += 3) {
+    await Promise.all(todo.slice(i, i + 3).map(async (r) => {
+      const flags = (r.flags as string[]).filter((f) => f !== "no_mail_server");
+      if (mailable.get(domainOf(r.email)) === false) {
+        skipped++;
+        await admin.from("mail_recipient").update({ flags: [...flags, "no_mail_server"], status: "skipped" }).eq("id", r.id);
+        return;
+      }
+      try {
+        const { data: history } = await admin.from("email_msg").select("subject, summary, received_at").eq("owner_id", owner)
+          .ilike("from_addr", historyPattern(r.email)).order("received_at", { ascending: false }).limit(5);
+        const card = r.card && Object.keys(r.card).length ? r.card : await cardFor(r);
+        const prompt = bulkPrompt(campaign, { ...r, card }, { notes: String(voice?.notes ?? ""), brief: String(voice?.brief ?? "") }, history ?? [], note);
+        const result = await generate(model, BULK_SYSTEM, prompt, BULK_SCHEMA, "bulk_mail");
+        await admin.from("model_usage").insert({ owner_id: owner, feature: "mail.bulk", model: model.id,
+          input_tokens: result.inputTokens, output_tokens: result.outputTokens, cost_usd: cost(model, result.inputTokens, result.outputTokens) });
+        const mail = parseWritten(result.text);
+        if (!mail) throw new Error("The model didn't write this one. Try again.");
+        written++;
+        await admin.from("mail_recipient").update({ ...mail, card: card ?? {}, status: "written", error: null,
+          flags: history?.length ? [...flags.filter((f) => f !== "known"), "known"] : flags.filter((f) => f !== "known") }).eq("id", r.id);
+      } catch (error) {
+        await admin.from("mail_recipient").update({ error: error instanceof Error ? error.message.slice(0, 300) : "Couldn't write this one." }).eq("id", r.id);
+      }
+    }));
+  }
+  return { written, skipped, model: model.id };
+}
+
+/** A company's research card: from the 30-day cache, else read now from its home and about pages by a cheap model with
+ *  no tools. "Read and found nothing" is cached too, so a bare site isn't fetched again for every contact. Never throws:
+ *  a mail without research is still a mail. */
+async function research(admin: SupabaseClient, owner: string, site: string, model: Model, settings: unknown,
+                        spend: { model: string; cost_usd: number; at: string }[]): Promise<Card | null> {
+  const domain = new URL(site).hostname;
+  try {
+    const { data: cached } = await admin.from("mail_research").select("card, fetched_at").eq("owner_id", owner).eq("domain", domain).maybeSingle();
+    if (cached && Date.now() - new Date(cached.fetched_at).getTime() < 30 * 86_400_000) {
+      return Object.keys(cached.card ?? {}).length ? cached.card as Card : null;
+    }
+    if (capProblem(model, settings, spend)) return null;
+    const pages = (await Promise.all([site, new URL("/about", site).toString()].map((url) => fetchPage(url).catch(() => null))))
+      .filter((p): p is string => !!p).map((html) => pageText(html, 5000));
+    let card: Card | null = null;
+    if (pages.join(" ").length > 200) {
+      const result = await generate(model, CARD_SYSTEM, `<pages>${fence(pages)}</pages>`, CARD_SCHEMA, "research_card");
+      await admin.from("model_usage").insert({ owner_id: owner, feature: "mail.research", model: model.id,
+        input_tokens: result.inputTokens, output_tokens: result.outputTokens, cost_usd: cost(model, result.inputTokens, result.outputTokens) });
+      card = parseCard(result.text, site);
+    }
+    await admin.from("mail_research").upsert({ owner_id: owner, domain, card: card ?? {}, fetched_at: new Date().toISOString() }, { onConflict: "owner_id,domain" });
+    return card;
+  } catch (error) {
+    console.error("research", domain, error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+/** Bulk Mail step 1: every approved mail of a campaign goes into the account's Drafts folder (one login), where Apple
+ *  Mail can send it. Each row is marked as it lands, so a cut-off run never writes a draft twice. */
+async function bulkDrafts(admin: SupabaseClient, owner: string, campaignID: string) {
+  const { data: campaign } = await admin.from("mail_campaign").select("account, attachments").eq("id", campaignID).eq("owner_id", owner).maybeSingle();
+  if (!campaign) throw new Error("That bulk mail isn't in Blink anymore.");
+  const account = (await accounts()).find((a) => a.id === campaign.account);
+  if (!account) throw new Error("That mailbox isn't connected anymore. Pick another in the bulk mail's settings.");
+  const list = checkedFiles(campaign.attachments, owner);
+  if (typeof list === "string") throw new Error(list);
+  const files = await Promise.all(list.map(async (f) => {
+    const { data, error } = await admin.storage.from("files").download(f.path);
+    if (error || !data) throw new Error(`Couldn't read the attachment “${f.name}”. Attach it again.`);
+    return { name: f.name, type: f.type, data: new Uint8Array(await data.arrayBuffer()) };
+  }));
+  // With files each draft is big: fewer per run, so the upload fits in the time limit. The app asks again for the rest.
+  const { data: rows } = await admin.from("mail_recipient").select("id, email, subject, body")
+    .eq("campaign_id", campaignID).eq("owner_id", owner).eq("status", "approved").order("created_at").limit(files.length ? 8 : 50);
+  if (!rows?.length) return { saved: 0, left: 0 };
+  const imap = await open(account);
+  let saved = 0;
+  try {
+    const drafts = await imap.draftsMailbox();
+    for (const r of rows) {
+      const messageId = `<${crypto.randomUUID()}@${account.user.split("@")[1] || "blink.local"}>`;
+      await imap.append(drafts, buildDraft({ from: account.user, to: r.email, subject: r.subject, body: r.body, inReplyTo: "", messageId, fresh: true,
+        attachments: files }));
+      await admin.from("mail_recipient").update({ status: "in_drafts", message_id: messageId }).eq("id", r.id);
+      saved++;
+    }
+    await imap.logout();
+  } catch (error) {
+    imap.logout().catch(() => {});
+    if (!saved) throw error;
+  }
+  const { count } = await admin.from("mail_recipient").select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignID).eq("owner_id", owner).eq("status", "approved");
+  return { saved, left: count ?? 0 };
+}
+
 /** SMTP and the after-send tidy-up for the outbox, on this server's accounts (loaded once per request). */
 const mailerFor = (list: Account[]): Mailer => ({
   owned: (id) => {
@@ -507,6 +649,18 @@ Deno.serve(async (req) => {
       return json(200, await withTimeout(read(admin, user.id, body.id), 30_000, "The mail server didn't answer in time."));
     } catch (error) {
       return json(502, { error: error instanceof Error ? error.message.slice(0, 300) : "Couldn't open that email." });
+    }
+  }
+  if (body.action === "bulk.write" || body.action === "bulk.drafts") {
+    const uuid = /^[0-9a-f-]{36}$/i;
+    if (typeof body.campaign_id !== "string" || !uuid.test(body.campaign_id)) return json(400, { error: "campaign_id must be a bulk mail id." });
+    try {
+      if (body.action === "bulk.drafts") return json(200, await withTimeout(bulkDrafts(admin, user.id, body.campaign_id), 120_000, "The mail server didn't answer in time."));
+      const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string" && uuid.test(id)) : [];
+      if (!ids.length || ids.length > WRITE_BATCH) return json(400, { error: `ids must hold 1 to ${WRITE_BATCH} contact ids.` });
+      return json(200, await bulkWrite(admin, db, user.id, body.campaign_id, ids, typeof body.note === "string" ? body.note : ""));
+    } catch (error) {
+      return json(502, { error: error instanceof Error ? error.message.slice(0, 300) : "Bulk mail didn't work. Try again." });
     }
   }
   if (body.action === "draft") {

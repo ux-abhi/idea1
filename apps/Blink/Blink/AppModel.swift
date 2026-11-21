@@ -9,6 +9,7 @@ import UIKit
 #else
 import AppKit
 import LinkPresentation
+import PDFKit
 #endif
 
 /// First run → sign in → home, plus the app lock.
@@ -487,7 +488,7 @@ final class AppModel {
         content = []; voice = VoiceProfile(); contentProblem = nil
         ideas = []; questions = [:]; pageRead = nil; designed = []
         spends = []; budgets = []; accounts = []; income = []; incomePlans = []; captureTokens = []; moneyProblem = nil; pagePosts = []; socialAccounts = []
-        emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil
+        emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil; campaigns = []; bulkRecipients = [:]
         modelPrefs = [:]; modelProblem = nil; aiCaps = BlinkServer.AICaps(); capsLoaded = false; spaces = []; openPage = nil; keyStatus = nil
     }
 
@@ -2995,6 +2996,212 @@ final class AppModel {
         #endif
     }
 
+    // MARK: Bulk mail (ADR-0003)
+
+    private(set) var campaigns: [MailCampaign] = []
+    /// Each bulk mail's contacts and their mails.
+    private(set) var bulkRecipients: [String: [MailRecipient]] = [:]
+    /// What bulk mail is busy with ("Writing 10 of 30…"), for the progress line.
+    private(set) var bulkWorking: String?
+
+    /// Mailboxes Blink can write from: the ones the mail check has seen, in a fixed order.
+    var mailAccounts: [String] { ["gmail", "icloud", "uni"].filter { id in mailStates.contains { $0.account == id } } }
+
+    func loadCampaigns() async {
+        guard let server, email != nil, let list = try? await server.campaigns() else { return }
+        campaigns = list
+    }
+
+    func newCampaign(_ campaign: MailCampaign) async -> Bool {
+        guard let server else { return false }
+        do { try await server.save(campaign) } catch {
+            saveProblem = serverBehind ? "Update your server (Settings › Server) to use Bulk Mail." : "Couldn't create the bulk mail. Check your connection."
+            return false
+        }
+        campaigns.insert(campaign, at: 0)
+        bulkRecipients[campaign.id] = []
+        return true
+    }
+
+    func update(_ campaign: MailCampaign) async {
+        guard let server, let i = campaigns.firstIndex(where: { $0.id == campaign.id }), campaigns[i] != campaign else { return }
+        let before = campaigns[i]
+        campaigns[i] = campaign
+        do { try await server.save(campaign) } catch {
+            if let j = campaigns.firstIndex(where: { $0.id == campaign.id }) { campaigns[j] = before }
+            saveProblem = "Couldn't save the bulk mail. Check your connection."
+        }
+    }
+
+    /// Deletes the bulk mail and its contacts; drafts already in the mailbox stay there.
+    func delete(_ campaign: MailCampaign) async {
+        guard let server else { return }
+        do { try await server.delete(campaign) } catch {
+            saveProblem = "Couldn't delete the bulk mail. Check your connection."
+            return
+        }
+        campaigns.removeAll { $0.id == campaign.id }
+        bulkRecipients[campaign.id] = nil
+    }
+
+    func loadRecipients(_ campaign: MailCampaign) async {
+        guard let server, let list = try? await server.recipients(of: campaign.id) else { return }
+        bulkRecipients[campaign.id] = list
+    }
+
+    /// Reads a pasted list or CSV into the bulk mail, with the deliverability checks (ADR-0003 §3); returns every
+    /// problem row so none is dropped silently.
+    func addContacts(_ text: String, to campaign: MailCampaign) async -> [String] {
+        guard let server else { return ["Not connected to your server."] }
+        let blocked = (try? await server.doNotContact()) ?? []
+        let (contacts, problems) = ContactList.parse(text, blocked: blocked)
+        return await insert(contacts.map { (nil, $0) }, into: campaign, problems: problems)
+    }
+
+    /// The bulk mail's Space table rows (with its tag) as contacts: new rows only, so this also refreshes.
+    func importFromTable(_ campaign: MailCampaign) async -> [String] {
+        guard let server, let blockID = campaign.tableBlock else { return [] }
+        guard let rows = try? await server.rows(of: blockID) else { return ["Couldn't read the table. Check your connection."] }
+        tableRows[blockID] = rows
+        if let spaceID = campaign.spaceID, spaceBlocks[spaceID] == nil, let space = spaces.first(where: { $0.id == spaceID }) { await loadBlocks(space) }
+        let columns = spaceBlocks.values.joined().first { $0.id == blockID }?.data.columns ?? []
+        let blocked = (try? await server.doNotContact()) ?? []
+        var (found, problems) = SpaceTable.contacts(columns: columns, rows: rows, tag: campaign.tag)
+        let isBlocked = { (email: String) in blocked.contains(email) || blocked.contains("@" + (email.split(separator: "@").last.map(String.init) ?? "")) }
+        problems += found.filter { isBlocked($0.contact.email) }.map { "\($0.contact.email) is on your do-not-mail list." }
+        found.removeAll { isBlocked($0.contact.email) }
+        // Rows already in this bulk mail are left as they are, quietly: refreshing shouldn't list everyone again.
+        let have = Set((bulkRecipients[campaign.id] ?? []).compactMap(\.rowID))
+        return await insert(found.filter { !have.contains($0.rowID) }.map { ($0.rowID, $0.contact) }, into: campaign, problems: problems)
+    }
+
+    /// New contacts into a bulk mail with the deliverability checks (ADR-0003 §3); returns every problem row.
+    private func insert(_ contacts: [(rowID: String?, contact: ContactList.Contact)], into campaign: MailCampaign, problems: [String]) async -> [String] {
+        guard let server else { return problems }
+        var problems = problems
+        let recent = (try? await server.recentlyMailed(except: campaign.id)) ?? []
+        let have = Set((bulkRecipients[campaign.id] ?? []).map { $0.email.lowercased() })
+        problems += contacts.filter { have.contains($0.contact.email) }.map { "\($0.contact.email) is already in this bulk mail." }
+        let room = ContactList.limit - have.count
+        let fresh = contacts.filter { !have.contains($0.contact.email) }
+        if fresh.count > room { problems.append("Only \(max(room, 0)) more fit: a bulk mail holds up to \(ContactList.limit) people.") }
+        let rows = fresh.prefix(max(room, 0)).map { item in
+            let c = item.contact
+            return MailRecipient(campaignID: campaign.id, email: c.email, name: c.name, fields: c.fields,
+                                 flags: (ContactList.isRole(c.email) ? ["role"] : []) + (recent.contains(c.email) ? ["mailed_recently"] : []), rowID: item.rowID)
+        }
+        guard !rows.isEmpty else { return problems }
+        do {
+            try await server.add(Array(rows))
+            bulkRecipients[campaign.id, default: []] += rows
+        } catch {
+            problems.insert(serverBehind ? "Update your server (Settings › Server) to use Bulk Mail." : "Couldn't add the contacts. Check your connection and try again.", at: 0)
+        }
+        return problems
+    }
+
+    /// The AI writes these contacts' mails on the server, 10 at a time, with the owner's style `note` if given.
+    func writeMails(_ ids: [String], in campaign: MailCampaign, note: String = "") async {
+        guard let server, bulkWorking == nil, !ids.isEmpty else { return }
+        defer { bulkWorking = nil }
+        for start in stride(from: 0, to: ids.count, by: 10) {
+            bulkWorking = ids.count > 10 ? "Writing \(start + 1)–\(min(start + 10, ids.count)) of \(ids.count)…" : "Writing…"
+            do { try await server.writeBulk(campaign.id, ids: Array(ids[start..<min(start + 10, ids.count)]), note: note) } catch {
+                saveProblem = error.localizedDescription
+                break
+            }
+            await loadRecipients(campaign)
+        }
+        if campaign.status == .draft, var changed = campaigns.first(where: { $0.id == campaign.id }) {
+            changed.status = .review
+            await update(changed)
+        }
+    }
+
+    /// The owner's edit, approval or skip of one mail: shown at once, put back if the save fails.
+    func update(_ recipient: MailRecipient) async {
+        guard let server, let i = bulkRecipients[recipient.campaignID]?.firstIndex(where: { $0.id == recipient.id }) else { return }
+        let before = bulkRecipients[recipient.campaignID]?[i]
+        guard before != recipient else { return }
+        bulkRecipients[recipient.campaignID]?[i] = recipient
+        do { try await server.save(recipient) } catch {
+            if let before, let j = bulkRecipients[recipient.campaignID]?.firstIndex(where: { $0.id == recipient.id }) { bulkRecipients[recipient.campaignID]?[j] = before }
+            saveProblem = "Couldn't save that mail. Check your connection."
+        }
+    }
+
+    /// Takes someone out of the bulk mail; with `forever`, they also go on the do-not-mail list.
+    func remove(_ recipient: MailRecipient, forever: Bool = false) async {
+        guard let server else { return }
+        do {
+            if forever { try await server.blockAddress(recipient.email) }
+            try await server.delete(recipient)
+        } catch {
+            saveProblem = "Couldn't remove \(recipient.email). Check your connection."
+            return
+        }
+        bulkRecipients[recipient.campaignID]?.removeAll { $0.id == recipient.id }
+    }
+
+    /// Every approved mail into the account's Drafts folder, where Apple Mail can send it (step 1 of ADR-0003). The server
+    /// does a batch per call (smaller with attachments), so this asks until none are left.
+    func saveBulkDrafts(_ campaign: MailCampaign) async {
+        guard let server, bulkWorking == nil else { return }
+        bulkWorking = "Saving to Drafts…"
+        defer { bulkWorking = nil }
+        var total = 0
+        do {
+            while true {
+                let (saved, left) = try await server.saveBulkDrafts(campaign.id)
+                total += saved
+                await loadRecipients(campaign)
+                if saved == 0 || left == 0 { break }
+                bulkWorking = "Saving to Drafts… \(total) done, \(left) to go"
+            }
+        } catch {
+            saveProblem = error.localizedDescription
+        }
+        if total > 0 { announce(total == 1 ? "1 mail is in Drafts, ready to send from Apple Mail." : "\(total) mails are in Drafts, ready to send from Apple Mail.") }
+    }
+
+    /// Files for every mail of a bulk mail (a portfolio deck, pictures), checked against the server's limits first.
+    func attach(_ files: [URL], to campaign: MailCampaign) async {
+        guard let server, var changed = campaigns.first(where: { $0.id == campaign.id }) else { return }
+        // Sizes first: nothing is read until every file is known to fit.
+        let sizes = files.map { file -> (name: String, size: Int) in
+            let access = file.startAccessingSecurityScopedResource()
+            defer { if access { file.stopAccessingSecurityScopedResource() } }
+            return (file.lastPathComponent, (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        if let problem = MailAttachment.problem(adding: sizes, to: changed.attachments) {
+            saveProblem = problem
+            return
+        }
+        let read = files.compactMap { file -> (name: String, data: Data)? in
+            let access = file.startAccessingSecurityScopedResource()
+            defer { if access { file.stopAccessingSecurityScopedResource() } }
+            return (try? Data(contentsOf: file)).map { (file.lastPathComponent, $0) }
+        }
+        bulkWorking = "Attaching…"
+        defer { bulkWorking = nil }
+        for file in read {
+            guard let type = MailAttachment.types[(file.name as NSString).pathExtension.lowercased()] else { continue }
+            do { changed.attachments.append(try await server.uploadFile(file.data, name: file.name, type: type, folder: campaign.id)) } catch {
+                saveProblem = serverBehind ? "Update your server (Settings › Server) to attach files." : "Couldn't attach “\(file.name)”. Check your connection."
+                break
+            }
+        }
+        await update(changed)
+    }
+
+    func removeAttachment(_ file: MailAttachment, from campaign: MailCampaign) async {
+        guard let server, var changed = campaigns.first(where: { $0.id == campaign.id }) else { return }
+        changed.attachments.removeAll { $0 == file }
+        await update(changed)
+        // A file from a Space stays: the Space still shows it. Only one uploaded to this bulk mail is deleted.
+        if file.path.split(separator: "/").dropFirst().first.map(String.init) == campaign.id { try? await server.deleteFile(file.path) }
+    }
+
     // MARK: Space pages (Page mode, ADR-0002)
 
     /// Each Space's page blocks, in order.
@@ -3044,10 +3251,13 @@ final class AppModel {
             return
         }
         spaceBlocks[block.spaceID]?.removeAll { $0.id == block.id }
+        // A table's rows go with it on the server (cascade), so Undo puts them back too.
+        let rows = tableRows.removeValue(forKey: block.id) ?? []
         offerUndo("Deleted \(block.kind.title.lowercased())") { [weak self] in
             guard let self else { return }
             self.spaceBlocks[block.spaceID] = ((self.spaceBlocks[block.spaceID] ?? []) + [block]).sorted { $0.position < $1.position }
-            await self.saveBlock(block)
+            guard await self.saveBlock(block), !rows.isEmpty else { return }
+            do { try await server.add(rows); self.tableRows[block.id] = rows } catch { self.saveProblem = "The table is back, but its rows couldn't be restored." }
         }
     }
 
@@ -3058,6 +3268,162 @@ final class AppModel {
             saveProblem = serverBehind ? "Update your server (Settings › Server) to use Page mode." : "Couldn't save the page. Check your connection."
             return false
         }
+    }
+
+    // MARK: Space tables and files
+
+    /// Each table block's rows, in order.
+    private(set) var tableRows: [String: [SpaceRow]] = [:]
+    /// Rows that went out in a bulk mail → the mail's latest status, shown as a column in the table.
+    private(set) var rowMailStatus: [String: MailRecipient.Status] = [:]
+
+    func loadRows(_ block: SpaceBlock) async {
+        guard let server, let rows = try? await server.rows(of: block.id) else { return }
+        tableRows[block.id] = rows
+        rowMailStatus.merge(await server.mailStatus(of: rows.map(\.id))) { $1 }
+    }
+
+    func addRow(to block: SpaceBlock) async {
+        guard let server else { return }
+        let rows = tableRows[block.id] ?? []
+        guard rows.count < SpaceTable.rowLimit else { saveProblem = "A table holds up to \(SpaceTable.rowLimit) rows."; return }
+        let row = SpaceRow(blockID: block.id, position: SpaceBlock.position(between: rows.last?.position, and: nil))
+        tableRows[block.id] = rows + [row]
+        do { try await server.save(row) } catch {
+            tableRows[block.id]?.removeAll { $0.id == row.id }
+            saveProblem = serverBehind ? "Update your server (Settings › Server) to use tables." : "Couldn't add a row. Check your connection."
+        }
+    }
+
+    /// A cell changed: shown at once, put back if the save fails.
+    func update(_ row: SpaceRow) async {
+        guard let server, let i = tableRows[row.blockID]?.firstIndex(where: { $0.id == row.id }), let before = tableRows[row.blockID]?[i], before != row else { return }
+        tableRows[row.blockID]?[i] = row
+        do { try await server.save(row) } catch {
+            if let j = tableRows[row.blockID]?.firstIndex(where: { $0.id == row.id }) { tableRows[row.blockID]?[j] = before }
+            saveProblem = "Couldn't save that cell. Check your connection."
+        }
+    }
+
+    func delete(_ row: SpaceRow) async {
+        guard let server else { return }
+        do { try await server.delete(row) } catch {
+            saveProblem = "Couldn't delete that row. Check your connection."
+            return
+        }
+        tableRows[row.blockID]?.removeAll { $0.id == row.id }
+        offerUndo("Deleted a row") { [weak self] in
+            guard let self, let server = self.server else { return }
+            self.tableRows[row.blockID] = ((self.tableRows[row.blockID] ?? []) + [row]).sorted { $0.position < $1.position }
+            try? await server.save(row)
+        }
+    }
+
+    func setColumns(_ columns: [SpaceColumn], of block: SpaceBlock) async {
+        var changed = spaceBlocks[block.spaceID]?.first { $0.id == block.id } ?? block
+        changed.data.columns = Array(columns.prefix(SpaceTable.columnLimit))
+        await update(changed)
+    }
+
+    /// A CSV into a table: its header names match columns by name (new names become new columns), its lines become rows.
+    func importCSV(_ text: String, into block: SpaceBlock) async {
+        guard let server else { return }
+        let (incoming, values) = SpaceTable.fromCSV(text)
+        guard !incoming.isEmpty, !values.isEmpty else { saveProblem = "That file has no rows under a header line."; return }
+        var columns = spaceBlocks[block.spaceID]?.first { $0.id == block.id }?.data.columns ?? []
+        var map: [String: String] = [:] // incoming column id → table column id
+        for column in incoming {
+            if let same = columns.first(where: { $0.name.caseInsensitiveCompare(column.name) == .orderedSame }) { map[column.id] = same.id }
+            else if columns.count < SpaceTable.columnLimit { columns.append(column); map[column.id] = column.id }
+        }
+        await setColumns(columns, of: block)
+        let existing = tableRows[block.id] ?? []
+        let room = SpaceTable.rowLimit - existing.count
+        var position = existing.last?.position ?? 0
+        let rows = values.prefix(max(room, 0)).map { cells -> SpaceRow in
+            position += 1
+            return SpaceRow(blockID: block.id, position: position,
+                            cells: Dictionary(cells.compactMap { key, value in map[key].map { ($0, value) } }, uniquingKeysWith: { a, _ in a }))
+        }
+        do {
+            try await server.add(rows)
+            tableRows[block.id] = existing + rows
+            if values.count > room { saveProblem = "Only the first \(max(room, 0)) rows fit: a table holds up to \(SpaceTable.rowLimit)." }
+        } catch {
+            saveProblem = serverBehind ? "Update your server (Settings › Server) to use tables." : "Couldn't import the rows. Check your connection."
+        }
+    }
+
+    /// A document or picture into a Space as a file block. Its text is read here on the Mac (PDF, Word), so the Space
+    /// knows what it says without any AI call.
+    func addFile(_ file: URL, to space: Space, into empty: SpaceBlock? = nil) async {
+        guard let server else { return }
+        let access = file.startAccessingSecurityScopedResource()
+        defer { if access { file.stopAccessingSecurityScopedResource() } }
+        let name = file.lastPathComponent
+        let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if let problem = MailAttachment.problem(adding: [(name, size)], to: []) { saveProblem = problem; return }
+        guard let type = MailAttachment.types[(name as NSString).pathExtension.lowercased()],
+              let data = await Task.detached(operation: { try? Data(contentsOf: file) }).value else {
+            saveProblem = "Couldn't read “\(name)”."
+            return
+        }
+        let text = await Task.detached { Self.fileText(data, type: type) }.value
+        do {
+            let stored = try await server.uploadFile(data, name: name, type: type, folder: space.id)
+            var info = SpaceBlock.Data(text: String(name.prefix(200)), ref: stored.path)
+            (info.body, info.size, info.type) = (text, data.count, type)
+            if var block = empty { block.data = info; await update(block) } else { await addBlock(.file, in: space, data: info) }
+        } catch {
+            saveProblem = serverBehind ? "Update your server (Settings › Server) to add files." : "Couldn't upload “\(name)”. Check your connection."
+        }
+    }
+
+    /// The start of a PDF's or Word file's text, at most ~15 KB (a block's data is capped at 20 KB); nil for others.
+    nonisolated static func fileText(_ data: Data, type: String) -> String? {
+        #if os(macOS)
+        var text: String?
+        if type == "application/pdf" { text = PDFDocument(data: data)?.string }
+        else if type.hasSuffix("wordprocessingml.document") {
+            text = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil).string
+        }
+        guard var clean = text?.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces), !clean.isEmpty else { return nil }
+        while clean.utf8.count > 15_000 { clean = String(clean.prefix(clean.count * 9 / 10)) }
+        return clean
+        #else
+        return nil
+        #endif
+    }
+
+    /// What a Space says, for a bulk mail's "What it's about": its goal, its page's headings and text, its notes and
+    /// the start of its files. The owner edits it before anything is written.
+    func spaceContext(_ space: Space) -> String {
+        var parts = space.goal.isEmpty ? [] : ["Goal: \(space.goal)"]
+        for block in spaceBlocks[space.id] ?? [] {
+            switch block.kind {
+            case .heading, .text: if let text = block.data.text, !text.isEmpty { parts.append(text) }
+            case .file: if let body = block.data.body { parts.append("From \(block.data.text ?? "a file"): \(body.prefix(1500))") }
+            default: break
+            }
+        }
+        for note in notes.filter({ $0.spaceID == space.id }).prefix(5) { parts.append("Note \(note.title): \(note.body.prefix(400))") }
+        return String(parts.joined(separator: "\n\n").prefix(8000))
+    }
+
+    /// The Space's files that can go with a mail.
+    func spaceFiles(_ spaceID: String) -> [MailAttachment] {
+        (spaceBlocks[spaceID] ?? []).compactMap { b in
+            guard b.kind == .file, let path = b.data.ref, let type = b.data.type else { return nil }
+            return MailAttachment(path: path, name: b.data.text ?? "File", type: type, size: b.data.size ?? 0)
+        }
+    }
+
+    /// One of the Space's files onto every mail of a bulk mail, without uploading it again.
+    func attachExisting(_ file: MailAttachment, to campaign: MailCampaign) async {
+        guard var changed = campaigns.first(where: { $0.id == campaign.id }), !changed.attachments.contains(file) else { return }
+        if let problem = MailAttachment.problem(adding: [(file.name, file.size)], to: changed.attachments) { saveProblem = problem; return }
+        changed.attachments.append(file)
+        await update(changed)
     }
 
     /// A picture for a page block: made small, stored on the owner's server; returns its path.

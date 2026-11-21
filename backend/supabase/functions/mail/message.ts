@@ -161,7 +161,10 @@ export const replySubject = (subject: string) => {
 
 /** A reply as RFC 5322 bytes, for the Drafts folder or for sending: from the owner's address the mail was sent to,
  *  threaded. The body is base64, so no line is ever too long for a mail server. */
-export function buildDraft(p: { from: string; to: string; subject: string; body: string; inReplyTo: string; messageId?: string; date?: Date }): Uint8Array {
+export type Attachment = { name: string; type: string; data: Uint8Array };
+
+export function buildDraft(p: { from: string; to: string; subject: string; body: string; inReplyTo: string; messageId?: string; date?: Date;
+                                fresh?: boolean; attachments?: Attachment[] }): Uint8Array {
   const clean = (s: string) => s.replace(/[\r\n]+/g, " ").trim(); // no header injection
   // Non-ASCII as encoded words of 15 characters each on folded lines, so no header line gets too long.
   const encode = (s: string) => /^[\x20-\x7e]*$/.test(s) ? s
@@ -170,25 +173,34 @@ export function buildDraft(p: { from: string; to: string; subject: string; body:
   const lines = [
     `From: ${clean(p.from)}`,
     `To: ${clean(p.to)}`,
-    `Subject: ${encode(replySubject(p.subject))}`,
+    `Subject: ${encode(p.fresh ? p.subject.replace(/[\r\n]+/g, " ").trim() : replySubject(p.subject))}`, // fresh: a new mail, not a reply
     `Date: ${(p.date ?? new Date()).toUTCString().replace("GMT", "+0000")}`,
     ...(p.messageId ? [`Message-ID: ${clean(p.messageId)}`] : []),
     ...(id ? [`In-Reply-To: ${id}`, `References: ${id}`] : []),
     "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=utf-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    ...(base64(p.body.replace(/\r?\n/g, "\r\n")).match(/.{1,76}/g) ?? []),
   ];
-  return new TextEncoder().encode(lines.join("\r\n"));
+  const text = ["Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: base64", "",
+    ...(base64(p.body.replace(/\r?\n/g, "\r\n")).match(/.{1,76}/g) ?? [])];
+  if (!p.attachments?.length) return new TextEncoder().encode([...lines, ...text].join("\r\n"));
+  // With files: the text first, then each file, as parts of one mail (multipart/mixed).
+  const boundary = `blink-${crypto.randomUUID()}`;
+  const parts = p.attachments.flatMap((file) => {
+    const name = file.name.replace(/["\\\r\n]/g, "").trim().slice(0, 150) || "attachment";
+    const disposition = /^[\x20-\x7e]*$/.test(name) ? `filename="${name}"` : `filename*=UTF-8''${encodeURIComponent(name)}`;
+    return [`--${boundary}`, `Content-Type: ${clean(file.type)}`, "Content-Transfer-Encoding: base64",
+      `Content-Disposition: attachment; ${disposition}`, "", ...(bytesBase64(file.data).match(/.{1,76}/g) ?? [])];
+  });
+  return new TextEncoder().encode([...lines, `Content-Type: multipart/mixed; boundary="${boundary}"`, "",
+    `--${boundary}`, ...text, ...parts, `--${boundary}--`, ""].join("\r\n"));
 }
 
-function base64(s: string): string {
-  const bytes = new TextEncoder().encode(s);
+function bytesBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
   return btoa(binary);
 }
+
+const base64 = (s: string) => bytesBase64(new TextEncoder().encode(s));
 
 /** Which of the owner's addresses a message was sent to (so the reply comes from it); the account address otherwise. */
 export function replyFrom(to: string, cc: string, account: string, aliases: string[]): string {

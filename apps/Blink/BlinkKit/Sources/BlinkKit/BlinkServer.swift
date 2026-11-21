@@ -846,6 +846,140 @@ public final class BlinkServer: Sendable {
         try await client.from("content_piece").update(Row(segment_id: spaceID)).eq("id", value: piece.id).execute()
     }
 
+    // MARK: Bulk mail (ADR-0003)
+
+    /// The owner's bulk mails, newest first; empty on a server without Bulk Mail yet.
+    public func campaigns() async throws -> [MailCampaign] {
+        do {
+            return try await client.from("mail_campaign").select("id, title, context, goal, tone, account, status, research, attachments, segment_id, table_block, tag")
+                .order("created_at", ascending: false).execute().value
+        } catch let error as PostgrestError where ["PGRST205", "42P01"].contains(error.code) {
+            return []
+        }
+    }
+
+    public func save(_ campaign: MailCampaign) async throws {
+        try await client.from("mail_campaign").upsert(campaign).execute()
+    }
+
+    public func delete(_ campaign: MailCampaign) async throws {
+        try await client.from("mail_campaign").delete().eq("id", value: campaign.id).execute()
+    }
+
+    public func recipients(of campaignID: String) async throws -> [MailRecipient] {
+        try await client.from("mail_recipient").select("id, campaign_id, email, name, fields, subject, body, flags, status, error, card, row_id")
+            .eq("campaign_id", value: campaignID).order("created_at").order("email").execute().value
+    }
+
+    /// New contacts, a few hundred per request.
+    public func add(_ recipients: [MailRecipient]) async throws {
+        for start in stride(from: 0, to: recipients.count, by: 200) {
+            try await client.from("mail_recipient").insert(Array(recipients[start..<min(start + 200, recipients.count)])).execute()
+        }
+    }
+
+    public func save(_ recipient: MailRecipient) async throws {
+        try await client.from("mail_recipient").upsert(recipient).execute()
+    }
+
+    public func delete(_ recipient: MailRecipient) async throws {
+        try await client.from("mail_recipient").delete().eq("id", value: recipient.id).execute()
+    }
+
+    /// Addresses mailed from another bulk mail in the last 30 days (in Drafts or sent), to warn before mailing them again.
+    public func recentlyMailed(except campaignID: String) async throws -> Set<String> {
+        struct Row: Decodable { let email: String }
+        let since = Date.now.addingTimeInterval(-30 * 86_400).ISO8601Format()
+        let rows: [Row] = try await client.from("mail_recipient").select("email").neq("campaign_id", value: campaignID)
+            .in("status", values: ["in_drafts", "sent", "replied"]).gte("updated_at", value: since).limit(5000).execute().value
+        return Set(rows.map { $0.email.lowercased() })
+    }
+
+    /// The do-not-mail list: addresses and "@domain"s, lowercase.
+    public func doNotContact() async throws -> Set<String> {
+        struct Row: Decodable { let address: String }
+        let rows: [Row] = try await client.from("mail_do_not_contact").select("address").limit(5000).execute().value
+        return Set(rows.map(\.address))
+    }
+
+    public func blockAddress(_ address: String) async throws {
+        try await client.from("mail_do_not_contact").upsert(["address": address.lowercased()], onConflict: "owner_id,address", ignoreDuplicates: true).execute()
+    }
+
+    /// Writes the mails of up to 10 contacts on the server, with the owner's style `note` if given.
+    public func writeBulk(_ campaignID: String, ids: [String], note: String) async throws {
+        struct Body: Encodable { let action = "bulk.write"; let campaign_id: String; let ids: [String]; let note: String }
+        try await mailAction(Body(campaign_id: campaignID, ids: ids, note: note), failing: "Couldn't write these mails.")
+    }
+
+    /// Puts approved mails of a bulk mail into the account's Drafts folder, a batch per call; returns how many landed
+    /// and how many approved ones are left for the next call.
+    public func saveBulkDrafts(_ campaignID: String) async throws -> (saved: Int, left: Int) {
+        struct Body: Encodable { let action = "bulk.drafts"; let campaign_id: String }
+        struct Reply: Decodable { let saved: Int; let left: Int? }
+        let reply: Reply = try await mailAction(Body(campaign_id: campaignID), failing: "Couldn't save the drafts.")
+        return (reply.saved, reply.left ?? 0)
+    }
+
+    /// A file into the owner's private folder, under a bulk mail or a Space (`folder`).
+    public func uploadFile(_ data: Data, name: String, type: String, folder: String) async throws -> MailAttachment {
+        let user = try await client.auth.session.user.id
+        let ext = (name as NSString).pathExtension.lowercased()
+        let path = "\(user.uuidString.lowercased())/\(folder)/\(UUID().uuidString.lowercased()).\(ext)"
+        try await client.storage.from("files").upload(path, data: data, options: FileOptions(contentType: type))
+        return MailAttachment(path: path, name: name, type: type, size: data.count)
+    }
+
+    public func deleteFile(_ path: String) async throws {
+        _ = try await client.storage.from("files").remove(paths: [path])
+    }
+
+    // MARK: Space tables
+
+    public func rows(of blockID: String) async throws -> [SpaceRow] {
+        try await client.from("space_table_row").select("id, block_id, position, cells").eq("block_id", value: blockID)
+            .order("position").limit(SpaceTable.rowLimit).execute().value
+    }
+
+    public func save(_ row: SpaceRow) async throws {
+        try await client.from("space_table_row").upsert(row).execute()
+    }
+
+    public func add(_ rows: [SpaceRow]) async throws {
+        for start in stride(from: 0, to: rows.count, by: 200) {
+            try await client.from("space_table_row").insert(Array(rows[start..<min(start + 200, rows.count)])).execute()
+        }
+    }
+
+    public func delete(_ row: SpaceRow) async throws {
+        try await client.from("space_table_row").delete().eq("id", value: row.id).execute()
+    }
+
+    /// The latest bulk mail status of each of these rows (only rows that were mailed); empty on an older server.
+    public func mailStatus(of rowIDs: [String]) async -> [String: MailRecipient.Status] {
+        struct Row: Decodable { let row_id: String; let status: MailRecipient.Status }
+        var result: [String: MailRecipient.Status] = [:]
+        for start in stride(from: 0, to: rowIDs.count, by: 200) {
+            let rows: [Row] = (try? await client.from("mail_recipient").select("row_id, status")
+                .in("row_id", values: Array(rowIDs[start..<min(start + 200, rowIDs.count)])).order("updated_at").execute().value) ?? []
+            for row in rows { result[row.row_id] = row.status } // oldest first, so the latest wins
+        }
+        return result
+    }
+
+    @discardableResult
+    private func mailAction<Body: Encodable & Sendable, Reply: Decodable>(_ body: Body, failing: String) async throws -> Reply {
+        do {
+            return try await client.functions.invoke("mail", options: .init(body: body))
+        } catch let FunctionsError.httpError(_, data) {
+            throw ChatProblem(message: (try? JSONDecoder().decode(MailError.self, from: data))?.error ?? failing)
+        }
+    }
+
+    private func mailAction<Body: Encodable & Sendable>(_ body: Body, failing: String) async throws {
+        let _: MailIgnored = try await mailAction(body, failing: failing)
+    }
+
     // MARK: Weekly goals
 
     public func weeklyGoals(week: String) async throws -> [WeeklyGoal] {
@@ -1397,3 +1531,6 @@ public enum ServerProblem: Equatable, Sendable {
         }
     }
 }
+
+private struct MailError: Decodable { let error: String }
+private struct MailIgnored: Decodable {}

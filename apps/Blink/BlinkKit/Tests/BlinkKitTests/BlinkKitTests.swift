@@ -1465,3 +1465,75 @@ extension Tokens {
         #expect(Dictated.clean("umbrella and hummus") == "Umbrella and hummus") // words that start like fillers stay
     }
 }
+
+@Suite struct BulkMailTests {
+    @Test func aCSVWithAHeaderKeepsEveryColumnAndReportsBadRows() {
+        let csv = """
+        First Name,Last Name,Email,Company,"Recent work"
+        Ana,Silva,Ana@Studio.com,Studio,"Rebrand, 2026"
+        Ben,,not-an-address,Acme,
+        Ana,Again,ana@studio.com,Studio,
+        Cy,,cy@blocked.example,X,
+        """
+        let (contacts, problems) = ContactList.parse(csv, blocked: ["@blocked.example"])
+        #expect(contacts == [.init(email: "ana@studio.com", name: "Ana Silva", fields: ["company": "Studio", "recent work": "Rebrand, 2026"])])
+        #expect(problems.count == 3)
+        #expect(problems[0].contains("Line 3") && problems[1].contains("already") && problems[2].contains("do-not-mail"))
+    }
+
+    @Test func pastedLinesInAnyCommonShape() {
+        let (contacts, problems) = ContactList.parse("Ana Silva <ana@studio.com>\nben@acme.io\nCy Lee; cy@lee.dev\n\n")
+        #expect(contacts.map(\.email) == ["ana@studio.com", "ben@acme.io", "cy@lee.dev"])
+        #expect(contacts.map(\.name) == ["Ana Silva", "", "Cy Lee"])
+        #expect(problems.isEmpty)
+        #expect(ContactList.isRole("Info@studio.com") && !ContactList.isRole("ana@studio.com"))
+    }
+
+    @Test func lintCatchesWhatGetsMailBinned() {
+        #expect(MailLint.warnings(subject: "Quick question about your rebrand", body: "Hi Ana, I loved the new site at https://studio.com.").isEmpty)
+        let spammy = MailLint.warnings(subject: "FREE OFFER!", body: "Click here http://a.com http://b.com https://bit.ly/x [add: price]")
+        #expect(spammy.count == 6) // links, shortener, capitals, "!", "click here", [add:]
+        let base = "Hi Ana, I saw the rebrand your studio did for the museum and wanted to ask whether you take on freelance motion designers this spring for projects like that one."
+        #expect(MailLint.warnings(subject: "Hello", body: base, others: [base.replacingOccurrences(of: "Ana", with: "Ben")]).contains { $0.contains("Almost the same") })
+        let batch = MailLint.batch([("a", "Hello", base), ("b", "Hello", base.replacingOccurrences(of: "Ana", with: "Ben")), ("c", "Hi", "Short and different.")])
+        #expect(batch["a"]?.contains { $0.contains("Almost the same") } == true && batch["c"] == [])
+    }
+}
+
+@Suite struct MailAttachmentTests {
+    @Test func filesAreCheckedBeforeAnythingIsRead() {
+        let deck = MailAttachment(path: "o/c/1.pdf", name: "Deck.pdf", type: "application/pdf", size: 9_000_000)
+        #expect(MailAttachment.problem(adding: [("Shot.png", 2_000_000)], to: [deck]) == nil)
+        #expect(MailAttachment.problem(adding: [("Setup.exe", 10)], to: [])?.contains("can't be attached") == true)
+        #expect(MailAttachment.problem(adding: [("Film.pdf", 11_000_000)], to: [])?.contains("over 10 MB") == true)
+        #expect(MailAttachment.problem(adding: [("More.pdf", 7_000_000)], to: [deck])?.contains("15 MB") == true)
+        #expect(MailAttachment.problem(adding: Array(repeating: ("a.png", 1), count: 6), to: [])?.contains("Up to 5") == true)
+    }
+}
+
+@Suite struct SpaceTableTests {
+    @Test func aCSVBecomesATableWithGuessedColumnTypes() {
+        let (columns, rows) = SpaceTable.fromCSV("Name,Contact,Website,Tags\nAna Silva,ana@studio.com,https://studio.com,\"#email, warm\"\nBen,ben@acme.io,,cold")
+        #expect(columns.map(\.kind) == [.text, .email, .link, .tags])
+        #expect(rows.count == 2 && rows[1][columns[2].id] == nil)
+        let table = rows.enumerated().map { SpaceRow(blockID: "b", position: Double($0.offset), cells: $0.element) }
+        #expect(SpaceTable.allTags(columns: columns, rows: table) == ["cold", "email", "warm"])
+        let back = SpaceTable.fromCSV(SpaceTable.csv(columns: columns, rows: table)) // out and back in, unchanged
+        #expect(back.columns.map(\.name) == columns.map(\.name))
+        #expect(back.rows.map { r in back.columns.map { r[$0.id] } } == rows.map { r in columns.map { r[$0.id] } })
+    }
+
+    @Test func taggedRowsBecomeContactsWithTheirOtherColumns() {
+        let columns = [SpaceColumn(id: "n", name: "Name"), SpaceColumn(id: "e", name: "Email", kind: .email),
+                       SpaceColumn(id: "t", name: "Tags", kind: .tags), SpaceColumn(id: "w", name: "Recent work")]
+        let rows = [SpaceRow(id: "1", blockID: "b", position: 1, cells: ["n": "Ana", "e": "Ana@Studio.com", "t": "#email", "w": "Museum identity"]),
+                    SpaceRow(id: "2", blockID: "b", position: 2, cells: ["n": "Ben", "e": "ben@acme.io", "t": "later"]),
+                    SpaceRow(id: "3", blockID: "b", position: 3, cells: ["n": "Cy", "e": "nope", "t": "email"])]
+        let (contacts, problems) = SpaceTable.contacts(columns: columns, rows: rows, tag: "#Email")
+        #expect(contacts.map(\.rowID) == ["1"])
+        #expect(contacts.first?.contact == .init(email: "ana@studio.com", name: "Ana", fields: ["tags": "#email", "recent work": "Museum identity"]))
+        #expect(problems.count == 1 && problems[0].contains("Row 3"))
+        #expect(SpaceTable.contacts(columns: columns, rows: rows, tag: "").contacts.count == 2)
+        #expect(SpaceTable.contacts(columns: [columns[0]], rows: rows, tag: "").problems.first?.contains("no email column") == true)
+    }
+}

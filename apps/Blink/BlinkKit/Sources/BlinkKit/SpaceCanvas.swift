@@ -156,7 +156,7 @@ public enum CanvasImage {
 /// posts a block lists stay where they are, linked to the Space; a page's blocks are what a template would carry.
 public struct SpaceBlock: Codable, Identifiable, Equatable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
-        case heading, text, tasks, content, note, link, image, timer, stopwatch
+        case heading, text, tasks, content, note, link, image, timer, stopwatch, table, file
 
         public var title: String {
             switch self {
@@ -169,6 +169,8 @@ public struct SpaceBlock: Codable, Identifiable, Equatable, Sendable {
             case .image: "Picture"
             case .timer: "Timer"
             case .stopwatch: "Stopwatch"
+            case .table: "Table"
+            case .file: "File"
             }
         }
 
@@ -183,6 +185,8 @@ public struct SpaceBlock: Codable, Identifiable, Equatable, Sendable {
             case .image: "photo"
             case .timer: "timer"
             case .stopwatch: "stopwatch"
+            case .table: "tablecells"
+            case .file: "doc.richtext"
             }
         }
     }
@@ -197,8 +201,15 @@ public struct SpaceBlock: Codable, Identifiable, Equatable, Sendable {
         public var ref: String?
         /// A timer's length.
         public var minutes: Int?
-        public init(text: String? = nil, url: String? = nil, ref: String? = nil, minutes: Int? = nil) {
-            (self.text, self.url, self.ref, self.minutes) = (text, url, ref, minutes)
+        /// A table's columns (its rows are stored apart, in `space_table_row`).
+        public var columns: [SpaceColumn]?
+        /// A file's text as read on the Mac (the start of a PDF or Word file), so the Space knows what it says.
+        public var body: String?
+        /// A file's size in bytes and its type.
+        public var size: Int?
+        public var type: String?
+        public init(text: String? = nil, url: String? = nil, ref: String? = nil, minutes: Int? = nil, columns: [SpaceColumn]? = nil) {
+            (self.text, self.url, self.ref, self.minutes, self.columns) = (text, url, ref, minutes, columns)
         }
     }
 

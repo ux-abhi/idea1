@@ -95,6 +95,8 @@ enum BlockText {
         case .image: "A picture"
         case .timer: "Count down a few minutes"
         case .stopwatch: "Time something"
+        case .table: "Rows and columns: a contact list, leads, anything"
+        case .file: "A PDF, deck or picture the Space can use"
         }
     }
 }
@@ -187,6 +189,8 @@ private struct BlockRow: View {
                 case .image: ImageBlock(block: block, space: space)
                 case .timer: TimerBlock(block: block)
                 case .stopwatch: StopwatchBlock()
+                case .table: TableBlock(block: block, space: space)
+                case .file: FileBlock(block: block, space: space)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -489,6 +493,220 @@ private struct StopwatchBlock: View {
     static func clock(_ t: TimeInterval) -> String {
         let tenths = Int(t * 10)
         return String(format: "%d:%02d.%d", tenths / 600, (tenths / 10) % 60, tenths % 10)
+    }
+}
+
+/// A table: typed columns, rows edited in place, CSV in and out, and "Bulk Mail…" for a table with an email column.
+/// Rows that went out in a bulk mail show its status in a last, read-only column.
+private struct TableBlock: View {
+    @Environment(AppModel.self) private var model
+    let block: SpaceBlock
+    let space: Space
+    @State private var importing = false
+    @State private var mailing = false
+    private static let width: CGFloat = 170
+
+    var body: some View {
+        let columns = block.data.columns ?? []
+        let rows = model.tableRows[block.id] ?? []
+        let mailed = rows.contains { model.rowMailStatus[$0.id] != nil }
+        VStack(alignment: .leading, spacing: 8) {
+            if columns.isEmpty {
+                HStack {
+                    Button("Start with Name and Email") {
+                        Task { await model.setColumns([SpaceColumn(name: "Name"), SpaceColumn(name: "Email", kind: .email), SpaceColumn(name: "Tags", kind: .tags)], of: block) }
+                    }
+                    Button("Import CSV…") { importing = true }
+                }
+            } else {
+                ScrollView(.horizontal) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 0) {
+                            ForEach(columns) { column in ColumnHeader(column: column, block: block, width: Self.width) }
+                            if mailed { Text("Mail").font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 90, alignment: .leading).padding(.horizontal, 6) }
+                            Button("Add Column", systemImage: "plus") {
+                                Task { await model.setColumns(columns + [SpaceColumn(name: "Column \(columns.count + 1)")], of: block) }
+                            }
+                            .labelStyle(.iconOnly).buttonStyle(.borderless).padding(.horizontal, 6)
+                            .disabled(columns.count >= SpaceTable.columnLimit)
+                        }
+                        .padding(.vertical, 6)
+                        Divider()
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(rows) { row in
+                                HStack(spacing: 0) {
+                                    ForEach(columns) { column in CellField(row: row, column: column).frame(width: Self.width) }
+                                    if mailed {
+                                        Text(model.rowMailStatus[row.id].map(Self.status) ?? "").font(.caption).foregroundStyle(.secondary)
+                                            .frame(width: 90, alignment: .leading).padding(.horizontal, 6)
+                                    }
+                                }
+                                .contextMenu { Button("Delete Row", systemImage: "trash", role: .destructive) { Task { await model.delete(row) } } }
+                                Divider()
+                            }
+                        }
+                    }
+                }
+                HStack {
+                    Button("New Row", systemImage: "plus") { Task { await model.addRow(to: block) } }
+                    Button("Import CSV…") { importing = true }
+                    Button("Copy as CSV") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(SpaceTable.csv(columns: columns, rows: rows), forType: .string)
+                    }
+                    Spacer()
+                    if columns.contains(where: { $0.kind == .email }) {
+                        Button("Bulk Mail…", systemImage: "envelope.stack") { mailing = true }
+                            .help("A personal mail to the people in this table, or the ones with a tag")
+                    }
+                }
+                .buttonStyle(.borderless)
+                Text("Right-click a row to delete it. \(rows.count) of \(SpaceTable.rowLimit) rows.").font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .padding(12)
+        .background(.background.secondary, in: .rect(cornerRadius: 12))
+        .task(id: block.id) { await model.loadRows(block) }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText]) { result in
+            guard let file = try? result.get() else { return }
+            let access = file.startAccessingSecurityScopedResource()
+            defer { if access { file.stopAccessingSecurityScopedResource() } }
+            guard let text = try? String(contentsOf: file, encoding: .utf8) else { return }
+            Task { await model.importCSV(String(text.prefix(4_000_000)), into: block) }
+        }
+        .sheet(isPresented: $mailing) { NewCampaignSheet(space: space, table: block) { _ in } }
+    }
+
+    static func status(_ status: MailRecipient.Status) -> String {
+        switch status {
+        case .new, .written, .skipped: "Not sent"
+        case .approved: "Approved"
+        case .inDrafts: "In Drafts"
+        case .sent: "Sent"
+        case .failed: "Failed"
+        case .bounced: "Bounced"
+        case .replied: "Replied"
+        }
+    }
+}
+
+/// A column's name (edited in place) and a menu for its type and removal.
+private struct ColumnHeader: View {
+    @Environment(AppModel.self) private var model
+    let column: SpaceColumn
+    let block: SpaceBlock
+    let width: CGFloat
+    @State private var name = ""
+
+    var body: some View {
+        HStack(spacing: 4) {
+            TextField("Column", text: $name).textFieldStyle(.plain).font(.caption.weight(.semibold))
+                .onSubmit(save).onAppear { name = column.name }
+                .accessibilityLabel("Column name")
+            Menu {
+                Picker("Type", selection: Binding(get: { column.kind }, set: { kind in change { $0.kind = kind } })) {
+                    ForEach(SpaceColumn.Kind.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                Divider()
+                Button("Delete Column", systemImage: "trash", role: .destructive) {
+                    Task { await model.setColumns((block.data.columns ?? []).filter { $0.id != column.id }, of: block) }
+                }
+            } label: { Image(systemName: Self.symbol(column.kind)) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .help("\(column.kind.title) column")
+                .accessibilityLabel("\(column.name) column options")
+        }
+        .padding(.horizontal, 6)
+        .frame(width: width, alignment: .leading)
+    }
+
+    static func symbol(_ kind: SpaceColumn.Kind) -> String {
+        switch kind {
+        case .text: "textformat"
+        case .email: "envelope"
+        case .link: "link"
+        case .tags: "number"
+        }
+    }
+
+    private func save() {
+        let clean = name.trimmingCharacters(in: .whitespaces)
+        guard !clean.isEmpty, clean != column.name else { name = column.name; return }
+        change { $0.name = String(clean.prefix(60)) }
+    }
+
+    private func change(_ edit: (inout SpaceColumn) -> Void) {
+        var columns = block.data.columns ?? []
+        guard let i = columns.firstIndex(where: { $0.id == column.id }) else { return }
+        edit(&columns[i])
+        Task { await model.setColumns(columns, of: block) }
+    }
+}
+
+/// One cell, edited in place; saved on Return, when you click away, or when it leaves the screen.
+private struct CellField: View {
+    @Environment(AppModel.self) private var model
+    let row: SpaceRow
+    let column: SpaceColumn
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 2) {
+            TextField("", text: $text).textFieldStyle(.plain).focused($focused)
+                .onAppear { text = row.cells[column.id] ?? "" }
+                .onChange(of: row.cells[column.id]) { _, now in if !focused { text = now ?? "" } }
+                .onChange(of: focused) { _, now in if !now { save() } }
+                .onSubmit(save)
+                .onDisappear(perform: save)
+                .accessibilityLabel(column.name)
+            if column.kind == .link, let url = URL(string: text.hasPrefix("http") ? text : "https://\(text)"), !text.isEmpty, url.host() != nil {
+                Button("Open", systemImage: "arrow.up.forward") { NSWorkspace.shared.open(url) }.labelStyle(.iconOnly).buttonStyle(.borderless)
+            }
+        }
+        .padding(.horizontal, 6).padding(.vertical, 5)
+    }
+
+    private func save() {
+        let clean = String(text.trimmingCharacters(in: .whitespaces).prefix(SpaceTable.cellLimit))
+        guard clean != (row.cells[column.id] ?? "") else { return }
+        var changed = model.tableRows[row.blockID]?.first { $0.id == row.id } ?? row
+        changed.cells[column.id] = clean.isEmpty ? nil : clean
+        Task { await model.update(changed) }
+    }
+}
+
+/// A document or picture kept in the Space. Its text (PDFs, Word) feeds bulk mails made here, and it can be attached.
+private struct FileBlock: View {
+    @Environment(AppModel.self) private var model
+    let block: SpaceBlock
+    let space: Space
+    @State private var picking = false
+
+    var body: some View {
+        Group {
+            if block.data.ref != nil {
+                HStack(spacing: 10) {
+                    Image(systemName: (block.data.type ?? "").hasPrefix("image/") ? "photo" : "doc.richtext").font(.title2)
+                        .foregroundStyle(Color.accentColor).frame(width: 36).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(block.data.text ?? "File").lineLimit(1)
+                        Text([block.data.size.map { $0.formatted(.byteCount(style: .file)) }, block.data.body == nil ? nil : "text read"].compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption).foregroundStyle(.secondary)
+                        if let body = block.data.body { Text(body).font(.caption).foregroundStyle(.tertiary).lineLimit(2) }
+                    }
+                    Spacer()
+                }
+                .padding(10)
+                .background(.background.secondary, in: .rect(cornerRadius: 10))
+            } else {
+                Button("Choose File…", systemImage: "doc.badge.plus") { picking = true }
+            }
+        }
+        .fileImporter(isPresented: $picking, allowedContentTypes: MailAttachment.types.keys.compactMap { UTType(filenameExtension: $0) }) { result in
+            guard let file = try? result.get() else { return }
+            Task { await model.addFile(file, to: space, into: block) }
+        }
     }
 }
 

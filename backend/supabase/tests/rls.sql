@@ -318,6 +318,30 @@ do $$ begin
     raise exception 'a goal done more often than its target was accepted';
   exception when check_violation then null;
   end;
+  -- Bulk mail: one row per person per campaign, real addresses, lowercase do-not-mail entries.
+  insert into public.mail_campaign (id, title, account) values ('00000000-0000-0000-0000-0000000000e1', 'Portfolio outreach', 'gmail');
+  insert into public.mail_recipient (campaign_id, email, name) values ('00000000-0000-0000-0000-0000000000e1', 'Ana@Studio.com', 'Ana');
+  begin
+    insert into public.mail_recipient (campaign_id, email) values ('00000000-0000-0000-0000-0000000000e1', 'ana@studio.com');
+    raise exception 'the same person twice in one campaign was accepted';
+  exception when unique_violation then null;
+  end;
+  begin
+    insert into public.mail_recipient (campaign_id, email) values ('00000000-0000-0000-0000-0000000000e1', 'not an address');
+    raise exception 'a broken address was accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.mail_do_not_contact (address) values ('@spam.example');
+  begin
+    insert into public.mail_research (domain) values ('studio.com');
+    raise exception 'the app wrote a research card (only the mail worker may)';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.mail_do_not_contact (address) values ('Boss@Work.com');
+    raise exception 'an uppercase do-not-mail entry was accepted';
+  exception when check_violation then null;
+  end;
   begin
     insert into public.weekly_goal (week_start, title) values ('2026-11-18', 'Wednesday start');
     raise exception 'a week starting on a Wednesday was accepted';
@@ -426,6 +450,15 @@ do $$ begin
   assert (select count(*) from public.income) = 0, 'B must not see A''s income';
   assert (select count(*) from public.income_plan) = 0, 'B must not see A''s recurring income';
   assert (select count(*) from public.weekly_goal) = 0, 'B must not see A''s weekly goals';
+  assert (select count(*) from public.mail_campaign) = 0, 'B must not see A''s bulk mail';
+  assert (select count(*) from public.mail_recipient) = 0, 'B must not see A''s bulk mail contacts';
+  assert (select count(*) from public.mail_do_not_contact) = 0, 'B must not see A''s do-not-mail list';
+  assert (select count(*) from public.mail_research) = 0, 'B must not see A''s research cards';
+  begin
+    insert into public.mail_recipient (campaign_id, email) values ('00000000-0000-0000-0000-0000000000e1', 'b@b.com');
+    raise exception 'B added a contact to A''s campaign';
+  exception when insufficient_privilege then null;
+  end;
   assert (select count(*) from public.money_account) = 0, 'B must not see A''s accounts';
   assert (select count(*) from public.capture_token) = 0, 'B must not see A''s capture tokens';
   assert (select count(*) from public.money_account_now) = 0, 'B must not see A''s balances';
@@ -716,12 +749,27 @@ do $$ begin
     raise exception 'a block whose data is not an object';
   exception when check_violation then null;
   end;
+  -- Tables: rows only in a table block of the owner's own page.
+  insert into public.space_block (id, segment_id, kind, data) values ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000d1', 'table', '{"columns": []}');
+  insert into public.space_block (id, segment_id, kind) values ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-0000000000d1', 'text');
+  insert into public.space_table_row (id, block_id, cells) values ('00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000f1', '{"c1": "ana@studio.com"}');
+  begin
+    insert into public.space_table_row (block_id) values ('00000000-0000-0000-0000-0000000000f2');
+    raise exception 'a row in a block that is not a table';
+  exception when insufficient_privilege then null;
+  end;
 end $$;
 reset role;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
   assert (select count(*) from public.space_node) = 0, 'B can''t see A''s canvas';
   assert (select count(*) from public.space_block) = 0, 'B can''t see A''s page';
+  assert (select count(*) from public.space_table_row) = 0, 'B can''t see A''s tables';
+  begin
+    insert into public.space_table_row (block_id) values ('00000000-0000-0000-0000-0000000000f1');
+    raise exception 'B added a row to A''s table';
+  exception when insufficient_privilege then null;
+  end;
   begin
     insert into public.space_block (segment_id, kind) values ('00000000-0000-0000-0000-0000000000d1', 'text');
     raise exception 'B put a block on someone else''s Space';
@@ -758,6 +806,24 @@ do $$ begin
 end $$;
 reset role;
 do $$ begin assert not (select public from storage.buckets where id = 'canvas'), 'the canvas bucket is private'; end $$;
+
+-- Bulk mail attachments: each owner only in their own folder of the private bucket.
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  insert into storage.objects (bucket_id, name) values ('files', '00000000-0000-0000-0000-00000000000a/c/deck.pdf');
+  begin
+    insert into storage.objects (bucket_id, name) values ('files', '00000000-0000-0000-0000-00000000000b/c/deck.pdf');
+    raise exception 'A wrote into B''s mail files';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  assert (select count(*) from storage.objects where bucket_id = 'files') = 0, 'B can''t see A''s mail files';
+end $$;
+reset role;
+do $$ begin assert not (select public from storage.buckets where id = 'files'), 'the files bucket is private'; end $$;
 
 -- Server package: the installer writes it; the owner reads it; nobody else reads it and no client writes it.
 insert into public.server_info (key, value) values ('package', 'abc123');
