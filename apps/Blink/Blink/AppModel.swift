@@ -8,6 +8,7 @@ import SwiftUI
 import UIKit
 #else
 import AppKit
+import ImageIO
 import LinkPresentation
 import PDFKit
 #endif
@@ -2849,6 +2850,59 @@ final class AppModel {
             saveProblem = serverBehind ? "Update your server (Settings › Update Server) to save canvas changes."
                 : "Couldn't save a change to the canvas. Check your connection and try again."
         }
+    }
+
+    // MARK: Cover pictures
+
+    /// Cover pictures by path, kept while Blink runs.
+    private(set) var coverImages: [String: NSImage] = [:]
+
+    func loadCover(_ path: String) async {
+        guard coverImages[path] == nil, let server, let data = try? await server.file(path), let image = NSImage(data: data) else { return }
+        coverImages[path] = image
+    }
+
+    /// The owner's own photo as a Space's cover: made at most 2400 pixels wide on the Mac (a cover never needs more,
+    /// and the page stays quick), stored in their private folder, and the Space pointed at it.
+    func setCoverPicture(from file: URL, for space: Space) async {
+        guard let server else { return }
+        let access = file.startAccessingSecurityScopedResource()
+        defer { if access { file.stopAccessingSecurityScopedResource() } }
+        guard let jpeg = await Task.detached(operation: { Self.coverJPEG(from: file) }).value else {
+            saveProblem = "That file isn't a picture Blink can use."
+            return
+        }
+        do {
+            let stored = try await server.uploadFile(jpeg, name: "cover.jpg", type: "image/jpeg", folder: space.id)
+            coverImages[stored.path] = NSImage(data: jpeg)
+            let old = space.cover
+            var changed = spaces.first { $0.id == space.id } ?? space
+            changed.cover = "file:" + stored.path
+            await saveSpace(changed)
+            if old.hasPrefix("file:") { try? await server.deleteFile(String(old.dropFirst(5))) } // the picture it replaces
+        } catch {
+            saveProblem = serverBehind ? "Update your server (Settings › Server) to use your own cover pictures." : "Couldn't upload the picture. Check your connection."
+        }
+    }
+
+    /// Back to a gradient; the picture is removed from the server.
+    func removeCoverPicture(of space: Space) async {
+        guard var changed = spaces.first(where: { $0.id == space.id }), changed.cover.hasPrefix("file:") else { return }
+        let path = String(changed.cover.dropFirst(5))
+        changed.cover = "aurora"
+        await saveSpace(changed)
+        try? await server?.deleteFile(path)
+    }
+
+    /// A picture file as a JPEG at most 2400 pixels on its long side, without its location or camera details.
+    nonisolated static func coverJPEG(from file: URL) -> Data? {
+        guard let source = CGImageSourceCreateWithURL(file as CFURL, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 2400, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) else { return nil }
+        let data = NSMutableData()
+        guard let out = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(out, image, [kCGImageDestinationLossyCompressionQuality: 0.82] as CFDictionary)
+        return CGImageDestinationFinalize(out) && data.length <= 9_500_000 ? data as Data : nil
     }
 
     /// One of the page's tables (or one row of it, `row`) shown on the canvas as a card that points at it. Already

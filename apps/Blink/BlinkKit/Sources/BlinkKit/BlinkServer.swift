@@ -965,6 +965,11 @@ public final class BlinkServer: Sendable {
         return MailAttachment(path: path, name: name, type: type, size: data.count)
     }
 
+    /// One of the owner's files (a cover picture, an attachment) from their private folder.
+    public func file(_ path: String) async throws -> Data {
+        try await client.storage.from("files").download(path: path)
+    }
+
     public func deleteFile(_ path: String) async throws {
         _ = try await client.storage.from("files").remove(paths: [path])
     }

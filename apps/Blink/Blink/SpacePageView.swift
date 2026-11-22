@@ -248,14 +248,41 @@ private struct PageCover: View {
     @Environment(AppModel.self) private var model
     let space: Space
     @State private var hovering = false
+    @State private var picking = false
 
     var body: some View {
         Rectangle().fill(Self.gradient(space.cover))
+            .overlay {
+                // The owner's own picture, filling the cover edge to edge.
+                if space.cover.hasPrefix("file:") {
+                    let path = String(space.cover.dropFirst(5))
+                    if let image = model.coverImages[path] {
+                        Image(nsImage: image).resizable().scaledToFill().accessibilityHidden(true)
+                    } else {
+                        ProgressView().controlSize(.small).task(id: path) { await model.loadCover(path) }
+                    }
+                }
+            }
+            .clipped()
             .frame(height: 190)
             .overlay(alignment: .bottomTrailing) {
                 Menu {
-                    ForEach(Space.covers, id: \.self) { name in
-                        Button(name.capitalized) { var changed = space; changed.cover = name; Task { await model.saveSpace(changed) } }
+                    Button("Upload Picture…", systemImage: "photo.badge.plus") { picking = true }
+                    if space.cover.hasPrefix("file:") {
+                        Button("Remove Picture", systemImage: "trash") { Task { await model.removeCoverPicture(of: space) } }
+                    }
+                    Divider()
+                    Section("Gradients") {
+                        ForEach(Space.covers, id: \.self) { name in
+                            Button(name.capitalized) {
+                                Task {
+                                    if space.cover.hasPrefix("file:") { await model.removeCoverPicture(of: space) }
+                                    var changed = model.spaces.first { $0.id == space.id } ?? space
+                                    changed.cover = name
+                                    await model.saveSpace(changed)
+                                }
+                            }
+                        }
                     }
                 } label: { Label("Change Cover", systemImage: "photo.on.rectangle") }
                     .menuStyle(.button).buttonStyle(.borderless).fixedSize()
@@ -265,6 +292,10 @@ private struct PageCover: View {
                     .opacity(hovering ? 1 : 0)
             }
             .onHover { hovering = $0 }
+            .fileImporter(isPresented: $picking, allowedContentTypes: [.image]) { result in
+                guard let file = try? result.get() else { return }
+                Task { await model.setCoverPicture(from: file, for: space) }
+            }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Cover")
     }

@@ -137,6 +137,14 @@ end $$;
 
 -- Spaces: A makes a project space and puts the note in it; a bad status or blank title is refused.
 insert into public.segment (id, title, goal) values ('00000000-0000-0000-0000-0000000000c1', 'Website', 'Launch by November');
+-- A cover picture only from the owner's own folder.
+update public.segment set cover = 'file:00000000-0000-0000-0000-00000000000a/c1/cover.jpg' where id = '00000000-0000-0000-0000-0000000000c1';
+do $$ begin
+  update public.segment set cover = 'file:00000000-0000-0000-0000-00000000000b/c1/cover.jpg' where id = '00000000-0000-0000-0000-0000000000c1';
+  raise exception 'a cover from someone else''s folder was accepted';
+exception when check_violation then null;
+end $$;
+update public.segment set cover = 'aurora' where id = '00000000-0000-0000-0000-0000000000c1';
 update public.item set segment_id = '00000000-0000-0000-0000-0000000000c1';
 do $$ begin
   assert (select count(*) from public.item where segment_id is not null) = 1, 'A''s note should be in the space';
