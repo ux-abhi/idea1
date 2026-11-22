@@ -16,7 +16,7 @@ export default function PrivacyPage() {
       <main id="main" className="doc light">
         <h1>Privacy</h1>
         <p className="lede">Blink keeps your data on your Mac and on a server in your own account. Pexilim, the company that makes Blink, doesn't store it and can't read it.</p>
-        <p className="updated">Last updated 24 October 2026</p>
+        <p className="updated">Last updated 22 November 2026</p>
 
         <h2>The short version</h2>
         <ul>
@@ -26,14 +26,15 @@ export default function PrivacyPage() {
           <li>Pexilim runs no database for the Blink app. For the app, the only thing we run is a tiny sign-in helper used once during setup, and it stores nothing.</li>
           <li>If you join the waitlist on this website, we keep your email to tell you when Blink is ready. <a href="#waitlist">Details below</a>.</li>
           <li>No analytics, no tracking and no cookies in the app. This website counts anonymous visits and page speed, without cookies (<a href="#website">below</a>).</li>
+          <li>Your data is encrypted in transit and at rest, only your own login can read it, and sensitive actions need Touch ID. <a href="#security">How your data is protected</a>.</li>
         </ul>
 
         <h2>Who holds what</h2>
         <table className="who">
           <tr><th scope="row">Your Mac</th><td>Clipboard history (your last 50 copies), chat history and post images. The clipboard is never sent to your server or to any AI. Items that password managers mark as concealed are never recorded. You can pause or clear the clipboard at any time.</td></tr>
-          <tr><th scope="row">Your server</th><td>Notes, tasks, reminders, habits, spaces, money entries and accounts, content ideas, drafts and post stats, mail summaries and your sender rules, and a log of the actions you approved (kept 180 days). Your AI keys and mail app passwords are stored there as secrets; Blink never shows them again. The server is a Supabase project in your account, run under your agreement with Supabase.</td></tr>
+          <tr><th scope="row">Your server</th><td>Notes, tasks, reminders, habits, spaces and their tables and files, money entries and accounts, posts and drafts, mail summaries and your sender rules, bulk mails you write, and a log of the actions you approved (kept 180 days). Your AI keys and mail app passwords are stored there as secrets; Blink never shows them again. The server is a Supabase project in your account, run under your agreement with Supabase.</td></tr>
           <tr><th scope="row">Your mail provider</th><td>Your server checks your mailbox and stores only short summaries, not full messages. Reply drafts are saved to your mailbox's Drafts folder. Mail is sent only after you approve it with Touch ID.</td></tr>
-          <tr><th scope="row">Your AI provider</th><td>When a task needs AI, your server sends what that task needs to the provider you chose (Anthropic for Claude, Groq, or OpenRouter), using your own key. If you turn them on, post images use Cloudflare and reading your own public Instagram page uses Apify, also with your keys. Each provider handles that data under your account's terms with them.</td></tr>
+          <tr><th scope="row">Your AI provider</th><td>When a task needs AI, your server sends what that task needs to the provider you chose (Anthropic for Claude, Groq, or OpenRouter), using your own key. If you turn it on, post images use Cloudflare, also with your key. Each provider handles that data under your account's terms with them.</td></tr>
           <tr><th scope="row">Google (optional)</th><td>If you connect Google Calendar, your server creates the meetings you approve with /meet. See <a href="#google">Google Calendar</a> below.</td></tr>
           <tr><th scope="row">Pexilim</th><td>Only the sign-in helper, described below. No copy of your data, no admin access, no telemetry. Separately, the waitlist, if you join it.</td></tr>
         </table>
@@ -41,6 +42,21 @@ export default function PrivacyPage() {
         <h2 id="google">Google Calendar</h2>
         <p>If you connect Google in Blink › Settings › Connections, Blink asks Google for: access to your calendar events (<code>calendar.events</code>, which Google shows as “view and edit events on all your calendars”; Blink only creates the meetings you approve), and your Google sign-in identity and email address (<code>openid</code>, <code>email</code>) so Settings can show which account is connected. Blink uses it for one thing: when you type <code>/meet</code> and approve with Touch ID, your server creates that meeting in your Google Calendar with a Google Meet link, and Google emails the guests you chose.</p>
         <p>The access Google gives is stored encrypted in your own server's vault, never on your Mac and never with Pexilim. Your server also keeps the connected account's email and, for each meeting, its title, guests, time and Meet link in your action log (kept 180 days). Blink doesn't read your other events, mail or files through Google, doesn't sell or share Google data, doesn't use it for ads, and doesn't use it to train AI models. Blink's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. You can remove Blink's access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>. To delete what your server keeps, remove the <code>google_link</code> row and its vault secret in your Supabase project, or delete the project.</p>
+
+        <h2 id="security">How your data is protected</h2>
+        <p>Blink handles sensitive data, including Google user data, with these protections:</p>
+        <ul>
+          <li><strong>Encrypted in transit:</strong> every connection Blink makes uses TLS (HTTPS): between your Mac and your server, and between your server and Google, your mail provider and your AI provider. Mail is read and sent over TLS (IMAPS, and SMTP over TLS or STARTTLS).</li>
+          <li><strong>Encrypted at rest:</strong> your server's database and file storage are encrypted at rest by Supabase. Secrets (your Google access, AI keys and mail passwords) are kept in your server's encrypted vault or as encrypted function secrets, never in ordinary tables, and are never sent back to your Mac.</li>
+          <li><strong>Only you can read it:</strong> your server belongs to your own Supabase account. Every table has row-level security, so each row can only be read or changed by its owner's login. Blink's server functions check who is signed in before doing anything, and the keys that bypass these checks stay on the server.</li>
+          <li><strong>Protected on your Mac:</strong> your sign-in is kept in the macOS Keychain, on this Mac only. Blink can be locked behind Touch ID or your Mac password.</li>
+          <li><strong>Sensitive actions need you:</strong> sending mail and creating meetings happen only after you approve them with Touch ID. The approval is signed by a key in your Mac's Secure Enclave, and your server checks the signature before it acts.</li>
+          <li><strong>Least access:</strong> Blink asks Google only for what it needs: <code>calendar.events</code> to create the meetings you approve, plus your sign-in identity and email address. It doesn't read your other Google data.</li>
+          <li><strong>No human access:</strong> nobody at Pexilim can access your data or your Google data. It's on your server, under your account, and we hold no copy and no admin access.</li>
+          <li><strong>Kept only as long as needed:</strong> mail is kept as short summaries, not full messages. The action log is removed after 180 days. When you disconnect Google, Blink revokes its access at Google and deletes the stored access from your server.</li>
+          <li><strong>Text treated as data:</strong> content from mail, websites and pasted text is treated strictly as data. It can't instruct Blink's AI to act.</li>
+          <li><strong>If something goes wrong:</strong> if we learn of a security problem in Blink that could affect your data, we fix it and tell affected users by email and on this page without undue delay.</li>
+        </ul>
 
         <h2>The sign-in helper</h2>
         <p>When you choose “Sign in with Supabase” during setup, Supabase needs a secret that a Mac app can't keep safely. So Pexilim runs one small helper. It receives the one-time sign-in code from Supabase, adds our secret, and returns a short-lived access token to Blink on your Mac. It never asks for a long-lived token.</p>
