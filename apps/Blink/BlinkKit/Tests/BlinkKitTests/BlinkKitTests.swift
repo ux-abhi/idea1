@@ -1601,4 +1601,29 @@ extension Tokens {
         #expect(after[1].options?.map(\.name) == ["Idea", "Waiting"])
         #expect(cells[1]["s"] == after[1].options?.last?.id && cells[1].count == 2) // unknown columns are dropped
     }
+
+    @Test func aCalendarShowsWholeWeeksAndPlacesCardsByDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        calendar.firstWeekday = 2 // Monday
+        let november = calendar.date(from: DateComponents(year: 2026, month: 11, day: 24))!
+        let days = SpaceTable.monthDays(containing: november, calendar: calendar)
+        // 1 November 2026 is a Sunday: the grid starts Monday 26 October and ends Sunday 6 December.
+        #expect(HabitDay.key(days.first!, calendar: calendar) == "2026-10-26")
+        #expect(HabitDay.key(days.last!, calendar: calendar) == "2026-12-06")
+        #expect(days.count == 42 && days.count % 7 == 0)
+        let rows = [SpaceRow(blockID: "b", position: 0, cells: ["d": "2026-11-24"]), SpaceRow(blockID: "b", position: 1, cells: [:]),
+                    SpaceRow(blockID: "b", position: 2, cells: ["d": "2026-11-24"])]
+        #expect(SpaceTable.byDay(rows, column: "d")["2026-11-24"]?.map(\.position) == [0, 2]) // kept in order, undated left out
+        #expect(SpaceTable.byDay(rows, column: "d").count == 1)
+    }
+
+    @Test func aFileCellKeepsItsPathAndNameAndRejectsBadOnes() {
+        let cell = SpaceTable.fileCell(path: "u/s/a.pdf", name: "CV | 2026.pdf")
+        #expect(SpaceTable.fileParts(cell)! == ("u/s/a.pdf", "CV   2026.pdf"))
+        #expect(SpaceTable.display(SpaceRow(blockID: "b", position: 0, cells: ["f": cell]), SpaceColumn(id: "f", name: "File", kind: .file)) == "CV   2026.pdf")
+        #expect(SpaceTable.fileParts("no bar") == nil && SpaceTable.fileParts("u/../x|n") == nil && SpaceTable.fileParts("|n") == nil)
+        let plan = SpaceTable.cells(from: [["File": "u/x|fake"]], columns: [SpaceColumn(id: "f", name: "File", kind: .file)])
+        #expect(plan.cells[0].isEmpty) // text never fills a File
+    }
 }

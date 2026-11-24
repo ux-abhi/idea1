@@ -5,7 +5,7 @@ import Foundation
 /// options.
 public struct SpaceColumn: Codable, Equatable, Hashable, Identifiable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
-        case text, category, tags, checkbox, date, email, link
+        case text, category, tags, checkbox, date, email, link, file
         public var title: String {
             switch self {
             case .text: "Text"
@@ -15,6 +15,7 @@ public struct SpaceColumn: Codable, Equatable, Hashable, Identifiable, Sendable 
             case .date: "Date"
             case .email: "Email"
             case .link: "URL"
+            case .file: "File"
             }
         }
     }
@@ -47,11 +48,11 @@ public struct SpaceOption: Codable, Equatable, Hashable, Identifiable, Sendable 
 
 /// A saved way of looking at a table: as rows or as a board grouped by a Category, with its own filters and sort.
 public struct SpaceTableView: Codable, Equatable, Hashable, Identifiable, Sendable {
-    public enum Kind: String, Codable, Sendable { case table, board }
+    public enum Kind: String, Codable, Sendable { case table, board, calendar }
     public let id: String
     public var name: String
     public var kind: Kind
-    /// The Category column a board is grouped by.
+    /// The Category column a board is grouped by; for a calendar, the Date column it places cards by.
     public var groupBy: String?
     public var filters: [RowFilter]
     public var sortColumn: String?
@@ -157,8 +158,40 @@ public enum SpaceTable {
         switch column.kind {
         case .category: return column.options?.first { $0.id == raw }?.name ?? ""
         case .checkbox: return raw == "true" ? "Yes" : ""
+        case .file: return fileParts(raw)?.name ?? ""
         default: return raw
         }
+    }
+
+    /// A File cell holds "path|name": where the file lives in the owner's folder, and what it was called.
+    public static func fileCell(path: String, name: String) -> String {
+        "\(path)|\(name.replacingOccurrences(of: "|", with: " ").prefix(200))"
+    }
+
+    public static func fileParts(_ raw: String) -> (path: String, name: String)? {
+        guard let bar = raw.firstIndex(of: "|") else { return nil }
+        let path = String(raw[..<bar]), name = String(raw[raw.index(after: bar)...])
+        guard !path.isEmpty, !path.contains(".."), !name.isEmpty else { return nil }
+        return (path, name)
+    }
+
+    /// The days a month calendar shows: whole weeks, from the week the month starts in to the week it ends in.
+    public static func monthDays(containing day: Date, calendar: Calendar = .current) -> [Date] {
+        guard let month = calendar.dateInterval(of: .month, for: day),
+              let first = calendar.dateInterval(of: .weekOfMonth, for: month.start)?.start,
+              let last = calendar.dateInterval(of: .weekOfMonth, for: month.end.addingTimeInterval(-1))?.end else { return [] }
+        var days: [Date] = [], current = first
+        while current < last, days.count < 42 {
+            days.append(current)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: current) else { break }
+            current = next
+        }
+        return days
+    }
+
+    /// Rows by the day in a Date column ("2026-11-24"), keeping their order; rows with no date are left out.
+    public static func byDay(_ rows: [SpaceRow], column: String) -> [String: [SpaceRow]] {
+        Dictionary(grouping: rows.filter { !($0.cells[column] ?? "").isEmpty }) { $0.cells[column]! }
     }
 
     /// The rows a view shows: its filters (all must match) and a search over every cell, in its sort order (else as
@@ -299,7 +332,7 @@ public struct TablePlan: Decodable, Equatable, Sendable {
             result[i].options = options
         }
         for add in addColumns where !result.contains(where: { $0.name.caseInsensitiveCompare(add.name) == .orderedSame }) {
-            let kind = SpaceColumn.Kind(rawValue: add.kind) ?? .text
+            let kind = SpaceColumn.Kind(rawValue: add.kind).flatMap { $0 == .file ? nil : $0 } ?? .text
             let options = kind == .category ? add.options.enumerated().map { SpaceOption(name: String($1.prefix(40)), color: color($0)) } : nil
             result.append(SpaceColumn(name: String(add.name.prefix(60)), kind: kind, options: options))
         }
@@ -328,7 +361,8 @@ extension SpaceTable {
         let cells = rows.map { row -> [String: String] in
             var out: [String: String] = [:]
             for (name, value) in row {
-                guard let i = columns.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else { continue }
+                // Files are only added by the owner, never from text.
+                guard let i = columns.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }), columns[i].kind != .file else { continue }
                 if columns[i].kind == .category {
                     var options = columns[i].options ?? []
                     if let option = options.first(where: { $0.name.caseInsensitiveCompare(value) == .orderedSame }) { out[columns[i].id] = option.id; continue }

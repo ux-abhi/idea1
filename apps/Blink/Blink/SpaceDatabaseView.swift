@@ -38,9 +38,12 @@ struct TableBlock: View {
             toolbar
             Divider()
             let shown = columns.filter { !(active.hidden ?? []).contains($0.id) }
-            if active.kind == .board {
+            switch active.kind {
+            case .board:
                 BoardView(block: current, columns: columns, shown: shown, view: active, rows: rows, open: { openRow = $0 }, update: update, editOptions: { editingOptions = $0 })
-            } else {
+            case .calendar:
+                CalendarBoard(block: current, columns: columns, view: active, rows: rows, open: { openRow = $0 }, update: update)
+            case .table:
                 GridView(block: current, columns: shown, view: active, rows: rows, open: { openRow = $0 }, editOptions: { editingOptions = $0 })
             }
         }
@@ -79,7 +82,7 @@ struct TableBlock: View {
         HStack(spacing: 6) {
             ForEach(views) { view in
                 Button { setActive(view.id) } label: {
-                    Label(view.name, systemImage: view.kind == .board ? "rectangle.split.3x1" : "tablecells")
+                    Label(view.name, systemImage: Self.symbol(view.kind))
                         .font(.callout.weight(view.id == active.id ? .semibold : .regular))
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(view.id == active.id ? Color.primary.opacity(0.08) : .clear, in: .capsule)
@@ -95,6 +98,7 @@ struct TableBlock: View {
             Menu {
                 Button("Table", systemImage: "tablecells") { addView(.table) }
                 Button("Board", systemImage: "rectangle.split.3x1") { addView(.board) }
+                Button("Calendar", systemImage: "calendar") { addView(.calendar) }
             } label: { Image(systemName: "plus") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .help("Add a view").accessibilityLabel("Add a view")
@@ -119,9 +123,11 @@ struct TableBlock: View {
                     .popover(isPresented: $sorting, arrowEdge: .bottom) { SortEditor(columns: columns, view: active, update: update) }
                 Button { searching.toggle(); if !searching { search = "" } } label: { Image(systemName: "magnifyingglass") }
                     .help("Search").accessibilityLabel("Search")
-                Button { choosingProperties = true } label: { Image(systemName: "slider.horizontal.3") }
-                    .help("Properties: choose what this view shows").accessibilityLabel("Properties")
-                    .popover(isPresented: $choosingProperties, arrowEdge: .bottom) { PropertiesEditor(columns: columns, view: active, update: update) }
+                if active.kind != .calendar { // a calendar shows only titles
+                    Button { choosingProperties = true } label: { Image(systemName: "slider.horizontal.3") }
+                        .help("Properties: choose what this view shows").accessibilityLabel("Properties")
+                        .popover(isPresented: $choosingProperties, arrowEdge: .bottom) { PropertiesEditor(columns: columns, view: active, update: update) }
+                }
             }
             .buttonStyle(.borderless).foregroundStyle(.secondary)
             Button("New") { Task { openRow = await newRow(in: nil) } }
@@ -165,7 +171,8 @@ struct TableBlock: View {
     private func setActive(_ id: String) { save { $0.activeView = id } }
 
     private func addView(_ kind: SpaceTableView.Kind) {
-        let view = SpaceTableView(name: kind == .board ? "Board" : "Table", kind: kind, groupBy: columns.first { $0.kind == .category }?.id)
+        let view = SpaceTableView(name: kind.rawValue.capitalized, kind: kind,
+                                  groupBy: columns.first { $0.kind == (kind == .calendar ? .date : .category) }?.id)
         save { data in data.views = (data.views ?? []) + [view]; data.activeView = view.id }
     }
 
@@ -219,6 +226,15 @@ struct TableBlock: View {
         case .date: "calendar"
         case .email: "envelope"
         case .link: "link"
+        case .file: "paperclip"
+        }
+    }
+
+    static func symbol(_ kind: SpaceTableView.Kind) -> String {
+        switch kind {
+        case .table: "tablecells"
+        case .board: "rectangle.split.3x1"
+        case .calendar: "calendar"
         }
     }
 
@@ -465,6 +481,8 @@ private struct CellEditor: View {
             .accessibilityLabel("\(column.name): \(SpaceTable.display(row, column))")
         case .date:
             DateCell(row: row, column: column)
+        case .file:
+            FileCell(row: row, column: column)
         default:
             TextCell(row: row, column: column, large: large)
         }
@@ -531,6 +549,36 @@ private struct DateCell: View {
         var changed = model.tableRows[row.blockID]?.first { $0.id == row.id } ?? row
         changed.cells[column.id] = value
         Task { await model.update(changed) }
+    }
+}
+
+/// A file kept with the card: its name opens it; Remove deletes it.
+private struct FileCell: View {
+    @Environment(AppModel.self) private var model
+    let row: SpaceRow
+    let column: SpaceColumn
+    @State private var picking = false
+    @State private var uploading = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let file = SpaceTable.fileParts(row.cells[column.id] ?? "") {
+                Button { Task { await model.openFile(file.path, name: file.name) } } label: {
+                    Label(file.name, systemImage: "doc").lineLimit(1).truncationMode(.middle)
+                }
+                .buttonStyle(.borderless).help("Open “\(file.name)”")
+                Button("Remove File", systemImage: "xmark.circle.fill") { Task { await model.removeFile(from: row, column: column.id) } }
+                    .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.tertiary).help("Remove and delete this file")
+            } else if uploading {
+                ProgressView().controlSize(.small).accessibilityLabel("Uploading")
+            } else {
+                Button("Add file") { picking = true }.buttonStyle(.borderless).foregroundStyle(.tertiary)
+            }
+        }
+        .fileImporter(isPresented: $picking, allowedContentTypes: MailAttachment.types.keys.compactMap { UTType(filenameExtension: $0) }) { result in
+            guard let file = try? result.get() else { return }
+            Task { uploading = true; await model.attachFile(file, to: row, column: column.id); uploading = false }
+        }
     }
 }
 
@@ -784,6 +832,170 @@ private struct CardTile: View {
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+// MARK: Calendar
+
+/// A month of cards placed by a Date property: drag a card to another day, + on a day adds one there.
+private struct CalendarBoard: View {
+    @Environment(AppModel.self) private var model
+    let block: SpaceBlock
+    let columns: [SpaceColumn]
+    let view: SpaceTableView
+    let rows: [SpaceRow]
+    let open: (String) -> Void
+    let update: (SpaceTableView) -> Void
+    @State private var month = Date.now
+
+    var body: some View {
+        let dates = columns.filter { $0.kind == .date }
+        if let date = dates.first(where: { $0.id == view.groupBy }) ?? dates.first {
+            let calendar = Calendar.current
+            let placed = SpaceTable.byDay(rows, column: date.id)
+            let undated = rows.filter { HabitDay.date(fromKey: $0.cells[date.id] ?? "") == nil }.count // empty, or text that isn't a day
+            let weekdays = Array(calendar.shortWeekdaySymbols[(calendar.firstWeekday - 1)...] + calendar.shortWeekdaySymbols[..<(calendar.firstWeekday - 1)])
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text(month.formatted(.dateTime.month(.wide).year())).font(.title3.bold())
+                    if dates.count > 1 {
+                        Picker("Dates from", selection: Binding(get: { date.id }, set: { var v = view; v.groupBy = $0; update(v) })) {
+                            ForEach(dates) { Text($0.name).tag($0.id) }
+                        }
+                        .fixedSize()
+                    }
+                    Spacer()
+                    if undated > 0 { Text("\(undated) without a date").font(.callout).foregroundStyle(.secondary) }
+                    Button("Previous Month", systemImage: "chevron.left") { shift(-1) }.labelStyle(.iconOnly)
+                    Button("Today") { month = .now }
+                    Button("Next Month", systemImage: "chevron.right") { shift(1) }.labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+                    SwiftUI.GridRow {
+                        ForEach(weekdays, id: \.self) { Text($0).font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 6) }
+                    }
+                    let days = SpaceTable.monthDays(containing: month)
+                    ForEach(0..<(days.count / 7), id: \.self) { week in
+                        SwiftUI.GridRow {
+                            ForEach(days[(week * 7)..<(week * 7 + 7)], id: \.self) { day in
+                                DayCell(block: block, columns: columns, date: date, day: day,
+                                        inMonth: calendar.isDate(day, equalTo: month, toGranularity: .month),
+                                        rows: placed[HabitDay.key(day)] ?? [], open: open)
+                            }
+                        }
+                    }
+                }
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.1)))
+                .clipShape(.rect(cornerRadius: 10))
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("A calendar places cards by a Date, like Due or Publish on.").foregroundStyle(.secondary)
+                Button("Add a Date Property") {
+                    let due = SpaceColumn(name: "Date", kind: .date)
+                    Task {
+                        await model.setColumns(columns + [due], of: block)
+                        var v = view; v.groupBy = due.id; update(v)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.vertical, 20)
+        }
+    }
+
+    private func shift(_ months: Int) {
+        month = Calendar.current.date(byAdding: .month, value: months, to: month) ?? month
+    }
+}
+
+/// One day: its number, up to three cards, and the rest behind "N more".
+private struct DayCell: View {
+    @Environment(AppModel.self) private var model
+    let block: SpaceBlock
+    let columns: [SpaceColumn]
+    let date: SpaceColumn
+    let day: Date
+    let inMonth: Bool
+    let rows: [SpaceRow]
+    let open: (String) -> Void
+    @State private var hovering = false
+    @State private var targeted = false
+    @State private var showingAll = false
+
+    var body: some View {
+        let today = Calendar.current.isDateInToday(day)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(day.formatted(.dateTime.day()))
+                    .font(.callout.weight(today ? .bold : .regular).monospacedDigit())
+                    .foregroundStyle(today ? AnyShapeStyle(.white) : inMonth ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
+                    .frame(minWidth: 22, minHeight: 22)
+                    .background(today ? Color.accentColor : .clear, in: .circle)
+                Spacer()
+                if hovering {
+                    Button("New card on \(day.formatted(date: .abbreviated, time: .omitted))", systemImage: "plus", action: add)
+                        .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.secondary)
+                }
+            }
+            ForEach(rows.prefix(3)) { row in pill(row) }
+            if rows.count > 3 {
+                Button("\(rows.count - 3) more") { showingAll = true }
+                    .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
+                    .popover(isPresented: $showingAll, arrowEdge: .bottom) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(day.formatted(date: .complete, time: .omitted)).font(.headline).padding(.bottom, 4)
+                            ForEach(rows) { row in pill(row) }
+                        }
+                        .padding(12).frame(width: 240)
+                    }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(5)
+        .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
+        .background(targeted ? Color.accentColor.opacity(0.12) : inMonth ? .clear : Color.primary.opacity(0.03))
+        .overlay(Rectangle().strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5))
+        .contentShape(.rect)
+        .onHover { hovering = $0 }
+        .dropDestination(for: String.self) { ids, _ in
+            let moved = ids.compactMap { id in model.tableRows[block.id]?.first { $0.id == id } } // only this table's cards
+            for var row in moved {
+                row.cells[date.id] = HabitDay.key(day)
+                Task { await model.update(row) }
+            }
+            return !moved.isEmpty
+        } isTargeted: { targeted = $0 }
+    }
+
+    /// A card as one line, tinted by its first Category (its status, usually).
+    private func pill(_ row: SpaceRow) -> some View {
+        let title = columns.first { $0.kind == .text }.map { SpaceTable.display(row, $0) }.flatMap { $0.isEmpty ? nil : $0 } ?? "Untitled"
+        let option = columns.first { $0.kind == .category }.flatMap { c in c.options?.first { $0.id == row.cells[c.id] } }
+        let tint = option.map { Color.system($0.color) } ?? .gray
+        return Text(title).font(.caption).lineLimit(1)
+            .padding(.horizontal, 6).padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.16), in: .rect(cornerRadius: 5))
+            .contentShape(.rect)
+            .onTapGesture { open(row.id) }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel([title, option?.name].compactMap { $0 }.joined(separator: ", "))
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { open(row.id) }
+            .draggable(row.id)
+    }
+
+    private func add() {
+        Task {
+            let before = Set((model.tableRows[block.id] ?? []).map(\.id))
+            await model.addRow(to: block)
+            guard var row = model.tableRows[block.id]?.first(where: { !before.contains($0.id) }) else { return }
+            row.cells[date.id] = HabitDay.key(day)
+            await model.update(row)
+            open(row.id)
+        }
     }
 }
 

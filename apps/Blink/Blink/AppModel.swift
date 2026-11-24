@@ -3526,6 +3526,67 @@ final class AppModel {
         }
     }
 
+    /// A file into a table's File cell: same kinds and sizes as a Space's files, kept in the owner's folder.
+    func attachFile(_ file: URL, to row: SpaceRow, column: String) async {
+        guard let server else { return }
+        let access = file.startAccessingSecurityScopedResource()
+        defer { if access { file.stopAccessingSecurityScopedResource() } }
+        let name = file.lastPathComponent
+        let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if let problem = MailAttachment.problem(adding: [(name, size)], to: []) { saveProblem = problem; return }
+        guard let type = MailAttachment.types[(name as NSString).pathExtension.lowercased()],
+              let data = await Task.detached(operation: { try? Data(contentsOf: file) }).value else {
+            saveProblem = "Couldn't read “\(name)”."
+            return
+        }
+        do {
+            let stored = try await server.uploadFile(data, name: name, type: type, folder: row.blockID)
+            guard var changed = tableRows[row.blockID]?.first(where: { $0.id == row.id }) else {
+                try? await server.deleteFile(stored.path) // the card went while uploading
+                return
+            }
+            let old = changed.cells[column].flatMap { SpaceTable.fileParts($0) }
+            changed.cells[column] = SpaceTable.fileCell(path: stored.path, name: name)
+            await update(changed)
+            if let old { await deleteUnused(old.path, in: row.blockID) }
+        } catch {
+            saveProblem = serverBehind ? "Update your server (Settings › Server) to add files." : "Couldn't upload “\(name)”. Check your connection."
+        }
+    }
+
+    /// Takes a file out of a File cell and deletes it from the owner's folder.
+    // shortcut: deleting a whole card or table leaves its files in the folder; add a cleanup when storage use matters.
+    func removeFile(from row: SpaceRow, column: String) async {
+        guard var changed = tableRows[row.blockID]?.first(where: { $0.id == row.id }),
+              let file = changed.cells[column].flatMap({ SpaceTable.fileParts($0) }) else { return }
+        changed.cells[column] = nil
+        await update(changed)
+        await deleteUnused(file.path, in: row.blockID)
+    }
+
+    /// Deletes a stored file unless another card still holds it (a duplicated card shares its file).
+    private func deleteUnused(_ path: String, in blockID: String) async {
+        let held = (tableRows[blockID] ?? []).contains { row in row.cells.values.contains { SpaceTable.fileParts($0)?.path == path } }
+        if !held { try? await server?.deleteFile(path) }
+    }
+
+    /// Downloads one of the owner's files and opens it in its usual app (Preview, Keynote, Word).
+    func openFile(_ path: String, name: String) async {
+        #if os(macOS)
+        guard let server else { return }
+        do {
+            let data = try await server.file(path)
+            let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = folder.appending(path: (name as NSString).lastPathComponent.replacingOccurrences(of: "/", with: "-"))
+            try data.write(to: url)
+            NSWorkspace.shared.open(url)
+        } catch {
+            saveProblem = "Couldn't open “\(name)”. Check your connection and try again."
+        }
+        #endif
+    }
+
     /// The start of a PDF's or Word file's text, at most ~15 KB (a block's data is capped at 20 KB); nil for others.
     nonisolated static func fileText(_ data: Data, type: String) -> String? {
         #if os(macOS)

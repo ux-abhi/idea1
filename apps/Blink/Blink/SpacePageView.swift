@@ -765,6 +765,10 @@ private struct FileBlock: View {
                         if let body = block.data.body { Text(body).font(.caption).foregroundStyle(.tertiary).lineLimit(2) }
                     }
                     Spacer()
+                    if let path = block.data.ref {
+                        Button("Open", systemImage: "arrow.up.forward") { Task { await model.openFile(path, name: block.data.text ?? "File") } }
+                            .buttonStyle(.borderless).help("Open in its app")
+                    }
                 }
                 .padding(10)
                 .background(.background.secondary, in: .rect(cornerRadius: 10))

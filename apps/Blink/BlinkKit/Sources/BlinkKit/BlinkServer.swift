@@ -994,7 +994,8 @@ public final class BlinkServer: Sendable {
     }
 
     private func info(_ columns: [SpaceColumn]) -> [TableColumnInfo] {
-        columns.map { TableColumnInfo(name: $0.name, kind: $0.kind.rawValue, options: ($0.options ?? []).map(\.name)) }
+        columns.filter { $0.kind != .file }.map { // the AI never sees or fills files; an older server would refuse the kind
+            TableColumnInfo(name: $0.name, kind: $0.kind.rawValue, options: ($0.options ?? []).map(\.name)) }
     }
 
     private func tableAction<Reply: Decodable>(_ body: TableAsk) async throws -> Reply {
