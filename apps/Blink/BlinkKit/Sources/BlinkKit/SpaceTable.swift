@@ -224,6 +224,31 @@ public enum SpaceTable {
         }
     }
 
+    /// "Spread over the week": cards not done and without a date get one of the next five working days (today
+    /// first, when it's a weekday), each on the day with the fewest cards so far, in the table's order. Returns the
+    /// changed rows; empty when there's no Date property or nothing to place.
+    public static func spread(_ rows: [SpaceRow], columns: [SpaceColumn], from now: Date = .now, calendar: Calendar = .current) -> [SpaceRow] {
+        guard let date = columns.first(where: { $0.kind == .date }) else { return [] }
+        var days: [Date] = []
+        var day = calendar.startOfDay(for: now)
+        while days.count < 5 {
+            if !calendar.isDateInWeekend(day) { days.append(day) }
+            day = calendar.date(byAdding: .day, value: 1, to: day)!
+        }
+        let keys = days.map { HabitDay.key($0, calendar: calendar) }
+        var load = Dictionary(uniqueKeysWithValues: keys.map { ($0, 0) })
+        for row in rows where !isDone(row, columns: columns) {
+            if let key = row.cells[date.id].map({ String($0.prefix(10)) }), load[key] != nil { load[key]! += 1 }
+        }
+        return rows.filter { ($0.cells[date.id] ?? "").isEmpty && !isDone($0, columns: columns) }.map { row in
+            let key = keys.min { load[$0]! < load[$1]! }! // ties go to the earlier day
+            load[key]! += 1
+            var changed = row
+            changed.cells[date.id] = key
+            return changed
+        }
+    }
+
     /// The change that ticks a card off: its Category's "Done" option, else its "Done" checkbox; nil when it has neither.
     public static func doneCell(columns: [SpaceColumn]) -> (column: String, value: String)? {
         for column in columns where column.kind == .category {

@@ -200,7 +200,7 @@ private struct PageAIBar: View {
 
     private var placeholder: String {
         switch block?.kind {
-        case .table: "Ask AI to change this table, or paste a list to add rows"
+        case .table: "Ask AI to change this table, suggest cards, spread them over the week, or paste a list"
         case nil: "Click a block to use AI on it, or ask \(AssistantName.current) anything"
         default: "Ask \(AssistantName.current) anything"
         }
@@ -211,8 +211,17 @@ private struct PageAIBar: View {
         guard !typed.isEmpty else { return }
         text = ""
         if let block, block.kind == .table {
-            // A pasted list (several lines, or long) becomes rows; a sentence is a change to the table.
-            model.tableAIRequest = .init(blockID: block.id, text: typed, paste: typed.contains("\n") || typed.count > 200)
+            // A pasted list (several lines, or long) becomes rows; "spread … week" dates the open cards; "suggest" or
+            // "ideas" asks for new cards; any other sentence is a change to the table.
+            let lower = typed.lowercased(), list = typed.contains("\n") || typed.count > 200
+            if !list, lower.contains("week"), lower.contains("spread") || lower.contains("over the week") {
+                Task { await model.spreadOverWeek(block) }
+            } else {
+                // Only a clear opening counts ("make this a calendar for post ideas" still changes the table).
+                let ideas = !list && (["suggest", "brainstorm", "ideas", "more ideas", "give me", "come up with"].contains { lower.hasPrefix($0) }
+                    || lower.contains(/^\d+ (more )?([a-z]+ )?ideas/))
+                model.tableAIRequest = .init(blockID: block.id, text: typed, kind: list ? .paste : ideas ? .ideas : .change)
+            }
         } else {
             showPanel = true
             Task { await model.ask(String(typed.prefix(1990))) }
@@ -465,8 +474,10 @@ private struct BlockRow: View {
     private var options: some View {
         if block.kind == .table {
             Button("Show on Canvas", systemImage: "rectangle.on.rectangle") { Task { await model.showOnCanvas(block, in: space) } }
-            Button("Ask AI to Change This Table…", systemImage: "wand.and.stars") { model.tableAIRequest = .init(blockID: block.id, text: "", paste: false) }
-            Button("Paste Text as Rows…", systemImage: "text.badge.plus") { model.tableAIRequest = .init(blockID: block.id, text: "", paste: true) }
+            Button("Ask AI to Change This Table…", systemImage: "wand.and.stars") { model.tableAIRequest = .init(blockID: block.id, text: "", kind: .change) }
+            Button("Suggest Cards…", systemImage: "lightbulb") { model.tableAIRequest = .init(blockID: block.id, text: "", kind: .ideas) }
+            Button("Paste Text as Rows…", systemImage: "text.badge.plus") { model.tableAIRequest = .init(blockID: block.id, text: "", kind: .paste) }
+            Button("Spread Over the Week", systemImage: "calendar.badge.plus") { Task { await model.spreadOverWeek(block) } }
             Divider()
             Button("Import CSV…", systemImage: "square.and.arrow.down") { importing = true }
             Button("Copy as CSV", systemImage: "doc.on.doc") {

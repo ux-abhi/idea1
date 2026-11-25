@@ -20,6 +20,9 @@ public enum QuickCommand: Equatable, Sendable {
     case meet(title: String, start: Date?, guests: [String])
     /// Meeting notes on this Mac: start ("take notes"), or stop and save them ("stop notes").
     case notes(stop: Bool)
+    /// A card in a Space table: "Leads: Call Ana friday 3pm" (the table's name before a colon; without one, the app
+    /// looks for a table whose name starts the text). `timed` when a time was given, not just a day.
+    case card(table: String?, title: String, due: Date?, timed: Bool)
 
     /// Every command with an example, for the hint list.
     public static let all: [(name: String, example: String, about: String)] = [
@@ -31,6 +34,7 @@ public enum QuickCommand: Equatable, Sendable {
         ("/post", "/post 3 checkout mistakes that lose users", "Write drafts for your platforms"),
         ("/ideas", "/ideas video ideas for my page", "Post ideas for your page"),
         ("/spent", "/spent 8.50 lunch, 3 bus", "Add what you spent; Blink sorts it"),
+        ("/card", "/card Leads: Call Ana friday 3pm", "Add a card to a Space table"),
         ("/meet", "/meet Design review sam@example.com tomorrow 3pm", "Set up a Google Meet and invite people"),
         ("/notes", "/notes", "Take notes of this meeting (/notes stop saves them)"),
         ("/clear", "/clear", "Clear this chat"),
@@ -51,6 +55,7 @@ public enum QuickCommand: Equatable, Sendable {
             ("task ", "/task"), ("todo: ", "/task"), ("todo ", "/task"), ("to do: ", "/task"),
             ("note: ", "/note"), ("note ", "/note"), ("new note ", "/note"), ("jot down ", "/note"),
             ("set a timer for ", "/timer"), ("start a timer for ", "/timer"), ("timer for ", "/timer"), ("timer: ", "/timer"), ("timer ", "/timer"),
+            ("add a card to ", "/card"), ("add card to ", "/card"), ("new card in ", "/card"), ("card: ", "/card"),
             ("spent ", "/spent"), ("i spent ", "/spent"), ("paid ", "/spent"),
             ("schedule a meeting ", "/meet"), ("set up a meeting ", "/meet"), ("meeting with ", "/meet"), ("meet with ", "/meet"), ("meet ", "/meet"),
         ]
@@ -100,6 +105,17 @@ public enum QuickCommand: Equatable, Sendable {
             return rest.contains(where: \.isNumber) ? .spent(rest) : nil
         case "/clear":
             return .clear
+        case "/card":
+            // The colon ends a word ("Leads: …"), so a time like "3:30" is never read as a table name.
+            let colon = rest.firstMatch(of: /:(\s|$)/)?.range
+            let named = colon.map { rest[..<$0.lowerBound].trimmingCharacters(in: .whitespaces) } ?? ""
+            let table = named.isEmpty ? nil : named
+            let text = table == nil ? rest : rest[colon!.upperBound...].trimmingCharacters(in: .whitespaces)
+            let parsed = TaskInput.parse(text, now: now)
+            guard !parsed.title.isEmpty else { return nil }
+            // A day alone ("friday") comes back at noon; only a written time makes the card timed (and remind in the notch).
+            let timed = parsed.due != nil && text.lowercased().contains(/\d(:\d\d)? ?(am|pm)\b|\b\d{1,2}:\d\d\b|\bnoon\b/)
+            return .card(table: table, title: parsed.title, due: parsed.due, timed: timed)
         case "/meet":
             // Emails are guests; a date is the start; what's left is the title.
             let guests = rest.split(whereSeparator: { $0.isWhitespace || $0 == "," })

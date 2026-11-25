@@ -477,6 +477,9 @@ struct MailReader: View {
                 if let url = message.mailURL {
                     Button("Open in Apple Mail", systemImage: "arrow.up.forward.app") { NSWorkspace.shared.open(url) }.help("Open in Apple Mail")
                 }
+                TurnIntoCardsMenu {
+                    "From: \(message.sender) <\(message.fromAddr)>\nSubject: \(message.subject)\n\n\(text ?? message.summary)"
+                }
                 Menu {
                     Section("All mail from \(message.fromAddr)") {
                         Button("Always Important", systemImage: "exclamationmark.circle") { teach(.important) }

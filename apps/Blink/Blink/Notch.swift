@@ -214,6 +214,7 @@ final class NotchController {
             for await chip in Observations({ app.undoChip?.id }) where chip != nil {
                 guard let self else { return }
                 guard self.model.mood != .thinking else { continue }
+                if self.model.level != .rest { app.play(.done, enabledBy: AppModel.notchSoundKey) }
                 self.model.mood = .done
                 try? await Task.sleep(for: .seconds(Tokens.Hold.done))
                 if self.model.mood == .done { self.evaluateCue() }
@@ -759,6 +760,7 @@ final class NotchController {
         model.mood = notice.failed ? .concerned : .done
         model.peekNote = notice.text
         show(.peek, closingAfter: 6)
+        app.play(notice.failed ? .failed : .ready, enabledBy: AppModel.notchSoundKey)
         AccessibilityNotification.Announcement(notice.text).post()
         try? await Task.sleep(for: .seconds(6))
         if model.peekNote == notice.text { model.peekNote = nil }
@@ -1460,6 +1462,7 @@ struct CommandHint: View {
         case .clear: "Clear this chat"
         case .meet(let title, _, _): title.isEmpty ? "New Google Meet" : "Meet: \(title)"
         case .notes(let stop): stop ? "Stop and save meeting notes" : "Take meeting notes"
+        case .card(let table, let title, _, _): table.map { "Card in \($0): \(title)" } ?? "Card: \(title)"
         }
     }
 
@@ -1476,6 +1479,7 @@ struct CommandHint: View {
         case .clear: "trash"
         case .meet: "video"
         case .notes(let stop): stop ? "stop.circle" : "waveform"
+        case .card: "rectangle.stack"
         }
     }
 
@@ -1496,6 +1500,10 @@ struct CommandHint: View {
             return "Opens the invite card: \(when)\(guests.isEmpty ? "" : ", with \(guests.formatted())"). You check it, then Touch ID."
         case .notes(let stop):
             return stop ? "Saves the summary and transcript to Notes." : "Turns what's said into text on this Mac; the sound is never kept. Tell everyone first."
+        case .card(let table, _, let due, let timed):
+            let when = due.map { "Due " + $0.formatted(timed ? .dateTime.weekday(.wide).day().month().hour().minute() : .dateTime.weekday(.wide).day().month()) }
+                ?? "No date. Add one at the end, like “fri 3pm”."
+            return table == nil ? "\(when). Start with the table's name and a colon, like “Leads: Call Ana”." : "\(when), with Undo."
         }
     }
 }

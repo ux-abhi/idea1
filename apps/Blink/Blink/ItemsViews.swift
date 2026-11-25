@@ -736,6 +736,9 @@ struct NoteEditor: View {
                 .fixedSize()
                 .disabled(working != nil || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .help("Fix, shorten, clarify or summarise this note")
+                TurnIntoCardsMenu { "\(title)\n\n\(text)" }
+                    .labelStyle(.iconOnly).menuStyle(.borderlessButton)
+                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if let problem {
                 Text(problem).font(.caption).foregroundStyle(.orange)

@@ -20,6 +20,7 @@ struct TableBlock: View {
     @State private var choosingProperties = false
     @State private var askingAI = false
     @State private var pasting = false
+    @State private var suggesting = false
     @State private var aiText = ""
     @State private var openRow: String?
     @State private var editingOptions: SpaceColumn?
@@ -61,11 +62,16 @@ struct TableBlock: View {
         .sheet(item: $editingOptions) { column in OptionsEditor(block: current, column: column) }
         .sheet(isPresented: $askingAI) { AskTableSheet(columns: columns, initial: aiText, apply: apply) }
         .sheet(isPresented: $pasting) { PasteRowsSheet(block: current, columns: columns, initial: aiText) }
+        .sheet(isPresented: $suggesting) { PasteRowsSheet(block: current, columns: columns, initial: aiText, ideas: true) }
         // From the page's AI bar, while this table is selected.
         .onChange(of: model.tableAIRequest) { _, request in
             guard let request, request.blockID == block.id else { return }
             aiText = request.text
-            if request.paste { pasting = true } else { askingAI = true }
+            switch request.kind {
+            case .paste: pasting = true
+            case .ideas: suggesting = true
+            case .change: askingAI = true
+            }
             model.tableAIRequest = nil
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText]) { result in
@@ -1199,13 +1205,68 @@ private struct AskTableSheet: View {
     }
 }
 
+/// "Turn into Cards" on a mail or a note: pick one of your Space tables, and the AI turns the text into its cards,
+/// shown before they're added (the same sheet as pasting text into a table).
+struct TurnIntoCardsMenu: View {
+    @Environment(AppModel.self) private var model
+    /// The text at the moment a table is picked (a mail's body may still be loading when the view appears).
+    let text: () -> String
+    @State private var target: SpaceBlock?
+    @State private var loading = false
+    @State private var problem: String?
+
+    var body: some View {
+        let live = Set(model.spaces.map(\.id))
+        let tables = model.liveTables.filter { live.contains($0.spaceID) && !($0.data.columns ?? []).isEmpty }
+        Menu {
+            if tables.isEmpty {
+                Text("No tables yet. Add a table to a Space's page first.")
+            }
+            ForEach(model.spaces.filter { space in tables.contains { $0.spaceID == space.id } }) { space in
+                Section(space.title) {
+                    ForEach(tables.filter { $0.spaceID == space.id }) { table in
+                        Button(table.data.text?.isEmpty == false ? table.data.text! : "Table") { pick(table, in: space) }
+                    }
+                }
+            }
+        } label: {
+            if loading { ProgressView().controlSize(.small) } else { Label("Turn into Cards", systemImage: "rectangle.stack.badge.plus") }
+        }
+        .menuIndicator(.hidden).fixedSize()
+        .disabled(loading)
+        .help("Turn this into cards in one of your Space tables; you see them before they're added")
+        .sheet(item: $target) { block in
+            PasteRowsSheet(block: block, columns: block.data.columns ?? [], initial: String(text().prefix(20_000)))
+        }
+        .alert("Couldn't open that table", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
+            Button("OK") {}
+        } message: { Text(problem ?? "") }
+    }
+
+    /// Loads the Space's blocks and the table's rows first, so new options are saved and new cards go after the old ones.
+    private func pick(_ table: SpaceBlock, in space: Space) {
+        loading = true
+        Task {
+            defer { loading = false }
+            if model.spaceBlocks[space.id] == nil { await model.loadBlocks(space) }
+            guard let block = model.spaceBlocks[space.id]?.first(where: { $0.id == table.id }) else {
+                problem = "Check your connection and try again."; return
+            }
+            if model.tableRows[block.id] == nil { await model.loadRows(block) }
+            target = block
+        }
+    }
+}
+
 /// Paste a list, an email or notes; the AI turns it into rows for this table, shown before they're added.
-private struct PasteRowsSheet: View {
+struct PasteRowsSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let block: SpaceBlock
     let columns: [SpaceColumn]
     var initial = ""
+    /// Suggest new cards (what's typed is the ask) instead of reading pasted text.
+    var ideas = false
     @State private var text = ""
     @State private var rows: [[String: String]]?
     @State private var working = false
@@ -1213,9 +1274,9 @@ private struct PasteRowsSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Paste text as rows", systemImage: "text.badge.plus").font(.title3.bold())
+            Label(ideas ? "Suggest cards" : "Paste text as rows", systemImage: ideas ? "lightbulb" : "text.badge.plus").font(.title3.bold())
             if let rows {
-                Text("\(rows.count) \(rows.count == 1 ? "row" : "rows") found").font(.headline)
+                Text("\(rows.count) \(rows.count == 1 ? (ideas ? "card" : "row") : (ideas ? "cards" : "rows")) \(ideas ? "suggested" : "found")").font(.headline)
                 ScrollView([.horizontal, .vertical]) {
                     Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
                         SwiftUI.GridRow { ForEach(columns) { Text($0.name).font(.caption.weight(.semibold)).foregroundStyle(.secondary) } }
@@ -1233,6 +1294,11 @@ private struct PasteRowsSheet: View {
                 .frame(height: 260)
                 .background(.background.secondary, in: .rect(cornerRadius: 10))
                 if rows.count > 30 { Text("and \(rows.count - 30) more").font(.caption).foregroundStyle(.secondary) }
+            } else if ideas {
+                Text("What kind of cards? Leave it empty and the AI suggests what fits this table. It won't repeat cards you have.")
+                    .font(.callout).foregroundStyle(.secondary)
+                TextField("For example: 10 post ideas about pricing", text: $text, axis: .vertical).textFieldStyle(.roundedBorder)
+                    .lineLimit(1...3).onSubmit(read)
             } else {
                 Text("A list of founders from Claude, an email, meeting notes: anything with people, companies or items in it.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -1248,9 +1314,9 @@ private struct PasteRowsSheet: View {
                     Button("Add \(rows.count) \(rows.count == 1 ? "Row" : "Rows")") { add(rows) }
                         .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(working)
                 } else {
-                    Button { read() } label: { if working { ProgressView().controlSize(.small) } else { Text("Turn into Rows") } }
+                    Button { read() } label: { if working { ProgressView().controlSize(.small) } else { Text(ideas ? "Suggest" : "Turn into Rows") } }
                         .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-                        .disabled(working || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || columns.isEmpty)
+                        .disabled(working || (!ideas && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || columns.isEmpty)
                 }
             }
         }
@@ -1261,11 +1327,20 @@ private struct PasteRowsSheet: View {
 
     private func read() {
         guard let server = model.server else { problem = "Connect your server in Settings first."; return }
+        guard !working else { return }
         working = true
         problem = nil
         Task {
             defer { working = false }
-            do { rows = try await server.rows(fromText: text, columns: columns) } catch { problem = error.localizedDescription }
+            do {
+                if ideas {
+                    let name = columns.first { $0.kind == .text }
+                    let existing = name.map { n in (model.tableRows[block.id] ?? []).map { SpaceTable.display($0, n) }.filter { !$0.isEmpty } } ?? []
+                    rows = try await server.ideas(text, existing: existing, columns: columns)
+                } else {
+                    rows = try await server.rows(fromText: text, columns: columns)
+                }
+            } catch { problem = error.localizedDescription }
         }
     }
 

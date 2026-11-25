@@ -1060,6 +1060,40 @@ extension Tokens {
     #expect(QuickCommand.isEmail("sam@uni.edu") && !QuickCommand.isEmail("sam@example.") && !QuickCommand.isEmail("a@b..c"))
 }
 
+@Test func cardCommandReadsTableTitleAndTime() throws {
+    let now = Date.now
+    guard case .card(let table, let title, let due, let timed)? = QuickCommand.parse("add a card to Leads: Call Ana tomorrow 3pm", now: now) else {
+        Issue.record("card not parsed"); return
+    }
+    #expect(table == "Leads" && title == "Call Ana" && timed)
+    #expect(due.map { Calendar.current.component(.hour, from: $0) } == 15)
+    // A day alone isn't timed; no colon leaves the table to the app; nothing to add isn't a command.
+    if case .card(_, _, let due, let timed)? = QuickCommand.parse("/card Leads: Call Ana tomorrow", now: now) { #expect(due != nil && !timed) }
+    #expect(QuickCommand.parse("/card Leads call Ana", now: now) == .card(table: nil, title: "Leads call Ana", due: nil, timed: false))
+    #expect(QuickCommand.parse("/card Leads:", now: now) == nil)
+    if case .card(let table, _, _, let timed)? = QuickCommand.parse("/card Call Ana tomorrow 3:30", now: now) { #expect(table == nil && timed) }
+    else { Issue.record("time with a colon") }
+}
+
+@Test func spreadFillsTheEmptiestWorkingDays() {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "UTC")!
+    let thursday = cal.date(from: DateComponents(year: 2026, month: 11, day: 26, hour: 9))!
+    let name = SpaceColumn(name: "Name"), due = SpaceColumn(name: "Due", kind: .date)
+    let done = SpaceColumn(name: "Done", kind: .checkbox)
+    let rows = [
+        SpaceRow(blockID: "t", position: 1, cells: [due.id: "2026-11-26"]),          // already on Thursday
+        SpaceRow(blockID: "t", position: 2, cells: [name.id: "a"]),
+        SpaceRow(blockID: "t", position: 3, cells: [name.id: "b"]),
+        SpaceRow(blockID: "t", position: 4, cells: [name.id: "c", done.id: "true"]), // done: left alone
+        SpaceRow(blockID: "t", position: 5, cells: [name.id: "d"]),
+    ]
+    let changed = SpaceTable.spread(rows, columns: [name, due, done], from: thursday, calendar: cal)
+    // Thu has one already, so a → Fri, b → Mon (weekend skipped), d → Tue.
+    #expect(changed.map { $0.cells[due.id] } == ["2026-11-27", "2026-11-30", "2026-12-01"])
+    #expect(SpaceTable.spread(rows, columns: [name, done], from: thursday, calendar: cal).isEmpty)
+}
+
 @Test func laterOffersSensibleTimes() {
     let cal = Calendar(identifier: .gregorian)
     let morning = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 10))! // a Monday

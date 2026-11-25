@@ -993,6 +993,15 @@ public final class BlinkServer: Sendable {
         return reply.rows
     }
 
+    /// New cards the AI suggests for a table (column name → value), not repeating `existing` (its cards' names), for
+    /// the owner to look at before adding them.
+    public func ideas(_ ask: String, existing: [String], columns: [SpaceColumn]) async throws -> [[String: String]] {
+        struct Reply: Decodable { let rows: [[String: String]] }
+        let names = existing.prefix(150).map { String($0.prefix(120)) }.joined(separator: "\n")
+        let reply: Reply = try await tableAction(TableAsk(action: "ideas", ask: String(ask.prefix(1000)), text: names, columns: info(columns)))
+        return reply.rows
+    }
+
     private func info(_ columns: [SpaceColumn]) -> [TableColumnInfo] {
         columns.filter { $0.kind != .file }.map { // the AI never sees or fills files; an older server would refuse the kind
             TableColumnInfo(name: $0.name, kind: $0.kind.rawValue, options: ($0.options ?? []).map(\.name)) }
@@ -1033,6 +1042,13 @@ public final class BlinkServer: Sendable {
 
     public func save(_ row: SpaceRow) async throws {
         try await client.from("space_table_row").upsert(row).execute()
+    }
+
+    /// Several changed rows in one go (in batches of 200).
+    public func save(_ rows: [SpaceRow]) async throws {
+        for start in stride(from: 0, to: rows.count, by: 200) {
+            try await client.from("space_table_row").upsert(Array(rows[start..<min(start + 200, rows.count)])).execute()
+        }
     }
 
     public func add(_ rows: [SpaceRow]) async throws {

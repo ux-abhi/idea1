@@ -866,10 +866,22 @@ final class AppModel {
     /// A small, quiet "pop" when something's done (Settings › General can turn it off).
     static let finishSoundKey = "sound.finish"
 
-    private func playFinishSound() {
+    /// Sounds for what Blink does from the notch: an action done, a job ready, something that failed.
+    static let notchSoundKey = "sound.notch"
+    enum Sound: String { case done = "Pop", ready = "Ping", failed = "Basso" }
+    private var lastSound = ContinuousClock.now - .seconds(1)
+
+    private func playFinishSound() { play(.done, enabledBy: Self.finishSoundKey) }
+
+    /// One system sound, if its setting is on; never two within half a second (ticking a task off in the notch is
+    /// both "finished" and "done in the notch").
+    // shortcut: plays during a Focus too (macOS has no Focus check without the Focus Status permission); add it if
+    // the owner hears Blink in a Focus.
+    func play(_ sound: Sound, enabledBy key: String) {
         #if os(macOS)
-        guard UserDefaults.standard.object(forKey: Self.finishSoundKey) as? Bool ?? true else { return }
-        NSSound(named: "Pop")?.play()
+        guard UserDefaults.standard.object(forKey: key) as? Bool ?? true, lastSound.duration(to: .now) > .milliseconds(500) else { return }
+        lastSound = .now
+        NSSound(named: sound.rawValue)?.play()
         #endif
     }
 
@@ -1651,6 +1663,8 @@ final class AppModel {
             if let problem = contentProblem { chat.append(.init(role: .assistant, text: problem)) }
         case .clear:
             clearChat()
+        case .card(let name, let title, let due, let timed):
+            return await addCard(title, due: due, timed: timed, table: name)
         case .meet(let title, let start, let guests):
             meetDraft = MeetDraft(title: title, start: start ?? MeetDraft.nextSlot(), guests: guests)
             Task { await loadGoogle() }
@@ -3522,10 +3536,46 @@ final class AppModel {
     /// A request from the page's AI bar for one table: open its AI preview with this ask, or (`paste`) turn this text
     /// into rows. The table that matches `blockID` picks it up.
     struct TableAIRequest: Equatable {
+        enum Kind { case change, paste, ideas }
         let id = UUID()
         let blockID: String
         let text: String
-        let paste: Bool
+        let kind: Kind
+    }
+
+    /// "Spread over the week" on a table: its open cards without a date go onto the next five working days, evenly
+    /// (see SpaceTable.spread), saved together, with Undo. Nothing goes to the AI.
+    func spreadOverWeek(_ block: SpaceBlock) async {
+        guard let server else { return }
+        let current = spaceBlocks[block.spaceID]?.first { $0.id == block.id } ?? block
+        let columns = current.data.columns ?? []
+        guard columns.contains(where: { $0.kind == .date }) else { announce("Add a Date property to this table first.", failed: true); return }
+        let before = tableRows[block.id] ?? []
+        let changed = SpaceTable.spread(before, columns: columns)
+        guard !changed.isEmpty else { announce("Every open card already has a date.", failed: true); return }
+        let byID = Dictionary(uniqueKeysWithValues: changed.map { ($0.id, $0) })
+        tableRows[block.id] = before.map { byID[$0.id] ?? $0 }
+        do { try await server.save(changed) } catch {
+            tableRows[block.id] = before
+            saveProblem = "Couldn't save the dates. Check your connection."
+            return
+        }
+        let dateID = columns.first { $0.kind == .date }!.id
+        offerUndo("Spread \(changed.count) \(changed.count == 1 ? "card" : "cards") over the week") { [weak self] in
+            guard let self, let server = self.server else { return }
+            // Only the dates go back, so anything else edited since stays.
+            let back = (self.tableRows[block.id] ?? []).filter { byID[$0.id] != nil }.map { row in
+                var row = row
+                row.cells[dateID] = nil
+                return row
+            }
+            let undone = Dictionary(uniqueKeysWithValues: back.map { ($0.id, $0) })
+            self.tableRows[block.id] = self.tableRows[block.id]?.map { undone[$0.id] ?? $0 }
+            do { try await server.save(back) } catch {
+                self.saveProblem = "Couldn't put the dates back. Check your connection."
+                await self.loadRows(current)
+            }
+        }
     }
     var tableAIRequest: TableAIRequest?
 
@@ -3548,6 +3598,42 @@ final class AppModel {
             await loadRows(block)
             return false
         }
+    }
+
+    /// "/card Leads: Call Ana friday 3pm" from the notch: the name goes in the table's first Text property and the date
+    /// in its first Date one (so a timed card reminds in the notch), with Undo. Without "Table:", a table whose name
+    /// starts the text is used ("Leads call Ana"). Returns a problem to show, or nil.
+    func addCard(_ text: String, due: Date?, timed: Bool, table name: String?) async -> String? {
+        let label = { (t: SpaceBlock) in (t.data.text ?? "").trimmingCharacters(in: .whitespaces) }
+        let tables = liveTables.filter { !label($0).isEmpty }
+        let match: (table: SpaceBlock, title: String)? = if let name {
+            tables.first { label($0).caseInsensitiveCompare(name) == .orderedSame }.map { ($0, text) }
+        } else {
+            tables.filter { text.lowercased().hasPrefix(label($0).lowercased() + " ") }
+                .max { label($0).count < label($1).count }
+                .map { ($0, String(text.dropFirst(label($0).count)).trimmingCharacters(in: .whitespaces)) }
+        }
+        guard let (table, title) = match else {
+            let names = tables.prefix(3).map { "“\(label($0))”" }.formatted()
+            return tables.isEmpty ? "Add a table to a Space first." : "No table called that. Try /card \(label(tables[0])): \(text)" + (tables.count > 1 ? " (tables: \(names))" : "")
+        }
+        let columns = table.data.columns ?? []
+        guard let name = columns.first(where: { $0.kind == .text }) else { return "“\(label(table))” has no Text property for the card's name." }
+        var cells = [name.id: String(title.prefix(SpaceTable.cellLimit))]
+        if let due, let date = columns.first(where: { $0.kind == .date }) { cells[date.id] = SpaceTable.dateCell(due, timed: timed) }
+        if tableRows[table.id] == nil { await loadRows(table) } // new cards go after the ones already there
+        guard let rows = tableRows[table.id] else { return "Couldn't open “\(label(table))”. Check your connection." }
+        guard rows.count < SpaceTable.rowLimit else { return "A table holds up to \(SpaceTable.rowLimit) rows." }
+        guard await addRows([cells], to: table), let row = tableRows[table.id]?.last else { return saveProblem }
+        let at = due.map { " · " + $0.formatted(timed ? .dateTime.weekday(.abbreviated).day().hour().minute() : .dateTime.weekday(.abbreviated).day()) } ?? ""
+        offerUndo("Card added to \(label(table)): \(title)\(at)") { [weak self] in
+            guard let self, let server = self.server else { return }
+            do {
+                try await server.delete(row)
+                self.tableRows[table.id]?.removeAll { $0.id == row.id }
+            } catch { self.saveProblem = "Couldn't remove that card. Check your connection." }
+        }
+        return nil
     }
 
     /// A CSV into a table: its header names match columns by name (new names become new columns), its lines become rows.

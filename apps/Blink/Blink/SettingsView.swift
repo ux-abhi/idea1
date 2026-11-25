@@ -270,6 +270,7 @@ struct CalendarSettings: View {
 struct NotchSettings: View {
     @AppStorage(RestStyle.key) private var restStyle = RestStyle.ears
     @AppStorage(AppModel.finishSoundKey) private var finishSound = true
+    @AppStorage(AppModel.notchSoundKey) private var notchSound = true
     @AppStorage(MeetingRecorder.languageKey) private var notesLanguage = Locale.current.identifier(.bcp47)
     @State private var mood = Mood.idle
     @State private var openAtLogin = false
@@ -289,6 +290,7 @@ struct NotchSettings: View {
             }
             Section("Sound") {
                 Toggle("Play a soft sound when you finish something", isOn: $finishSound)
+                Toggle("Play a sound when Blink does something in the notch", isOn: $notchSound)
             }
             Section {
                 Picker("Meetings are in", selection: $notesLanguage) {

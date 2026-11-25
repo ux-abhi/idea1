@@ -2,7 +2,7 @@
 // AI on Space tables: "plan" shapes a table from a sentence, "rows" turns pasted text into rows. Returns a proposal the
 // owner previews in the app; nothing is written here except the AI usage record.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";
-import { parsePlan, parseRequest, parseRows, PLAN_SYSTEM, planPrompt, ROWS_SYSTEM, rowsPrompt } from "./plan.ts";
+import { IDEAS_SYSTEM, ideasPrompt, parsePlan, parseRequest, parseRows, PLAN_SYSTEM, planPrompt, ROWS_SYSTEM, rowsPrompt, todayIn } from "./plan.ts";
 import { capProblem, FREE_MODELS, lastMonth, pickModel } from "../_shared/models.ts";
 import { ownsServer } from "../_shared/owner.ts";
 import { think } from "../_shared/think.ts";
@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
 
   const [parsed, { data: profile }, { data: spend }] = await Promise.all([
     req.json().catch(() => null).then(parseRequest),
-    db.from("profile").select("model_prefs, settings").maybeSingle(),
+    db.from("profile").select("model_prefs, settings, timezone").maybeSingle(),
     db.from("model_usage").select("model, cost_usd, at").gte("at", lastMonth()).gt("cost_usd", 0).not("model", "in", FREE_MODELS),
   ]);
   if (typeof parsed === "string") return json(400, { error: parsed });
@@ -34,9 +34,10 @@ Deno.serve(async (req) => {
 
   let reply;
   try {
-    reply = parsed.action === "plan"
-      ? await think(model, PLAN_SYSTEM, planPrompt(parsed), true, 2000)
-      : await think(model, ROWS_SYSTEM, rowsPrompt(parsed), true, 8000);
+    const today = todayIn(profile?.timezone);
+    reply = parsed.action === "plan" ? await think(model, PLAN_SYSTEM, planPrompt(parsed), true, 2000)
+      : parsed.action === "ideas" ? await think(model, IDEAS_SYSTEM, ideasPrompt(parsed, today), true, 3000)
+      : await think(model, ROWS_SYSTEM, rowsPrompt(parsed, today), true, 8000);
   } catch (error) {
     return json(502, { error: error instanceof Error ? error.message : "The AI couldn't answer. Try again." });
   }
@@ -49,5 +50,6 @@ Deno.serve(async (req) => {
     return typeof plan === "string" ? json(422, { error: plan }) : json(200, { plan });
   }
   const rows = parseRows(reply.text, parsed.columns);
-  return typeof rows === "string" ? json(422, { error: rows }) : json(200, { rows });
+  if (typeof rows === "string") return json(422, { error: parsed.action === "ideas" ? "The AI had no ideas this time. Try again, or say what kind." : rows });
+  return json(200, { rows: parsed.action === "ideas" ? rows.slice(0, 20) : rows });
 });
