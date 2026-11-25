@@ -14,7 +14,7 @@ Deno.test("the MCP handshake, tool list, notifications and errors", async () => 
   const init = await handle({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } }, async () => "");
   if ((init as any).result.protocolVersion !== "2025-03-26") throw new Error("keeps a version it supports");
   const list = await handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }, async () => "");
-  if ((list as any).result.tools.length !== 5) throw new Error("five tools");
+  if ((list as any).result.tools.length !== 13) throw new Error("thirteen tools");
   if (await handle({ jsonrpc: "2.0", method: "notifications/initialized" }, async () => "") !== null) throw new Error("no reply to a notification");
   const called = await handle({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "get_tasks", arguments: {} } }, async () => "2 tasks");
   if ((called as any).result.content[0].text !== "2 tasks") throw new Error("tool result");

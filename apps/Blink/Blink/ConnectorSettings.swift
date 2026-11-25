@@ -36,7 +36,7 @@ struct ConnectorSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Connect \(app.rawValue)").font(.title2.weight(.semibold))
-            Text("Ask \(app.rawValue) about your day, tasks and mail, or have it add tasks and notes, using your own \(app.rawValue) plan. It can't send mail or delete anything.")
+            Text("Ask \(app.rawValue) about your day, tasks, mail and Spaces, or have it add tasks, notes, table rows and bulk mail contacts and write your bulk mails, using your own \(app.rawValue) plan. It can't send mail or delete anything.")
                 .foregroundStyle(.secondary)
             if let link {
                 HStack {

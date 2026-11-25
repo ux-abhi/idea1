@@ -177,7 +177,7 @@ struct ConnectionsSettings: View {
                 } header: {
                     Text("Use Blink in other apps")
                 } footer: {
-                    Text("Each app gets a private link. It can read your day and mail summaries and add tasks and notes, never send or delete.")
+                    Text("Each app gets a private link. It can read your day, mail summaries and Spaces, add tasks, notes, table rows and bulk mail contacts, and write bulk mails for you to review; never send or delete.")
                 }
                 #endif
                 if oneClick {
