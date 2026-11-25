@@ -114,7 +114,7 @@ public enum QuickCommand: Equatable, Sendable {
             let parsed = TaskInput.parse(text, now: now)
             guard !parsed.title.isEmpty else { return nil }
             // A day alone ("friday") comes back at noon; only a written time makes the card timed (and remind in the notch).
-            let timed = parsed.due != nil && text.lowercased().contains(/\d(:\d\d)? ?(am|pm)\b|\b\d{1,2}:\d\d\b|\bnoon\b/)
+            let timed = parsed.due != nil && TaskInput.hasTime(text)
             return .card(table: table, title: parsed.title, due: parsed.due, timed: timed)
         case "/meet":
             // Emails are guests; a date is the start; what's left is the title.

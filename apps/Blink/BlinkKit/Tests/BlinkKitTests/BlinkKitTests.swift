@@ -1689,3 +1689,17 @@ extension Tokens {
         #expect(SpaceTable.byDay(rows, column: "d")["2026-11-24"]?.count == 2) // a time doesn't move the day
     }
 }
+
+@Test func meetingNextStepsBecomeCards() {
+    let body = MeetingNotes.body(attendees: [], digest: MeetingDigest(summary: "Plan agreed.", decisions: ["Ship in May"],
+                                                                         actions: ["Sam: send the deck tomorrow 3pm", "Book the venue"]),
+                                 noSummary: nil, transcript: "You (0:01): • not a step")
+    let steps = MeetingNotes.nextSteps(in: "Weekly sync\n\n" + body)
+    #expect(steps == ["Sam: send the deck tomorrow 3pm", "Book the venue"])
+    #expect(MeetingNotes.nextSteps(in: "Just a note\n• a bullet") == [])
+    let name = SpaceColumn(name: "Name"), due = SpaceColumn(name: "Due", kind: .date)
+    let rows = MeetingNotes.cards(steps, columns: [name, due])
+    #expect(rows[0]["Name"] == steps[0] && rows[0]["Due"]?.hasSuffix(" 15:00") == true)
+    #expect(rows[1] == ["Name": "Book the venue"])
+    #expect(MeetingNotes.cards(steps, columns: [due]).isEmpty) // no Text property to name the card
+}

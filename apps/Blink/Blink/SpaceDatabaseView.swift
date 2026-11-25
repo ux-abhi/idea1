@@ -1326,6 +1326,7 @@ struct PasteRowsSheet: View {
     var ideas = false
     @State private var text = ""
     @State private var rows: [[String: String]]?
+    @State private var fromMeeting = false
     @State private var working = false
     @State private var problem: String?
 
@@ -1351,6 +1352,7 @@ struct PasteRowsSheet: View {
                 .frame(height: 260)
                 .background(.background.secondary, in: .rect(cornerRadius: 10))
                 if rows.count > 30 { Text("and \(rows.count - 30) more").font(.caption).foregroundStyle(.secondary) }
+                if fromMeeting { Text("The meeting's next steps, read on this Mac.").font(.caption).foregroundStyle(.secondary) }
             } else if ideas {
                 Text("What kind of cards? Leave it empty and the AI suggests what fits this table. It won't repeat cards you have.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -1367,7 +1369,7 @@ struct PasteRowsSheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 if let rows {
-                    Button("Back") { self.rows = nil }
+                    Button("Back") { self.rows = nil; fromMeeting = false }
                     Button("Add \(rows.count) \(rows.count == 1 ? "Row" : "Rows")") { add(rows) }
                         .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(working)
                 } else {
@@ -1379,7 +1381,13 @@ struct PasteRowsSheet: View {
         }
         .padding(22)
         .frame(width: 640)
-        .onAppear { if !initial.isEmpty { text = initial; read() } }
+        .onAppear {
+            guard !initial.isEmpty else { return }
+            text = initial
+            // Meeting notes: their next steps become the cards on this Mac, so the transcript never leaves it.
+            let steps = ideas ? [] : MeetingNotes.nextSteps(in: initial)
+            if steps.isEmpty { read() } else { rows = MeetingNotes.cards(steps, columns: columns); fromMeeting = true }
+        }
     }
 
     private func read() {

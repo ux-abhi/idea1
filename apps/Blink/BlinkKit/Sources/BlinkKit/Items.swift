@@ -78,6 +78,11 @@ public enum ServiceNote {
 
 /// Reads a due date out of what the user types, e.g. "Send invoice tomorrow at 10" → ("Send invoice", tomorrow 10:00).
 public enum TaskInput {
+    /// A written time ("3pm", "15:30", "noon"), not just a day: a day alone comes back from `parse` at noon.
+    public static func hasTime(_ text: String) -> Bool {
+        text.lowercased().contains(/\d(:\d\d)? ?(am|pm)\b|\b\d{1,2}:\d\d\b|\bnoon\b/)
+    }
+
     /// When, from words alone ("tomorrow 4pm", "in 10 minutes", "in 2 hours"). Nil when they hold no time still ahead.
     public static func when(_ words: String, now: Date = .now) -> Date? {
         let w = words.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)

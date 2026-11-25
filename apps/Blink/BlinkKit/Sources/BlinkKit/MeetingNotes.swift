@@ -100,4 +100,25 @@ public enum MeetingNotes {
         parts.append("Transcript\n" + (transcript.isEmpty ? "Nothing was heard." : transcript))
         return parts.joined(separator: "\n\n")
     }
+
+    /// The "Next steps" bullets of a note `body(...)` wrote; empty for any other text.
+    public static func nextSteps(in text: String) -> [String] {
+        let lines = text.components(separatedBy: "\n")
+        guard let start = lines.firstIndex(of: "Next steps") else { return [] }
+        return lines[(start + 1)...].prefix { $0.hasPrefix("• ") }
+            .map { $0.dropFirst(2).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    /// Next steps as rows for a table (keyed by column name, like the AI's rows): the step names the card, and a day in
+    /// it ("send the deck by Friday") fills the first Date property. Read on this Mac; no AI.
+    public static func cards(_ steps: [String], columns: [SpaceColumn], now: Date = .now, calendar: Calendar = .current) -> [[String: String]] {
+        guard let name = columns.first(where: { $0.kind == .text }) else { return [] }
+        let date = columns.first { $0.kind == .date }
+        return steps.map { step in
+            let parsed = TaskInput.parse(step, now: now)
+            var row = [name.name: step]
+            if let date, let due = parsed.due { row[date.name] = SpaceTable.dateCell(due, timed: TaskInput.hasTime(step), calendar: calendar) }
+            return row
+        }
+    }
 }
