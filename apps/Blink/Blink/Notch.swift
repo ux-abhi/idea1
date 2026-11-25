@@ -161,8 +161,8 @@ final class NotchController {
         // Re-plan the cues whenever the agenda changes; sleep until the next cue in between.
         Task { [weak self] in
             guard let app = self?.app else { return }
-            // Calendar, reminders and tasks all feed the cues.
-            for await _ in Observations({ (app.agenda, app.items) }) { self?.scheduleCues() }
+            // Calendar, reminders, tasks and dated cards all feed the cues.
+            for await _ in Observations({ (app.agenda, app.items, app.datedCards) }) { self?.scheduleCues() }
         }
         // The owner can let screenshots and recordings show the notch (for a demo); hidden otherwise.
         Task { [weak self] in

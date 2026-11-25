@@ -1007,6 +1007,25 @@ public final class BlinkServer: Sendable {
         }
     }
 
+    /// Every table in every Space, so dated cards reach Today and the notch without opening their Space.
+    // shortcut: up to 200 tables in one read; page it when someone keeps more tables than that.
+    public func tableBlocks() async throws -> [SpaceBlock] {
+        do {
+            return try await client.from("space_block").select("id, segment_id, position, kind, data").eq("kind", value: "table")
+                .limit(200).execute().value
+        } catch let error as PostgrestError where ["PGRST205", "42P01"].contains(error.code) {
+            return []
+        }
+    }
+
+    /// The rows of several tables at once.
+    // shortcut: one read of up to 5,000 rows; page it when someone keeps more dated cards than that.
+    public func rows(in blockIDs: [String]) async throws -> [SpaceRow] {
+        guard !blockIDs.isEmpty else { return [] }
+        return try await client.from("space_table_row").select("id, block_id, position, cells").in("block_id", values: blockIDs)
+            .order("position").limit(5000).execute().value
+    }
+
     public func rows(of blockID: String) async throws -> [SpaceRow] {
         try await client.from("space_table_row").select("id, block_id, position, cells").eq("block_id", value: blockID)
             .order("position").limit(SpaceTable.rowLimit).execute().value

@@ -1626,4 +1626,32 @@ extension Tokens {
         let plan = SpaceTable.cells(from: [["File": "u/x|fake"]], columns: [SpaceColumn(id: "f", name: "File", kind: .file)])
         #expect(plan.cells[0].isEmpty) // text never fills a File
     }
+
+    @Test func datedCardsComeBackUntilTheyreDone() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+        #expect(SpaceTable.when("2026-11-24", calendar: calendar)?.timed == false)
+        let at = SpaceTable.when("2026-11-24 15:30", calendar: calendar)!
+        #expect(at.timed && calendar.component(.hour, from: at.date) == 15 && calendar.component(.minute, from: at.date) == 30)
+        #expect(SpaceTable.dateCell(at.date, timed: true, calendar: calendar) == "2026-11-24 15:30")
+        #expect(SpaceTable.dateCell(at.date, timed: false, calendar: calendar) == "2026-11-24")
+        #expect(SpaceTable.when("next Tuesday") == nil && SpaceTable.when("2026-11-24 25:00") == nil && SpaceTable.when("2026-11-24 3pm") == nil)
+
+        let status = SpaceColumn(id: "s", name: "Status", kind: .category, options: [SpaceOption(id: "o1", name: "To do", color: "gray"),
+                                                                                     SpaceOption(id: "o2", name: "Done", color: "green")])
+        let table = SpaceBlock(id: "t", spaceID: "sp", position: 1, kind: .table,
+                               data: .init(columns: [SpaceColumn(id: "n", name: "Name"), status, SpaceColumn(id: "d", name: "Due", kind: .date)]))
+        let rows = [SpaceRow(id: "a", blockID: "t", position: 0, cells: ["n": "Call bank", "d": "2026-11-24 15:30", "s": "o1"]),
+                    SpaceRow(id: "b", blockID: "t", position: 1, cells: ["n": "Pay rent", "d": "2026-11-24", "s": "o2"]), // done
+                    SpaceRow(id: "c", blockID: "t", position: 2, cells: ["d": "2026-11-25"]),
+                    SpaceRow(id: "e", blockID: "t", position: 3, cells: ["n": "No date"])]
+        let cards = SpaceTable.datedCards(table, rows: rows, calendar: calendar)
+        #expect(cards.map(\.id) == ["card:a", "card:c"])
+        #expect(cards[0].timed && !cards[1].timed && cards[1].title == "Untitled" && cards[0].spaceID == "sp")
+        #expect(SpaceTable.doneCell(columns: table.data.columns!)! == ("s", "o2"))
+        let tick = [SpaceColumn(id: "x", name: "done", kind: .checkbox)]
+        #expect(SpaceTable.doneCell(columns: tick)! == ("x", "true") && SpaceTable.doneCell(columns: [SpaceColumn(name: "Name")]) == nil)
+        #expect(SpaceTable.isDone(SpaceRow(blockID: "t", position: 0, cells: ["x": "true"]), columns: tick))
+        #expect(SpaceTable.byDay(rows, column: "d")["2026-11-24"]?.count == 2) // a time doesn't move the day
+    }
 }

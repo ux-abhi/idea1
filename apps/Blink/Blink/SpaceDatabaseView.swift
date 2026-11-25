@@ -526,18 +526,27 @@ private struct TextCell: View {
     }
 }
 
-/// A day as "2026-11-21"; empty until set, with Clear.
+/// A day as "2026-11-21", or with a time as "2026-11-21 15:00" (then the notch reminds you); empty until set, with Clear.
 private struct DateCell: View {
     @Environment(AppModel.self) private var model
     let row: SpaceRow
     let column: SpaceColumn
 
     var body: some View {
-        let value = row.cells[column.id].flatMap { HabitDay.date(fromKey: $0) }
+        let value = SpaceTable.when(row.cells[column.id] ?? "")
         HStack(spacing: 4) {
             if let value {
-                DatePicker(column.name, selection: Binding(get: { value }, set: { set(HabitDay.key($0)) }), displayedComponents: .date)
+                DatePicker(column.name, selection: Binding(get: { value.date }, set: { set(SpaceTable.dateCell($0, timed: value.timed)) }),
+                           displayedComponents: value.timed ? [.date, .hourAndMinute] : .date)
                     .labelsHidden().datePickerStyle(.field)
+                Button(value.timed ? "Remove Time" : "Add Time", systemImage: value.timed ? "clock.badge.xmark" : "clock") {
+                    // A new time starts at the next whole hour, so it's in the future when today.
+                    let hour = Calendar.current.component(.hour, from: .now) + 1
+                    let at = Calendar.current.date(bySettingHour: min(hour, 23), minute: 0, second: 0, of: value.date) ?? value.date
+                    set(SpaceTable.dateCell(value.timed ? value.date : at, timed: !value.timed))
+                }
+                .labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.tertiary)
+                .help(value.timed ? "Remove the time" : "Add a time: Blink reminds you in the notch")
                 Button("Clear", systemImage: "xmark.circle.fill") { set(nil) }.labelStyle(.iconOnly).buttonStyle(.borderless).foregroundStyle(.tertiary)
             } else {
                 Button("Add date") { set(HabitDay.key(.now)) }.buttonStyle(.borderless).foregroundStyle(.tertiary)
@@ -853,7 +862,7 @@ private struct CalendarBoard: View {
         if let date = dates.first(where: { $0.id == view.groupBy }) ?? dates.first {
             let calendar = Calendar.current
             let placed = SpaceTable.byDay(rows, column: date.id)
-            let undated = rows.filter { HabitDay.date(fromKey: $0.cells[date.id] ?? "") == nil }.count // empty, or text that isn't a day
+            let undated = rows.filter { SpaceTable.when($0.cells[date.id] ?? "") == nil }.count // empty, or text that isn't a day
             let weekdays = Array(calendar.shortWeekdaySymbols[(calendar.firstWeekday - 1)...] + calendar.shortWeekdaySymbols[..<(calendar.firstWeekday - 1)])
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
@@ -962,7 +971,8 @@ private struct DayCell: View {
         .dropDestination(for: String.self) { ids, _ in
             let moved = ids.compactMap { id in model.tableRows[block.id]?.first { $0.id == id } } // only this table's cards
             for var row in moved {
-                row.cells[date.id] = HabitDay.key(day)
+                let raw = row.cells[date.id] ?? ""
+                row.cells[date.id] = HabitDay.key(day) + (SpaceTable.when(raw)?.timed == true ? String(raw.dropFirst(10)) : "") // keeps its time
                 Task { await model.update(row) }
             }
             return !moved.isEmpty
@@ -974,7 +984,8 @@ private struct DayCell: View {
         let title = columns.first { $0.kind == .text }.map { SpaceTable.display(row, $0) }.flatMap { $0.isEmpty ? nil : $0 } ?? "Untitled"
         let option = columns.first { $0.kind == .category }.flatMap { c in c.options?.first { $0.id == row.cells[c.id] } }
         let tint = option.map { Color.system($0.color) } ?? .gray
-        return Text(title).font(.caption).lineLimit(1)
+        let at = SpaceTable.when(row.cells[date.id] ?? "")
+        return Text(at?.timed == true ? "\(at!.date.formatted(date: .omitted, time: .shortened)) \(title)" : title).font(.caption).lineLimit(1)
             .padding(.horizontal, 6).padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(tint.opacity(0.16), in: .rect(cornerRadius: 5))

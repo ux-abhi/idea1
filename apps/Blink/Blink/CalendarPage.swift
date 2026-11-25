@@ -180,10 +180,11 @@ private struct DayToDos: View {
         let tasks = model.openTasks.filter { $0.dueAt.map { cal.isDate($0, inSameDayAs: day) } ?? false }
         let reminders = model.allReminders.filter { $0.due.map { cal.isDate($0, inSameDayAs: day) } ?? false }
         let posts = model.content.filter { $0.plannedFor == HabitDay.key(day) && $0.status != .archived }
+        let cards = model.datedCards.filter { cal.isDate($0.due, inSameDayAs: day) }
         VStack(alignment: .leading, spacing: 10) {
             Text(cal.isDateInToday(day) ? "Due today" : "Due \(day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))")
                 .font(.headline)
-            if tasks.isEmpty && reminders.isEmpty && posts.isEmpty {
+            if tasks.isEmpty && reminders.isEmpty && posts.isEmpty && cards.isEmpty {
                 Text("Nothing due.").font(.callout).foregroundStyle(.secondary)
             }
             ForEach(tasks) { task in
@@ -193,6 +194,11 @@ private struct DayToDos: View {
                 row(reminder.title, symbol: "circle", tint: .orange, tag: Tag(text: "Reminder", tint: .orange)) {
                     Task { await model.complete(reminder) }
                 }
+            }
+            ForEach(cards) { card in
+                let space = model.spaces.first { $0.id == card.spaceID }?.title ?? "Space"
+                row(card.timed ? "\(card.due.formatted(date: .omitted, time: .shortened))  \(card.title)" : card.title,
+                    symbol: "circle", tint: .teal, tag: Tag(text: space, tint: .teal)) { Task { await model.completeCard(card.rowID) } }
             }
             ForEach(posts) { post in
                 Button { openPost = post.id } label: {

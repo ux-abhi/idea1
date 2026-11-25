@@ -407,6 +407,7 @@ final class AppModel {
             await loadActions()
             await loadItems()
             await loadSpaces()
+            await loadCards()
             await loadModelPrefs()
             await loadContent() // the brief and Today show posts ready
             await loadMail()
@@ -487,6 +488,7 @@ final class AppModel {
         spends = []; budgets = []; accounts = []; income = []; incomePlans = []; captureTokens = []; moneyProblem = nil
         emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil; campaigns = []; bulkRecipients = [:]
         modelPrefs = [:]; modelProblem = nil; aiCaps = BlinkServer.AICaps(); capsLoaded = false; spaces = []; openPage = nil; keyStatus = nil
+        allTables = []; tableRows = [:]
     }
 
     // MARK: Ask-First
@@ -677,7 +679,13 @@ final class AppModel {
     }
     var openTasks: [BlinkItem] { items.filter { $0.type == .task && $0.status == .open } }
     /// Open tasks with a due time, for the notch's cues and status line.
-    var dueTasks: [DueItem] { openTasks.compactMap { t in t.dueAt.map { DueItem(id: t.id, title: t.title, due: $0) } } }
+    /// Cards with a time count too, so they get the same notch cues.
+    var dueTasks: [DueItem] {
+        openTasks.compactMap { t in t.dueAt.map { DueItem(id: t.id, title: t.title, due: $0) } }
+            + datedCards.filter(\.timed).map { DueItem(id: $0.id, title: $0.title, due: $0.due) }
+    }
+    /// Cards with a day but no time: on Today for the whole day, like a reminder without a time; no notch cue.
+    var dayCards: [AgendaReminder] { datedCards.filter { !$0.timed }.map { AgendaReminder(id: $0.id, title: $0.title, due: $0.due, timed: false) } }
     var doneTasks: [BlinkItem] { items.filter { $0.type == .task && $0.status == .done } }
 
     func loadItems() async {
@@ -787,7 +795,9 @@ final class AppModel {
 
     /// Ticks off a task or reminder from the notch or the timeline by id.
     func complete(id: String) async {
-        if let task = openTasks.first(where: { $0.id == id }) {
+        if id.hasPrefix(DatedCard.prefix) {
+            await completeCard(String(id.dropFirst(DatedCard.prefix.count)))
+        } else if let task = openTasks.first(where: { $0.id == id }) {
             await toggle(task)
         } else if let reminder = allReminders.first(where: { $0.id == id }) ?? agenda.reminders.first(where: { $0.id == id }) {
             await complete(reminder)
@@ -797,7 +807,9 @@ final class AppModel {
     /// Later: a new due time for a task or reminder by id (from the notch), with Undo.
     func moveLater(id: String, to date: Date) async {
         let label = date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
-        if let task = openTasks.first(where: { $0.id == id }) {
+        if id.hasPrefix(DatedCard.prefix) {
+            await moveCard(String(id.dropFirst(DatedCard.prefix.count)), to: date, label: label)
+        } else if let task = openTasks.first(where: { $0.id == id }) {
             let before = task.dueAt
             var changed = task
             changed.dueAt = date
@@ -3387,6 +3399,70 @@ final class AppModel {
     /// Rows that went out in a bulk mail → the mail's latest status, shown as a column in the table.
     private(set) var rowMailStatus: [String: MailRecipient.Status] = [:]
 
+    /// Tables from every Space, read on each sync, so their dated cards reach Today, Calendar and the notch without
+    /// opening the Space.
+    private(set) var allTables: [SpaceBlock] = []
+
+    func loadCards() async {
+        guard let server, let tables = try? await server.tableBlocks() else { return }
+        allTables = tables
+        let dated = tables.filter { $0.data.columns?.contains { $0.kind == .date } == true }.map(\.id)
+        guard let rows = try? await server.rows(in: dated) else { return }
+        let grouped = Dictionary(grouping: rows, by: \.blockID)
+        // A Space loaded on screen keeps its own rows (they may hold an edit still saving); the rest take the server's.
+        for table in tables where tableRows[table.id] == nil || spaceBlocks[table.spaceID] == nil {
+            if dated.contains(table.id) { tableRows[table.id] = grouped[table.id] ?? [] }
+        }
+    }
+
+    /// Every table as it is now: an open Space's own copy (newest, and without the ones deleted there), else the
+    /// synced one; tables of deleted Spaces drop out.
+    var liveTables: [SpaceBlock] {
+        let live = Set(spaces.map(\.id))
+        var tables = allTables.filter { live.contains($0.spaceID) && spaceBlocks[$0.spaceID] == nil }
+        for (spaceID, blocks) in spaceBlocks where live.contains(spaceID) { tables += blocks.filter { $0.kind == .table } }
+        return tables
+    }
+
+    /// Cards not done yet with a date, soonest first.
+    var datedCards: [DatedCard] {
+        liveTables.flatMap { SpaceTable.datedCards($0, rows: tableRows[$0.id] ?? []) }.sorted { $0.due < $1.due }
+    }
+
+    /// Ticks a card off from Today, Calendar or the notch: its Status goes to Done (or its Done box is ticked), with Undo.
+    func completeCard(_ rowID: String) async {
+        guard let card = datedCards.first(where: { $0.rowID == rowID }), let table = liveTables.first(where: { $0.id == card.blockID }),
+              let row = tableRows[card.blockID]?.first(where: { $0.id == rowID }) else { return }
+        guard let done = SpaceTable.doneCell(columns: table.data.columns ?? []) else {
+            saveProblem = "“\(card.title)” has nothing to mark it done. Add a Done option to its Status, or a Done checkbox."
+            return
+        }
+        var changed = row
+        changed.cells[done.column] = done.value
+        guard await update(changed) else { return }
+        playFinishSound()
+        offerUndo("Done: \(card.title)") { [weak self] in
+            guard let self, var now = self.tableRows[row.blockID]?.first(where: { $0.id == rowID }) else { return }
+            now.cells[done.column] = row.cells[done.column]
+            await self.update(now)
+        }
+    }
+
+    /// Later, for a card: a new day and time in its Date, with Undo.
+    private func moveCard(_ rowID: String, to date: Date, label: String) async {
+        guard let card = datedCards.first(where: { $0.rowID == rowID }), let table = liveTables.first(where: { $0.id == card.blockID }),
+              let column = table.data.columns?.first(where: { $0.kind == .date }),
+              var row = tableRows[card.blockID]?.first(where: { $0.id == rowID }) else { return }
+        let before = row.cells[column.id]
+        row.cells[column.id] = SpaceTable.dateCell(date, timed: true)
+        guard await update(row) else { return }
+        offerUndo("Moved to \(label): \(card.title)") { [weak self] in
+            guard let self, var now = self.tableRows[card.blockID]?.first(where: { $0.id == rowID }) else { return }
+            now.cells[column.id] = before
+            await self.update(now)
+        }
+    }
+
     func loadRows(_ block: SpaceBlock) async {
         guard let server, let rows = try? await server.rows(of: block.id) else { return }
         tableRows[block.id] = rows
@@ -3405,13 +3481,15 @@ final class AppModel {
         }
     }
 
-    /// A cell changed: shown at once, put back if the save fails.
-    func update(_ row: SpaceRow) async {
-        guard let server, let i = tableRows[row.blockID]?.firstIndex(where: { $0.id == row.id }), let before = tableRows[row.blockID]?[i], before != row else { return }
+    /// A cell changed: shown at once, put back if the save fails. False when nothing was saved.
+    @discardableResult
+    func update(_ row: SpaceRow) async -> Bool {
+        guard let server, let i = tableRows[row.blockID]?.firstIndex(where: { $0.id == row.id }), let before = tableRows[row.blockID]?[i], before != row else { return false }
         tableRows[row.blockID]?[i] = row
-        do { try await server.save(row) } catch {
+        do { try await server.save(row); return true } catch {
             if let j = tableRows[row.blockID]?.firstIndex(where: { $0.id == row.id }) { tableRows[row.blockID]?[j] = before }
             saveProblem = "Couldn't save that cell. Check your connection."
+            return false
         }
     }
 

@@ -22,7 +22,7 @@ struct TodayView: View {
                 VStack(spacing: 16) {
                     HeroCard(now: now, showNotes: showNotes, adding: $addingTask, newTask: $newTask)
                     actionCards
-                    DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks, reminders: model.agenda.reminders, now: now),
+                    DayTimelineCard(plan: DayPlan(events: model.agenda.events, tasks: model.dueTasks, reminders: model.agenda.reminders + model.dayCards, now: now),
                                     now: now, planDay: planDay)
                     // This week's goals, tickable here too (Habits & Goals).
                     if !model.weeklyGoals.isEmpty {

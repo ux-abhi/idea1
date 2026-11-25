@@ -189,9 +189,60 @@ public enum SpaceTable {
         return days
     }
 
-    /// Rows by the day in a Date column ("2026-11-24"), keeping their order; rows with no date are left out.
+    /// Rows by the day in a Date column ("2026-11-24", or "2026-11-24 15:00" with a time), keeping their order; rows
+    /// with no date are left out.
     public static func byDay(_ rows: [SpaceRow], column: String) -> [String: [SpaceRow]] {
-        Dictionary(grouping: rows.filter { !($0.cells[column] ?? "").isEmpty }) { $0.cells[column]! }
+        Dictionary(grouping: rows.filter { when($0.cells[column] ?? "") != nil }) { String($0.cells[column]!.prefix(10)) }
+    }
+
+    /// A Date cell as a moment: "2026-11-24" is that day (no time), "2026-11-24 15:00" is that day at 15:00.
+    public static func when(_ raw: String, calendar: Calendar = .current) -> (date: Date, timed: Bool)? {
+        guard let day = HabitDay.date(fromKey: String(raw.prefix(10)), calendar: calendar) else { return nil }
+        if raw.count == 10 { return (day, false) }
+        let time = raw.dropFirst(11).split(separator: ":").compactMap { Int($0) }
+        guard raw.count == 16, time.count == 2, (0..<24).contains(time[0]), (0..<60).contains(time[1]),
+              let at = calendar.date(bySettingHour: time[0], minute: time[1], second: 0, of: day) else { return nil }
+        return (at, true)
+    }
+
+    /// The Date cell for a moment: with its time when `timed`.
+    public static func dateCell(_ date: Date, timed: Bool, calendar: Calendar = .current) -> String {
+        let day = HabitDay.key(date, calendar: calendar)
+        guard timed else { return day }
+        let c = calendar.dateComponents([.hour, .minute], from: date)
+        return day + String(format: " %02d:%02d", c.hour ?? 0, c.minute ?? 0)
+    }
+
+    /// A card is done when a Category says "Done" or a checkbox called "Done" is ticked.
+    public static func isDone(_ row: SpaceRow, columns: [SpaceColumn]) -> Bool {
+        columns.contains { column in
+            switch column.kind {
+            case .category: column.options?.first { $0.id == row.cells[column.id] }?.name.caseInsensitiveCompare("Done") == .orderedSame
+            case .checkbox: column.name.caseInsensitiveCompare("Done") == .orderedSame && row.cells[column.id] == "true"
+            default: false
+            }
+        }
+    }
+
+    /// The change that ticks a card off: its Category's "Done" option, else its "Done" checkbox; nil when it has neither.
+    public static func doneCell(columns: [SpaceColumn]) -> (column: String, value: String)? {
+        for column in columns where column.kind == .category {
+            if let done = column.options?.first(where: { $0.name.caseInsensitiveCompare("Done") == .orderedSame }) { return (column.id, done.id) }
+        }
+        return columns.first { $0.kind == .checkbox && $0.name.caseInsensitiveCompare("Done") == .orderedSame }.map { ($0.id, "true") }
+    }
+
+    /// Cards that aren't done yet and have a date in the table's first Date property: the ones Today and the notch
+    /// bring back.
+    public static func datedCards(_ table: SpaceBlock, rows: [SpaceRow], calendar: Calendar = .current) -> [DatedCard] {
+        let columns = table.data.columns ?? []
+        guard let date = columns.first(where: { $0.kind == .date }) else { return [] }
+        let title = columns.first { $0.kind == .text }
+        return rows.compactMap { row in
+            guard let at = when(row.cells[date.id] ?? "", calendar: calendar), !isDone(row, columns: columns) else { return nil }
+            let name = title.map { display(row, $0) }.flatMap { $0.isEmpty ? nil : $0 } ?? "Untitled"
+            return DatedCard(rowID: row.id, blockID: table.id, spaceID: table.spaceID, title: name, due: at.date, timed: at.timed)
+        }
     }
 
     /// The rows a view shows: its filters (all must match) and a search over every cell, in its sort order (else as
@@ -378,4 +429,18 @@ extension SpaceTable {
         }
         return (cells, columns)
     }
+}
+
+/// A card with a date, as Today, the Calendar page and the notch see it.
+public struct DatedCard: Equatable, Sendable, Identifiable {
+    public let rowID: String
+    public let blockID: String
+    public let spaceID: String
+    public let title: String
+    public let due: Date
+    /// False when the card has a day but no time: it belongs to the whole day, with no notch cue.
+    public let timed: Bool
+    /// Ids on Today and in the notch start with "card:", so ticking one off knows it's a card.
+    public var id: String { DatedCard.prefix + rowID }
+    public static let prefix = "card:"
 }
