@@ -726,7 +726,7 @@ struct NoteEditor: View {
                     ProgressView().controlSize(.small)
                 }
                 Menu {
-                    ForEach(BlinkServer.TextTask.allCases, id: \.self) { task in
+                    ForEach(BlinkServer.TextTask.edits, id: \.self) { task in
                         Button(task.title) { improve(task) }
                     }
                 } label: {

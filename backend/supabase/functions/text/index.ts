@@ -1,5 +1,5 @@
 // © Pexilim
-// Quick text edits on a note (fix, shorter, clearer, summarise) with the model the owner picked for them (Settings › AI;
+// Quick text edits on a note or a card (fix, shorter, clearer, summarise, tone, or write a card's note) with the model the owner picked for them (Settings › AI;
 // the fast free Groq model unless they choose another). This only returns text, which the owner previews before it
 // replaces anything.
 import { createClient } from "npm:@supabase/supabase-js@2.118.0";

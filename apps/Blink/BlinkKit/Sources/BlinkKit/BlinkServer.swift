@@ -1477,7 +1477,12 @@ public final class BlinkServer: Sendable {
     // MARK: Text helpers (Groq)
 
     public enum TextTask: String, CaseIterable, Sendable {
-        case fix, shorter, clearer, summarize
+        case fix, shorter, clearer, summarize, friendlier, formal
+        /// Writes a card's note from its title and properties ("Name: value" lines).
+        case write
+
+        /// The edits offered on any text; tones and Write It are offered on cards.
+        public static let edits: [TextTask] = [.fix, .shorter, .clearer, .summarize]
 
         public var title: String {
             switch self {
@@ -1485,6 +1490,9 @@ public final class BlinkServer: Sendable {
             case .shorter: "Make Shorter"
             case .clearer: "Make Clearer"
             case .summarize: "Summarise"
+            case .friendlier: "Friendlier"
+            case .formal: "More Formal"
+            case .write: "Write It"
             }
         }
     }

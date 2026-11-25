@@ -173,7 +173,7 @@ private struct PageAIBar: View {
                 Image(systemName: "sparkles").foregroundStyle(.secondary).frame(width: 20).accessibilityHidden(true)
             }
             if isText {
-                ForEach(BlinkServer.TextTask.allCases, id: \.self) { task in
+                ForEach(BlinkServer.TextTask.edits, id: \.self) { task in
                     Button(task.title.replacingOccurrences(of: " & Grammar", with: "")) { edit(task) }.disabled(working)
                 }
                 Spacer()

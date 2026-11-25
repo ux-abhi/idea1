@@ -4,6 +4,9 @@ import { parseTextRequest, unescapeText, wrapText } from "./input.ts";
 Deno.test("text requests are checked at the boundary", () => {
   const ok = parseTextRequest({ task: "fix", text: "teh cat" });
   if (typeof ok === "string" || ok.task !== "fix") throw new Error("valid request rejected");
+  for (const task of ["write", "friendlier", "formal"]) {
+    if (typeof parseTextRequest({ task, text: "Title: Call Ana" }) === "string") throw new Error(`${task} rejected`);
+  }
   for (const bad of [null, { task: "translate", text: "x" }, { task: "fix", text: " " }, { task: "fix", text: "x".repeat(20_001) }]) {
     if (typeof parseTextRequest(bad) !== "string") throw new Error(`accepted ${JSON.stringify(bad)?.slice(0, 40)}`);
   }

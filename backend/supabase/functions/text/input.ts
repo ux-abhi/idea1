@@ -6,6 +6,12 @@ export const TASKS = {
   shorter: "Make this noticeably shorter while keeping every key fact. Keep the language and tone.",
   clearer: "Rewrite this to be clearer and easier to read. Keep the meaning, language and tone.",
   summarize: "Summarise this in two to four short bullet points, in the same language.",
+  friendlier: "Rewrite this in a warmer, friendlier tone. Keep every fact, the language and about the same length.",
+  formal: "Rewrite this in a more formal, professional tone. Keep every fact, the language and about the same length.",
+  // A card's title, properties and any note so far, as "Name: value" lines.
+  write: "This is a card from the user's own table: its title, properties and any note so far. Write the card's note: " +
+    "what it is and the next step, in two to five short plain lines, in the card's language. Use only what is given; " +
+    "never invent names, numbers, dates or facts.",
 } as const;
 
 export type Task = keyof typeof TASKS;

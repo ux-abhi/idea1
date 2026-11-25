@@ -1055,7 +1055,7 @@ struct CardSheet: View {
                             .menuStyle(.borderlessButton).fixedSize()
                             .help("A link, a date, a checkbox or anything else, for every card in this table")
                     }
-                    Section("Note") { CardNoteEditor(row: row) }
+                    Section("Note") { CardNoteEditor(row: row, columns: columns) }
                 }
                 .formStyle(.grouped)
                 HStack {
@@ -1073,29 +1073,86 @@ struct CardSheet: View {
     }
 }
 
-/// A card's own note: a few lines about it, saved when you click away.
+/// A card's own note: a few lines about it, saved when you click away. AI can write it from the card or rework it,
+/// straight in place (the card is already a sheet), with Undo.
 private struct CardNoteEditor: View {
     @Environment(AppModel.self) private var model
     let row: SpaceRow
+    let columns: [SpaceColumn]
     @State private var text = ""
+    @State private var working = false
+    @State private var undoText: String?
+    @State private var problem: String?
     @FocusState private var focused: Bool
 
     var body: some View {
-        TextEditor(text: $text).font(.body).frame(minHeight: 100).focused($focused)
-            .scrollContentBackground(.hidden)
-            .overlay(alignment: .topLeading) {
-                if text.isEmpty { Text("Add a note, a link, the next step…").foregroundStyle(.tertiary).padding(.leading, 5).allowsHitTesting(false) }
+        VStack(alignment: .leading, spacing: 6) {
+            TextEditor(text: $text).font(.body).frame(minHeight: 100).focused($focused)
+                .scrollContentBackground(.hidden)
+                .overlay(alignment: .topLeading) {
+                    if text.isEmpty { Text("Add a note, a link, the next step…").foregroundStyle(.tertiary).padding(.leading, 5).allowsHitTesting(false) }
+                }
+                .accessibilityLabel("Note")
+            HStack(spacing: 10) {
+                let empty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                Menu {
+                    Button(BlinkServer.TextTask.write.title) { run(.write) }
+                    Divider()
+                    ForEach(BlinkServer.TextTask.edits + [.friendlier, .formal], id: \.self) { task in
+                        Button(task.title) { run(task) }.disabled(empty)
+                    }
+                } label: { Label("AI", systemImage: "sparkles") }
+                    .menuStyle(.borderlessButton).fixedSize().disabled(working)
+                    .help("Write this note from the card, or shorten, fix or change its tone")
+                if working { ProgressView().controlSize(.small) }
+                if let undoText {
+                    Button("Undo") { text = undoText; self.undoText = nil; save() }
+                }
+                if let problem { Text(problem).font(.caption).foregroundStyle(.orange).lineLimit(2) }
             }
-            .onAppear { text = row.cells[SpaceTable.noteKey] ?? "" }
-            .onChange(of: focused) { _, now in if !now { save() } }
-            .onDisappear(perform: save)
-            .accessibilityLabel("Note")
+        }
+        .onAppear { text = row.cells[SpaceTable.noteKey] ?? "" }
+        .onChange(of: focused) { _, now in if !now { save() } }
+        .onDisappear(perform: save)
+    }
+
+    /// The card as "Name: value" lines for Write It; files stay out (AI never sees them).
+    private var cardText: String {
+        let current = model.tableRows[row.blockID]?.first { $0.id == row.id } ?? row
+        var lines = columns.filter { $0.kind != .file }.compactMap { column -> String? in
+            let value = SpaceTable.display(current, column)
+            return value.isEmpty ? nil : "\(column.name): \(value)"
+        }
+        if !text.isEmpty { lines.append("Note so far: \(text)") }
+        return lines.joined(separator: "\n")
+    }
+
+    private func run(_ task: BlinkServer.TextTask) {
+        guard let server = model.server else { problem = "Connect your server in Settings first."; return }
+        let input = task == .write ? cardText : text
+        guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { problem = "Give the card a title first."; return }
+        working = true
+        problem = nil
+        let before = text
+        Task {
+            defer { working = false }
+            do {
+                let after = try await server.edit(input, task: task)
+                undoText = before
+                text = String(after.trimmingCharacters(in: .whitespacesAndNewlines).prefix(SpaceTable.noteLimit))
+                save()
+            } catch let error as BlinkServer.ChatProblem {
+                problem = error.message
+            } catch {
+                problem = "Couldn't reach your server. Try again in a moment."
+            }
+        }
     }
 
     private func save() {
         let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(SpaceTable.noteLimit))
-        guard clean != (row.cells[SpaceTable.noteKey] ?? "") else { return }
         var changed = model.tableRows[row.blockID]?.first { $0.id == row.id } ?? row
+        guard clean != (changed.cells[SpaceTable.noteKey] ?? "") else { return }
         changed.cells[SpaceTable.noteKey] = clean.isEmpty ? nil : clean
         Task { await model.update(changed) }
     }
