@@ -1740,3 +1740,14 @@ extension Tokens {
     #expect(parsed.due.map { Calendar.current.isDate($0, inSameDayAs: afternoon) } == true && parsed.title == "Call Ana")
     #expect(TaskInput.parse("Call Ana today 9am", now: afternoon).due == nil) // a time already gone stays text
 }
+
+@Test func repeatingCardMovesToTheNextTime() {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "UTC")!
+    let friday = cal.date(from: DateComponents(year: 2026, month: 11, day: 27, hour: 20))!
+    #expect(SpaceTable.next(after: "2026-11-27 07:00", repeat: .daily, now: friday, calendar: cal) == "2026-11-28 07:00")
+    #expect(SpaceTable.next(after: "2026-11-27", repeat: .weekdays, now: friday, calendar: cal) == "2026-11-30") // over the weekend
+    #expect(SpaceTable.next(after: "2026-11-20", repeat: .weekly, now: friday, calendar: cal) == "2026-12-04") // missed weeks don't pile up
+    #expect(SpaceTable.next(after: "2026-11-10", repeat: .daily, now: friday, calendar: cal) == "2026-11-28")
+    #expect(SpaceTable.next(after: "soon", repeat: .daily, now: friday, calendar: cal) == nil)
+}

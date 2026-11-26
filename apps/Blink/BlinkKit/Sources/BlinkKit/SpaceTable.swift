@@ -128,6 +128,31 @@ public enum SpaceTable {
     public static let rowLimit = 2000, columnLimit = 30, cellLimit = 1000, noteLimit = 2000 // a row is capped at 8 KB on the server, with all its cells
     /// The cell that holds a card's own note (not a column, so it never shows as one).
     public static let noteKey = "_note"
+    /// The cell that makes a card repeat (a habit, a weekly review): ticking it off moves its date on instead.
+    public static let repeatKey = "_repeat"
+
+    public enum Repeat: String, CaseIterable, Sendable {
+        case daily, weekdays, weekly
+        public var title: String {
+            switch self {
+            case .daily: "Every Day"
+            case .weekdays: "Every Weekday"
+            case .weekly: "Every Week"
+            }
+        }
+    }
+
+    /// A repeating card's next Date cell after it's done on `now`: the first time after today, same time of day, so
+    /// missed days don't pile up. Nil when the cell isn't a date.
+    public static func next(after raw: String, repeat rule: Repeat, now: Date = .now, calendar: Calendar = .current) -> String? {
+        guard var (date, timed) = when(raw, calendar: calendar) else { return nil }
+        let today = calendar.startOfDay(for: now)
+        repeat {
+            date = calendar.date(byAdding: .day, value: rule == .weekly ? 7 : 1, to: date) ?? date
+            while rule == .weekdays, calendar.isDateInWeekend(date) { date = calendar.date(byAdding: .day, value: 1, to: date) ?? date }
+        } while calendar.startOfDay(for: date) <= today
+        return dateCell(date, timed: timed, calendar: calendar)
+    }
 
     /// A CSV (or tab-separated text) with a header row as columns and rows; column kinds guessed from names and values.
     public static func fromCSV(_ text: String) -> (columns: [SpaceColumn], rows: [[String: String]]) {

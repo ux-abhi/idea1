@@ -3455,9 +3455,26 @@ final class AppModel {
     }
 
     /// Ticks a card off from Today, Calendar or the notch: its Status goes to Done (or its Done box is ticked), with Undo.
+    /// A repeating card moves on to its next date instead.
     func completeCard(_ rowID: String) async {
         guard let card = datedCards.first(where: { $0.rowID == rowID }), let table = liveTables.first(where: { $0.id == card.blockID }),
               let row = tableRows[card.blockID]?.first(where: { $0.id == rowID }) else { return }
+        if let rule = row.cells[SpaceTable.repeatKey].flatMap(SpaceTable.Repeat.init),
+           let date = table.data.columns?.first(where: { $0.kind == .date }),
+           let next = SpaceTable.next(after: row.cells[date.id] ?? "", repeat: rule) {
+            var changed = row
+            changed.cells[date.id] = next
+            guard await update(changed) else { return }
+            playFinishSound()
+            let day = SpaceTable.when(next).map { $0.date.formatted(.dateTime.weekday(.wide)) } ?? "next time"
+            offerUndo("Done, back \(day): \(card.title)") { [weak self] in
+                guard let self, var now = self.tableRows[row.blockID]?.first(where: { $0.id == rowID }),
+                      now.cells[date.id] == next else { return } // moved again since: leave it
+                now.cells[date.id] = row.cells[date.id]
+                await self.update(now)
+            }
+            return
+        }
         guard let done = SpaceTable.doneCell(columns: table.data.columns ?? []) else {
             saveProblem = "“\(card.title)” has nothing to mark it done. Add a Done option to its Status, or a Done checkbox."
             return

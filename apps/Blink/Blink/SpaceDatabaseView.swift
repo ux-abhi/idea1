@@ -1055,6 +1055,19 @@ struct CardSheet: View {
                             .menuStyle(.borderlessButton).fixedSize()
                             .help("A link, a date, a checkbox or anything else, for every card in this table")
                     }
+                    if columns.contains(where: { $0.kind == .date }) {
+                        Section {
+                            Picker(selection: Binding(get: { row.cells[SpaceTable.repeatKey] ?? "" }, set: { setRepeat($0, on: row) })) {
+                                Text("Never").tag("")
+                                ForEach(SpaceTable.Repeat.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
+                            } label: { Label("Repeat", systemImage: "repeat") }
+                        } footer: {
+                            if row.cells[SpaceTable.repeatKey] != nil {
+                                Text("Ticking it off on Today, the Calendar or in the notch moves its date to the next time.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                     Section("Note") { CardNoteEditor(row: row, columns: columns) }
                 }
                 .formStyle(.grouped)
@@ -1070,6 +1083,12 @@ struct CardSheet: View {
         }
         .frame(width: 520, height: 560)
         .onExitCommand { dismiss() }
+    }
+
+    private func setRepeat(_ value: String, on row: SpaceRow) {
+        var changed = model.tableRows[row.blockID]?.first { $0.id == row.id } ?? row
+        changed.cells[SpaceTable.repeatKey] = value.isEmpty ? nil : value
+        Task { await model.update(changed) }
     }
 }
 
