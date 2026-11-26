@@ -1211,22 +1211,6 @@ public final class BlinkServer: Sendable {
         }
     }
 
-    public func contentPieces() async throws -> [ContentPiece] {
-        try await client.from("content_piece")
-            .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for, segment_id")
-            .neq("status", value: "archived")
-            .order("created_at", ascending: false)
-            .limit(200)
-            .execute().value
-    }
-
-    public func save(_ piece: ContentPiece) async throws {
-        try await client.from("content_piece")
-            .update(ContentPiece.Update(piece: piece))
-            .eq("id", value: piece.id)
-            .execute()
-    }
-
     public func voiceProfile() async throws -> VoiceProfile {
         let rows: [VoiceProfile] = try await client.from("voice_profile").select("page, audience, topics, notes, never_say, brief").execute().value
         return rows.first ?? VoiceProfile()

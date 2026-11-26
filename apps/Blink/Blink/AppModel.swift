@@ -409,8 +409,7 @@ final class AppModel {
             await loadSpaces()
             await loadCards()
             await loadModelPrefs()
-            await loadContent() // only for the move into cards below
-            await movePostsToCards()
+            await loadVoice()
             await loadMail()
             await loadMoney()
             await loadHabits()
@@ -484,7 +483,7 @@ final class AppModel {
         items = []; onServer = []; saveProblem = nil
         habits = []; habitAnswers = [:]
         agenda = .empty; calendarEvents = []; allReminders = []; quickReplies = []
-        content = []; voice = VoiceProfile(); contentProblem = nil
+        voice = VoiceProfile(); contentProblem = nil
         spends = []; budgets = []; accounts = []; income = []; incomePlans = []; captureTokens = []; moneyProblem = nil
         emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil; campaigns = []; bulkRecipients = [:]
         modelPrefs = [:]; modelProblem = nil; aiCaps = BlinkServer.AICaps(); capsLoaded = false; spaces = []; openPage = nil; keyStatus = nil
@@ -612,7 +611,7 @@ final class AppModel {
                 throw error
             }
         case "post.draft":
-            // Posts are cards now (ADR-0004 §6); chat may still propose one until the server's chat is updated.
+            // Posts are cards now (ADR-0004 §6); only a proposal left from an older server chat lands here.
             try await server.setStatus("declined", for: action)
             announce("Posts are cards now. Add it to a Content table in a Space.", failed: true)
         case "mail.compose":
@@ -1321,95 +1320,14 @@ final class AppModel {
     /// Every open Apple Reminder (any date, at most 50), refreshed with the agenda.
     private(set) var allReminders: [AgendaReminder] = []
 
-    // MARK: Content: old posts, kept only to move them into cards (ADR-0004 §6), and the writing voice
+    // MARK: Writing voice
 
-    private(set) var content: [ContentPiece] = []
     private(set) var voice = VoiceProfile()
     private(set) var contentProblem: String?
 
-    func loadContent() async {
+    func loadVoice() async {
         guard let server, email != nil else { return }
-        if let list = try? await server.contentPieces() {
-            // Keep local text that hasn't reached the server yet (same data-loss guard as notes).
-            content = list
-            // Only when the whole list loaded (the server sends at most 200): never delete images of drafts not shown.
-            if list.count < 200 {
-                let pieces = content
-                Task.detached(priority: .background) { PostMedia.prune(keeping: pieces) }
-            }
-        }
         if let saved = try? await server.voiceProfile() { voice = saved }
-    }
-
-    private var movingPosts = false
-
-    /// Posts move once into a Content table in their Space (ADR-0004 §6); posts with no Space go to a new Content Space.
-    /// A post is archived only after its card (and picture) is saved, so a move that stopped halfway carries on next time
-    /// without doubles. The old posts stay on the server until the owner has checked the move.
-    func movePostsToCards() async {
-        guard let server, !movingPosts else { return }
-        let posts = content.filter { $0.status != .archived }
-        guard !posts.isEmpty else { return }
-        // Fresh from the server: a list that failed to load would send every post to a new Content Space for good.
-        guard let fresh = try? await server.spaces() else { return }
-        spaces = fresh
-        movingPosts = true
-        defer { movingPosts = false }
-        var moved = 0, clipped = 0, failed = false
-        for (spaceID, pieces) in Dictionary(grouping: posts, by: { Space.known($0.spaceID, in: spaces) }) {
-            var space = spaceID.flatMap { id in spaces.first { $0.id == id } } ?? spaces.first { $0.title == ContentMove.tableName }
-            if space == nil {
-                let made = Space(title: ContentMove.tableName)
-                await createSpace(made)
-                space = spaces.first { $0.id == made.id }
-            }
-            guard let space else { failed = true; continue }
-            if spaceBlocks[space.id] == nil {
-                // Unread blocks would look like "no Content table yet" and make a second one.
-                guard let blocks = try? await server.blocks(of: space.id) else { failed = true; continue }
-                spaceBlocks[space.id] = blocks
-            }
-            let isContent = { (b: SpaceBlock) in b.kind == .table && b.data.text == ContentMove.tableName && (b.data.columns ?? []).contains { $0.name == "Platform" } }
-            if spaceBlocks[space.id]?.contains(where: isContent) != true { _ = await addBlock(.table, in: space, data: ContentMove.table()) }
-            guard let table = spaceBlocks[space.id]?.first(where: isContent) else { failed = true; continue }
-            if tableRows[table.id] == nil {
-                guard let rows = try? await server.rows(of: table.id) else { failed = true; continue }
-                tableRows[table.id] = rows
-            }
-            let columns = table.data.columns ?? []
-            let (cards, cut) = ContentMove.cards(pieces, columns: columns)
-            // All or none: a nearly full table would take only some, and the pairing below would go wrong.
-            guard (tableRows[table.id]?.count ?? 0) + cards.count <= SpaceTable.rowLimit,
-                  await addRows(cards.map(\.cells), to: table) else { failed = true; continue }
-            clipped += cut
-            let media = columns.first { $0.kind == .file }?.id
-            for (card, row) in zip(cards, (tableRows[table.id] ?? []).suffix(cards.count)) {
-                if let media, PostMedia.exists(for: card.pieceID) {
-                    await attachFile(PostMedia.url(for: card.pieceID), to: row, column: media)
-                    // The picture didn't make it: keep the post (and so its picture) and take the card back.
-                    guard tableRows[table.id]?.first(where: { $0.id == row.id })?.cells[media] != nil else {
-                        failed = true
-                        await delete(row) // the post stays and moves next time, so no second card
-                        continue
-                    }
-                }
-                guard var piece = content.first(where: { $0.id == card.pieceID }) else { continue }
-                piece.status = .archived // published_at and the text stay as they were
-                do {
-                    try await server.save(piece)
-                    content.removeAll { $0.id == piece.id }
-                    moved += 1
-                } catch {
-                    failed = true
-                    await delete(row) // as above: the post moves again next time
-                }
-            }
-        }
-        if moved > 0 {
-            announce("Moved \(moved) \(moved == 1 ? "post" : "posts") into Content tables in your Spaces"
-                     + (clipped > 0 ? "; \(clipped) long \(clipped == 1 ? "one was" : "ones were") cut to fit a card" : ""))
-        }
-        if failed { saveProblem = "Some posts couldn't move to cards yet. Blink tries again next time." }
     }
 
     /// Something that finished in the background (ideas, drafts, a week plan, a page read): the notch peeks with it,

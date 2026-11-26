@@ -349,17 +349,6 @@ extension Tokens {
         #expect(BlinkServer.capped("abc", to: 4000) == "abc")
     }
 
-    @Test func clearingAPostsDateSendsNull() throws {
-        let json = #"{"id":"p","idea":"i","platform":"x","format":"post","hook":"h","body":"b","parts":[],"hashtags":[],"status":"idea","created_at":"2026-10-30T10:00:00Z","planned_for":"2026-11-02"}"#
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        var piece = try decoder.decode(ContentPiece.self, from: Data(json.utf8))
-        #expect(piece.status == .idea && piece.plannedFor == "2026-11-02")
-        piece.plannedFor = nil
-        let sent = String(decoding: try JSONEncoder().encode(ContentPiece.Update(piece: piece)), as: UTF8.self)
-        #expect(sent.contains(#""planned_for":null"#))
-    }
-
     @Test func mergingAMonthKeepsTheOthersAndARestoredSpendKeepsItsEntryTime() throws {
         func spend(_ id: String, _ day: String) -> Spend {
             Spend(id: id, amount: 1, note: "", category: .other, spentOn: day, accountID: nil, createdAt: Date(timeIntervalSince1970: 0))
@@ -1711,24 +1700,12 @@ extension Tokens {
     #expect(SpaceTable.next(after: "soon", repeat: .daily, now: friday, calendar: cal) == nil)
 }
 
-@Test func postsMoveIntoContentCards() throws {
-    func piece(_ id: String, _ status: ContentPiece.Status, body: String, day: String? = nil) throws -> ContentPiece {
-        let json = #"{"id":"\#(id)","idea":"Pricing lesson\nmore","platform":"linkedin","format":"post","hook":"","body":"","parts":[],"hashtags":[],"status":"drafted","lint_score":null,"published_at":null,"created_at":"2026-10-12T08:00:00Z"}"#
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        var p = try decoder.decode(ContentPiece.self, from: Data(json.utf8))
-        (p.status, p.body, p.plannedFor) = (status, body, day)
-        return p
-    }
-    let data = ContentMove.table(), columns = data.columns ?? []
-    #expect(columns.map(\.name) == ["Post", "Status", "Platform", "Post at", "Media"] && data.views?.count == 2)
-    let pieces = [try piece("a", .published, body: "Shipped.", day: "2026-11-20"), try piece("b", .archived, body: "x"),
-                  try piece("c", .idea, body: String(repeating: "€", count: 3000))] // 9 KB
-    let (cards, clipped) = ContentMove.cards(pieces, columns: columns)
-    #expect(cards.map(\.pieceID) == ["a", "c"] && clipped == 1) // archived stays out; the long one was cut to fit 8 KB
-    let first = SpaceRow(blockID: "t", position: 0, cells: cards[0].cells)
-    #expect(SpaceTable.isDone(first, columns: columns)) // a posted one never shows as overdue
-    #expect(SpaceTable.display(first, columns[0]) == "Pricing lesson" && SpaceTable.display(first, columns[2]) == "LinkedIn")
-    #expect(first.cells[columns[3].id] == "2026-11-20" && first.cells[SpaceTable.noteKey] == "Shipped.")
-    #expect(try JSONEncoder().encode(cards[1].cells).count <= 7600)
+@Test func aLongNoteIsCutToFitTheRow() throws {
+    let cells = ["a": "Pricing lesson"]
+    let note = SpaceTable.fitNote(String(repeating: "€", count: 3000), with: cells) // 9 KB
+    var row = cells
+    row[SpaceTable.noteKey] = note
+    let size = try JSONEncoder().encode(row).count
+    #expect(!note.isEmpty && note.count < 3000 && size <= 7600)
+    #expect(SpaceTable.fitNote("Shipped.", with: cells) == "Shipped.")
 }
