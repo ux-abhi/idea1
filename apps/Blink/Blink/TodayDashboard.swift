@@ -254,16 +254,8 @@ private struct DayTimelineCard: View {
     let plan: DayPlan
     let now: Date
     let planDay: () -> Void
-    @State private var openPost: String?
 
     var body: some View {
-        dayCard
-            .sheet(isPresented: Binding(get: { openPost != nil }, set: { if !$0 { openPost = nil } })) {
-                if let openPost { PieceSheet(id: openPost) }
-            }
-    }
-
-    private var dayCard: some View {
         DashCard("Your day") {
             if plan.isEmpty {
                 HStack {
@@ -288,26 +280,6 @@ private struct DayTimelineCard: View {
                         late: entry.kind != .meeting && entry.start < now)
                 }
                 if !plan.timed.isEmpty && plan.nowIndex == plan.timed.count { nowLine }
-                if !model.postsToday.isEmpty {
-                    group("To post")
-                    ForEach(model.postsToday) { post in
-                        Button { openPost = post.id } label: {
-                            HStack(spacing: 10) {
-                                Text(post.platform.short).font(.callout.weight(.bold)).foregroundStyle(.secondary)
-                                    .frame(width: 56, alignment: .trailing)
-                                Capsule().fill(.purple).frame(width: 4, height: 24)
-                                Text(post.hook.isEmpty ? post.idea : post.hook).lineLimit(1)
-                                Spacer(minLength: 8)
-                                Tag(text: "Content", tint: .purple)
-                                if let space = model.spaces.first(where: { $0.id == post.spaceID }) { SpaceChip(space: space) }
-                                StatusChip(status: post.status)
-                            }
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(post.platform.name) post to put out today: \(post.hook), \(StatusChip.name(post.status))")
-                    }
-                }
             }
         }
     }

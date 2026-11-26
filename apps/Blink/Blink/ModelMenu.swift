@@ -46,7 +46,7 @@ struct ModelMenu: View {
             }
         }
         .fixedSize()
-        .help("Model for \(["chat": "chat and planning", "content": "content drafts", "voice": "voice commands and tidying dictation", "text": "quick text edits"][feature] ?? feature)")
+        .help("Model for \(["chat": "chat and planning", "voice": "voice commands and tidying dictation", "text": "quick text edits"][feature] ?? feature)")
         .accessibilityLabel("Model: \(current.name)")
     }
 

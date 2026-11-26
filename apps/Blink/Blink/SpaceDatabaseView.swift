@@ -1159,7 +1159,7 @@ private struct CardNoteEditor: View {
             do {
                 let after = try await server.edit(input, task: task)
                 undoText = before
-                text = String(after.trimmingCharacters(in: .whitespacesAndNewlines).prefix(SpaceTable.noteLimit))
+                text = SpaceTable.fitNote(after.trimmingCharacters(in: .whitespacesAndNewlines), with: row.cells)
                 save()
             } catch let error as BlinkServer.ChatProblem {
                 problem = error.message
@@ -1170,8 +1170,8 @@ private struct CardNoteEditor: View {
     }
 
     private func save() {
-        let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(SpaceTable.noteLimit))
         var changed = model.tableRows[row.blockID]?.first { $0.id == row.id } ?? row
+        let clean = SpaceTable.fitNote(text.trimmingCharacters(in: .whitespacesAndNewlines), with: changed.cells)
         guard clean != (changed.cells[SpaceTable.noteKey] ?? "") else { return }
         changed.cells[SpaceTable.noteKey] = clean.isEmpty ? nil : clean
         Task { await model.update(changed) }

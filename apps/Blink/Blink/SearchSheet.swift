@@ -3,7 +3,7 @@
 import BlinkKit
 import SwiftUI
 
-/// ⌘K: find a note, task, reminder, post or space by its words, and jump to it (the notch has the same, ⌃⌥K).
+/// ⌘K: find a note, task, reminder or space by its words, and jump to it (the notch has the same, ⌃⌥K).
 struct SearchSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -18,7 +18,7 @@ struct SearchSheet: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search notes, tasks, reminders, posts and spaces", text: $query)
+                TextField("Search notes, tasks, reminders and spaces", text: $query)
                     .textFieldStyle(.plain)
                     .font(.title3)
                     .focused($focused)

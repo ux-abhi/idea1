@@ -451,13 +451,6 @@ extension Tokens {
         #expect(MoneyMath.previous(month: MoneyMath.next(month: "2026-01")) == "2026-01")
     }
 
-    @Test func aHandWrittenPostKeepsAllItsTextAndHooksOnItsFirstLine() {
-        let post = ContentPiece.Written("  Shipped it.\nThree things I learned.\n", platform: .instagram, spaceID: "s")
-        #expect(post.hook == "Shipped it." && post.idea == "Shipped it." && post.body == "Shipped it.\nThree things I learned.")
-        #expect(post.format == "caption" && ContentPiece.Written("a", platform: .x).format == "post")
-        #expect(ContentPiece.Written(String(repeating: "a", count: 900), platform: .x).hook.count == 500)
-    }
-
     @Test func canvasImagesShrinkAndLoseTheirLocation() throws {
         let context = try #require(CGContext(data: nil, width: 3000, height: 1500, bitsPerComponent: 8, bytesPerRow: 0,
                                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
@@ -963,26 +956,6 @@ extension Tokens {
     #expect(sent.first?.role == .user && sent.count <= 20)
 }
 
-@Test func contentLintBlocksPlaceholdersAndLongPosts() throws {
-    func piece(_ platform: ContentPiece.Platform, body: String, parts: [String] = [], tags: [String] = []) throws -> ContentPiece {
-        let json = #"{"id":"p","idea":"i","platform":"\#(platform.rawValue)","format":"post","hook":"","body":"","parts":[],"hashtags":[],"status":"drafted","lint_score":null,"published_at":null,"created_at":"2026-10-12T08:00:00Z"}"#
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        var p = try decoder.decode(ContentPiece.self, from: Data(json.utf8))
-        p.body = body
-        p.parts = parts
-        p.hashtags = tags
-        return p
-    }
-    #expect(ContentLint.check(try piece(.linkedin, body: "Shipped Blink's timeline today. What would you add?")).score == 100)
-    #expect(ContentLint.check(try piece(.linkedin, body: "Thanks [client name] for the help")).issues.contains { $0.blocks })
-    #expect(ContentLint.check(try piece(.x, body: "short", parts: ["ok", String(repeating: "a", count: 281)])).issues
-        .contains { $0.message == "Post 2 is over 280 characters" && $0.blocks })
-    let soft = ContentLint.check(try piece(.instagram, body: "Let's delve into it", tags: ["a", "b", "c", "d", "e", "f"]), neverSay: ["it"])
-    #expect(soft.score == 70 && !soft.issues.contains { $0.blocks })
-    #expect(try piece(.x, body: "first", parts: ["1/", "2/"], tags: []).postText == "1/\n\n2/")
-}
-
 @Test func modelListMatchesTheServer() throws {
     // The server's allowlist (backend/supabase/functions/_shared/models.ts) must offer every model Settings shows.
     let url = URL(filePath: #filePath).deletingLastPathComponent()
@@ -1040,8 +1013,7 @@ extension Tokens {
     #expect(QuickCommand.parse("/timer 1.5h") == .timer(minutes: 90))
     #expect(QuickCommand.parse("/timer 0") == nil && QuickCommand.parse("/task ") == nil && QuickCommand.parse("what's left today?") == nil)
     #expect(QuickCommand.suggestions(for: "/re").map(\.name) == ["/remind"])
-    #expect(QuickCommand.parse("/post Why onboarding fails") == .post(idea: "Why onboarding fails"))
-    #expect(QuickCommand.parse("/post") == nil && QuickCommand.parse("/ideas") == .ideas(theme: ""))
+    #expect(QuickCommand.parse("/post Why onboarding fails") == nil && QuickCommand.parse("/ideas") == nil) // posts are cards now
     #expect(QuickCommand.suggestions(for: "/task pay").isEmpty)
 }
 
@@ -1100,13 +1072,6 @@ extension Tokens {
     #expect(Later.choices(now: morning, calendar: cal).map(\.title) == ["In 1 hour", "This evening, 18:00", "Tomorrow, 9:00", "Next Monday, 9:00"])
     let late = cal.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 17, minute: 30))!
     #expect(!Later.choices(now: late, calendar: cal).contains { $0.title.hasPrefix("This evening") })
-}
-
-@Test func weekPlanDaysAreTheNextSeven() {
-    let cal = Calendar(identifier: .gregorian)
-    let now = cal.date(from: DateComponents(year: 2026, month: 12, day: 29, hour: 23))!
-    #expect(HabitDay.nextDays(from: now, calendar: cal) == ["2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01",
-                                                             "2027-01-02", "2027-01-03", "2027-01-04"])
 }
 
 @Test func mailOpensInAppleMailByMessageID() throws {
@@ -1421,12 +1386,6 @@ extension Tokens {
         let left = WeekPlan.carriedOver([WeeklyGoal(title: "Posts", target: 5, doneCount: 3, weekStart: "2026-11-16"),
                                          WeeklyGoal(title: "Done", target: 1, doneCount: 1, weekStart: "2026-11-16")], to: "2026-11-23")
         #expect(left.count == 1 && left[0].target == 2 && left[0].doneCount == 0 && left[0].weekStart == "2026-11-23")
-        // Draft edits: unchanged is 0, punctuation fixes barely count, a rewrite is near 1.
-        let draft = "I paused new features for two weeks. Signups went up."
-        #expect(DraftEdits.changedShare(from: draft, to: draft) == 0)
-        #expect(DraftEdits.changedShare(from: draft, to: "I paused new features for two weeks, and signups went up!") < 0.15)
-        #expect(DraftEdits.changedShare(from: draft, to: "We shipped a calendar today.") > 0.8)
-        #expect(DraftEdits.changedShare(from: "", to: "") == 0 && DraftEdits.changedShare(from: draft, to: "") == 1)
         // Only connected services' models show; with none, only the on-device one (chat only).
         let onlyOpenRouter = ["anthropic": "missing", "groq": "missing", "openrouter": "ok", "custom": "missing"]
         #expect(AIModel.available(for: "content", keys: onlyOpenRouter).allSatisfy { $0.group == .best })
@@ -1750,4 +1709,26 @@ extension Tokens {
     #expect(SpaceTable.next(after: "2026-11-20", repeat: .weekly, now: friday, calendar: cal) == "2026-12-04") // missed weeks don't pile up
     #expect(SpaceTable.next(after: "2026-11-10", repeat: .daily, now: friday, calendar: cal) == "2026-11-28")
     #expect(SpaceTable.next(after: "soon", repeat: .daily, now: friday, calendar: cal) == nil)
+}
+
+@Test func postsMoveIntoContentCards() throws {
+    func piece(_ id: String, _ status: ContentPiece.Status, body: String, day: String? = nil) throws -> ContentPiece {
+        let json = #"{"id":"\#(id)","idea":"Pricing lesson\nmore","platform":"linkedin","format":"post","hook":"","body":"","parts":[],"hashtags":[],"status":"drafted","lint_score":null,"published_at":null,"created_at":"2026-10-12T08:00:00Z"}"#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var p = try decoder.decode(ContentPiece.self, from: Data(json.utf8))
+        (p.status, p.body, p.plannedFor) = (status, body, day)
+        return p
+    }
+    let data = ContentMove.table(), columns = data.columns ?? []
+    #expect(columns.map(\.name) == ["Post", "Status", "Platform", "Post at", "Media"] && data.views?.count == 2)
+    let pieces = [try piece("a", .published, body: "Shipped.", day: "2026-11-20"), try piece("b", .archived, body: "x"),
+                  try piece("c", .idea, body: String(repeating: "€", count: 3000))] // 9 KB
+    let (cards, clipped) = ContentMove.cards(pieces, columns: columns)
+    #expect(cards.map(\.pieceID) == ["a", "c"] && clipped == 1) // archived stays out; the long one was cut to fit 8 KB
+    let first = SpaceRow(blockID: "t", position: 0, cells: cards[0].cells)
+    #expect(SpaceTable.isDone(first, columns: columns)) // a posted one never shows as overdue
+    #expect(SpaceTable.display(first, columns[0]) == "Pricing lesson" && SpaceTable.display(first, columns[2]) == "LinkedIn")
+    #expect(first.cells[columns[3].id] == "2026-11-20" && first.cells[SpaceTable.noteKey] == "Shipped.")
+    #expect(try JSONEncoder().encode(cards[1].cells).count <= 7600)
 }

@@ -62,7 +62,7 @@ struct SpaceView: View {
         .confirmationDialog("Delete “\(space.title)”?", isPresented: $confirmDelete) {
             Button("Delete Space", role: .destructive) { Task { await model.deleteSpace(space) } }
         } message: {
-            Text("Its tasks, notes and posts are kept and move out of the space. Its canvas (layout, headings, sections, links and pictures) is deleted for good.")
+            Text("Its tasks and notes are kept and move out of the space. Its canvas (layout, headings, sections, links and pictures) is deleted for good.")
         }
         .safeAreaInset(edge: .bottom) { SaveProblemBar() }
     }
@@ -169,7 +169,6 @@ private enum CardContent {
     case item(BlinkItem)
     case reminder(AgendaReminder)
     case image(String)
-    case post(ContentPiece)
     /// A heading or a section: its own text.
     case mark(String)
     /// A link card: its web address and title.
@@ -201,17 +200,16 @@ private struct TableSheet: View {
     }
 }
 
-/// A card being written before it exists: where it goes, what kind, and what's typed so far.
-private struct OpenedPost: Identifiable { let id: String }
+/// A table opened over the canvas, by its block id.
+private struct OpenedTable: Identifiable { let id: String }
 
+/// A card being written before it exists: where it goes, what kind, and what's typed so far.
 private struct CardDraft: Equatable {
     var kind: SpaceNode.Kind
     var x: Double
     var y: Double
     var parentID: String?
     var text = ""
-    /// For a post: the platforms to write for; none is picked for the owner.
-    var platforms: Set<ContentPiece.Platform> = []
 }
 
 /// The plan as cards on a dotted sheet that pans and zooms. Double-click empty space to add a card there, double-click
@@ -235,8 +233,6 @@ private struct SpaceCanvasView: View {
     @GestureState private var linking: (from: String, end: CGPoint)?
     @GestureState private var resizing: (id: String, by: CGSize)?
     @State private var pickingImage = false
-    /// A post opened to read or edit, right over the canvas.
-    @State private var readingPost: String?
     @State private var openingTable: String?
     @State private var openingRow: OpenedRow?
     @State private var scale = 1.0
@@ -253,17 +249,15 @@ private struct SpaceCanvasView: View {
     @FocusState private var canvasFocused: Bool
     /// Where the pointer is on the sheet (zoomed points), so a right-click adds things right there.
     @State private var pointer = CGPoint.zero
-    /// A link being pasted (where it goes), and posts being picked to attach to this Space.
+    /// A link being pasted (where it goes).
     @State private var linkSpot: (x: Double, y: Double)?
     @State private var linkText = ""
-    @State private var attaching = false
 
     private static let zoomRange = 0.3...2.0
 
     /// Everything that belongs on this canvas, by id.
     private var spaceContents: [String] {
         model.items.filter { $0.spaceID == space.id && $0.status != .archived }.map(\.id)
-            + model.content.filter { $0.spaceID == space.id && $0.status != .archived }.map(\.id)
             + (model.spaceReminders[space.id] ?? []).map(\.id)
     }
 
@@ -309,7 +303,7 @@ private struct SpaceCanvasView: View {
                         .position(x: point(node).x * scale, y: point(node).y * scale)
                 }
                 if draft != nil {
-                    DraftCard(draft: $draft, commit: { finishDraft() }, ideas: postIdeas, writeMyself: { finishDraft(byHand: true) })
+                    DraftCard(draft: $draft, commit: { finishDraft() })
                         .scaleEffect(scale)
                         .position(x: (draft?.x ?? 0) * scale, y: (draft?.y ?? 0) * scale)
                 }
@@ -338,7 +332,7 @@ private struct SpaceCanvasView: View {
             centreOnceLoaded()
         }
         .onChange(of: nodes.isEmpty) { centreOnceLoaded() }
-        // Something new in this Space (approved in chat, added on another page, drafts written): its card appears here.
+        // Something new in this Space (approved in chat, added on another page): its card appears here.
         .onChange(of: spaceContents) { Task { await model.addMissingNodes(space) } }
         .simultaneousGesture(
             MagnifyGesture()
@@ -362,7 +356,7 @@ private struct SpaceCanvasView: View {
         .onKeyPress(.return) {
             guard editing == nil, draft == nil, let node = nodes.first(where: { $0.id == selected }),
                   ![.project, .image].contains(node.kind) else { return .ignored }
-            edit(node) // a post opens to read; the rest edit in place
+            edit(node)
             return .handled
         }
         .overlay {
@@ -372,11 +366,7 @@ private struct SpaceCanvasView: View {
         .overlay(alignment: .topTrailing) { SpaceProgressPill(space: space).padding(16) }
         .overlay(alignment: .bottom) {
             VStack(spacing: 10) {
-                if model.drafting {
-                    Label("Writing your post…", systemImage: "ellipsis").font(.callout).foregroundStyle(.secondary)
-                } else if draft?.kind == .post, let problem = model.contentProblem {
-                    Text(problem).font(.callout).foregroundStyle(.red)
-                } else if nodes.count <= 1 && draft == nil {
+                if nodes.count <= 1 && draft == nil {
                     Text("Double-click anywhere to add a card. Drag a card's dot onto another to link them.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
@@ -392,8 +382,7 @@ private struct SpaceCanvasView: View {
             }
             .padding(.bottom, 18)
         }
-        .sheet(item: Binding(get: { readingPost.map(OpenedPost.init) }, set: { readingPost = $0?.id })) { PieceSheet(id: $0.id) }
-        .sheet(item: Binding(get: { openingTable.map(OpenedPost.init) }, set: { openingTable = $0?.id })) { opened in
+        .sheet(item: Binding(get: { openingTable.map(OpenedTable.init) }, set: { openingTable = $0?.id })) { opened in
             if let block = model.spaceBlocks[space.id]?.first(where: { $0.id == opened.id }) { TableSheet(block: block, space: space) }
         }
         .sheet(item: $openingRow) { opened in
@@ -419,7 +408,6 @@ private struct SpaceCanvasView: View {
         } message: {
             Text("Paste a web address. Blink reads the page's title for the card.")
         }
-        .sheet(isPresented: $attaching) { AttachContentSheet(space: space) }
     }
 
     /// Right-click on the sheet: add anything right where the pointer is.
@@ -428,7 +416,6 @@ private struct SpaceCanvasView: View {
         Button("New Task", systemImage: "checkmark.circle") { startDraft(.task, at: spot, parent: nil) }
         Button("New Sticky", systemImage: "note.text") { startDraft(.note, at: spot, parent: nil) }
         Button("New Reminder", systemImage: "bell") { startDraft(.reminder, at: spot, parent: nil) }
-        Divider()
         Divider()
         Button("Link…", systemImage: "link") { linkSpot = spot }
         Button("Picture…", systemImage: "photo") { pickingImage = true }
@@ -459,7 +446,7 @@ private struct SpaceCanvasView: View {
         case .task, .note: model.items.first { $0.id == node.ref && $0.status != .archived }.map(CardContent.item)
         case .reminder: model.spaceReminders[space.id]?.first { $0.id == node.ref }.map(CardContent.reminder)
         case .image: node.ref.map(CardContent.image)
-        case .post: model.content.first { $0.id == node.ref && $0.status != .archived }.map(CardContent.post)
+        case .post: nil // posts are cards in a Content table now (ADR-0004 §6); old post nodes stay on the server, unshown
         case .heading, .section: .mark(node.label ?? "")
         case .link: node.url.map { CardContent.link(url: $0, title: node.label ?? "") }
         case .block:
@@ -553,7 +540,6 @@ private struct SpaceCanvasView: View {
 
     private func edit(_ node: SpaceNode) {
         guard node.kind != .project, node.kind != .image else { return }
-        guard node.kind != .post else { readingPost = node.ref; return }
         // A page's table or one of its rows opens in place, over the canvas (it's the page's data, not a canvas copy).
         switch content(of: node) {
         case .table(let block, _): openingTable = block.id; return
@@ -612,21 +598,16 @@ private struct SpaceCanvasView: View {
     private func helps(for node: SpaceNode) -> [Help] {
         switch node.kind {
         case .project:
-            [Help(title: "Suggest Next Tasks", symbol: "checklist", prompt: "Suggest the next 3 tasks this Space is missing, as tasks I can approve."),
-             Help(title: "Post Ideas for This", symbol: "lightbulb", prompt: "Give me 5 specific post ideas about this Space's work. Ask which platform before proposing any.")]
+            [Help(title: "Suggest Next Tasks", symbol: "checklist", prompt: "Suggest the next 3 tasks this Space is missing, as tasks I can approve.")]
         case .task, .reminder:
             [Help(title: "Break Into Steps", symbol: "list.bullet", prompt: "Break this into 3 to 5 small steps and propose them as tasks in this Space."),
              Help(title: "What's the Next Step?", symbol: "arrow.forward.circle", prompt: "What's the very next concrete step for this? One or two lines.")]
         case .note:
-            [Help(title: "Turn Into Tasks", symbol: "checklist", prompt: "Turn this note into tasks and propose them in this Space."),
-             Help(title: "Turn Into a Post", symbol: "megaphone", prompt: "Turn this note into a post idea. Ask me which platform first, then propose it.")]
-        case .post:
-            [Help(title: "Stronger Hooks", symbol: "text.quote", prompt: "Give me 5 stronger opening lines for this post, in my voice."),
-             Help(title: "More Ideas Like This", symbol: "lightbulb", prompt: "Give me 5 more post ideas in the same direction as this one.")]
+            [Help(title: "Turn Into Tasks", symbol: "checklist", prompt: "Turn this note into tasks and propose them in this Space.")]
         case .section:
             [Help(title: "What's Left Here?", symbol: "checklist", prompt: "Look at the cards in this section. What's done, what's left, and what's at risk? A few short lines."),
              Help(title: "Suggest Next Tasks Here", symbol: "plus.circle", prompt: "Suggest the next 3 tasks for this section, as tasks I can approve in this Space.")]
-        case .image, .heading:
+        case .image, .heading, .post:
             []
         case .link:
             [Help(title: "What's This About?", symbol: "text.magnifyingglass", prompt: "From its title and address, what is this link likely about, and how could it help this Space? Two short lines.")]
@@ -641,21 +622,11 @@ private struct SpaceCanvasView: View {
         let card: String = switch content(of: node) {
         case .item(let item): "\(item.type == .note ? "Sticky note" : "Task"): \(item.title)\(item.body.isEmpty ? "" : " — \(item.body.prefix(600))")"
         case .reminder(let reminder): "Reminder: \(reminder.title)"
-        case .post(let post): "Post (\(post.platform.name)): \(post.hook)\n\(post.body.prefix(600))"
         case .mark(let label) where node.kind == .section:
             "Section \"\(label)\" holding: \(node.carried(in: nodes).map(name(of:)).joined(separator: "; "))"
         default: "The Space itself"
         }
         Task { await model.ask(prompt, context: String("This card: \(card)\n\n\(planSummary())".prefix(3900)), space: space.id) }
-    }
-
-    /// From the post draft card: ideas for this Space, in the panel.
-    private func postIdeas() {
-        showPanel = true
-        Task {
-            await model.ask("Give me 5 specific post ideas for this Space, each with a one-line hook. Ask which platform before proposing any.",
-                            context: planSummary(), space: space.id)
-        }
     }
 
     /// The corner of a sticky or picture: drag it to make the card bigger or smaller.
@@ -760,23 +731,6 @@ private struct SpaceCanvasView: View {
                     ForEach(CanvasCard.textScales, id: \.scale) { Text($0.name).tag($0.scale) }
                 }
             }
-        case .post(let post):
-            Button("Open") { readingPost = post.id }
-            Menu("Post On") {
-                ForEach(0..<7, id: \.self) { ahead in
-                    if let date = Calendar.current.date(byAdding: .day, value: ahead, to: .now) {
-                        Button(HabitDay.label(HabitDay.key(date))) { Task { await model.setDay(HabitDay.key(date), of: post) } }
-                    }
-                }
-                if post.plannedFor != nil {
-                    Divider()
-                    Button("No Day") { Task { await model.setDay(nil, of: post) } }
-                }
-            }
-            Button("Copy Post") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(post.postText, forType: .string)
-            }
         case .link(let url, _):
             Button("Open Link") { if let link = URL(string: url) { NSWorkspace.shared.open(link) } }
             Button("Copy Link") {
@@ -812,9 +766,6 @@ private struct SpaceCanvasView: View {
         if case .item(let item) = content(of: node) {
             Divider()
             Button(item.type == .note ? "Delete Note" : "Delete Task", role: .destructive) { Task { await model.deleteWithUndo(item) } }
-        } else if case .post(let post) = content(of: node) {
-            Divider()
-            Button("Delete Post", role: .destructive) { Task { await model.deletePost(post) } }
         } else if [.image, .heading, .section, .link].contains(node.kind) {
             Divider()
             let what = node.kind == .image ? "Remove Picture" : node.kind == .link ? "Remove Link"
@@ -840,7 +791,6 @@ private struct SpaceCanvasView: View {
         case .item(let item): item.title.isEmpty ? "Untitled" : item.title
         case .reminder(let reminder): reminder.title
         case .image: "Picture"
-        case .post(let post): post.hook.isEmpty ? post.idea : post.hook
         case .mark(let label): label
         case .link(let url, let title): title.isEmpty ? (URL(string: url)?.host() ?? url) : title
         case .table(let block, _): (block.data.text ?? "").isEmpty ? "Table" : block.data.text!
@@ -873,38 +823,12 @@ private struct SpaceCanvasView: View {
         if viewport.width > 0, !shown.insetBy(dx: 150, dy: 80).contains(CGPoint(x: spot.x, y: spot.y)) { centre(on: spot) }
     }
 
-    /// Makes the card from what's typed; an empty draft just goes away. A post is drafted by Blink, or saved as typed
-    /// `byHand` and opened to finish.
-    private func finishDraft(byHand: Bool = false) {
+    /// Makes the card from what's typed; an empty draft just goes away.
+    private func finishDraft() {
         guard let done = draft else { return }
         draft = nil
         let text = done.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        if done.kind == .post {
-            // Blink writes one draft per platform picked; they land in Content and here, where the card was.
-            let platforms = ContentPiece.Platform.allCases.filter(done.platforms.contains)
-            // Keep what's typed until a platform is picked and no other post is being written.
-            guard !platforms.isEmpty, !model.drafting else { draft = done; return }
-            if byHand {
-                Task {
-                    if let post = await model.writePost(text, platforms: platforms, space: space.id) {
-                        await model.addMissingNodes(space, near: (done.x, done.y))
-                        readingPost = post.id
-                    } else if draft == nil {
-                        draft = done
-                    }
-                }
-                return
-            }
-            Task {
-                if await model.draft(idea: text, platforms: platforms, space: space.id) {
-                    await model.addMissingNodes(space, near: (done.x, done.y))
-                } else if draft == nil {
-                    draft = done // it didn't work: the text comes back, with the reason under the bar
-                }
-            }
-            return
-        }
         let parsed = done.kind == .note ? (title: text, due: Date?.none) : { let p = TaskInput.parse(text); return (title: p.title, due: p.due) }()
         let parent = nodes.first { $0.id == done.parentID }
         Task {
@@ -942,9 +866,6 @@ private struct SpaceCanvasView: View {
         case .image, .mark:
             selected = nil
             Task { await model.removeNode(node) }
-        case .post(let post):
-            selected = nil
-            Task { await model.deletePost(post) }
         default: break
         }
     }
@@ -993,7 +914,6 @@ private struct SpaceCanvasView: View {
         // The tooltip names it first, since the bar shows only icons.
         .help(title.hasPrefix("Ask ") ? "\(title): explain this plan and suggest what's missing"
               : title == "Picture" ? "Picture: add one, or drop it onto the canvas"
-              : title == "Post" ? "Post: write one for the platforms you pick"
               : title == "Heading" ? "Heading: label part of the canvas"
               : title == "Section" ? "Section: group cards; drag its title to move them all"
               : "\(title): add one, linked to the selected card")
@@ -1142,9 +1062,6 @@ private struct SpaceCanvasView: View {
                 } else {
                     lines.append("Heading: \(label)")
                 }
-            case .post(let post):
-                names[node.id] = post.hook
-                lines.append("Post (\(post.platform.name), \(post.status.rawValue)): \(post.hook)")
             case nil: break
             }
         }
@@ -1290,13 +1207,6 @@ private struct CanvasCard: View {
                 .frame(width: 36, height: 36)
                 .background(tint.opacity(0.14), in: .rect(cornerRadius: 10, style: .continuous))
                 .accessibilityHidden(true)
-        case .post(let post):
-            Text(post.platform.short)
-                .font(.callout.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(tint.gradient, in: .rect(cornerRadius: 10, style: .continuous))
-                .accessibilityHidden(true)
         }
     }
 
@@ -1415,7 +1325,7 @@ private struct CanvasCard: View {
         case .project: space.dueAt
         case .item(let item): item.dueAt
         case .reminder(let reminder): reminder.due
-        case .image, .post, .mark, .link, .table, .row: nil
+        case .image, .mark, .link, .table, .row: nil
         }
     }
 
@@ -1427,7 +1337,6 @@ private struct CanvasCard: View {
         case .item(let item): item.title.isEmpty ? "Untitled" : item.title
         case .reminder(let reminder): reminder.title
         case .image: "Picture"
-        case .post(let post): post.hook.isEmpty ? post.idea : post.hook
         case .mark(let label): label
         case .link(let url, let title): title.isEmpty ? (URL(string: url)?.host() ?? url) : title
         case .table(let block, _): (block.data.text ?? "").isEmpty ? "Table" : block.data.text!
@@ -1446,8 +1355,6 @@ private struct CanvasCard: View {
         case .image, .mark: return ""
         case .link(let url, _): return URL(string: url)?.host().map { $0.replacingOccurrences(of: "www.", with: "") } ?? "Link"
         case .table(_, let detail), .row(_, _, _, let detail): return detail
-        case .post(let post):
-            return "\(post.platform.name) · \(StatusChip.name(post.status))\(post.plannedFor.map { " · \(HabitDay.label($0))" } ?? "")"
         }
     }
 
@@ -1462,7 +1369,7 @@ private struct CanvasCard: View {
         case .project: title = space.title
         case .item(let item): (title, text) = (item.title, item.body)
         case .reminder(let reminder): title = reminder.title
-        case .image, .post: break
+        case .image: break
         case .mark(let label): title = label
         case .link(_, let label): title = label
         case .table, .row: break
@@ -1472,7 +1379,7 @@ private struct CanvasCard: View {
     private func commit() {
         let newTitle = title.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         switch content {
-        case .project, .image, .post, .table, .row: break
+        case .project, .image, .table, .row: break
         case .mark(let label), .link(_, let label):
             if !newTitle.isEmpty, newTitle != label { model.relabel(node, to: newTitle) }
         case .item(let item):
@@ -1496,8 +1403,6 @@ private struct CanvasCard: View {
 private struct DraftCard: View {
     @Binding var draft: CardDraft?
     let commit: () -> Void
-    let ideas: () -> Void
-    let writeMyself: () -> Void
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -1505,7 +1410,7 @@ private struct DraftCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 4) {
                 // The picked kind shows its name; the others only their icon, so the card stays calm.
-                ForEach([SpaceNode.Kind.task, .note, .reminder, .post], id: \.self) { option in
+                ForEach([SpaceNode.Kind.task, .note, .reminder], id: \.self) { option in
                     Button {
                         draft?.kind = option
                         focused = true
@@ -1522,12 +1427,6 @@ private struct DraftCard: View {
                     .accessibilityAddTraits(kind == option ? .isSelected : [])
                 }
                 Spacer(minLength: 0)
-                if kind == .post {
-                    Button("Ideas", systemImage: "sparkles", action: ideas)
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.borderless)
-                        .help("Ask \(AssistantName.current) for post ideas for this Space")
-                }
             }
             TextField(Self.placeholder(kind), text: Binding(get: { draft?.text ?? "" }, set: { draft?.text = $0 }), axis: .vertical)
                 .textFieldStyle(.plain)
@@ -1536,34 +1435,6 @@ private struct DraftCard: View {
                 .focused($focused)
                 .onSubmit(commit)
                 .onExitCommand { draft = nil }
-            if kind == .post {
-                HStack(spacing: 4) {
-                    ForEach(ContentPiece.Platform.allCases, id: \.self) { platform in
-                        let on = draft?.platforms.contains(platform) == true
-                        Button {
-                            if on { draft?.platforms.remove(platform) } else { draft?.platforms.insert(platform) }
-                        } label: {
-                            Label(platform.name, systemImage: on ? "checkmark.circle.fill" : "circle")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                .background(on ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.05), in: .capsule)
-                                .fixedSize()
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(on ? .isSelected : [])
-                    }
-                }
-                HStack {
-                    Text(draft?.platforms.isEmpty == true ? "Pick a platform first." : "Return: Blink drafts it from your idea.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer(minLength: 4)
-                    Button("Write It Myself", action: writeMyself)
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.borderless)
-                        .disabled(draft?.platforms.isEmpty != false || draft?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false)
-                        .help("Save your words as the post, no AI, and open it to finish")
-                }
-            }
         }
         .padding(12)
         .frame(width: 300, alignment: .leading)
@@ -1610,8 +1481,7 @@ private struct DraftCard: View {
         case .task: "New task, e.g. “Draft homepage friday”"
         case .note: "Sticky note"
         case .reminder: "Remind me, e.g. “Call the printer friday 10am”"
-        case .project, .image, .heading, .section, .link, .block, .card: ""
-        case .post: "What's the post about?"
+        case .project, .image, .post, .heading, .section, .link, .block, .card: ""
         }
     }
 }
@@ -1780,48 +1650,3 @@ private struct DotGrid: View {
     }
 }
 #endif
-
-/// Attach Content: posts and ideas not in this Space yet, to link to it (each then gets a card on the canvas).
-private struct AttachContentSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let space: Space
-
-    var body: some View {
-        let posts = model.content.filter { $0.spaceID != space.id && $0.status != .archived }
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Attach content to \(space.title)").font(.title3.bold())
-            if posts.isEmpty {
-                Text("No posts or ideas outside this Space. Right-click the canvas and choose New Post to write one here.")
-                    .foregroundStyle(.secondary)
-            } else {
-                List(posts) { post in
-                    Button {
-                        Task { await model.attach(post, to: space) }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Text(post.platform.short).font(.callout.weight(.bold)).foregroundStyle(.secondary).frame(width: 40, alignment: .leading)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(post.hook.isEmpty ? post.idea : post.hook).lineLimit(1)
-                                Text(model.spaces.first { $0.id == post.spaceID }.map { "In \($0.title)" } ?? StatusChip.name(post.status))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "plus.circle").foregroundStyle(Color.accentColor)
-                        }
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Attach to \(space.title)")
-                }
-                .frame(minHeight: 260)
-            }
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(20)
-        .frame(width: 460)
-    }
-}

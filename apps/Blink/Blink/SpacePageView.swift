@@ -18,7 +18,6 @@ struct SpacePageView: View {
     /// The page's width when it isn't full width: dragged at its edge, remembered per Space.
     @State private var pageWidth: Double = 720
     @State private var dragStart: Double?
-    @State private var openPost: String?
 
     var body: some View {
         let blocks = model.spaceBlocks[space.id] ?? []
@@ -63,7 +62,7 @@ struct SpacePageView: View {
                             .foregroundStyle(.tertiary)
                     }
                     ForEach(blocks) { block in
-                        BlockRow(block: block, space: current, openNote: openNote, openPost: { openPost = $0 },
+                        BlockRow(block: block, space: current, openNote: openNote,
                                  selected: selected == block.id, select: { selected = block.id })
                     }
                     AddBlockLine(space: current, after: blocks.last)
@@ -88,9 +87,6 @@ struct SpacePageView: View {
                 .inspectorColumnWidth(min: 220, ideal: 240, max: 300)
         }
         .task(id: space.id) { await model.loadBlocks(space) }
-        .sheet(isPresented: Binding(get: { openPost != nil }, set: { if !$0 { openPost = nil } })) {
-            if let openPost { PieceSheet(id: openPost) }
-        }
     }
 }
 
@@ -424,7 +420,6 @@ private struct BlockRow: View {
     let block: SpaceBlock
     let space: Space
     let openNote: (String) -> Void
-    let openPost: (String) -> Void
     var selected = false
     var select: () -> Void = {}
     @State private var hovering = false
@@ -436,7 +431,7 @@ private struct BlockRow: View {
             case .heading: TextBlock(block: block, heading: true)
             case .text: TextBlock(block: block, heading: false)
             case .tasks: TasksBlock(space: space)
-            case .content: RetiredBlock(text: "Content boards are gone. Your posts are in Tasks (Content filter) and on the canvas.", block: block)
+            case .content: RetiredBlock(text: "Content boards are gone. Your posts are cards in a Content table.", block: block)
             case .note: NoteBlock(block: block, space: space, open: openNote)
             case .link: LinkBlock(block: block)
             case .image: ImageBlock(block: block, space: space)
@@ -589,7 +584,14 @@ private struct NoteBlock: View {
             .help("Open in Notes")
         } else {
             let here = model.notes.filter { $0.spaceID == space.id }, others = model.notes.filter { $0.spaceID != space.id }
-            Menu("Choose a Note") {
+            Menu("Add a Note") {
+                Button("New Note", systemImage: "square.and.pencil") {
+                    let note = model.create(.note, title: "", space: space.id)
+                    var changed = block
+                    changed.data.ref = note.id
+                    Task { await model.update(changed) }
+                    open(note.id)
+                }
                 if !here.isEmpty { Section("In this Space") { ForEach(here) { pick($0) } } }
                 if !others.isEmpty { Section("Other notes") { ForEach(others.prefix(30)) { pick($0) } } }
             }

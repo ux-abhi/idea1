@@ -72,77 +72,6 @@ public struct ContentPiece: Codable, Identifiable, Equatable, Sendable {
         return tags.isEmpty ? main : "\(main)\n\n\(tags)"
     }
 
-    /// A post the owner writes by hand, no AI: the whole text is the post, its first line the hook and what it's about.
-    /// Cut to what the table takes (idea 2000, hook 500, body 10000 characters).
-    public struct Written: Encodable, Equatable, Sendable {
-        let idea: String
-        let platform: String
-        let format: String
-        let hook: String
-        let body: String
-        let planned_for: String?
-        let segment_id: String?
-
-        public init(_ text: String, platform: Platform, plannedFor: String? = nil, spaceID: String? = nil) {
-            let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            let first = body.split(separator: "\n", maxSplits: 1).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
-            idea = MoneyMath.clip(first, to: 2000)
-            self.platform = platform.rawValue
-            format = platform == .instagram ? "caption" : "post"
-            hook = MoneyMath.clip(first, to: 500)
-            self.body = MoneyMath.clip(body, to: 10000)
-            planned_for = plannedFor
-            segment_id = spaceID
-        }
-    }
-}
-
-/// The writing check before approval (§36.4 "humanize and lint"): AI-sounding phrases, placeholders, platform limits
-/// and the owner's never-say words. Blocking problems stop approval; the rest lower the score.
-public enum ContentLint {
-    public struct Issue: Equatable, Sendable {
-        public let message: String
-        public let blocks: Bool
-    }
-
-    /// Phrases that make a post read machine-written (one list for all platforms for now).
-    static let tells = ["delve", "game-changer", "game changer", "unlock", "elevate", "in today's fast-paced", "tapestry",
-                        "testament to", "seamless", "leverage", "embark", "realm", "navigate the", "it's not just",
-                        "let's dive in", "in conclusion", "revolutionize", "supercharge"]
-
-    public static func check(_ piece: ContentPiece, neverSay: [String] = []) -> (score: Int, issues: [Issue]) {
-        var issues: [Issue] = []
-        let all = ([piece.hook, piece.body] + piece.parts).joined(separator: "\n")
-        let lower = all.lowercased()
-
-        // An unfilled placeholder or template gap would post as-is: never approvable.
-        if all.range(of: #"\{\{[^}]*\}\}|\[(insert|your|name|client|number|link)[^\]]*\]"#, options: [.regularExpression, .caseInsensitive]) != nil {
-            issues.append(Issue(message: "Has a placeholder to fill in", blocks: true))
-        }
-        switch piece.platform {
-        case .x:
-            let posts = piece.parts.isEmpty ? [piece.body] : piece.parts
-            if let long = posts.firstIndex(where: { $0.count > 280 }) {
-                issues.append(Issue(message: posts.count == 1 ? "Over 280 characters" : "Post \(long + 1) is over 280 characters", blocks: true))
-            }
-        case .linkedin:
-            if piece.body.count > 3000 { issues.append(Issue(message: "Over LinkedIn's 3,000 characters", blocks: true)) }
-        case .instagram:
-            if piece.body.count > 2200 { issues.append(Issue(message: "Caption over 2,200 characters", blocks: true)) }
-            if piece.format == "carousel" && piece.parts.count > 10 { issues.append(Issue(message: "More than 10 slides", blocks: true)) }
-        }
-        if piece.hashtags.count > 5 { issues.append(Issue(message: "\(piece.hashtags.count) hashtags; 3–5 read better", blocks: false)) }
-        for word in neverSay where !word.isEmpty && lower.contains(word.lowercased()) {
-            issues.append(Issue(message: "Uses “\(word)”, which you never say", blocks: false))
-        }
-        for tell in tells where lower.contains(tell) {
-            issues.append(Issue(message: "Sounds like AI: “\(tell)”", blocks: false))
-        }
-        if all.filter({ $0 == "—" }).count > 1 { issues.append(Issue(message: "Several em dashes", blocks: false)) }
-
-        let score = max(0, 100 - issues.reduce(0) { $0 + ($1.blocks ? 40 : 10) })
-        return (score, issues)
-    }
 }
 
 /// Who the owner is online and how they write (`voice_profile`): drafts and ideas are made to fit it.
@@ -185,61 +114,47 @@ public struct VoiceProfile: Codable, Equatable, Sendable {
     public var isSetUp: Bool { !page.isEmpty || !topics.isEmpty || !brief.isEmpty }
 }
 
-/// A post idea to pick from (not saved until "Write this" turns it into drafts).
-public struct ContentIdea: Decodable, Identifiable, Hashable, Sendable {
-    public let title: String
-    public let hook: String
-    public let platform: ContentPiece.Platform
-    public let format: String
-    public let why: String
-    /// For the week plan: the day it's planned for ("2026-10-14").
-    public let day: String?
-    public var id: String { title + platform.rawValue + (day ?? "") }
+/// Posts move once into a "Content" table in their Space (ADR-0004 §6): one card per post, the post's text in the
+/// card's note, its day in Post at. A posted one is Done, so it never shows as overdue.
+public enum ContentMove {
+    public static let tableName = "Content"
+    static let statuses: [(ContentPiece.Status, String)] = [(.idea, "Idea"), (.drafted, "Drafted"), (.approved, "Approved"), (.published, "Done")]
 
-    public var formatName: String {
-        switch format {
-        case "reel_script": "Reel"
-        case "carousel": "Carousel"
-        case "thread": "Thread"
-        default: "Post"
+    /// The Content table: Post, Status, Platform, Post at, Media, with a board by Status and a calendar by Post at.
+    public static func table() -> SpaceBlock.Data {
+        let colors = ["gray", "blue", "orange", "green", "pink", "indigo", "teal"]
+        let status = SpaceColumn(name: "Status", kind: .category,
+                                 options: statuses.enumerated().map { SpaceOption(name: $0.element.1, color: colors[$0.offset]) })
+        let platform = SpaceColumn(name: "Platform", kind: .category,
+                                   options: ContentPiece.Platform.allCases.enumerated().map { SpaceOption(name: $0.element.name, color: colors[$0.offset + 4]) })
+        let date = SpaceColumn(name: "Post at", kind: .date)
+        var data = SpaceBlock.Data(text: tableName, columns: [SpaceColumn(name: "Post"), status, platform, date, SpaceColumn(name: "Media", kind: .file)])
+        data.views = [SpaceTableView(name: "Board", kind: .board, groupBy: status.id), SpaceTableView(name: "Calendar", kind: .calendar, groupBy: date.id)]
+        return data
+    }
+
+    /// One card's cells per post (archived ones stay out), by the table's column ids, with how many posts had their
+    /// text cut to fit a card (a row holds 8 KB; the old post keeps the whole text until it's removed).
+    public static func cards(_ pieces: [ContentPiece], columns: [SpaceColumn], calendar: Calendar = .current)
+        -> (cards: [(pieceID: String, cells: [String: String])], clipped: Int) {
+        let column = { (name: String) in columns.first { $0.name == name } }
+        var clipped = 0
+        let cards = pieces.filter { $0.status != .archived }.map { piece -> (String, [String: String]) in
+            var cells: [String: String] = [:]
+            let title = (piece.hook.isEmpty ? piece.idea : piece.hook).split(separator: "\n").first.map(String.init) ?? ""
+            if let c = column("Post") { cells[c.id] = String(title.trimmingCharacters(in: .whitespaces).prefix(200)) }
+            let statusName = statuses.first { $0.0 == piece.status }?.1
+            if let c = column("Status"), let id = c.options?.first(where: { $0.name == statusName })?.id { cells[c.id] = id }
+            if let c = column("Platform"), let id = c.options?.first(where: { $0.name == piece.platform.name })?.id { cells[c.id] = id }
+            if let c = column("Post at") {
+                if let day = piece.plannedFor, HabitDay.date(fromKey: day, calendar: calendar) != nil { cells[c.id] = String(day.prefix(10)) }
+                else if let at = piece.publishedAt { cells[c.id] = SpaceTable.dateCell(at, timed: true, calendar: calendar) }
+            }
+            let text = SpaceTable.fitNote(piece.postText, with: cells)
+            if text.count < piece.postText.count { clipped += 1 }
+            if !text.isEmpty { cells[SpaceTable.noteKey] = text }
+            return (piece.id, cells)
         }
-    }
-}
-
-public extension HabitDay {
-    /// The next `count` days from today as "2026-10-14" keys (the week plan's days, in the owner's time zone).
-    public static func nextDays(_ count: Int = 7, from now: Date = .now, calendar: Calendar = .current) -> [String] {
-        let today = calendar.startOfDay(for: now)
-        return (0..<count).compactMap { calendar.date(byAdding: .day, value: $0, to: today).map { key($0, calendar: calendar) } }
-    }
-
-    /// "Tue 14 Oct" for a "2026-10-14" key.
-    public static func label(_ key: String, calendar: Calendar = .current) -> String {
-        guard let date = date(fromKey: key, calendar: calendar) else { return key }
-        if calendar.isDateInToday(date) { return "Today" }
-        if calendar.isDateInTomorrow(date) { return "Tomorrow" }
-        return date.formatted(.dateTime.weekday(.abbreviated).day().month())
-    }
-}
-
-/// How much the owner changed an AI draft before approving it: the share of words not kept in order (0 = used as
-/// written, 1 = rewritten). Word-level, case and punctuation ignored, so fixing a comma barely counts.
-public enum DraftEdits {
-    public static func changedShare(from original: String, to final: String) -> Double {
-        let a = words(original), b = words(final)
-        guard !a.isEmpty || !b.isEmpty else { return 0 }
-        guard !a.isEmpty, !b.isEmpty else { return 1 }
-        // Longest common subsequence of words, two rows at a time (a draft is a few hundred words at most).
-        var previous = [Int](repeating: 0, count: b.count + 1), current = previous
-        for x in a {
-            for (j, y) in b.enumerated() { current[j + 1] = x == y ? previous[j] + 1 : max(previous[j + 1], current[j]) }
-            swap(&previous, &current)
-        }
-        let kept = Double(previous[b.count])
-        return min(1, max(0, 1 - kept / Double(max(a.count, b.count))))
-    }
-
-    private static func words(_ text: String) -> [Substring] {
-        text.lowercased().split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "#" }
+        return (cards, clipped)
     }
 }

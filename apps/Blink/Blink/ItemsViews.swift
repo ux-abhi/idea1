@@ -13,9 +13,8 @@ struct TasksView: View {
     @State private var selected: Set<String> = []
     @State private var confirmDelete = false
     @AppStorage("tasks.space") private var spaceFilter = "all"
-    /// "all", "tasks" (Blink's own), "reminders" (Apple Reminders) or "content" (dated posts, tagged Content).
+    /// "all", "tasks" (Blink's own) or "reminders" (Apple Reminders).
     @AppStorage("tasks.kind") private var kindFilter = "all"
-    @State private var openPost: String?
 
     var body: some View {
         let all = openEntries
@@ -23,7 +22,6 @@ struct TasksView: View {
             switch entry.kind {
             case .task: kindFilter == "all" || kindFilter == "tasks"
             case .reminder: kindFilter == "all" || kindFilter == "reminders"
-            case .post: kindFilter == "all" || kindFilter == "content"
             }
         }
         // Habits moved to Habits & Goals (ADR-0002 §8).
@@ -35,9 +33,6 @@ struct TasksView: View {
                 FilterPill(title: "Reminders", count: all.filter { if case .reminder = $0.kind { true } else { false } }.count,
                            on: kindFilter == "reminders") { kindFilter = "reminders" }
                     .help("From Apple Reminders, on all your devices")
-                FilterPill(title: "Content", count: all.filter { if case .post = $0.kind { true } else { false } }.count,
-                           on: kindFilter == "content") { kindFilter = "content" }
-                    .help("Posts with a day to go out, from your Spaces")
                 Spacer()
                 SpaceFilter(selected: $spaceFilter)
                     .task(id: spaceFilter) {
@@ -58,15 +53,10 @@ struct TasksView: View {
                             switch entry.kind {
                             case .task(let task): selectable(entry.id) { TaskRow(task: task) }
                             case .reminder(let reminder): selectable(entry.id) { ReminderRow(reminder: reminder) }
-                            // Posts aren't selectable: Mark Done and Delete here are for tasks and reminders only.
-                            case .post(let post): PostTaskRow(post: post) { openPost = post.id }
                             }
                         }
                     }
                 }
-            }
-            .sheet(isPresented: Binding(get: { openPost != nil }, set: { if !$0 { openPost = nil } })) {
-                if let openPost { PieceSheet(id: openPost) }
             }
 
 
@@ -97,6 +87,7 @@ struct TasksView: View {
             Text("Reminders are removed from Apple Reminders too. This can't be undone from Blink yet.")
         }
         .task {
+            if kindFilter == "content" { kindFilter = "all" } // the Content filter is gone (ADR-0004 §6)
             await model.loadItems()
             await model.loadHabits()
         }
@@ -130,7 +121,6 @@ struct TasksView: View {
                     switch entry.kind {
                     case .task: kindFilter == "all" || kindFilter == "tasks"
                     case .reminder: kindFilter == "all" || kindFilter == "reminders"
-                    case .post: false // never swept into Mark Done or Delete
                     }
                 }.map(\.id))
             }
@@ -156,7 +146,7 @@ struct TasksView: View {
 
     /// One row on the Tasks page: a Blink task or an Apple Reminder.
     private struct Entry: Identifiable {
-        enum Kind { case task(BlinkItem), reminder(AgendaReminder), post(ContentPiece) }
+        enum Kind { case task(BlinkItem), reminder(AgendaReminder) }
         let kind: Kind
         let id: String
         let due: Date?
@@ -172,40 +162,7 @@ struct TasksView: View {
         let reminders = (space.map { model.spaceReminders[$0.id] ?? [] } ?? model.allReminders).map {
             Entry(kind: .reminder($0), id: $0.id, due: $0.due, group: DueGroup.of($0.due, now: now))
         }
-        // Posts with a day to go out (not yet posted), tagged Content: the global view of content across Spaces.
-        let posts = model.content.filter { $0.plannedFor != nil && $0.status != .published && $0.status != .archived
-                                           && (space == nil || $0.spaceID == space?.id) }
-            .map { post -> Entry in
-                let due = post.plannedFor.flatMap { HabitDay.date(fromKey: $0) }
-                return Entry(kind: .post(post), id: post.id, due: due, group: DueGroup.of(due, now: now))
-            }
-        return (tasks + reminders + posts).sorted { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
-    }
-}
-
-/// A post with a day to go out, among tasks: tagged Content, with its platform, status and Space. Opens its sheet.
-struct PostTaskRow: View {
-    @Environment(AppModel.self) private var model
-    let post: ContentPiece
-    let open: () -> Void
-
-    var body: some View {
-        Button(action: open) {
-            HStack(spacing: 10) {
-                Image(systemName: "megaphone").foregroundStyle(.purple).imageScale(.large).frame(width: 20).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(post.hook.isEmpty ? post.idea : post.hook).lineLimit(1)
-                    Text("\(post.platform.name) · \(StatusChip.name(post.status))").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Tag(text: "Content", tint: .purple) // purple is Content everywhere (Today, Calendar); orange is Reminders
-                if let space = model.spaces.first(where: { $0.id == post.spaceID }) { SpaceChip(space: space) }
-                if let day = post.plannedFor { Text(HabitDay.label(day)).font(.callout).foregroundStyle(.secondary) }
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Open the post")
+        return (tasks + reminders).sorted { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
     }
 }
 

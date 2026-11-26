@@ -3,7 +3,7 @@
 import BlinkKit
 import SwiftUI
 
-/// Today's tiles: four quiet ones (Mail, Tasks, Money, Habits), plus Posts when something is ready. Each has one job,
+/// Today's tiles: four quiet ones (Mail, Tasks, Money, Habits). Each has one job,
 /// a grey icon, one number and a short caption; colour only when something is wrong or done.
 struct TodayWidgetGrid: View {
     @Environment(AppModel.self) private var model
@@ -15,7 +15,6 @@ struct TodayWidgetGrid: View {
             TasksWidget(now: now)
             MoneyWidget(now: now)
             HabitsWidget()
-            if !model.readyToPost.isEmpty { PostsWidget() }
         }
     }
 }
@@ -185,17 +184,6 @@ private struct HabitsWidget: View {
                     Text(best > 0 ? "Best streak \(best) day\(best == 1 ? "" : "s")" : "Start a streak today").font(.caption).foregroundStyle(.secondary)
                 }
             }
-        }
-    }
-}
-
-private struct PostsWidget: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let ready = model.readyToPost.count
-        WidgetTile(title: "Posts", symbol: "megaphone", open: { model.go(to: "content") }) {
-            BigValue(value: "\(ready)", caption: "ready to post")
         }
     }
 }

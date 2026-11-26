@@ -14,7 +14,7 @@ final class NotchModel {
     func showsCard(_ app: AppModel) -> Bool {
         if meeting { return false }
         // Clicked open with nothing typed yet: the day, with the box below ready for a question or "remind me to…".
-        if chatting { return (app.chat.isEmpty || dayFirst) && input.isEmpty && app.ideas.isEmpty && !app.drafting && !app.thinkingOfIdeas && !app.thinking }
+        if chatting { return (app.chat.isEmpty || dayFirst) && input.isEmpty && !app.thinking }
         return !clipboarding && !searching && app.timer == nil && app.finishedTimer == nil && !(evening || app.eveningDue)
     }
 
@@ -910,8 +910,8 @@ struct NotchView: View {
             case .peek:
                 HStack(spacing: 8) {
                     // Working on something: the pixel light says so before any words.
-                    if app.thinking || app.drafting || app.thinkingOfIdeas { PixelLoader(tint: .blue, size: 14) }
-                    Text(model.peekNote ?? (app.thinking ? "Thinking" : app.drafting ? "Writing drafts" : model.evening ? "Plan tomorrow?" : statusLine))
+                    if app.thinking { PixelLoader(tint: .blue, size: 14) }
+                    Text(model.peekNote ?? (app.thinking ? "Thinking" : model.evening ? "Plan tomorrow?" : statusLine))
                         .font(.callout.weight(.medium))
                         .foregroundStyle(.white)
                         .lineLimit(3)
@@ -1021,15 +1021,6 @@ struct GlanceView: View {
     /// "Plan my day" on the morning brief.
     var planDay: (() -> Void)?
 
-    /// What else can happen to a post that's ready: posted another way, not yet, or not at all (Undo in Content).
-    @ViewBuilder
-    private func readyPostActions(_ piece: ContentPiece, app: AppModel) -> some View {
-        Button("Mark as Posted") { Task { await app.setStatus(.published, of: piece) } }
-        Button("Back to Drafts") { Task { await app.setStatus(.drafted, of: piece) } }
-        Divider()
-        Button("Delete Post", role: .destructive) { Task { await app.deletePost(piece) } }
-    }
-
     var body: some View {
         let allEvents = agenda.today(now: now)
         let events = Array(allEvents.prefix(3))
@@ -1104,52 +1095,6 @@ struct GlanceView: View {
                             .buttonStyle(.plain).foregroundStyle(.mint)
                     }
                     .accessibilityElement(children: .combine)
-                }
-                // Planned for today but not approved yet: a nudge to review it.
-                ForEach(app.postsToday.filter { $0.status == .drafted }.prefix(1)) { piece in
-                    HStack(spacing: 8) {
-                        Image(systemName: "calendar.badge.clock").foregroundStyle(.orange)
-                        Text("Today's post: \(piece.hook.isEmpty ? piece.idea : piece.hook)").lineLimit(1)
-                        Spacer(minLength: 8)
-                        Button("Review") {
-                            app.openPage = "tasks"
-                            app.showWindow()
-                            done()
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.mint)
-                    }
-                }
-            }
-            if let app, !app.readyToPost.isEmpty {
-                // Morning card (§3): approved posts waiting for you to put them out, postable from here.
-                ForEach(app.readyToPost.prefix(2)) { piece in
-                    HStack(spacing: 8) {
-                        Image(systemName: "megaphone.fill").foregroundStyle(.orange)
-                        Text("\(piece.platform.name): \(piece.hook.isEmpty ? piece.body : piece.hook)").lineLimit(1)
-                        Spacer(minLength: 8)
-                        Button("Copy & Open") {
-                            app.copyAndOpen(piece)
-                            done()
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.mint)
-                        // Taking it off the morning card without posting from here.
-                        Menu {
-                            readyPostActions(piece, app: app)
-                        } label: {
-                            Image(systemName: "ellipsis").foregroundStyle(.white.opacity(0.6))
-                        }
-                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-                        .accessibilityLabel("More for this post")
-                    }
-                    .contextMenu { readyPostActions(piece, app: app) }
-                }
-                if app.readyToPost.count > 2 {
-                    Button("\(app.readyToPost.count - 2) more ready in Tasks") {
-                        app.openPage = "tasks"
-                        app.showWindow()
-                        done()
-                    }
-                    .buttonStyle(.plain).foregroundStyle(.mint)
                 }
             }
             if access != .granted {
@@ -1255,16 +1200,7 @@ struct ChatPanel: View {
             if app.aiKeyMissing, !commandShown, let step = app.setupSteps.first(where: { $0.id == .aiKey }) {
                 NeedsSetup(step: step, model: app)
             }
-            if app.drafting || app.thinkingOfIdeas {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(app.drafting ? "Writing drafts…" : "Thinking of ideas…").foregroundStyle(.white.opacity(0.6))
-                }
-                .font(.callout)
-            }
-            if !app.ideas.isEmpty && !commandShown {
-                NotchIdeas(app: app)
-            } else if commandShown {
+            if commandShown {
                 CommandHint(input: input, pick: pick)
             } else if app.chat.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -1355,39 +1291,6 @@ struct ChatPanel: View {
     static func markdown(_ text: String) -> AttributedString { ChatText.markdown(text) }
 }
 
-/// /ideas in the notch: each idea with Write, which turns it into drafts in Content.
-struct NotchIdeas: View {
-    let app: AppModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Ideas for your page").font(.callout.weight(.semibold))
-                Spacer()
-                Button("Clear Ideas") { Task { await app.clearIdeas() } }.buttonStyle(.plain).foregroundStyle(.white.opacity(0.5))
-            }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(app.ideas) { idea in
-                        HStack(alignment: .top, spacing: 8) {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("\(idea.platform.name) · \(idea.formatName)").font(.caption).foregroundStyle(.white.opacity(0.5))
-                                Text(idea.title).font(.callout).lineLimit(2)
-                            }
-                            Spacer(minLength: 6)
-                            Button("Write") { Task { await app.write(idea) } }
-                                .buttonStyle(.plain).foregroundStyle(.mint)
-                                .disabled(app.drafting)
-                        }
-                    }
-                }
-            }
-            .frame(maxHeight: 150)
-        }
-        .foregroundStyle(.white)
-    }
-}
-
 /// "✓ Task added: Pay rent · Undo" for a few seconds after something is added or ticked off (tokens: hold.undoChip).
 struct UndoChipRow: View {
     let app: AppModel
@@ -1456,8 +1359,6 @@ struct CommandHint: View {
         case .note(let title): "Note: \(title)"
         case .timer(let minutes): "Timer: \(minutes.formatted()) min"
         case .focus: "Focus: 25 min"
-        case .post(let idea): "Post: \(idea)"
-        case .ideas(let theme): theme.isEmpty ? "Ideas for your page" : "Ideas: \(theme)"
         case .spent(let text): "Spent: \(text)"
         case .clear: "Clear this chat"
         case .meet(let title, _, _): title.isEmpty ? "New Google Meet" : "Meet: \(title)"
@@ -1473,8 +1374,6 @@ struct CommandHint: View {
         case .note: "note.text"
         case .timer: "timer"
         case .focus: "brain.head.profile"
-        case .post: "megaphone"
-        case .ideas: "lightbulb"
         case .spent: "eurosign.circle"
         case .clear: "trash"
         case .meet: "video"
@@ -1491,8 +1390,6 @@ struct CommandHint: View {
         case .note: return "Starts a note you can finish in Blink › Notes."
         case .timer: return "Counts down in the notch, with one chime at the end."
         case .focus: return "Then a 5-minute break; a long break after every fourth."
-        case .post: return "Drafts for your platforms from Content, saved there to edit and approve."
-        case .ideas: return "Six ideas for your page; Write turns one into drafts."
         case .spent: return "Blink sorts each amount into a category and saves it to Money, with Undo."
         case .clear: return "Removes this conversation from this Mac. Cards waiting for your OK stay."
         case .meet(_, let start, let guests):
@@ -1858,7 +1755,7 @@ struct SearchPanel: View {
             .background(.white.opacity(0.08), in: .rect(cornerRadius: 10, style: .continuous))
 
             if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                Text("Type a word from a note, task, reminder, post or space.").foregroundStyle(.white.opacity(0.55))
+                Text("Type a word from a note, task, reminder or space.").foregroundStyle(.white.opacity(0.55))
             } else if results.isEmpty {
                 Text("Nothing matches “\(query)”.").foregroundStyle(.white.opacity(0.55))
             } else {

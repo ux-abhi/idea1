@@ -43,7 +43,7 @@ final class AppModel {
     private func routeModels() async {
         guard let keyStatus, capsLoaded else { return }
         var changed: [String] = []
-        for feature in ["chat", "content", "voice", "text"] {
+        for feature in ["chat", "voice", "text"] {
             if feature == "chat" && onDevicePicked { continue } // the owner chose on-device chat: no key needed, keep it
             let available = AIModel.available(for: feature, keys: keyStatus).map(\.id)
             let saved = modelPrefs[feature] ?? (feature == "voice" || feature == "text" ? AIModel.voiceDefaultID : AIModel.defaultID)
@@ -61,7 +61,7 @@ final class AppModel {
         if !changed.isEmpty { announce("Models now: \(changed.joined(separator: ", ")). Change them in Settings › AI.") }
     }
 
-    static let featureNames = ["chat": "Chat", "content": "Content drafts", "voice": "Voice", "text": "Quick edits"]
+    static let featureNames = ["chat": "Chat", "voice": "Voice", "text": "Quick edits"]
 
     /// Settings › AI › Quality, kept with the model choices on the server.
     var modelQuality: AIModel.Quality { AIModel.Quality(rawValue: modelPrefs["quality"] ?? "") ?? .best }
@@ -409,7 +409,8 @@ final class AppModel {
             await loadSpaces()
             await loadCards()
             await loadModelPrefs()
-            await loadContent() // the brief and Today show posts ready
+            await loadContent() // only for the move into cards below
+            await movePostsToCards()
             await loadMail()
             await loadMoney()
             await loadHabits()
@@ -473,7 +474,7 @@ final class AppModel {
     /// Everything of this account: what came from the server and what was typed here.
     private func clearAccountData() {
         clearLoadedData()
-        unsaved = []; focusNoteID = nil; openNoteID = nil; contentUnsaved = []; reviewing = nil
+        unsaved = []; focusNoteID = nil; openNoteID = nil; reviewing = nil
         chat = []; UserDefaults.standard.removeObject(forKey: "chat")
     }
 
@@ -484,7 +485,6 @@ final class AppModel {
         habits = []; habitAnswers = [:]
         agenda = .empty; calendarEvents = []; allReminders = []; quickReplies = []
         content = []; voice = VoiceProfile(); contentProblem = nil
-        ideas = []; questions = [:]; designed = []
         spends = []; budgets = []; accounts = []; income = []; incomePlans = []; captureTokens = []; moneyProblem = nil
         emails = []; mailStates = []; mailProblem = nil; outbox = []; sendingNow = nil; campaigns = []; bulkRecipients = [:]
         modelPrefs = [:]; modelProblem = nil; aiCaps = BlinkServer.AICaps(); capsLoaded = false; spaces = []; openPage = nil; keyStatus = nil
@@ -612,21 +612,9 @@ final class AppModel {
                 throw error
             }
         case "post.draft":
-            // From chat: the idea and the platforms the owner named; the drafts land in Content (and the Space's canvas).
-            let platforms = (action.payload.platforms ?? []).compactMap(ContentPiece.Platform.init(rawValue:))
-            guard let idea = action.payload.note, !platforms.isEmpty else {
-                try await server.setStatus("failed", for: action, result: ["error": "The post had no idea or platform."])
-                return
-            }
-            while drafting { try await Task.sleep(for: .milliseconds(300)) } // another post is being written; wait for it
-            if await draft(idea: idea, platforms: platforms, plannedFor: action.payload.postOn,
-                           space: Space.known(action.payload.spaceID, in: spaces)) {
-                try await server.setStatus("done", for: action, result: [:])
-            } else {
-                let problem = contentProblem ?? "Couldn't write the drafts."
-                actionProblem = problem
-                try? await server.setStatus("failed", for: action, result: ["error": problem])
-            }
+            // Posts are cards now (ADR-0004 §6); chat may still propose one until the server's chat is updated.
+            try await server.setStatus("declined", for: action)
+            announce("Posts are cards now. Add it to a Content table in a Space.", failed: true)
         case "mail.compose":
             // From chat ("send the reply to Sam on the 15th"): write or reuse the draft, then show it for review.
             if !emails.contains(where: { $0.id == action.payload.emailID }) { await loadMail() }
@@ -656,7 +644,7 @@ final class AppModel {
         var noteID: String?
     }
 
-    /// Notes, tasks, reminders, posts and spaces matching the words, for ⌘K in the window and ⌃⌥K in the notch.
+    /// Notes, tasks, reminders and spaces matching the words, for ⌘K in the window and ⌃⌥K in the notch.
     func search(_ query: String) -> [SearchHit] {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return [] }
@@ -672,9 +660,6 @@ final class AppModel {
                              detail: $0.status == .done ? "Task · done" : "Task", pageKey: $0.spaceID.map { "space:\($0)" } ?? "tasks") }
         list += allReminders.filter { has($0.title) }
             .map { SearchHit(id: "r" + $0.id, symbol: "bell", title: $0.title, detail: "Apple Reminder", pageKey: "tasks") }
-        list += content.filter { has($0.body) || has($0.idea) || $0.parts.contains(where: has) }
-            .map { SearchHit(id: "c" + $0.id, symbol: "megaphone", title: $0.hook.isEmpty ? $0.idea : $0.hook,
-                             detail: "\($0.platform.name) post · \($0.status.rawValue)", pageKey: "tasks") }
         return Array(list.prefix(40))
     }
     var openTasks: [BlinkItem] { items.filter { $0.type == .task && $0.status == .open } }
@@ -1336,20 +1321,17 @@ final class AppModel {
     /// Every open Apple Reminder (any date, at most 50), refreshed with the agenda.
     private(set) var allReminders: [AgendaReminder] = []
 
-    // MARK: Content (§36.4): drafts per platform, the owner posts them (copy & open)
+    // MARK: Content: old posts, kept only to move them into cards (ADR-0004 §6), and the writing voice
 
     private(set) var content: [ContentPiece] = []
     private(set) var voice = VoiceProfile()
-    private(set) var drafting = false
     private(set) var contentProblem: String?
-    private var contentUnsaved: Set<String> = []
 
     func loadContent() async {
         guard let server, email != nil else { return }
-        for id in contentUnsaved { await saveContent(id) } // retry what a failed save left behind
         if let list = try? await server.contentPieces() {
             // Keep local text that hasn't reached the server yet (same data-loss guard as notes).
-            content = list.map { fresh in contentUnsaved.contains(fresh.id) ? content.first { $0.id == fresh.id } ?? fresh : fresh }
+            content = list
             // Only when the whole list loaded (the server sends at most 200): never delete images of drafts not shown.
             if list.count < 200 {
                 let pieces = content
@@ -1359,26 +1341,75 @@ final class AppModel {
         if let saved = try? await server.voiceProfile() { voice = saved }
     }
 
-    /// Asks Claude for one draft per platform; they arrive saved, at the top of the list.
-    func draft(idea: String, platforms: [ContentPiece.Platform], plannedFor: String? = nil, space: String? = nil) async -> Bool {
-        guard let server, !drafting else { return false }
-        drafting = true
-        defer { drafting = false }
-        contentProblem = nil
-        do {
-            questions[idea] = try await server.draftContent(idea: idea, platforms: platforms, spaceID: space, plannedFor: plannedFor)
-            await loadContent()
-            if !batchingDrafts {
-                announce("Drafts ready: \(idea.split(separator: "\n").first.map(String.init)?.prefix(40) ?? "your post")")
+    private var movingPosts = false
+
+    /// Posts move once into a Content table in their Space (ADR-0004 §6); posts with no Space go to a new Content Space.
+    /// A post is archived only after its card (and picture) is saved, so a move that stopped halfway carries on next time
+    /// without doubles. The old posts stay on the server until the owner has checked the move.
+    func movePostsToCards() async {
+        guard let server, !movingPosts else { return }
+        let posts = content.filter { $0.status != .archived }
+        guard !posts.isEmpty else { return }
+        // Fresh from the server: a list that failed to load would send every post to a new Content Space for good.
+        guard let fresh = try? await server.spaces() else { return }
+        spaces = fresh
+        movingPosts = true
+        defer { movingPosts = false }
+        var moved = 0, clipped = 0, failed = false
+        for (spaceID, pieces) in Dictionary(grouping: posts, by: { Space.known($0.spaceID, in: spaces) }) {
+            var space = spaceID.flatMap { id in spaces.first { $0.id == id } } ?? spaces.first { $0.title == ContentMove.tableName }
+            if space == nil {
+                let made = Space(title: ContentMove.tableName)
+                await createSpace(made)
+                space = spaces.first { $0.id == made.id }
             }
-            return true
-        } catch let problem as BlinkServer.ChatProblem {
-            contentProblem = problem.message
-        } catch {
-            contentProblem = "Can't reach your server right now. Try again in a moment."
+            guard let space else { failed = true; continue }
+            if spaceBlocks[space.id] == nil {
+                // Unread blocks would look like "no Content table yet" and make a second one.
+                guard let blocks = try? await server.blocks(of: space.id) else { failed = true; continue }
+                spaceBlocks[space.id] = blocks
+            }
+            let isContent = { (b: SpaceBlock) in b.kind == .table && b.data.text == ContentMove.tableName && (b.data.columns ?? []).contains { $0.name == "Platform" } }
+            if spaceBlocks[space.id]?.contains(where: isContent) != true { _ = await addBlock(.table, in: space, data: ContentMove.table()) }
+            guard let table = spaceBlocks[space.id]?.first(where: isContent) else { failed = true; continue }
+            if tableRows[table.id] == nil {
+                guard let rows = try? await server.rows(of: table.id) else { failed = true; continue }
+                tableRows[table.id] = rows
+            }
+            let columns = table.data.columns ?? []
+            let (cards, cut) = ContentMove.cards(pieces, columns: columns)
+            // All or none: a nearly full table would take only some, and the pairing below would go wrong.
+            guard (tableRows[table.id]?.count ?? 0) + cards.count <= SpaceTable.rowLimit,
+                  await addRows(cards.map(\.cells), to: table) else { failed = true; continue }
+            clipped += cut
+            let media = columns.first { $0.kind == .file }?.id
+            for (card, row) in zip(cards, (tableRows[table.id] ?? []).suffix(cards.count)) {
+                if let media, PostMedia.exists(for: card.pieceID) {
+                    await attachFile(PostMedia.url(for: card.pieceID), to: row, column: media)
+                    // The picture didn't make it: keep the post (and so its picture) and take the card back.
+                    guard tableRows[table.id]?.first(where: { $0.id == row.id })?.cells[media] != nil else {
+                        failed = true
+                        await delete(row) // the post stays and moves next time, so no second card
+                        continue
+                    }
+                }
+                guard var piece = content.first(where: { $0.id == card.pieceID }) else { continue }
+                piece.status = .archived // published_at and the text stay as they were
+                do {
+                    try await server.save(piece)
+                    content.removeAll { $0.id == piece.id }
+                    moved += 1
+                } catch {
+                    failed = true
+                    await delete(row) // as above: the post moves again next time
+                }
+            }
         }
-        announceProblem()
-        return false
+        if moved > 0 {
+            announce("Moved \(moved) \(moved == 1 ? "post" : "posts") into Content tables in your Spaces"
+                     + (clipped > 0 ? "; \(clipped) long \(clipped == 1 ? "one was" : "ones were") cut to fit a card" : ""))
+        }
+        if failed { saveProblem = "Some posts couldn't move to cards yet. Blink tries again next time." }
     }
 
     /// Something that finished in the background (ideas, drafts, a week plan, a page read): the notch peeks with it,
@@ -1389,225 +1420,9 @@ final class AppModel {
         let failed: Bool
     }
     private(set) var notice: Notice?
-    /// While Write All runs, one notice at the end instead of one per draft.
-    private var batchingDrafts = false
 
     /// A short notice in the notch ("Added to Blink: …").
     func announce(_ text: String, failed: Bool = false) { notice = Notice(text: text, failed: failed) }
-    private func announceProblem() { if let contentProblem { announce(contentProblem, failed: true) } }
-
-    private(set) var ideas: [ContentIdea] = []
-    /// Idea → what the model asked to know for a stronger post (shown on the idea's card until answered).
-    private(set) var questions: [String: [String]] = [:]
-
-    /// "Redraft with answers": the same idea again, with the owner's answers as facts it may use.
-    func redraft(idea: String, answers: String, platforms: [ContentPiece.Platform]) async {
-        let trimmed = answers.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        questions[idea] = nil
-        _ = await draft(idea: "\(idea)\n\nFacts from the owner, answering your questions: \(trimmed)", platforms: platforms)
-    }
-
-    func dismissQuestions(for idea: String) { questions[idea] = nil }
-    private(set) var thinkingOfIdeas = false
-
-    func suggestIdeas(theme: String, platforms: [ContentPiece.Platform]) async {
-        guard let server, !thinkingOfIdeas else { return }
-        thinkingOfIdeas = true
-        defer { thinkingOfIdeas = false }
-        contentProblem = nil
-        do {
-            ideas = try await server.contentIdeas(theme: theme, platforms: platforms)
-            announce("\(ideas.count) post ideas ready")
-            return
-        }
-        catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
-        catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
-        announceProblem()
-    }
-
-    func clearIdeas() async { ideas = [] }
-
-    // MARK: Post images (Cloudflare FLUX; kept on this Mac)
-
-    private(set) var makingImage: Set<String> = []
-    /// Drafts the owner asked to design (owner rule: no post design until asked). Kept on this Mac.
-    private(set) var designed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "designed") ?? []) {
-        didSet { UserDefaults.standard.set(Array(designed), forKey: "designed") }
-    }
-
-    func design(_ piece: ContentPiece) { designed.insert(piece.id) }
-    /// Bumped when an image is saved, so views reload it from disk.
-    private(set) var mediaVersion = 0
-
-    /// One image per draft: a text-free background for a carousel, otherwise a cover.
-    func makeImage(for piece: ContentPiece) async {
-        guard let server, !makingImage.contains(piece.id) else { return }
-        makingImage.insert(piece.id)
-        defer { makingImage.remove(piece.id) }
-        contentProblem = nil
-        do {
-            let data = try await server.makeImage(subject: piece.hook.isEmpty ? piece.idea : piece.hook, background: piece.format == "carousel")
-            try PostMedia.save(data, for: piece.id)
-            designed.insert(piece.id)
-            mediaVersion += 1
-        } catch let problem as BlinkServer.ChatProblem {
-            contentProblem = problem.message
-        } catch {
-            contentProblem = "Couldn't make or save the image. Try again."
-        }
-    }
-
-    /// The plan's ideas not written yet (kept on the server, each on its day), soonest first.
-    var plannedIdeas: [ContentPiece] {
-        content.filter { $0.status == .idea }.sorted { ($0.plannedFor ?? "9") < ($1.plannedFor ?? "9") }
-    }
-
-    func planWeek(theme: String, platforms: [ContentPiece.Platform]) async {
-        guard let server, !thinkingOfIdeas else { return }
-        thinkingOfIdeas = true
-        defer { thinkingOfIdeas = false }
-        contentProblem = nil
-        do {
-            let planned = try await server.contentIdeas(theme: theme, platforms: platforms, days: HabitDay.nextDays())
-            await loadContent() // the server kept them, each on its day
-            announce("Week planned: \(planned.count) posts")
-            return
-        }
-        catch let problem as BlinkServer.ChatProblem { contentProblem = problem.message }
-        catch { contentProblem = "Can't reach your server right now. Try again in a moment." }
-        announceProblem()
-    }
-
-    /// Removes every idea of the plan that isn't written yet (written posts stay).
-    func clearPlannedIdeas() async {
-        for idea in plannedIdeas { await setStatus(.archived, of: idea) }
-    }
-
-    /// Drafts for the given planned ideas, one after another.
-    func writeAll(_ list: [ContentPiece]) async {
-        batchingDrafts = true
-        defer { batchingDrafts = false }
-        var written = 0
-        for idea in list {
-            while drafting { try? await Task.sleep(for: .milliseconds(300)) } // a Write clicked meanwhile
-            if await write(idea) { written += 1 }
-        }
-        if written > 0 { announce("\(written) of \(list.count) ideas written for your plan") }
-    }
-
-    /// A planned idea becomes drafts on the same day (and Space); the idea goes once they're written.
-    @discardableResult
-    func write(_ idea: ContentPiece) async -> Bool {
-        // The live copy: it may have been written (or removed) since the list was read.
-        guard content.contains(where: { $0.id == idea.id && $0.status == .idea }) else { return false }
-        guard await draft(idea: "\(idea.idea). Hook: \(idea.hook). Format: \(idea.format.replacingOccurrences(of: "_", with: " ")).",
-                       platforms: [idea.platform], plannedFor: idea.plannedFor, space: idea.spaceID) else { return false }
-        await setStatus(.archived, of: idea)
-        return true
-    }
-
-    /// A post written by hand, no AI: one draft per platform, saved as typed. Returns the first, to open it.
-    func writePost(_ text: String, platforms: [ContentPiece.Platform], plannedFor: String? = nil, space: String? = nil) async -> ContentPiece? {
-        guard let server, !drafting else { return nil }
-        drafting = true // a second click waits instead of saving twice
-        defer { drafting = false }
-        contentProblem = nil
-        var made: [ContentPiece] = []
-        do {
-            for platform in platforms {
-                made.append(try await server.create(ContentPiece.Written(text, platform: platform, plannedFor: plannedFor, spaceID: space)))
-            }
-        } catch {
-            contentProblem = "Couldn't save your post. Check your connection and try again."
-        }
-        content.insert(contentsOf: made, at: 0) // the ones that did save
-        return made.first
-    }
-
-    /// Delete on a post: it's archived (gone from Content and the canvas), with Undo.
-    func deletePost(_ piece: ContentPiece) async {
-        let before = content.first { $0.id == piece.id } ?? piece
-        await setStatus(.archived, of: piece)
-        guard !content.contains(where: { $0.id == piece.id }) else { return } // not saved; it stays
-        offerUndo("Deleted post: \(before.hook.isEmpty ? before.idea : before.hook)") { [weak self] in
-            guard let self else { return }
-            // As it was, publish date included.
-            content.insert(before, at: 0)
-            edit(before)
-            await saveContent(before.id)
-        }
-    }
-
-    /// The day a post (or planned idea) goes out; nil takes it off the plan.
-    func setDay(_ day: String?, of piece: ContentPiece) async {
-        guard var changed = content.first(where: { $0.id == piece.id }), changed.plannedFor != day else { return }
-        changed.plannedFor = day
-        edit(changed)
-        await saveContent(piece.id)
-    }
-
-    /// Planned for today and not out yet: the notch and Today show these.
-    var postsToday: [ContentPiece] {
-        let today = HabitDay.key(.now)
-        return content.filter { $0.plannedFor == today && $0.status != .idea && $0.status != .published && $0.status != .archived }
-    }
-
-    /// "Write this": one idea becomes drafts for its platform.
-    func write(_ idea: ContentIdea) async {
-        ideas.removeAll { $0.id == idea.id }
-        _ = await draft(idea: "\(idea.title). Hook: \(idea.hook). Format: \(idea.formatName).", platforms: [idea.platform],
-                        plannedFor: idea.day)
-    }
-
-    /// Applies an edit at once; `saveContent` sends it (the editor waits for a pause in typing).
-    func edit(_ piece: ContentPiece) {
-        guard let index = content.firstIndex(where: { $0.id == piece.id }) else { return }
-        content[index] = piece
-        contentUnsaved.insert(piece.id)
-    }
-
-    func saveContent(_ id: String) async {
-        guard let server, contentUnsaved.contains(id), var piece = content.first(where: { $0.id == id }) else { return }
-        piece.lintScore = ContentLint.check(piece, neverSay: voice.neverSay).score
-        do {
-            try await server.save(piece)
-            // Only clear if nothing was typed while saving.
-            if let now = content.first(where: { $0.id == id }), now.hook == piece.hook, now.body == piece.body, now.parts == piece.parts,
-               now.status == piece.status, now.plannedFor == piece.plannedFor { contentUnsaved.remove(id) }
-            contentProblem = nil
-        } catch {
-            contentProblem = "Not saved yet. Blink will try again on your next change."
-        }
-    }
-
-    func setStatus(_ status: ContentPiece.Status, of piece: ContentPiece) async {
-        var changed = content.first { $0.id == piece.id } ?? piece
-        let wasDraft = changed.status == .drafted
-        changed.status = status
-        changed.publishedAt = status == .published ? .now : nil
-        edit(changed)
-        await saveContent(piece.id)
-        // Only once the server has it: an unsaved archive stays in the list so the next load retries it.
-        if status == .archived && !contentUnsaved.contains(piece.id) { content.removeAll { $0.id == piece.id } }
-        if status == .approved && wasDraft { await recordDraftEdit(changed) }
-    }
-
-    /// On approval: how much of the AI's draft the owner changed (Settings › AI shows it per model). Quiet when the
-    /// draft was written by hand or the server doesn't keep originals yet.
-    private func recordDraftEdit(_ piece: ContentPiece) async {
-        guard let server, let original = await server.draftOriginal(piece.id) else { return }
-        try? await server.setEditedShare(DraftEdits.changedShare(from: original, to: piece.postText), of: piece.id)
-    }
-
-    /// The last 30 days of approved AI drafts: how much was changed on average, per model (most drafts first).
-    func draftQuality() async -> [(model: String, drafts: Int, changed: Double)] {
-        guard let server else { return [] }
-        let edits = await server.draftEdits(since: .now.addingTimeInterval(-30 * 86_400))
-        return Dictionary(grouping: edits, by: \.model)
-            .map { (model: $0.key, drafts: $0.value.count, changed: $0.value.map(\.share).reduce(0, +) / Double($0.value.count)) }
-            .sorted { $0.drafts > $1.drafts }
-    }
 
     func saveVoice(_ new: VoiceProfile) async {
         guard let server else { return }
@@ -1658,18 +1473,6 @@ final class AppModel {
             startTimer(minutes: minutes)
         case .focus:
             startFocus()
-        case .post(let idea):
-            let platforms = contentPlatforms
-            if await draft(idea: idea, platforms: platforms, space: space) {
-                let asked = questions[idea] ?? []
-                chat.append(.init(role: .assistant, text: "Wrote drafts for \(platforms.map(\.name).formatted()). Edit and approve them in **Content**."
-                    + (asked.isEmpty ? "" : "\nTo make them stronger, answer on the Content page: " + asked.joined(separator: " · "))))
-            } else if let problem = contentProblem {
-                chat.append(.init(role: .assistant, text: problem))
-            }
-        case .ideas(let theme):
-            await suggestIdeas(theme: theme, platforms: contentPlatforms)
-            if let problem = contentProblem { chat.append(.init(role: .assistant, text: problem)) }
         case .clear:
             clearChat()
         case .card(let name, let title, let due, let timed):
@@ -2324,13 +2127,6 @@ final class AppModel {
         }
     }
 
-    /// The platforms picked on the Content page (all three until changed there).
-    var contentPlatforms: [ContentPiece.Platform] {
-        let saved = UserDefaults.standard.string(forKey: "contentPlatforms") ?? "instagram,linkedin,x"
-        let list = saved.split(separator: ",").compactMap { ContentPiece.Platform(rawValue: String($0)) }
-        return list.isEmpty ? ContentPiece.Platform.allCases : list
-    }
-
     // MARK: Mail (Phase 5): the server checks every 5 minutes; this reads what it found
 
     private(set) var emails: [EmailMessage] = []
@@ -2709,8 +2505,6 @@ final class AppModel {
     /// A blink://signin link macOS handed to Blink (the sign-in finished in another browser tab).
     var openedSignin: URL?
 
-    var readyToPost: [ContentPiece] { content.filter { $0.status == .approved } }
-
     /// Picked "Apple Intelligence · on this Mac" for chat. Kept on this device: the server's chat setting stays a server
     /// model, because mail drafts read it.
     private var onDevicePicked = UserDefaults.standard.bool(forKey: "chat.onDevice") {
@@ -2855,15 +2649,14 @@ final class AppModel {
     /// Spaces whose canvas has loaded; only those get new nodes added (before, the server's nodes aren't known yet).
     private var canvasLoaded: Set<String> = []
 
-    /// A node for every task, note, reminder and post in the Space that hasn't one yet, e.g. one just approved in chat
+    /// A node for every task, note and reminder in the Space that hasn't one yet, e.g. one just approved in chat
     /// or added on another page while the canvas is open.
     func addMissingNodes(_ space: Space, near spot: (x: Double, y: Double) = canvasCenter) async {
         guard canvasLoaded.contains(space.id), let server else { return }
         let nodes = canvasNodes[space.id] ?? []
         let mine = items.filter { $0.spaceID == space.id && $0.status != .archived }
-        let posts = content.filter { $0.spaceID == space.id && $0.status != .archived }
         let wanted: [(SpaceNode.Kind, String)] = mine.map { ($0.type == .note ? .note : .task, $0.id) }
-            + (spaceReminders[space.id] ?? []).map { (.reminder, $0.id) } + posts.map { (.post, $0.id) }
+            + (spaceReminders[space.id] ?? []).map { (.reminder, $0.id) }
         var added: [SpaceNode] = []
         for (kind, ref) in wanted where !(nodes + added).contains(where: { $0.ref == ref }) {
             let place = CanvasLayout.onSheet(CanvasLayout.freeSpot(around: spot, taken: nodes + added, radius: 200))
@@ -3850,17 +3643,6 @@ final class AppModel {
         #else
         return nil
         #endif
-    }
-
-    /// Links an existing post to a Space: its card then shows on that Space's canvas and page.
-    func attach(_ piece: ContentPiece, to space: Space) async {
-        guard let server, let i = content.firstIndex(where: { $0.id == piece.id }) else { return }
-        let before = content[i].spaceID
-        content[i].spaceID = space.id
-        do { try await server.setSpace(space.id, of: piece) } catch {
-            if let j = content.firstIndex(where: { $0.id == piece.id }) { content[j].spaceID = before }
-            saveProblem = "Couldn't add that post to the Space. Check your connection and try again."
-        }
     }
 
     /// A heading's text or a section's title, edited in place.

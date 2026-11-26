@@ -8,10 +8,6 @@ public enum QuickCommand: Equatable, Sendable {
     case note(String)
     case timer(minutes: Double)
     case focus
-    /// Drafts for the owner's usual platforms, saved to Content.
-    case post(idea: String)
-    /// Ideas for the owner's page, optionally around a theme.
-    case ideas(theme: String)
     /// Spending in the owner's words ("8.50 lunch, 3 bus"); the AI sorts it into categories.
     case spent(String)
     /// Clears the conversation on this Mac (cards waiting for approval stay).
@@ -31,8 +27,6 @@ public enum QuickCommand: Equatable, Sendable {
         ("/note", "/note Idea for the website header", "Start a note"),
         ("/timer", "/timer 10", "Timer in minutes"),
         ("/focus", "/focus", "25-minute focus round"),
-        ("/post", "/post 3 checkout mistakes that lose users", "Write drafts for your platforms"),
-        ("/ideas", "/ideas video ideas for my page", "Post ideas for your page"),
         ("/spent", "/spent 8.50 lunch, 3 bus", "Add what you spent; Blink sorts it"),
         ("/card", "/card Leads: Call Ana friday 3pm", "Add a card to a Space table"),
         ("/meet", "/meet Design review sam@example.com tomorrow 3pm", "Set up a Google Meet and invite people"),
@@ -97,10 +91,6 @@ public enum QuickCommand: Equatable, Sendable {
             return (1...480).contains(minutes) ? .timer(minutes: minutes) : nil
         case "/focus":
             return .focus
-        case "/post":
-            return rest.isEmpty ? nil : .post(idea: rest)
-        case "/ideas":
-            return .ideas(theme: rest)
         case "/spent":
             return rest.contains(where: \.isNumber) ? .spent(rest) : nil
         case "/clear":

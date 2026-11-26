@@ -125,9 +125,18 @@ public struct SpaceRow: Codable, Equatable, Identifiable, Sendable {
 
 /// Tables in Spaces: reading a CSV into one, writing one out, and turning its rows into bulk mail contacts.
 public enum SpaceTable {
-    public static let rowLimit = 2000, columnLimit = 30, cellLimit = 1000, noteLimit = 2000 // a row is capped at 8 KB on the server, with all its cells
+    public static let rowLimit = 2000, columnLimit = 30, cellLimit = 1000, noteLimit = 3000 // a post can be 3,000 characters (ADR-0004 §7); a row is capped at 8 KB on the server, with all its cells
     /// The cell that holds a card's own note (not a column, so it never shows as one).
     public static let noteKey = "_note"
+    /// A note cut to fit the card: at most `noteLimit` characters, and the whole row within the server's 8 KB (Hindi and
+    /// emoji take 3–4 bytes a character, so a long note in them is cut sooner).
+    public static func fitNote(_ note: String, with cells: [String: String]) -> String {
+        var text = String(note.prefix(noteLimit))
+        let fits = { (t: String) in (try? JSONEncoder().encode(cells.merging([noteKey: t]) { $1 }).count).map { $0 <= 7600 } ?? false }
+        while !text.isEmpty, !fits(text) { text = String(text.prefix(text.count * 9 / 10)) }
+        return text
+    }
+
     /// The cell that makes a card repeat (a habit, a weekly review): ticking it off moves its date on instead.
     public static let repeatKey = "_repeat"
 

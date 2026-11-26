@@ -334,57 +334,6 @@ public final class BlinkServer: Sendable {
             .execute()
     }
 
-    // MARK: Content (§36.4)
-
-    /// One draft per platform from the idea, saved on the server; returns the questions the model wants answered for a
-    /// stronger post (it asks rather than invents). Reload with `contentPieces()`.
-    @discardableResult
-    public func draftContent(idea: String, platforms: [ContentPiece.Platform], spaceID: String? = nil,
-                             plannedFor: String? = nil) async throws -> [String] {
-        struct Body: Encodable { let idea: String; let platforms: [String]; let space_id: String?; let planned_for: String? }
-        struct Reply: Decodable { let saved: Int; let questions: [String]? }
-        do {
-            let reply: Reply = try await client.functions.invoke(
-                "content", options: .init(body: Body(idea: idea, platforms: platforms.map(\.rawValue), space_id: spaceID,
-                                                     planned_for: plannedFor)))
-            return reply.questions ?? []
-        } catch let FunctionsError.httpError(_, data) {
-            struct ErrorBody: Decodable { let error: String }
-            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't write drafts.")
-        }
-    }
-
-    /// Six ideas for the owner's page (optionally around a theme), to pick from. Nothing is saved.
-    /// `days` set: the week plan, each idea on one of those days.
-    public func contentIdeas(theme: String, platforms: [ContentPiece.Platform], days: [String] = []) async throws -> [ContentIdea] {
-        struct Body: Encodable { let mode: String; let idea: String; let platforms: [String]; let days: [String] }
-        struct Reply: Decodable { let ideas: [ContentIdea] }
-        do {
-            let reply: Reply = try await client.functions.invoke(
-                "content", options: .init(body: Body(mode: days.isEmpty ? "ideas" : "week", idea: theme,
-                                                     platforms: platforms.map(\.rawValue), days: days)))
-            return reply.ideas
-        } catch let FunctionsError.httpError(_, data) {
-            struct ErrorBody: Decodable { let error: String }
-            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't come up with ideas.")
-        }
-    }
-
-    /// A cover or a text-free carousel background from Cloudflare FLUX (the owner's free daily allowance), as JPEG data.
-    public func makeImage(subject: String, background: Bool) async throws -> Data {
-        struct Body: Encodable { let subject: String; let kind: String }
-        struct Reply: Decodable { let image: String }
-        do {
-            let reply: Reply = try await client.functions.invoke(
-                "image", options: .init(body: Body(subject: String(subject.prefix(500)), kind: background ? "background" : "cover")))
-            guard let data = Data(base64Encoded: reply.image) else { throw ChatProblem(message: "The image didn't come through. Try again.") }
-            return data
-        } catch let FunctionsError.httpError(_, data) {
-            struct ErrorBody: Decodable { let error: String }
-            throw ChatProblem(message: (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Blink couldn't make an image.")
-        }
-    }
-
     /// Settings › Connections: "ok", "missing", "rejected" or "unreachable" per key on the server (never the keys).
     public func connections() async throws -> [String: String] {
         try await client.functions.invoke("connections", options: .init(body: [String: String]()))
@@ -829,12 +778,6 @@ public final class BlinkServer: Sendable {
         }
     }
 
-    /// Links a post to a Space (or unlinks it, nil): its card then shows on that Space's canvas and page.
-    public func setSpace(_ spaceID: String?, of piece: ContentPiece) async throws {
-        struct Row: Encodable { let segment_id: String? }
-        try await client.from("content_piece").update(Row(segment_id: spaceID)).eq("id", value: piece.id).execute()
-    }
-
     // MARK: Bulk mail (ADR-0003)
 
     /// The owner's bulk mails, newest first; empty on a server without Bulk Mail yet.
@@ -1102,28 +1045,6 @@ public final class BlinkServer: Sendable {
         try await client.from("weekly_goal").delete().eq("id", value: goal.id).execute()
     }
 
-    // MARK: Draft quality
-
-    /// A draft's text as the AI wrote it; nil for drafts written by hand, or on a server without it yet.
-    public func draftOriginal(_ id: String) async -> String? {
-        struct Row: Decodable { let ai_text: String? }
-        let rows: [Row]? = try? await client.from("content_piece").select("ai_text").eq("id", value: id).limit(1).execute().value
-        return rows?.first?.ai_text
-    }
-
-    public func setEditedShare(_ share: Double, of id: String) async throws {
-        try await client.from("content_piece").update(["edited_share": (share * 1000).rounded() / 1000]).eq("id", value: id).execute()
-    }
-
-    /// How much the owner changed each approved AI draft since a day: the model that wrote it, and the share changed.
-    /// Empty on a server without draft quality yet.
-    public func draftEdits(since: Date) async -> [(model: String, share: Double)] {
-        struct Row: Decodable { let ai_model: String?; let edited_share: Double }
-        let rows: [Row]? = try? await client.from("content_piece").select("ai_model, edited_share")
-            .not("edited_share", operator: .is, value: "null").gte("created_at", value: since.ISO8601Format()).execute().value
-        return (rows ?? []).map { ($0.ai_model ?? "unknown", $0.edited_share) }
-    }
-
     // MARK: Income
 
     /// Income received since a day ("2026-10-01"), newest first.
@@ -1296,14 +1217,6 @@ public final class BlinkServer: Sendable {
             .neq("status", value: "archived")
             .order("created_at", ascending: false)
             .limit(200)
-            .execute().value
-    }
-
-    /// Saves a post the owner wrote by hand, as a draft, and returns it.
-    public func create(_ post: ContentPiece.Written) async throws -> ContentPiece {
-        try await client.from("content_piece").insert(post)
-            .select("id, idea, platform, format, hook, body, parts, hashtags, status, lint_score, published_at, created_at, planned_for, segment_id")
-            .single()
             .execute().value
     }
 

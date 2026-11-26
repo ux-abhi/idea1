@@ -149,7 +149,7 @@ struct MainWindow: View {
                     .help("Sync now (⌘R)")
                     Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
                         .keyboardShortcut("k")
-                        .help("Search notes, tasks, posts and spaces (⌘K)")
+                        .help("Search notes, tasks, reminders and spaces (⌘K)")
                     Button { showPanel.toggle() } label: { Label("Blink", systemImage: "sidebar.right") }
                         .keyboardShortcut("b", modifiers: [.command, .option])
                         .help("Show or hide the Blink panel (⌥⌘B)")

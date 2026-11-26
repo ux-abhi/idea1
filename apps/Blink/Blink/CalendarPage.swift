@@ -167,24 +167,15 @@ private struct DayToDos: View {
     @Environment(AppModel.self) private var model
     let day: Date
 
-    @State private var openPost: String?
-
     var body: some View {
-        toDos.sheet(isPresented: Binding(get: { openPost != nil }, set: { if !$0 { openPost = nil } })) {
-            if let openPost { PieceSheet(id: openPost) }
-        }
-    }
-
-    @ViewBuilder private var toDos: some View {
         let cal = Calendar.current
         let tasks = model.openTasks.filter { $0.dueAt.map { cal.isDate($0, inSameDayAs: day) } ?? false }
         let reminders = model.allReminders.filter { $0.due.map { cal.isDate($0, inSameDayAs: day) } ?? false }
-        let posts = model.content.filter { $0.plannedFor == HabitDay.key(day) && $0.status != .archived }
         let cards = model.datedCards.filter { cal.isDate($0.due, inSameDayAs: day) }
         VStack(alignment: .leading, spacing: 10) {
             Text(cal.isDateInToday(day) ? "Due today" : "Due \(day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))")
                 .font(.headline)
-            if tasks.isEmpty && reminders.isEmpty && posts.isEmpty && cards.isEmpty {
+            if tasks.isEmpty && reminders.isEmpty && cards.isEmpty {
                 Text("Nothing due.").font(.callout).foregroundStyle(.secondary)
             }
             ForEach(tasks) { task in
@@ -199,19 +190,6 @@ private struct DayToDos: View {
                 let space = model.spaces.first { $0.id == card.spaceID }?.title ?? "Space"
                 row(card.timed ? "\(card.due.formatted(date: .omitted, time: .shortened))  \(card.title)" : card.title,
                     symbol: "circle", tint: .teal, tag: Tag(text: space, tint: .teal)) { Task { await model.completeCard(card.rowID) } }
-            }
-            ForEach(posts) { post in
-                Button { openPost = post.id } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "megaphone").foregroundStyle(.purple).accessibilityHidden(true)
-                        Text(post.status == .idea ? post.idea : post.hook).font(.callout).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Tag(text: "\(post.platform.short) · \(StatusChip.name(post.status))", tint: .purple)
-                    }
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .help("Open in Content")
             }
         }
         .padding(16)
