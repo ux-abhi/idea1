@@ -8,7 +8,7 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.118.0";
 import { type Call, handle, localToUTC } from "./input.ts";
 import { BLOCK_BYTES, bytes, type Column, display, planContacts, ROW_LIMIT, toCells } from "./tables.ts";
-import { BULK_SYSTEM, hasPlaceholder } from "../mail/bulk.ts";
+import { BULK_SYSTEM, hasPlaceholder } from "../_shared/bulk.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 

@@ -1,5 +1,5 @@
 // © Pexilim
-import { bulkPrompt, checkedFiles, hasPlaceholder, historyPattern, parseWritten, stripPlaceholders } from "./bulk.ts";
+import { bulkPrompt, checkedFiles, hasPlaceholder, historyPattern, parseWritten, stripPlaceholders } from "../_shared/bulk.ts";
 import { buildDraft, parseHeaders } from "./message.ts";
 
 Deno.test("a contact's cells are fenced as data, so they can't open a tag of their own", () => {

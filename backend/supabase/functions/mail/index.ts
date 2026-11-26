@@ -11,7 +11,7 @@ import { buildDraft, uidWindow, parseAddress, parseHeaders, parseTriage, plainTe
 import { sendMail } from "./smtp.ts";
 import { type Mailer, sendDue, withTimeout } from "./outbox.ts";
 import { sendBulkDue } from "./bulk_send.ts";
-import { BULK_SCHEMA, BULK_SYSTEM, bulkPrompt, checkedFiles, domainOf, hasPlaceholder, historyPattern, parseWritten, stripPlaceholders, WRITE_BATCH } from "./bulk.ts";
+import { BULK_SCHEMA, BULK_SYSTEM, bulkPrompt, checkedFiles, domainOf, hasPlaceholder, historyPattern, parseWritten, stripPlaceholders, WRITE_BATCH } from "../_shared/bulk.ts";
 import { type Card, CARD_SCHEMA, CARD_SYSTEM, fetchPage, pageText, parseCard, siteFor } from "./research.ts";
 import { capProblem, compatible, cost, keepsSchema, FREE_MODELS, lastMonth, MODELS, type Model, pickModel } from "../_shared/models.ts";
 import { alreadyRecorded, CATEGORIES, localDay } from "../_shared/spend.ts";

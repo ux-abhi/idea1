@@ -3,7 +3,7 @@
 // owner signed it with Touch ID. Each scheduled run sends at most one mail per mailbox, inside daytime hours and the
 // daily limits, skips anyone who replied, and pauses the batch on a provider's limit error or repeated failures.
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.118.0";
-import { checkedFiles } from "./bulk.ts";
+import { checkedFiles } from "../_shared/bulk.ts";
 import { buildDraft } from "./message.ts";
 import { type Mailer, withTimeout } from "./outbox.ts";
 
