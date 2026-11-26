@@ -2704,6 +2704,8 @@ final class AppModel {
 
     /// A page for the window to show (from the notch's "Open" buttons); MainWindow clears it once shown.
     var openPage: String?
+    /// A Space table to start a new bulk mail from (its menu's "Bulk Mail to These People…"); Bulk Mail opens with it picked.
+    var bulkFromTable: String?
     /// A blink://signin link macOS handed to Blink (the sign-in finished in another browser tab).
     var openedSignin: URL?
 

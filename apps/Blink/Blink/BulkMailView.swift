@@ -55,7 +55,10 @@ struct BulkMailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task { await model.loadCampaigns() }
-        .sheet(isPresented: $creating) { NewCampaignSheet { selected = $0 } }
+        .sheet(isPresented: $creating, onDismiss: { model.bulkFromTable = nil }) {
+            NewCampaignSheet(preset: model.bulkFromTable) { selected = $0 }
+        }
+        .onChange(of: model.bulkFromTable, initial: true) { if model.bulkFromTable != nil { creating = true } }
         .confirmationDialog("Delete “\(deleting?.title ?? "")”?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete Bulk Mail", role: .destructive) {
                 guard let campaign = deleting else { return }
@@ -81,6 +84,8 @@ struct BulkMailView: View {
 private struct NewCampaignSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    /// A table to start from (picked from its own menu).
+    var preset: String?
     let created: (String) -> Void
     @State private var step = 1
     @State private var fromTable = true
@@ -137,7 +142,8 @@ private struct NewCampaignSheet: View {
         .task {
             for space in model.spaces where model.spaceBlocks[space.id] == nil { await model.loadBlocks(space) }
             for item in tables where model.tableRows[item.block.id] == nil { await model.loadRows(item.block) }
-            if source.isEmpty { source = tables.first?.block.id ?? "" }
+            if let preset, tables.contains(where: { $0.block.id == preset }) { source = preset }
+            else if source.isEmpty { source = tables.first?.block.id ?? "" }
             if tables.isEmpty { fromTable = false }
         }
         .onChange(of: source) { tag = "" }

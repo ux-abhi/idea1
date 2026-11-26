@@ -479,6 +479,12 @@ private struct BlockRow: View {
             Button("Suggest Cards…", systemImage: "lightbulb") { model.tableAIRequest = .init(blockID: block.id, text: "", kind: .ideas) }
             Button("Paste Text as Rows…", systemImage: "text.badge.plus") { model.tableAIRequest = .init(blockID: block.id, text: "", kind: .paste) }
             Button("Spread Over the Week", systemImage: "calendar.badge.plus") { Task { await model.spreadOverWeek(block) } }
+            Button("Bulk Mail to These People…", systemImage: "envelope.badge.person.crop") {
+                UserDefaults.standard.set(true, forKey: "inbox.bulk") // Inbox opens on Bulk Mail
+                model.bulkFromTable = block.id
+                model.openPage = "inbox"
+            }
+            .help("A personal mail to each person in this table, written for you to check; nothing is sent without your OK")
             Divider()
             Button("Import CSV…", systemImage: "square.and.arrow.down") { importing = true }
             Button("Copy as CSV", systemImage: "doc.on.doc") {
