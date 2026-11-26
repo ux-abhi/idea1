@@ -478,7 +478,9 @@ struct MailReader: View {
                     Button("Open in Apple Mail", systemImage: "arrow.up.forward.app") { NSWorkspace.shared.open(url) }.help("Open in Apple Mail")
                 }
                 TurnIntoCardsMenu {
-                    "From: \(message.sender) <\(message.fromAddr)>\nSubject: \(message.subject)\n\n\(text ?? message.summary)"
+                    // The mail's own date, so "by Friday" in an older mail counts from when it was sent.
+                    let sent = (message.receivedAt ?? message.createdAt).formatted(.iso8601.year().month().day())
+                    return "From: \(message.sender) <\(message.fromAddr)>\nDate: \(sent)\nSubject: \(message.subject)\n\n\(text ?? message.summary)"
                 }
                 Menu {
                     Section("All mail from \(message.fromAddr)") {

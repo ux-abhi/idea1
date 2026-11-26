@@ -1089,6 +1089,7 @@ private struct CardNoteEditor: View {
         VStack(alignment: .leading, spacing: 6) {
             TextEditor(text: $text).font(.body).frame(minHeight: 100).focused($focused)
                 .scrollContentBackground(.hidden)
+                .disabled(working) // typing during the AI call would be replaced by its reply
                 .overlay(alignment: .topLeading) {
                     if text.isEmpty { Text("Add a note, a link, the next step…").foregroundStyle(.tertiary).padding(.leading, 5).allowsHitTesting(false) }
                 }
@@ -1266,6 +1267,10 @@ private struct AskTableSheet: View {
 /// shown before they're added (the same sheet as pasting text into a table).
 struct TurnIntoCardsMenu: View {
     @Environment(AppModel.self) private var model
+    /// A note Blink wrote from a meeting: its next steps become the cards on the Mac.
+    var meeting = false
+    /// When the text was written, for "tomorrow" in a meeting's next steps.
+    var written = Date.now
     /// The text at the moment a table is picked (a mail's body may still be loading when the view appears).
     let text: () -> String
     @State private var target: SpaceBlock?
@@ -1293,7 +1298,8 @@ struct TurnIntoCardsMenu: View {
         .disabled(loading)
         .help("Turn this into cards in one of your Space tables; you see them before they're added")
         .sheet(item: $target) { block in
-            PasteRowsSheet(block: block, columns: block.data.columns ?? [], initial: String(text().prefix(20_000)))
+            PasteRowsSheet(block: block, columns: block.data.columns ?? [], initial: String(text().prefix(20_000)),
+                           meeting: meeting, written: written)
         }
         .alert("Couldn't open that table", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK") {}
@@ -1324,6 +1330,8 @@ struct PasteRowsSheet: View {
     var initial = ""
     /// Suggest new cards (what's typed is the ask) instead of reading pasted text.
     var ideas = false
+    var meeting = false
+    var written = Date.now
     @State private var text = ""
     @State private var rows: [[String: String]]?
     @State private var fromMeeting = false
@@ -1385,8 +1393,8 @@ struct PasteRowsSheet: View {
             guard !initial.isEmpty else { return }
             text = initial
             // Meeting notes: their next steps become the cards on this Mac, so the transcript never leaves it.
-            let steps = ideas ? [] : MeetingNotes.nextSteps(in: initial)
-            if steps.isEmpty { read() } else { rows = MeetingNotes.cards(steps, columns: columns); fromMeeting = true }
+            let steps = meeting ? MeetingNotes.nextSteps(in: initial) : []
+            if steps.isEmpty { read() } else { rows = MeetingNotes.cards(steps, columns: columns, now: written); fromMeeting = true }
         }
     }
 

@@ -1697,9 +1697,46 @@ extension Tokens {
     let steps = MeetingNotes.nextSteps(in: "Weekly sync\n\n" + body)
     #expect(steps == ["Sam: send the deck tomorrow 3pm", "Book the venue"])
     #expect(MeetingNotes.nextSteps(in: "Just a note\n• a bullet") == [])
+    #expect(MeetingNotes.isMeetingNote(body) && !MeetingNotes.isMeetingNote("Just a note\nNext steps\n• a bullet"))
     let name = SpaceColumn(name: "Name"), due = SpaceColumn(name: "Due", kind: .date)
     let rows = MeetingNotes.cards(steps, columns: [name, due])
     #expect(rows[0]["Name"] == steps[0] && rows[0]["Due"]?.hasSuffix(" 15:00") == true)
     #expect(rows[1] == ["Name": "Book the venue"])
     #expect(MeetingNotes.cards(steps, columns: [due]).isEmpty) // no Text property to name the card
+}
+
+@Test func recapCountsOnlyToday() {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "UTC")!
+    let day = cal.date(from: DateComponents(year: 2026, month: 11, day: 26))!
+    let now = day.addingTimeInterval(21 * 3600), yesterday = day.addingTimeInterval(-3600)
+    let tasks = [BlinkItem(id: "1", type: .task, title: "A", status: .done, updatedAt: day.addingTimeInterval(3600)),
+                 BlinkItem(id: "2", type: .task, title: "B", status: .done, updatedAt: yesterday),
+                 BlinkItem(id: "3", type: .task, title: "C", status: .open, updatedAt: now)]
+    let done = SpaceColumn(id: "x", name: "Done", kind: .checkbox)
+    let table = SpaceBlock(id: "t", spaceID: "sp", position: 1, kind: .table,
+                           data: .init(columns: [SpaceColumn(id: "n", name: "Name"), done, SpaceColumn(id: "d", name: "Due", kind: .date)]))
+    let rows = [SpaceRow(blockID: "t", position: 0, cells: ["d": "2026-11-26 10:00", "x": "true"]),
+                SpaceRow(blockID: "t", position: 1, cells: ["d": "2026-11-26"]), // open
+                SpaceRow(blockID: "t", position: 2, cells: ["d": "2026-11-25", "x": "true"])] // another day
+    let events = [AgendaEvent(extID: "m", title: "M", start: day.addingTimeInterval(10 * 3600), end: day.addingTimeInterval(11 * 3600)),
+                  AgendaEvent(extID: "l", title: "Later", start: now.addingTimeInterval(3600), end: now.addingTimeInterval(7200))]
+    func mail(_ status: EmailMessage.Status, _ at: Date) -> EmailMessage {
+        EmailMessage(id: UUID().uuidString, account: "gmail", messageID: "", fromName: "", fromAddr: "a@b.co", subject: "", receivedAt: at,
+                     triage: .normal, reason: "", summary: "", needsReply: false, status: status, createdAt: at, actions: nil)
+    }
+    let spends = [Spend(id: "s", amount: 12.5, note: "", category: .other, spentOn: "2026-11-26", accountID: nil, createdAt: now),
+                  Spend(id: "o", amount: 99, note: "", category: .other, spentOn: "2026-11-25", accountID: nil, createdAt: now)]
+    let recap = DayRecap.make(day: day, now: now, tasks: tasks, tables: [(table, rows)], events: events,
+                              emails: [mail(.done, now), mail(.new, now), mail(.done, yesterday)], spends: spends, habits: (1, 2), calendar: cal)
+    #expect(recap.tasks == 1 && recap.cards == 1 && recap.meetings == 1 && recap.mails == 2 && recap.mailsHandled == 1 && recap.spent == 12.5)
+    #expect(recap.line.hasPrefix("1 task and 1 card done · 1 meeting · 1 of 2 mails handled · 1 of 2 habits · "))
+    #expect(DayRecap().line == "A quiet day.")
+}
+
+@Test func todayStillCountsInTheAfternoon() {
+    let afternoon = Calendar.current.date(bySettingHour: 15, minute: 0, second: 0, of: .now)!
+    let parsed = TaskInput.parse("Call Ana today", now: afternoon)
+    #expect(parsed.due.map { Calendar.current.isDate($0, inSameDayAs: afternoon) } == true && parsed.title == "Call Ana")
+    #expect(TaskInput.parse("Call Ana today 9am", now: afternoon).due == nil) // a time already gone stays text
 }

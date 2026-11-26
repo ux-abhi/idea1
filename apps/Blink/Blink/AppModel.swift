@@ -1208,6 +1208,15 @@ final class AppModel {
         }
     }
 
+    /// What got done today, for the evening card (ADR-0005 §5). Cards count only from tables already loaded.
+    var recap: DayRecap {
+        // A rest day ("Skip") doesn't count against the day (ADR-0005 §Habits).
+        let scheduled = habits.filter { isScheduledToday($0) && answerToday($0) != .skipped }
+        return DayRecap.make(day: habitToday, now: .now, tasks: items, tables: liveTables.map { ($0, tableRows[$0.id] ?? []) },
+                             events: agenda.events, emails: emails, spends: spends,
+                             habits: (scheduled.filter { answerToday($0) == .done }.count, scheduled.count))
+    }
+
     func finishEvening() {
         lastEvening = .now
         UserDefaults.standard.set(lastEvening, forKey: "lastEvening")
@@ -3556,15 +3565,18 @@ final class AppModel {
         let byID = Dictionary(uniqueKeysWithValues: changed.map { ($0.id, $0) })
         tableRows[block.id] = before.map { byID[$0.id] ?? $0 }
         do { try await server.save(changed) } catch {
-            tableRows[block.id] = before
+            // Saved in batches, so some may have gone through: show what the server has.
             saveProblem = "Couldn't save the dates. Check your connection."
+            await loadRows(current)
             return
         }
         let dateID = columns.first { $0.kind == .date }!.id
         offerUndo("Spread \(changed.count) \(changed.count == 1 ? "card" : "cards") over the week") { [weak self] in
             guard let self, let server = self.server else { return }
-            // Only the dates go back, so anything else edited since stays.
-            let back = (self.tableRows[block.id] ?? []).filter { byID[$0.id] != nil }.map { row in
+            // Only the dates it set go back: a card moved to another day since, or anything else edited, stays.
+            let back = (self.tableRows[block.id] ?? []).filter { row in
+                byID[row.id].map { $0.cells[dateID] == row.cells[dateID] } == true
+            }.map { row in
                 var row = row
                 row.cells[dateID] = nil
                 return row

@@ -2097,7 +2097,7 @@ struct TimerCard: View {
     }
 }
 
-/// The evening check-in (§9.4): tomorrow at a glance, today's unanswered habits, unscheduled tasks,
+/// The evening check-in (§9.4): what got done today, tomorrow at a glance, today's unanswered habits, unscheduled tasks,
 /// then Plan with Blink or All set.
 struct EveningView: View {
     let app: AppModel
@@ -2107,6 +2107,10 @@ struct EveningView: View {
         let habits = app.habits.filter { app.isScheduledToday($0) && app.answerToday($0) == nil }
         let unscheduled = Array(app.openTasks.filter { $0.dueAt == nil }.prefix(3))
         VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Today").font(.title3.weight(.semibold))
+                Text(app.recap.line).foregroundStyle(.white.opacity(0.6))
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Tomorrow, \(app.tomorrow.formatted(.dateTime.weekday(.wide).day().month()))")
                     .font(.title3.weight(.semibold))

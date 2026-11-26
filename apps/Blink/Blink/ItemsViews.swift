@@ -736,7 +736,9 @@ struct NoteEditor: View {
                 .fixedSize()
                 .disabled(working != nil || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .help("Fix, shorten, clarify or summarise this note")
-                TurnIntoCardsMenu { "\(title)\n\n\(text)" }
+                // shortcut: a meeting note's day is its last change (items keep no created date); a note edited days
+                // later counts "tomorrow" from that edit, until items store when they were made.
+                TurnIntoCardsMenu(meeting: MeetingNotes.isMeetingNote(text), written: note.updatedAt) { "\(title)\n\n\(text)" }
                     .labelStyle(.iconOnly).menuStyle(.borderlessButton)
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

@@ -64,6 +64,7 @@ struct TodayView: View {
         if model.eveningDue {
             DashCard("Evening check-in") {
                 VStack(alignment: .leading, spacing: 8) {
+                    Text("Today: \(model.recap.line)")
                     Text("Tomorrow, \(model.tomorrow.formatted(.dateTime.weekday(.wide).day().month())): \(model.agenda.dayLine(for: model.tomorrow))")
                         .foregroundStyle(.secondary)
                     if let answer = model.chat.last(where: { $0.role == .assistant }), !model.chat.isEmpty {

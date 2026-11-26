@@ -97,7 +97,8 @@ public enum TaskInput {
         guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue),
               let match = detector.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
               let date = match.date, let range = Range(match.range, in: trimmed),
-              date >= now.addingTimeInterval(-60) else {
+              // A day with no written time comes back at noon: "today" at 15:00 is still today, not the past.
+              date >= (hasTime(String(trimmed[range])) ? now.addingTimeInterval(-60) : Calendar.current.startOfDay(for: now)) else {
             return (trimmed, nil) // no date, or a past one ("notes from monday"): leave the text alone
         }
         var title = trimmed

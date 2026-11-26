@@ -101,6 +101,11 @@ public enum MeetingNotes {
         return parts.joined(separator: "\n\n")
     }
 
+    /// A note `body(...)` wrote: it always ends with its "Transcript" section.
+    public static func isMeetingNote(_ text: String) -> Bool {
+        text.hasPrefix("Transcript\n") || text.contains("\n\nTranscript\n")
+    }
+
     /// The "Next steps" bullets of a note `body(...)` wrote; empty for any other text.
     public static func nextSteps(in text: String) -> [String] {
         let lines = text.components(separatedBy: "\n")

@@ -214,11 +214,12 @@ private struct PageAIBar: View {
             // A pasted list (several lines, or long) becomes rows; "spread … week" dates the open cards; "suggest" or
             // "ideas" asks for new cards; any other sentence is a change to the table.
             let lower = typed.lowercased(), list = typed.contains("\n") || typed.count > 200
-            if !list, lower.contains("week"), lower.contains("spread") || lower.contains("over the week") {
+            // Spread saves at once, so only a sentence that starts with it ("spread these over the week").
+            if !list, lower.hasPrefix("spread"), lower.contains("week") {
                 Task { await model.spreadOverWeek(block) }
             } else {
                 // Only a clear opening counts ("make this a calendar for post ideas" still changes the table).
-                let ideas = !list && (["suggest", "brainstorm", "ideas", "more ideas", "give me", "come up with"].contains { lower.hasPrefix($0) }
+                let ideas = !list && (["suggest", "brainstorm", "ideas", "more ideas", "come up with"].contains { lower.hasPrefix($0) }
                     || lower.contains(/^\d+ (more )?([a-z]+ )?ideas/))
                 model.tableAIRequest = .init(blockID: block.id, text: typed, kind: list ? .paste : ideas ? .ideas : .change)
             }
