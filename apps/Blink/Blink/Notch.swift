@@ -1119,7 +1119,9 @@ struct GlanceView: View {
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
                     }
-                    if event.joinable(at: now) || event.start <= now, let app, !app.noteTaker.isRunning {
+                    // Only for meetings (a call link or other people): gym or a class alone gets no Take Notes.
+                    if event.joinable(at: now) || event.start <= now, event.joinURL != nil || !event.attendees.isEmpty,
+                       let app, !app.noteTaker.isRunning {
                         Button("Take Notes") { Task { _ = await app.startNotes(for: event) } }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
