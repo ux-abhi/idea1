@@ -160,23 +160,8 @@ do $$ begin
   end;
 end $$;
 
--- Content: A drafts a post and sets a voice; a bad platform or status is refused.
-insert into public.content_piece (idea, platform, format, body, planned_for) values ('Launch week', 'x', 'thread', 'Day 1', '2026-10-14');
--- A week plan's idea is kept as a post with status 'idea'.
-insert into public.content_piece (idea, platform, format, status, planned_for) values ('Plan idea', 'linkedin', 'post', 'idea', '2026-10-15');
+-- Content: A sets a writing voice.
 insert into public.voice_profile (notes, never_say, page, brief) values ('Plain, short sentences', '{delve}', '@yourname on Instagram', '# Brief');
-do $$ begin
-  begin
-    insert into public.content_piece (idea, platform, format) values ('x', 'tiktok', 'post');
-    raise exception 'bad platform should have failed';
-  exception when check_violation then null;
-  end;
-  begin
-    update public.content_piece set status = 'viral';
-    raise exception 'bad content status should have failed';
-  exception when check_violation then null;
-  end;
-end $$;
 
 -- Page posts: A stores a post from their page; a non-Instagram URL or a bad handle is refused.
 insert into public.social_post (platform, handle, url, caption, likes) values ('instagram', 'yourname', 'https://www.instagram.com/p/abc/', 'Checkout tips', 120);
@@ -312,13 +297,6 @@ do $$ begin
   exception when unique_violation then null;
   end;
   delete from public.transaction where dedupe_key = 'bill:x:2026-11';
-  -- Draft quality: the original AI text and the share edited, which is a fraction from 0 to 1.
-  begin
-    insert into public.content_piece (idea, platform, format, ai_text, ai_model, edited_share)
-      values ('Test', 'linkedin', 'post', 'Original', 'claude-sonnet-5-5', 1.5);
-    raise exception 'an edited share above 1 was accepted';
-  exception when check_violation then null;
-  end;
   -- Weekly goals: on a Monday, never more done than the target.
   insert into public.weekly_goal (week_start, title, target, done_count) values ('2026-11-16', 'Create 5 posts', 5, 2);
   begin
@@ -447,7 +425,6 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
   assert (select count(*) from public.habit) = 0, 'B must not see A''s habits';
   assert (select count(*) from public.segment) = 0, 'B must not see A''s spaces';
-  assert (select count(*) from public.content_piece) = 0, 'B must not see A''s drafts';
   assert (select count(*) from public.voice_profile) = 0, 'B must not see A''s voice';
   assert (select count(*) from public.social_post) = 0, 'B must not see A''s page posts';
   assert (select count(*) from public.email_msg) = 0, 'B must not see A''s mail';

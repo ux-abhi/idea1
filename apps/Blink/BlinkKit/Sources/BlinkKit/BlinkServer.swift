@@ -1394,12 +1394,12 @@ public final class BlinkServer: Sendable {
         }
     }
 
-    /// Returns the edited text; nothing is changed until the owner accepts the preview.
-    public func edit(_ text: String, task: TextTask) async throws -> String {
-        struct Body: Encodable { let task: String; let text: String }
+    /// Returns the edited text. `ask` (Write It only) is the owner's own request, like "Write a LinkedIn post about this".
+    public func edit(_ text: String, task: TextTask, ask: String? = nil) async throws -> String {
+        struct Body: Encodable { let task: String; let text: String; let ask: String? }
         struct Reply: Decodable { let text: String }
         do {
-            let reply: Reply = try await client.functions.invoke("text", options: .init(body: Body(task: task.rawValue, text: text)))
+            let reply: Reply = try await client.functions.invoke("text", options: .init(body: Body(task: task.rawValue, text: text, ask: ask)))
             return reply.text
         } catch let FunctionsError.httpError(_, data) {
             struct ErrorBody: Decodable { let error: String }

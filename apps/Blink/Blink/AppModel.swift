@@ -613,7 +613,7 @@ final class AppModel {
         case "post.draft":
             // Posts are cards now (ADR-0004 §6); only a proposal left from an older server chat lands here.
             try await server.setStatus("declined", for: action)
-            announce("Posts are cards now. Add it to a Content table in a Space.", failed: true)
+            announce("Posts are cards now. Add a card to a Content table, open it and ask AI to write it.", failed: true)
         case "mail.compose":
             // From chat ("send the reply to Sam on the 15th"): write or reuse the draft, then show it for review.
             if !emails.contains(where: { $0.id == action.payload.emailID }) { await loadMail() }

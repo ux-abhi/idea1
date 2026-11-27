@@ -1102,10 +1102,19 @@ private struct CardNoteEditor: View {
     @State private var working = false
     @State private var undoText: String?
     @State private var problem: String?
+    @State private var ask = ""
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles").foregroundStyle(.secondary).accessibilityHidden(true)
+                TextField("Ask AI to fill this card, like “Write a LinkedIn post about this”", text: $ask)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { run(.write, ask: ask) }
+                    .disabled(working)
+                    .accessibilityLabel("Ask AI to fill this card")
+            }
             TextEditor(text: $text).font(.body).frame(minHeight: 100).focused($focused)
                 .scrollContentBackground(.hidden)
                 .disabled(working) // typing during the AI call would be replaced by its reply
@@ -1147,9 +1156,12 @@ private struct CardNoteEditor: View {
         return lines.joined(separator: "\n")
     }
 
-    private func run(_ task: BlinkServer.TextTask) {
+    private func run(_ task: BlinkServer.TextTask, ask: String? = nil) {
+        let ask = ask?.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500).description
+        if ask?.isEmpty == true { return }
         guard let server = model.server else { problem = "Connect your server in Settings first."; return }
-        let input = task == .write ? cardText : text
+        // An empty card is fine with an ask: the ask alone says what to write.
+        let input = task == .write ? (cardText.isEmpty && ask != nil ? "Title: (none yet)" : cardText) : text
         guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { problem = "Give the card a title first."; return }
         working = true
         problem = nil
@@ -1157,7 +1169,8 @@ private struct CardNoteEditor: View {
         Task {
             defer { working = false }
             do {
-                let after = try await server.edit(input, task: task)
+                let after = try await server.edit(input, task: task, ask: ask)
+                if ask != nil { self.ask = "" }
                 undoText = before
                 text = SpaceTable.fitNote(after.trimmingCharacters(in: .whitespacesAndNewlines), with: row.cells)
                 save()
